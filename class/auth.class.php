@@ -33,6 +33,11 @@ require_once DOL_DOCUMENT_ROOT.'/core/class/commonobject.class.php';
  */
 class Auth extends CommonObject
 {
+	public $socid;
+	public $labelStatusShort;
+	public $labelStatus;
+	public $output;
+	public $user_validation;
 	/**
 	 * @var string ID of module.
 	 */
