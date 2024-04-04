@@ -289,7 +289,7 @@ class AuthController
 	 */
 	private function _newKey($uid, $entity)
 	{
-		global $db, $smartAuthAppID, $smartAuthAppKey;
+		global $db, $smartAuthAppID, $smartAuthAppKey, $SERVER;
 		dol_syslog("Debug smartauth : AuthController::_newkey");
 
 		$id = $salt = '';
