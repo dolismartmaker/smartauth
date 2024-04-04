@@ -128,6 +128,7 @@ class AuthController
 
 		// Renew the hash ?
 		// Generate token for user
+		$result = $tmpuser->call_trigger('USER_LOGIN', $tmpuser);
 
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
@@ -170,6 +171,8 @@ class AuthController
 				dol_syslog("smartauth : delete token from db error");
 			}
 		}
+
+		$result = $user->call_trigger('USER_LOGOUT', $user);
 
 		$ret = [
 			'statusCode' => 200,
