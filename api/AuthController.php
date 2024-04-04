@@ -261,7 +261,8 @@ class AuthController
 
 		//TODO ajouter des verifs de temps / clé périmée / utilisée sur un type de navigateur (signature browser) toussa
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " SET date_lastused = '". $db->idate(dol_now()) . "', ";
+		$sql .= " SET date_lastused = '". $db->idate(dol_now()) . "',";
+		$sql .= " date_eol = '" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "',";
 		$sql .= " ip = '". $_SERVER['REMOTE_ADDR'] . "' ";
 		$sql .= " WHERE rowid = ". (int) $tokenid;
 		dol_syslog("smartauth : update token last used " . $sql);
@@ -306,7 +307,7 @@ class AuthController
 
 		$sql = "INSERT ";
 		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, ip, status, entity)";
-		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+60*60*24*30) . "','" . (int) $uid . "','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "','" . (int) $uid . "','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
 			$id = $db->last_insert_id(MAIN_DB_PREFIX."mailing");

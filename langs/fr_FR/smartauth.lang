@@ -57,3 +57,5 @@ Datecreation = Créée le
 Datelastused = Vue le
 Dateeol = Périmée le
 IpAddr = Adresse IP
+SMARTAUTH_TOKEN_EOL_DAYS = Délais (en jours) au bout duquel un token est périmé
+

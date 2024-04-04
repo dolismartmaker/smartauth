@@ -97,67 +97,71 @@ if (!class_exists('FormSetup')) {
 $formSetup = new FormSetup($db);
 
 
-// HTTP HOST
-$item = $formSetup->newItem('NO_PARAM_JUST_TEXT');
-$item->fieldOverride = (empty($_SERVER['HTTPS']) ? 'http://' : 'https://') . $_SERVER['HTTP_HOST'];
-$item->cssClass = 'minwidth500';
-
-// Setup conf SMARTAUTH_MYPARAM1 as a simple string input
-$item = $formSetup->newItem('SMARTAUTH_MYPARAM1');
-$item->defaultFieldValue = 'default value';
-
-// Setup conf SMARTAUTH_MYPARAM2 as a simple textarea input but we replace the text of field title
-$item = $formSetup->newItem('SMARTAUTH_MYPARAM2');
-$item->nameText = $item->getNameText().' more html text ';
-
-// Setup conf SMARTAUTH_MYPARAM3
-$item = $formSetup->newItem('SMARTAUTH_MYPARAM3');
-$item->setAsThirdpartyType();
-
-// Setup conf SMARTAUTH_MYPARAM4 : exemple of quick define write style
-$formSetup->newItem('SMARTAUTH_MYPARAM4')->setAsYesNo();
-
-// Setup conf SMARTAUTH_MYPARAM5
-$formSetup->newItem('SMARTAUTH_MYPARAM5')->setAsEmailTemplate('thirdparty');
-
-// Setup conf SMARTAUTH_MYPARAM6
-$formSetup->newItem('SMARTAUTH_MYPARAM6')->setAsSecureKey()->enabled = 0; // disabled
-
-// Setup conf SMARTAUTH_MYPARAM7
-$formSetup->newItem('SMARTAUTH_MYPARAM7')->setAsProduct();
-
-$formSetup->newItem('Title')->setAsTitle();
-
-// Setup conf SMARTAUTH_MYPARAM8
-$item = $formSetup->newItem('SMARTAUTH_MYPARAM8');
-$TField = array(
-	'test01' => $langs->trans('test01'),
-	'test02' => $langs->trans('test02'),
-	'test03' => $langs->trans('test03'),
-	'test04' => $langs->trans('test04'),
-	'test05' => $langs->trans('test05'),
-	'test06' => $langs->trans('test06'),
-);
-$item->setAsMultiSelect($TField);
-$item->helpText = $langs->transnoentities('SMARTAUTH_MYPARAM8');
+$item = $formSetup->newItem('SMARTAUTH_TOKEN_EOL_DAYS');
+$item->defaultFieldValue = '30';
 
 
-// Setup conf SMARTAUTH_MYPARAM9
-$formSetup->newItem('SMARTAUTH_MYPARAM9')->setAsSelect($TField);
+// // HTTP HOST
+// $item = $formSetup->newItem('NO_PARAM_JUST_TEXT');
+// $item->fieldOverride = (empty($_SERVER['HTTPS']) ? 'http://' : 'https://') . $_SERVER['HTTP_HOST'];
+// $item->cssClass = 'minwidth500';
+
+// // Setup conf SMARTAUTH_MYPARAM1 as a simple string input
+// $item = $formSetup->newItem('SMARTAUTH_MYPARAM1');
+// $item->defaultFieldValue = 'default value';
+
+// // Setup conf SMARTAUTH_MYPARAM2 as a simple textarea input but we replace the text of field title
+// $item = $formSetup->newItem('SMARTAUTH_MYPARAM2');
+// $item->nameText = $item->getNameText().' more html text ';
+
+// // Setup conf SMARTAUTH_MYPARAM3
+// $item = $formSetup->newItem('SMARTAUTH_MYPARAM3');
+// $item->setAsThirdpartyType();
+
+// // Setup conf SMARTAUTH_MYPARAM4 : exemple of quick define write style
+// $formSetup->newItem('SMARTAUTH_MYPARAM4')->setAsYesNo();
+
+// // Setup conf SMARTAUTH_MYPARAM5
+// $formSetup->newItem('SMARTAUTH_MYPARAM5')->setAsEmailTemplate('thirdparty');
+
+// // Setup conf SMARTAUTH_MYPARAM6
+// $formSetup->newItem('SMARTAUTH_MYPARAM6')->setAsSecureKey()->enabled = 0; // disabled
+
+// // Setup conf SMARTAUTH_MYPARAM7
+// $formSetup->newItem('SMARTAUTH_MYPARAM7')->setAsProduct();
+
+// $formSetup->newItem('Title')->setAsTitle();
+
+// // Setup conf SMARTAUTH_MYPARAM8
+// $item = $formSetup->newItem('SMARTAUTH_MYPARAM8');
+// $TField = array(
+// 	'test01' => $langs->trans('test01'),
+// 	'test02' => $langs->trans('test02'),
+// 	'test03' => $langs->trans('test03'),
+// 	'test04' => $langs->trans('test04'),
+// 	'test05' => $langs->trans('test05'),
+// 	'test06' => $langs->trans('test06'),
+// );
+// $item->setAsMultiSelect($TField);
+// $item->helpText = $langs->transnoentities('SMARTAUTH_MYPARAM8');
 
 
-// Setup conf SMARTAUTH_MYPARAM10
-$item = $formSetup->newItem('SMARTAUTH_MYPARAM10');
-$item->setAsColor();
-$item->defaultFieldValue = '#FF0000';
-$item->nameText = $item->getNameText().' more html text ';
-$item->fieldInputOverride = '';
-$item->helpText = $langs->transnoentities('AnHelpMessage');
-//$item->fieldValue = '';
-//$item->fieldAttr = array() ; // fields attribute only for compatible fields like input text
-//$item->fieldOverride = false; // set this var to override field output will override $fieldInputOverride and $fieldOutputOverride too
-//$item->fieldInputOverride = false; // set this var to override field input
-//$item->fieldOutputOverride = false; // set this var to override field output
+// // Setup conf SMARTAUTH_MYPARAM9
+// $formSetup->newItem('SMARTAUTH_MYPARAM9')->setAsSelect($TField);
+
+
+// // Setup conf SMARTAUTH_MYPARAM10
+// $item = $formSetup->newItem('SMARTAUTH_MYPARAM10');
+// $item->setAsColor();
+// $item->defaultFieldValue = '#FF0000';
+// $item->nameText = $item->getNameText().' more html text ';
+// $item->fieldInputOverride = '';
+// $item->helpText = $langs->transnoentities('AnHelpMessage');
+// //$item->fieldValue = '';
+// //$item->fieldAttr = array() ; // fields attribute only for compatible fields like input text
+// //$item->fieldOverride = false; // set this var to override field output will override $fieldInputOverride and $fieldOutputOverride too
+// //$item->fieldInputOverride = false; // set this var to override field input
+// //$item->fieldOutputOverride = false; // set this var to override field output
 
 
 $setupnotempty += count($formSetup->items);
