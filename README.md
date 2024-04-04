@@ -15,3 +15,5 @@ GPLv3 or (at your option) any later version. See file COPYING for more informati
 ### Documentation
 
 All texts and readmes are licensed under GFDL.
+
+French documentation is available here https://doc.cap-rel.fr/projet_smartauth/accueil
