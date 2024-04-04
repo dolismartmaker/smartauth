@@ -253,7 +253,7 @@ class FormSetup
 		$parameters = array();
 		$reshook = $hookmanager->executeHooks('formSetupBeforeSaveConfFromPost', $parameters, $this); // Note that $action and $object may have been modified by some hooks
 		if ($reshook < 0) {
-			$this->setErrors($hookmanager->errors);
+			// $this->setErrors($hookmanager->errors);
 			return -1;
 		}
 
