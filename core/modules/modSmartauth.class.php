@@ -327,8 +327,8 @@ class modSmartauth extends DolibarrModules
 			'url'=>'/smartauth/auth_list.php',
 			'langs'=>'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
 			'position'=>1000+$r,
-			'enabled'=>'$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartdlc->enabled' if entry must be visible if module is enabled.
-			'perms'=>'$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartdlc->level1->level2' if you want your menu with a permission rules
+			'enabled'=>'$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
+			'perms'=>'$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
 			'target'=>'',
 			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
 		);
