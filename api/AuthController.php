@@ -20,6 +20,8 @@
 
 namespace SmartAuth\Api;
 
+dol_include_once('/smartauth/lib/tools.php');
+
 use Exception;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
@@ -46,7 +48,7 @@ class AuthController
 		$ret = [
 		   'statusCode' => 200,
 		   'data' => [
-			   'entities' => _api_GetListOfEntities(),
+			   'entities' => $this->_api_GetListOfEntities(),
 		   ]
 		];
 		return([$ret, 200]);
@@ -355,4 +357,36 @@ class AuthController
 		dol_syslog("Debug smartauth : _getBearerToken empty headers, return null");
 		return null;
 	}
+
+	private function _api_GetListOfEntities()
+	/**
+	 * return array with list of entities if multientity is enabled
+	 *
+	 * @return  [type]  [return description]
+	 */
+	{
+		global $db;
+		$def = [];
+
+		if (isModEnabled('multicompany')) {
+			$sql = "SELECT DISTINCT(rowid), rang";
+			$sql.= " FROM ".MAIN_DB_PREFIX."entity";
+			$sql.= " WHERE active = 1";
+			$sql.= " AND visible = 1";
+			$sql.= " ORDER BY rang ASC, rowid ASC";
+
+			$resql = $db->query($sql);
+			if ($resql) {
+				$i = 0;
+				$num_rows = $db->num_rows($resql);
+				while ($i < $num_rows) {
+					$array = $db->fetch_array($resql);
+					array_push($def, $array[0]);
+					$i++;
+				}
+			}
+		}
+		return $def;
+	}
+
 }
