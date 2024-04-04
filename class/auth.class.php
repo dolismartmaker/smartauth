@@ -125,7 +125,7 @@ class Auth extends CommonObject
 		'tms' => array('type'=>'timestamp', 'label'=>'DateModification', 'enabled'=>'1', 'position'=>40, 'notnull'=>1, 'visible'=>-1,),
 		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'enabled'=>'1', 'position'=>45, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
 		'fk_user_modif' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserModif', 'enabled'=>'1', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
-		'ip' => array('type'=>'varchar(50)', 'label'=>'IpAddr', 'enabled'=>'1', 'position'=>55, 'notnull'=>0, 'visible'=>1,),
+		'ip' => array('type'=>'varchar(50)', 'label'=>'IpAddr', 'enabled'=>'1', 'position'=>55, 'notnull'=>0, 'visible'=>1, 'default'=>''),
 		'status' => array('type'=>'integer', 'label'=>'Status', 'enabled'=>'1', 'position'=>500, 'notnull'=>1, 'visible'=>-1,),
 	);
 	public $rowid;
@@ -1155,7 +1155,7 @@ class Auth extends CommonObject
 		global $_appNameUIDCache;
 		if (empty($_appNameUIDCache)) {
 			$_appNameUIDCache[''] = '';
-			$sql = "SELECT id,module FROM " . MAIN_DB_PREFIX . "rights_def GROUP BY module";
+			$sql = "SELECT id,module FROM " . MAIN_DB_PREFIX . "rights_def WHERE id > 100000 GROUP BY module";
 			$resql = $db->query($sql);
 			if ($resql) {
 				while ($obj = $db->fetch_object($resql)) {

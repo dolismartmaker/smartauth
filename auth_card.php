@@ -518,112 +518,112 @@ if ($object->id > 0 && (empty($action) || ($action != 'edit' && $action != 'crea
 			setEventMessages($hookmanager->error, $hookmanager->errors, 'errors');
 		}
 
-		if (empty($reshook)) {
-			// Send
-			if (empty($user->socid)) {
-				print dolGetButtonAction('', $langs->trans('SendMail'), 'default', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=presend&token='.newToken().'&mode=init#formmailbeforetitle');
-			}
+		// if (empty($reshook)) {
+		// 	// Send
+		// 	if (empty($user->socid)) {
+		// 		print dolGetButtonAction('', $langs->trans('SendMail'), 'default', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=presend&token='.newToken().'&mode=init#formmailbeforetitle');
+		// 	}
 
-			// Back to draft
-			if ($object->status == $object::STATUS_VALIDATED) {
-				print dolGetButtonAction('', $langs->trans('SetToDraft'), 'default', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=confirm_setdraft&confirm=yes&token='.newToken(), '', $permissiontoadd);
-			}
+		// 	// Back to draft
+		// 	if ($object->status == $object::STATUS_VALIDATED) {
+		// 		print dolGetButtonAction('', $langs->trans('SetToDraft'), 'default', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=confirm_setdraft&confirm=yes&token='.newToken(), '', $permissiontoadd);
+		// 	}
 
-			print dolGetButtonAction('', $langs->trans('Modify'), 'default', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=edit&token='.newToken(), '', $permissiontoadd);
+		// 	print dolGetButtonAction('', $langs->trans('Modify'), 'default', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=edit&token='.newToken(), '', $permissiontoadd);
 
-			// Validate
-			if ($object->status == $object::STATUS_DRAFT) {
-				if (empty($object->table_element_line) || (is_array($object->lines) && count($object->lines) > 0)) {
-					print dolGetButtonAction('', $langs->trans('Validate'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=confirm_validate&confirm=yes&token='.newToken(), '', $permissiontoadd);
-				} else {
-					$langs->load("errors");
-					print dolGetButtonAction($langs->trans("ErrorAddAtLeastOneLineFirst"), $langs->trans("Validate"), 'default', '#', '', 0);
-				}
-			}
+		// 	// Validate
+		// 	if ($object->status == $object::STATUS_DRAFT) {
+		// 		if (empty($object->table_element_line) || (is_array($object->lines) && count($object->lines) > 0)) {
+		// 			print dolGetButtonAction('', $langs->trans('Validate'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=confirm_validate&confirm=yes&token='.newToken(), '', $permissiontoadd);
+		// 		} else {
+		// 			$langs->load("errors");
+		// 			print dolGetButtonAction($langs->trans("ErrorAddAtLeastOneLineFirst"), $langs->trans("Validate"), 'default', '#', '', 0);
+		// 		}
+		// 	}
 
-			// Clone
-			if ($permissiontoadd) {
-				print dolGetButtonAction('', $langs->trans('ToClone'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.(!empty($object->socid)?'&socid='.$object->socid:'').'&action=clone&token='.newToken(), '', $permissiontoadd);
-			}
+		// 	// Clone
+		// 	if ($permissiontoadd) {
+		// 		print dolGetButtonAction('', $langs->trans('ToClone'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.(!empty($object->socid)?'&socid='.$object->socid:'').'&action=clone&token='.newToken(), '', $permissiontoadd);
+		// 	}
 
-			/*
-			if ($permissiontoadd) {
-				if ($object->status == $object::STATUS_ENABLED) {
-					print dolGetButtonAction('', $langs->trans('Disable'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=disable&token='.newToken(), '', $permissiontoadd);
-				} else {
-					print dolGetButtonAction('', $langs->trans('Enable'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=enable&token='.newToken(), '', $permissiontoadd);
-				}
-			}
-			if ($permissiontoadd) {
-				if ($object->status == $object::STATUS_VALIDATED) {
-					print dolGetButtonAction('', $langs->trans('Cancel'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=close&token='.newToken(), '', $permissiontoadd);
-				} else {
-					print dolGetButtonAction('', $langs->trans('Re-Open'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=reopen&token='.newToken(), '', $permissiontoadd);
-				}
-			}
-			*/
+		// 	/*
+		// 	if ($permissiontoadd) {
+		// 		if ($object->status == $object::STATUS_ENABLED) {
+		// 			print dolGetButtonAction('', $langs->trans('Disable'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=disable&token='.newToken(), '', $permissiontoadd);
+		// 		} else {
+		// 			print dolGetButtonAction('', $langs->trans('Enable'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=enable&token='.newToken(), '', $permissiontoadd);
+		// 		}
+		// 	}
+		// 	if ($permissiontoadd) {
+		// 		if ($object->status == $object::STATUS_VALIDATED) {
+		// 			print dolGetButtonAction('', $langs->trans('Cancel'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=close&token='.newToken(), '', $permissiontoadd);
+		// 		} else {
+		// 			print dolGetButtonAction('', $langs->trans('Re-Open'), 'default', $_SERVER['PHP_SELF'].'?id='.$object->id.'&action=reopen&token='.newToken(), '', $permissiontoadd);
+		// 		}
+		// 	}
+		// 	*/
 
-			// Delete
+		// 	// Delete
 			$params = array();
 			print dolGetButtonAction('', $langs->trans("Delete"), 'delete', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=delete&token='.newToken(), 'delete', $permissiontodelete, $params);
-		}
+		// }
 		print '</div>'."\n";
 	}
 
 
 	// Select mail models is same action as presend
-	if (GETPOST('modelselected')) {
-		$action = 'presend';
-	}
+	// if (GETPOST('modelselected')) {
+	// 	$action = 'presend';
+	// }
 
-	if ($action != 'presend') {
-		print '<div class="fichecenter"><div class="fichehalfleft">';
-		print '<a name="builddoc"></a>'; // ancre
+	// if ($action != 'presend') {
+	// 	print '<div class="fichecenter"><div class="fichehalfleft">';
+	// 	print '<a name="builddoc"></a>'; // ancre
 
-		$includedocgeneration = 0;
+	// 	$includedocgeneration = 0;
 
-		// Documents
-		if ($includedocgeneration) {
-			$objref = dol_sanitizeFileName($object->ref);
-			$relativepath = $objref.'/'.$objref.'.pdf';
-			$filedir = $conf->smartauth->dir_output.'/'.$object->element.'/'.$objref;
-			$urlsource = $_SERVER["PHP_SELF"]."?id=".$object->id;
-			$genallowed = $permissiontoread; // If you can read, you can build the PDF to read content
-			$delallowed = $permissiontoadd; // If you can create/edit, you can remove a file on card
-			print $formfile->showdocuments('smartauth:Auth', $object->element.'/'.$objref, $filedir, $urlsource, $genallowed, $delallowed, $object->model_pdf, 1, 0, 0, 28, 0, '', '', '', $langs->defaultlang);
-		}
+	// 	// Documents
+	// 	if ($includedocgeneration) {
+	// 		$objref = dol_sanitizeFileName($object->ref);
+	// 		$relativepath = $objref.'/'.$objref.'.pdf';
+	// 		$filedir = $conf->smartauth->dir_output.'/'.$object->element.'/'.$objref;
+	// 		$urlsource = $_SERVER["PHP_SELF"]."?id=".$object->id;
+	// 		$genallowed = $permissiontoread; // If you can read, you can build the PDF to read content
+	// 		$delallowed = $permissiontoadd; // If you can create/edit, you can remove a file on card
+	// 		print $formfile->showdocuments('smartauth:Auth', $object->element.'/'.$objref, $filedir, $urlsource, $genallowed, $delallowed, $object->model_pdf, 1, 0, 0, 28, 0, '', '', '', $langs->defaultlang);
+	// 	}
 
-		// Show links to link elements
-		$linktoelem = $form->showLinkToObjectBlock($object, null, array('auth'));
-		$somethingshown = $form->showLinkedObjectBlock($object, $linktoelem);
+	// 	// Show links to link elements
+	// 	$linktoelem = $form->showLinkToObjectBlock($object, null, array('auth'));
+	// 	$somethingshown = $form->showLinkedObjectBlock($object, $linktoelem);
 
 
-		print '</div><div class="fichehalfright">';
+	// 	print '</div><div class="fichehalfright">';
 
-		$MAXEVENT = 10;
+	// 	$MAXEVENT = 10;
 
-		$morehtmlcenter = dolGetButtonTitle($langs->trans('SeeAll'), '', 'fa fa-bars imgforviewmode', dol_buildpath('/smartauth/auth_agenda.php', 1).'?id='.$object->id);
+	// 	$morehtmlcenter = dolGetButtonTitle($langs->trans('SeeAll'), '', 'fa fa-bars imgforviewmode', dol_buildpath('/smartauth/auth_agenda.php', 1).'?id='.$object->id);
 
-		// List of actions on element
-		include_once DOL_DOCUMENT_ROOT.'/core/class/html.formactions.class.php';
-		$formactions = new FormActions($db);
-		$somethingshown = $formactions->showactions($object, $object->element.'@'.$object->module, (is_object($object->thirdparty) ? $object->thirdparty->id : 0), 1, '', $MAXEVENT, '', $morehtmlcenter);
+	// 	// List of actions on element
+	// 	include_once DOL_DOCUMENT_ROOT.'/core/class/html.formactions.class.php';
+	// 	$formactions = new FormActions($db);
+	// 	$somethingshown = $formactions->showactions($object, $object->element.'@'.$object->module, (is_object($object->thirdparty) ? $object->thirdparty->id : 0), 1, '', $MAXEVENT, '', $morehtmlcenter);
 
-		print '</div></div>';
-	}
+	// 	print '</div></div>';
+	// }
 
 	//Select mail models is same action as presend
-	if (GETPOST('modelselected')) {
-		$action = 'presend';
-	}
+	// if (GETPOST('modelselected')) {
+	// 	$action = 'presend';
+	// }
 
 	// Presend form
-	$modelmail = 'auth';
-	$defaulttopic = 'InformationMessage';
-	$diroutput = $conf->smartauth->dir_output;
-	$trackid = 'auth'.$object->id;
+	// $modelmail = 'auth';
+	// $defaulttopic = 'InformationMessage';
+	// $diroutput = $conf->smartauth->dir_output;
+	// $trackid = 'auth'.$object->id;
 
-	include DOL_DOCUMENT_ROOT.'/core/tpl/card_presend.tpl.php';
+	// include DOL_DOCUMENT_ROOT.'/core/tpl/card_presend.tpl.php';
 }
 
 // End of page

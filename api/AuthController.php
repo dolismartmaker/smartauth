@@ -41,7 +41,7 @@ class AuthController
 	 */
 	public function index($arr = null)
 	{
-		dol_syslog("Debug smartdlc::AuthController : index");
+		dol_syslog("Debug smartauth::AuthController : index");
 		$data = $arr['data'];
 		$ret = [
 		   'statusCode' => 200,
@@ -82,11 +82,11 @@ class AuthController
 	 */
 	public function login($arr)
 	{
-		dol_syslog("Debug smartdlc::AuthController : login");
+		dol_syslog("Debug smartauth::AuthController : login");
 		global $db;
 		$data = $arr['data'];
-		// dol_syslog("Debug smartdlc : AuthController::login : data is " . json_encode($data));
-		// dol_syslog("Debug smartdlc : AuthController::login : arr is " . json_encode($arr));
+		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($data));
+		// dol_syslog("Debug smartauth : AuthController::login : arr is " . json_encode($arr));
 
 		$entity = (int) $data['entity'] ?? 1;
 		$login  = filter_var($data['email'], FILTER_SANITIZE_STRING) ?? '';
@@ -102,14 +102,14 @@ class AuthController
 			$login = '';
 		}
 		if (empty($login)) {
-			dol_syslog("Debug smartdlc : AuthController::login : login empty");
+			dol_syslog("Debug smartauth : AuthController::login : login empty");
 			json_reply('Access denied (login empty)', 401);
 		}
 
 		$tmpuser = new User($db);
 		$tmpuser->fetch(0, $login, 0, 0, $entity);
 		if (empty($tmpuser->id)) {
-			dol_syslog("Debug smartdlc : AuthController::login : failed to load user");
+			dol_syslog("Debug smartauth : AuthController::login : failed to load user");
 			json_reply('Failed to load user', 401);
 		}
 
@@ -129,7 +129,7 @@ class AuthController
 		// Renew the hash ?
 		// Generate token for user
 
-		dol_syslog("Debug smartdlc : AuthController::login : return 200 with user=" . $tmpuser->id . ", " . json_encode($tmpuser));
+		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
 		if (empty($tmpuser->email)) {
 			$user = $tmpuser->login;
@@ -154,7 +154,7 @@ class AuthController
 	 */
 	public function logout($arr)
 	{
-		dol_syslog("Debug smartdlc::AuthController : logout");
+		dol_syslog("Debug smartauth::AuthController : logout");
 		global $db;
 		$user = $arr['user'];
 		if (!empty($arr['tokenid'])) {
@@ -162,12 +162,12 @@ class AuthController
 			$sql = "DELETE ";
 			$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
 			$sql .= " WHERE rowid = ". (int) $arr['tokenid'];
-			dol_syslog("dlc : delete token from db " . $sql);
+			dol_syslog("smartauth : delete token from db " . $sql);
 			$resql = $db->query($sql);
 			if ($resql) {
-				dol_syslog("dlc : delete token from db success");
+				dol_syslog("smartauth : delete token from db success");
 			} else {
-				dol_syslog("dlc : delete token from db error");
+				dol_syslog("smartauth : delete token from db error");
 			}
 		}
 
@@ -188,7 +188,8 @@ class AuthController
 	 */
 	public static function check()
 	{
-		global $db;
+		global $db, $smartAuthAppID, $smartAuthAppKey;
+
 		$jwt = self::getBearerToken();
 		if (empty($jwt)) {
 			json_reply('Access denied (protected route)', 401);
@@ -210,23 +211,28 @@ class AuthController
 			$sql = "SELECT salt";
 			$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
 			$sql .= " WHERE rowid = ". (int) $tokenid;
-			dol_syslog("dlc : get salt from db " . $sql);
+			dol_syslog("smartauth : get salt from db " . $sql);
 			$resql = $db->query($sql);
 			if ($resql) {
 				$obj = $db->fetch_object($resql);
 				$salt = $obj->salt;
 			}
 		}
-		dol_syslog("dlc : salt from db is $salt, and jwt $jwt");
 
-		$key = $salt . $salt2 . smartdlc_backport_getDolGlobalString('SMARTDLC_JWT_KEY', $_SERVER['REMOTE_ADDR']);
+		if(is_null($tokenid)) {
+			dol_syslog("smartauth : access dened token not found", LOG_ERR);
+			json_reply('Access denied (token not found)', 401);
+		}
 
-		dol_syslog("dlc : secure key is " . $key);
+		dol_syslog("smartauth : salt from db is $salt, and jwt $jwt");
+		$key = $salt . $salt2 . $smartAuthAppKey;
+
+		dol_syslog("smartauth : secure key is " . $key);
 		try {
 			$decoded = JWT::decode($jwt, new Key($key, 'HS256'));
 			$decoded->tokenid = $tokenid;
 		} catch (SignatureInvalidException $e) {
-			dol_syslog("Debug smartdlc : jwt signature error : reset token please");
+			dol_syslog("Debug smartauth : jwt signature error : reset token please", LOG_ERR);
 			$ret = [
 				'statusCode' => 401,
 				'data' => [
@@ -235,7 +241,7 @@ class AuthController
 			];
 			json_reply($ret, 401);
 		} catch (Exception $e) {
-			dol_syslog("Debug smartdlc : jwt signature error : " . $e->getMessage());
+			dol_syslog("Debug smartauth : jwt signature error : " . $e->getMessage());
 			$ret = [
 				'statusCode' => 401,
 				'data' => [
@@ -244,8 +250,9 @@ class AuthController
 			];
 			json_reply($ret, 401);
 		}
-		dol_syslog("Debug smartdlc : route decoded jwt is " . json_encode($decoded));
+		dol_syslog("Debug smartauth : route decoded jwt is " . json_encode($decoded));
 		if (empty($decoded->login)) {
+			dol_syslog("smartauth : login not found, return 401" . $sql, LOG_ERR);
 			json_reply('Access denied (login not found)', 401);
 		}
 
@@ -254,12 +261,13 @@ class AuthController
 		$sql .= " SET date_lastused = '". $db->idate(dol_now()) . "', ";
 		$sql .= " ip = '". $_SERVER['REMOTE_ADDR'] . "' ";
 		$sql .= " WHERE rowid = ". (int) $tokenid;
-		dol_syslog("dlc : update token last used " . $sql);
+		dol_syslog("smartauth : update token last used " . $sql);
 		$resql = $db->query($sql);
 		if ($resql) {
 			//
 		} else {
-			//
+			dol_syslog("smartauth : update token impossible ! return 401" . $sql, LOG_ERR);
+			json_reply('Access denied (login not found)', 401);
 		}
 
 		return $decoded;
@@ -275,21 +283,18 @@ class AuthController
 	 */
 	private function _newKey($uid, $entity)
 	{
-		global $db;
-		dol_syslog("Debug smartdlc : AuthController::_newkey");
-
-		dol_include_once('/smartdlc/core/modules/modSmartDlc.class.php');
-		$tmpmodule = new \modSmartDlc($db);
+		global $db, $smartAuthAppID, $smartAuthAppKey;
+		dol_syslog("Debug smartauth : AuthController::_newkey");
 
 		$id = $salt = '';
 		//remove all other token for that user and that app
 		$sql = "DELETE ";
 		$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
-		$sql .= " WHERE appuid=".(int) $tmpmodule->numero;
+		$sql .= " WHERE appuid=".(int) $smartAuthAppID;
 		$sql .= " AND fk_user_creat=".(int) $uid;
 		$sql .= " AND entity=".(int) $entity;
 		$resql = $db->query($sql);
-		dol_syslog("Debug smartdlc : $sql ...");
+		dol_syslog("Debug smartauth : $sql ...");
 
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
@@ -297,17 +302,17 @@ class AuthController
 		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		$sql = "INSERT ";
-		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, status, entity)";
-		$sql .= " VALUES ('".(int) $tmpmodule->numero . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+60*60*24*30) . "','" . (int) $uid . "',1,'" . (int) $entity . "');";
+		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, ip, status, entity)";
+		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+60*60*24*30) . "','" . (int) $uid . "','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
 			$id = $db->last_insert_id(MAIN_DB_PREFIX."mailing");
 		} else {
 			$salt = "";
 		}
-		dol_syslog("Debug smartdlc : $sql ...");
-		$key = $salt . $salt2 . smartdlc_backport_getDolGlobalString('SMARTDLC_JWT_KEY', $_SERVER['REMOTE_ADDR']);
-		dol_syslog("Debug smartdlc : AuthController::_newkey return $id / $key ...");
+		dol_syslog("Debug smartauth : $sql ...");
+		$key = $salt . $salt2 . $smartAuthAppKey;
+		dol_syslog("Debug smartauth : AuthController::_newkey return $id / $key ...");
 		return [$id, $key];
 	}
 
@@ -334,16 +339,16 @@ class AuthController
 	private static function getBearerToken()
 	{
 		$headers = self::getAuthorizationHeader();
-		dol_syslog("Debug smartdlc : _getBearerToken");
+		dol_syslog("Debug smartauth : _getBearerToken");
 
 		if (!empty($headers)) {
 			if (preg_match('/Bearer\s(\S+)/', $headers, $matches)) {
-				dol_syslog("Debug smartdlc : _getBearerToken, matches, return " . $matches[1]);
+				dol_syslog("Debug smartauth : _getBearerToken, matches, return " . $matches[1]);
 				return $matches[1];
 			}
 		}
 
-		dol_syslog("Debug smartdlc : _getBearerToken empty headers, return null");
+		dol_syslog("Debug smartauth : _getBearerToken empty headers, return null");
 		return null;
 	}
 }

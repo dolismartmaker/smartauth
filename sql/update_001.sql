@@ -1,1 +1,1 @@
-ALTER TABLE `llx_smartauth_auth` ADD `ip` VARCHAR(50) NOT NULL AFTER `fk_user_modif`;
+ALTER TABLE `llx_smartauth_auth` ADD `ip` VARCHAR(50) DEFAULT '' AFTER `fk_user_modif`;

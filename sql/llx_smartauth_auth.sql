@@ -23,7 +23,7 @@ CREATE TABLE llx_smartauth_auth(
 	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 	fk_user_creat integer NOT NULL,
 	fk_user_modif integer,
-	ip varchar(50),
+	ip varchar(50) DEFAULT '',
 	status integer NOT NULL,
 	entity integer DEFAULT 1 NOT NULL
 ) ENGINE=innodb;
