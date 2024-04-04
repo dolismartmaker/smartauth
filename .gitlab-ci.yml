@@ -2,11 +2,11 @@ include:
   - remote: 'https://inligit.fr/cap-rel/gitlab-caprel-settings/-/raw/master/dolibarr-common.yml'
 
 variables:
-  DOLIBARR_VERSION_PHP73: "16 17 18"
-  DOLIBARR_VERSION_PHP74: "16 17 18"
-  DOLIBARR_VERSION_PHP80: "16 17 18"
-  DOLIBARR_VERSION_PHP81: "16 17 18"
-  DOLIBARR_VERSION_PHP82: "17 18"
+  DOLIBARR_VERSION_PHP73: "18"
+  DOLIBARR_VERSION_PHP74: "18"
+  DOLIBARR_VERSION_PHP80: "18"
+  DOLIBARR_VERSION_PHP81: "18 19"
+  DOLIBARR_VERSION_PHP82: "18 19"
 
 stages:
   - prepare-php
