@@ -65,10 +65,12 @@ class Auth extends CommonObject
 	public $picto = 'fa-file';
 
 
-	const STATUS_DRAFT = 0;
-	const STATUS_VALIDATED = 1;
-	const STATUS_CANCELED = 9;
+	public const STATUS_DRAFT = 0;
+	public const STATUS_VALIDATED = 1;
+	public const STATUS_CANCELED = 9;
 
+	//cache
+	private $_appNameUIDCache = [];
 
 	/**
 	 *  'type' field format:
@@ -115,15 +117,15 @@ class Auth extends CommonObject
 	 */
 	public $fields=array(
 		'rowid' => array('type'=>'integer', 'label'=>'TechnicalID', 'enabled'=>'1', 'position'=>10, 'notnull'=>1, 'visible'=>-1,),
-		'appuid' => array('type'=>'integer', 'label'=>'Appuid', 'enabled'=>'1', 'position'=>15, 'notnull'=>0, 'visible'=>-1,),
+		'appuid' => array('type'=>'integer', 'label'=>'Appuid', 'enabled'=>'1', 'position'=>15, 'notnull'=>0, 'visible'=>1,),
 		'salt' => array('type'=>'varchar(32)', 'label'=>'Salt', 'enabled'=>'1', 'position'=>20, 'notnull'=>0, 'visible'=>-1,),
-		'date_creation' => array('type'=>'datetime', 'label'=>'Datecreation', 'enabled'=>'1', 'position'=>25, 'notnull'=>1, 'visible'=>-1,),
-		'date_lastused' => array('type'=>'datetime', 'label'=>'Datelastused', 'enabled'=>'1', 'position'=>30, 'notnull'=>0, 'visible'=>-1,),
-		'date_eol' => array('type'=>'datetime', 'label'=>'Dateeol', 'enabled'=>'1', 'position'=>35, 'notnull'=>0, 'visible'=>-1,),
+		'date_creation' => array('type'=>'datetime', 'label'=>'Datecreation', 'enabled'=>'1', 'position'=>25, 'notnull'=>1, 'visible'=>1,),
+		'date_lastused' => array('type'=>'datetime', 'label'=>'Datelastused', 'enabled'=>'1', 'position'=>30, 'notnull'=>0, 'visible'=>1,),
+		'date_eol' => array('type'=>'datetime', 'label'=>'Dateeol', 'enabled'=>'1', 'position'=>35, 'notnull'=>0, 'visible'=>1,),
 		'tms' => array('type'=>'timestamp', 'label'=>'DateModification', 'enabled'=>'1', 'position'=>40, 'notnull'=>1, 'visible'=>-1,),
-		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'enabled'=>'1', 'position'=>45, 'notnull'=>1, 'visible'=>-2, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
-		'fk_user_modif' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserModif', 'enabled'=>'1', 'position'=>50, 'notnull'=>-1, 'visible'=>-2, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
-		'ip' => array('type'=>'varchar(50)', 'label'=>'Ip', 'enabled'=>'1', 'position'=>55, 'notnull'=>0, 'visible'=>-1,),
+		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'enabled'=>'1', 'position'=>45, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
+		'fk_user_modif' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserModif', 'enabled'=>'1', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
+		'ip' => array('type'=>'varchar(50)', 'label'=>'IpAddr', 'enabled'=>'1', 'position'=>55, 'notnull'=>0, 'visible'=>1,),
 		'status' => array('type'=>'integer', 'label'=>'Status', 'enabled'=>'1', 'position'=>500, 'notnull'=>1, 'visible'=>-1,),
 	);
 	public $rowid;
@@ -218,6 +220,9 @@ class Auth extends CommonObject
 				}
 			}
 		}
+
+		$this->fields['appuid']['type'] = "sellist";
+		$this->fields['appuid']['arrayofkeyval'] = $this->getAllModulesNames();
 	}
 
 	/**
@@ -569,13 +574,15 @@ class Auth extends CommonObject
 				$sql .= " WHERE filename LIKE '".$this->db->escape($this->ref)."%' AND filepath = 'auth/".$this->db->escape($this->ref)."' and entity = ".$conf->entity;
 				$resql = $this->db->query($sql);
 				if (!$resql) {
-					$error++; $this->error = $this->db->lasterror();
+					$error++;
+					$this->error = $this->db->lasterror();
 				}
 				$sql = 'UPDATE '.MAIN_DB_PREFIX."ecm_files set filepath = 'auth/".$this->db->escape($this->newref)."'";
 				$sql .= " WHERE filepath = 'auth/".$this->db->escape($this->ref)."' and entity = ".$conf->entity;
 				$resql = $this->db->query($sql);
 				if (!$resql) {
-					$error++; $this->error = $this->db->lasterror();
+					$error++;
+					$this->error = $this->db->lasterror();
 				}
 
 				// We rename directory ($this->ref = old ref, $num = new ref) in order not to lose the attachments
@@ -768,7 +775,7 @@ class Auth extends CommonObject
 				$label = $langs->trans("ShowAuth");
 				$linkclose .= ' alt="'.dol_escape_htmltag($label, 1).'"';
 			}
-			$linkclose .= ($label ? ' title="'.dol_escape_htmltag($label, 1).'"' :  ' title="tocomplete"');
+			$linkclose .= ($label ? ' title="'.dol_escape_htmltag($label, 1).'"' : ' title="tocomplete"');
 			$linkclose .= $dataparams.' class="'.$classfortooltip.($morecss ? ' '.$morecss : '').'"';
 		} else {
 			$linkclose = ($morecss ? ' class="'.$morecss.'"' : '');
@@ -902,7 +909,7 @@ class Auth extends CommonObject
 		return $this->LibStatut($this->status, $mode);
 	}
 
-	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
+    // phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
 	/**
 	 *  Return the label of a given status
 	 *
@@ -912,7 +919,7 @@ class Auth extends CommonObject
 	 */
 	public function LibStatut($status, $mode = 0)
 	{
-		// phpcs:enable
+        // phpcs:enable
 		if (empty($this->labelStatus) || empty($this->labelStatusShort)) {
 			global $langs;
 			//$langs->load("smartauth@smartauth");
@@ -1131,8 +1138,35 @@ class Auth extends CommonObject
 
 		return $error;
 	}
-}
 
+	public function getModuleName($id)
+	{
+		global $db;
+		global $_appNameUIDCache;
+		if (empty($_appNameUIDCache)) {
+			$this->getAllModulesNames();
+		}
+		return $_appNameUIDCache[$id];
+	}
+
+	public function getAllModulesNames()
+	{
+		global $db;
+		global $_appNameUIDCache;
+		if (empty($_appNameUIDCache)) {
+			$_appNameUIDCache[''] = '';
+			$sql = "SELECT id,module FROM " . MAIN_DB_PREFIX . "rights_def GROUP BY module";
+			$resql = $db->query($sql);
+			if ($resql) {
+				while ($obj = $db->fetch_object($resql)) {
+					$id = substr($obj->id, 0, 6);
+					$_appNameUIDCache[$id] = $obj->module;
+				}
+			}
+		}
+		return $_appNameUIDCache;
+	}
+}
 
 require_once DOL_DOCUMENT_ROOT.'/core/class/commonobjectline.class.php';
 

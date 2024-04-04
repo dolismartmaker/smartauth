@@ -115,6 +115,7 @@ class modSmartauth extends DolibarrModules
 			),
 			// Set here all hooks context managed by module. To find available hook context, make a "grep -r '>initHooks(' *" on source code. You can also set hook context to 'all'
 			'hooks' => array(
+				// 'smartauthauthlist'
 				//   'data' => array(
 				//       'hookcontext1',
 				//       'hookcontext2',
@@ -323,7 +324,7 @@ class modSmartauth extends DolibarrModules
 			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
 			'mainmenu'=>'tools',
 			'leftmenu'=>'smartauth',
-			'url'=>'/smartauth/index.php',
+			'url'=>'/smartauth/auth_list.php',
 			'langs'=>'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
 			'position'=>1000+$r,
 			'enabled'=>'$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartdlc->enabled' if entry must be visible if module is enabled.
@@ -376,49 +377,49 @@ class modSmartauth extends DolibarrModules
 			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
 		);*/
 		/*LEFTMENU AUTH*/
-		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=smartauth',
-			'type'=>'left',
-			'titre'=>'Auth',
-			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
-			'mainmenu'=>'smartauth',
-			'leftmenu'=>'auth',
-			'url'=>'/smartauth/auth_list.php',
-			'langs'=>'smartauth@smartauth',
-			'position'=>1000+$r,
-			'enabled'=>'$conf->testmodule->enabled',
-			'perms'=>'1',
-			'target'=>'',
-			'user'=>2,
-		);
-        $this->menu[$r++]=array(
-            'fk_menu'=>'fk_mainmenu=smartauth,fk_leftmenu=auth',
-            'type'=>'left',
-            'titre'=>'List Auth',
-            'mainmenu'=>'smartauth',
-            'leftmenu'=>'smartauth_auth_list',
-            'url'=>'/smartauth/auth_list.php',
-            'langs'=>'smartauth@smartauth',
-            'position'=>1000+$r,
-            'enabled'=>'$conf->smartauth->enabled',
-            'perms'=>'1',
-            'target'=>'',
-            'user'=>2,
-        );
-        $this->menu[$r++]=array(
-            'fk_menu'=>'fk_mainmenu=smartauth,fk_leftmenu=auth',
-            'type'=>'left',
-            'titre'=>'New Auth',
-            'mainmenu'=>'smartauth',
-            'leftmenu'=>'smartauth_auth_new',
-            'url'=>'/smartauth/auth_card.php?action=create',
-            'langs'=>'smartauth@smartauth',
-            'position'=>1000+$r,
-            'enabled'=>'$conf->smartauth->enabled',
-            'perms'=>'1',
-            'target'=>'',
-            'user'=>2
-        );
+		// $this->menu[$r++]=array(
+		// 	'fk_menu'=>'fk_mainmenu=smartauth',
+		// 	'type'=>'left',
+		// 	'titre'=>'Auth',
+		// 	'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
+		// 	'mainmenu'=>'smartauth',
+		// 	'leftmenu'=>'auth',
+		// 	'url'=>'/smartauth/auth_list.php',
+		// 	'langs'=>'smartauth@smartauth',
+		// 	'position'=>1000+$r,
+		// 	'enabled'=>'$conf->testmodule->enabled',
+		// 	'perms'=>'1',
+		// 	'target'=>'',
+		// 	'user'=>2,
+		// );
+        // $this->menu[$r++]=array(
+        //     'fk_menu'=>'fk_mainmenu=smartauth,fk_leftmenu=auth',
+        //     'type'=>'left',
+        //     'titre'=>'List Auth',
+        //     'mainmenu'=>'smartauth',
+        //     'leftmenu'=>'smartauth_auth_list',
+        //     'url'=>'/smartauth/auth_list.php',
+        //     'langs'=>'smartauth@smartauth',
+        //     'position'=>1000+$r,
+        //     'enabled'=>'$conf->smartauth->enabled',
+        //     'perms'=>'1',
+        //     'target'=>'',
+        //     'user'=>2,
+        // );
+        // $this->menu[$r++]=array(
+        //     'fk_menu'=>'fk_mainmenu=smartauth,fk_leftmenu=auth',
+        //     'type'=>'left',
+        //     'titre'=>'New Auth',
+        //     'mainmenu'=>'smartauth',
+        //     'leftmenu'=>'smartauth_auth_new',
+        //     'url'=>'/smartauth/auth_card.php?action=create',
+        //     'langs'=>'smartauth@smartauth',
+        //     'position'=>1000+$r,
+        //     'enabled'=>'$conf->smartauth->enabled',
+        //     'perms'=>'1',
+        //     'target'=>'',
+        //     'user'=>2
+        // );
 
 		/*END LEFTMENU AUTH*/
 		/* END MODULEBUILDER LEFTMENU MYOBJECT */

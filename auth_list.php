@@ -118,6 +118,7 @@ $pagenext = $page + 1;
 $object = new Auth($db);
 $extrafields = new ExtraFields($db);
 $diroutputmassaction = $conf->smartauth->dir_output.'/temp/massgeneration/'.$user->id;
+// print "<p>contexte: $contextpage</p>";
 $hookmanager->initHooks(array($contextpage)); 	// Note that conf->hooks_modules contains array of activated contexes
 
 // Fetch optionals attributes and labels
@@ -695,6 +696,9 @@ while ($i < $imaxinloop) {
 
 	// Store properties in $object
 	$object->setVarsFromFetchObj($obj);
+
+	//erics
+	// $object->appuid = $object->getModuleName($object->appuid);
 
 	/*
 	$object->thirdparty = null;

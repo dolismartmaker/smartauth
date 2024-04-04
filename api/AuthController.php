@@ -197,7 +197,7 @@ class AuthController
 		$tokenid=null;
 		$salt = "";
 		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
-		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']),0,16);
+		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		if (strpos($jwt, '|') > 0) {
 			$tokenid = substr($jwt, 0, strpos($jwt, '|'));
@@ -294,7 +294,7 @@ class AuthController
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
 		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
-		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']),0,16);
+		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		$sql = "INSERT ";
 		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, status, entity)";

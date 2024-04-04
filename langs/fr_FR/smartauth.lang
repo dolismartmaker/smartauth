@@ -52,5 +52,8 @@ MyPageName = My page name
 #
 # Sample widget
 #
-MyWidget = My widget
-MyWidgetDescription = My widget description
+Appuid = application
+Datecreation = Créée le
+Datelastused = Vue le
+Dateeol = Périmée le
+IpAddr = Adresse IP
