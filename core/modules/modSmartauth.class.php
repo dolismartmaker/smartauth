@@ -74,7 +74,7 @@ class modSmartauth extends DolibarrModules
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
 		$this->version = '1.0.0';
 		// Url to the file with your last numberversion of this module
-		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
+		$this->url_last_version = "https://cap-rel.fr/dolibarr/ver.php?m=" . $this->rights_class . "&v=" . $this->version;
 
 		// Key used in llx_const table to save module status enabled/disabled (where SMARTAUTH is value of property name of module in uppercase)
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
@@ -148,7 +148,7 @@ class modSmartauth extends DolibarrModules
 
 		// Prerequisites
 		$this->phpmin = array(7, 0); // Minimum version of PHP required by module
-		$this->need_dolibarr_version = array(11, -3); // Minimum version of Dolibarr required by module
+		$this->need_dolibarr_version = array(16, -3); // Minimum version of Dolibarr required by module
 		$this->need_javascript_ajax = 0;
 
 		// Messages at activation
