@@ -1,0 +1,10 @@
+includes:
+	- .phpstan.dist.neon
+parameters:
+	scanDirectories:
+		- /home/erics/dev/dolibarr/dolibarr-git/htdocs/
+	excludePaths:
+		analyse:
+			- /home/erics/dev/dolibarr/dolibarr-git/htdocs/
+	bootstrapFiles:
+		- .phpstan-bootstrap.php
