@@ -18,7 +18,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-require_once __DIR__.'/lib/tools.lib.php';
+require_once __DIR__.'/lib/tools.php';
 require_once __DIR__."/vendor/autoload.php";
 
 if (isset($_SERVER['HTTP_ORIGIN'])) {
