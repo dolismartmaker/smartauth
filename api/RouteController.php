@@ -87,16 +87,16 @@ class RouteController
 				$data[$key] = $value;
 				dol_syslog("Extract GET value $key = $value");
 			}
-			//other possibilities /{id}/{toto}/...
-			if (strpos($targetAction, '{')) {
-				preg_match_all("/\{(\w+)\}/", $targetAction, $matches);
-				$tags_names = $matches[1];
-				$tags_values = explode('/', $action);
-				$i = 1;
-				foreach ($tags_names as $key) {
-					$data[$key] = $tags_values[$i] ?? '';
-					$i++;
-				}
+		}
+		//other possibilities /{id}/{toto}/...
+		if (strpos($targetAction, '{')) {
+			preg_match_all("/\{(\w+)\}/", $targetAction, $matches);
+			$tags_names = $matches[1];
+			$tags_values = explode('/', $action);
+			$i = 1;
+			foreach ($tags_names as $key) {
+				$data[$key] = $tags_values[$i] ?? '';
+				$i++;
 			}
 		}
 
