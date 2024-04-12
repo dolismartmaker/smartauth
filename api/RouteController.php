@@ -80,7 +80,6 @@ class RouteController
 		if ($method == "POST" || $method == "PUT") {
 			$txt = file_get_contents('php://input');
 			$data = json_decode($txt, true);
-			dol_syslog("POST / PUT : $txt :: " . json_encode($data));
 		} elseif ($method == "GET") {
 			//parse query string and add values to data object
 			foreach ($_GET as $key => $value) {
@@ -99,6 +98,7 @@ class RouteController
 				$i++;
 			}
 		}
+		dol_syslog("route, parsed data is " . json_encode($data));
 
 		//check JWT
 		$decoded = $tokenid = null;
