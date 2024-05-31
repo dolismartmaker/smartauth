@@ -1,1 +1,47 @@
 
+
+
+
+#
+# About page
+#
+About=Circa
+SmartauthAbout=Informazioni su Smartauth
+SmartauthAboutPage=La pagina di Smartauth
+
+#
+# Sample page
+#
+SmartauthArea=Gestione dei token di accesso per le applicazioni mobili
+MyPageName=Il nome della mia pagina
+
+#
+# Sample widget
+#
+Appuid=applicazione
+#
+# Generic
+#
+SmartAuthMainMenu=SmartAuth
+ListOfTokens=Elenco dei token attivi
+
+# Module label 'ModuleSmartauthName'
+ModuleSmartauthName=Smartauth
+# Module description 'ModuleSmartauthDesc'
+ModuleSmartauthDesc=Descrizione di Smartauth
+
+#
+# Admin page
+#
+SmartauthSetup=Configurazione di Smartauth
+Settings=Impostazioni
+SmartauthSetupPage=Pagina di configurazione di Smartauth
+SMARTAUTH_MYPARAM1=Il mio parametro 1
+SMARTAUTH_MYPARAM1Tooltip=Il mio param 1 di tooltip
+SMARTAUTH_MYPARAM2=Il mio parametro 2
+SMARTAUTH_MYPARAM2Tooltip=Il mio tooltip param 2
+Datecreation=Creato il
+Datelastused=Visto su
+Dateeol=Scade il
+IpAddr=Indirizzo IP
+SMARTAUTH_TOKEN_EOL_DAYS=Tempo (in giorni) dopo il quale un token scade
