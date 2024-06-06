@@ -28,6 +28,7 @@
 $list = [
 	'admin',
 	'api',
+	'ajax',
 	'backport',
 	'class',
 	'COPYING',
@@ -36,7 +37,6 @@ $list = [
 	'img',
 	'langs',
 	'lib',
-	'pwa',
 	'sql',
 	'vendor',
 	'*.md',
