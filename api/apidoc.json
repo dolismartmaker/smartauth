@@ -1,0 +1,23 @@
+{
+  "name": "SmartAuth for Dolibarr",
+  "version": "1.0.0",
+  "description": "Here is all the documentation for SmartAuth API",
+  "title": "API Documentation for SmartAuth",
+  "url": "/api.php",
+  "apidoc": {
+    "header": {
+      "title": "Introduction",
+      "filename": "apidoc-header.md"
+    }
+  },
+  "header": {
+    "title": "Introduction",
+    "filename": "apidoc-header.md"
+  },
+  "template": {
+    "showRequiredLabels": true,
+    "withCompare": true,
+    "withGenerator": true,
+    "aloneDisplay": false
+  }
+}
