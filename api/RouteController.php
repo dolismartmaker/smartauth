@@ -55,15 +55,19 @@ class RouteController
 	 */
 	public static function route($targetMethod, $targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
-		global $db, $user; //global user super important pour propager les droits de l'utilisateur connecté
-		$user = $entity = null;
-		//api.php?action
+		global $db, $user, $buyer; //global user super important pour propager les droits de l'utilisateur connecté
+		$user = $entity = $auth_socid = null;
+		$buyer = new \Societe($db);
+
+		// note: uri is like /action/ but with rewrite rules it's /index.php/action
 		$action = "";
 		$method = $_SERVER['REQUEST_METHOD'];
 		if ($method != $targetMethod) {
 			// dol_syslog("Route does not match for $method != $targetMethod");
 			return;
 		}
+		$request_uri = $_SERVER["PHP_SELF"];
+		// dol_syslog("Route request uri is $request_uri");
 
 		$action = parse_url(preg_replace("/.*api.php\//", "", $_SERVER['REQUEST_URI']), PHP_URL_PATH);
 		$match_action = str_replace('/', '\/', preg_replace("/{.*}/", ".*", $targetAction));
@@ -91,7 +95,10 @@ class RouteController
 		if (strpos($targetAction, '{')) {
 			preg_match_all("/\{(\w+)\}/", $targetAction, $matches);
 			$tags_names = $matches[1];
-			$tags_values = explode('/', $action);
+			//remove start part of get request
+			$toremove = substr($targetAction, 0, strpos($targetAction, '{'));
+			$str = str_replace($toremove, '/', $action);
+			$tags_values = explode('/', $str);
 			$i = 1;
 			foreach ($tags_names as $key) {
 				$data[$key] = $tags_values[$i] ?? '';
@@ -119,11 +126,22 @@ class RouteController
 				];
 				json_reply($ret, 401);
 			}
+			$auth_socid = $user->socid;
 		}
 
-		dol_syslog("Debug smartdlc : route $targetMethod, class=$targetClass, action=$targetAction, redir=$redirectFunction, protected=$protected, authuserid=" . $data['auth_userid']);
+		if (!empty($auth_socid)) {
+			$res = $buyer->fetch($auth_socid);
+			if ($res) {
+				dol_syslog("API Route buyer is loaded, is is " . $buyer->id);
+			} else {
+				dol_syslog("API Route buyer is NOT loaded !!!", LOG_ERR);
+				json_reply("error", 403);
+			}
+		}
+
+		dol_syslog("API Route $targetMethod, class=$targetClass, action=$targetAction, redir=$redirectFunction, protected=$protected, buyerid=" . $buyer->id . ",authuserid=" . $data['auth_userid']);
 		if ($method == $targetMethod) {
-			dol_syslog("Debug smartdlc : route match, call class $targetClass and function $redirectFunction...");
+			dol_syslog("API Route match, call class $targetClass and function $redirectFunction...");
 			$class = new $targetClass();
 			try {
 				list($ret, $code) = $class->$redirectFunction(['data' => $data, 'user' => $user, 'entity' => $entity, 'tokenid' => $tokenid]);
@@ -152,22 +170,5 @@ class RouteController
 		}
 
 		return $headers;
-	}
-
-	private function _getBearerToken()
-	{
-		$headers = self::_getAuthorizationHeader();
-		dol_syslog("Debug smartdlc : _getBearerToken");
-		$matches = [];
-
-		if (!empty($headers)) {
-			if (preg_match('/Bearer\s(\S+)/', $headers, $matches)) {
-				dol_syslog("Debug smartdlc : _getBearerToken, matches, return " . $matches[1]);
-				return $matches[1];
-			}
-		}
-
-		dol_syslog("Debug smartdlc : _getBearerToken empty headers, return null");
-		return null;
 	}
 }
