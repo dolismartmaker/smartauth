@@ -17,28 +17,17 @@
 # Generic
 #
 SmartAuthMainMenu = SmartAuth
-ListOfTokens = Liste des tokens actifs
+ListOfTokens = Liste des jetons actifs
 
 # Module label 'ModuleSmartauthName'
 ModuleSmartauthName = Smartauth
 # Module description 'ModuleSmartauthDesc'
 ModuleSmartauthDesc = Smartauth description
 
-#
-# Admin page
-#
 SmartauthSetup = Smartauth setup
 Settings = Settings
 SmartauthSetupPage = Smartauth setup page
-SMARTAUTH_MYPARAM1 = My param 1
-SMARTAUTH_MYPARAM1Tooltip = My param 1 tooltip
-SMARTAUTH_MYPARAM2=My param 2
-SMARTAUTH_MYPARAM2Tooltip=My param 2 tooltip
 
-
-#
-# About page
-#
 About = About
 SmartauthAbout = About Smartauth
 SmartauthAboutPage = Smartauth about page
