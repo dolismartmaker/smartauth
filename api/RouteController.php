@@ -117,7 +117,7 @@ class RouteController
 			$user = new User($db);
 			$res = $user->fetch(0, $login, 0, 0, $entity);
 			if ($res <= 0) {
-				dol_syslog("Debug smartdlc : route auth error : return 401");
+				dol_syslog("Debug smartauth : route auth error : return 401");
 				$ret = [
 					'statusCode' => 401,
 					'data' => [
@@ -147,7 +147,7 @@ class RouteController
 				list($ret, $code) = $class->$redirectFunction(['data' => $data, 'user' => $user, 'entity' => $entity, 'tokenid' => $tokenid]);
 				json_reply($ret, $code);
 			} catch (Exception $e) {
-				dol_syslog("Debug smartdlc : route exception : " . json_encode($e), LOG_ERR);
+				dol_syslog("Debug smartauth : route exception : " . json_encode($e), LOG_ERR);
 			}
 		}
 		json_reply("error", 403);
