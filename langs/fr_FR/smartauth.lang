@@ -43,19 +43,21 @@ About = About
 SmartauthAbout = About Smartauth
 SmartauthAboutPage = Smartauth about page
 
-#
-# Sample page
-#
-SmartauthArea = Gestion des tokens d'accès pour les applications mobiles
-MyPageName = My page name
+SmartauthArea = Gestion des jetons d'accès pour les applications mobiles
 
-#
-# Sample widget
-#
-Appuid = application
-Datecreation = Créée le
-Datelastused = Vue le
-Dateeol = Périmée le
+smartAuthAppuid = Application
+smartAuthSalt = Salage
+Datecreation = Date création
+Datelastused = Dernière connexion
+Dateeol = Date péremption
 IpAddr = Adresse IP
-SMARTAUTH_TOKEN_EOL_DAYS = Délais (en jours) au bout duquel un token est périmé
+SMARTAUTH_TOKEN_EOL_DAYS = Délais (en jours) au bout duquel un jeon est périmé
+smartAuthID=ID
+smartAuthApp=Application
+smartAuthUser=Utilisateur
+smartAuthCreated=Date de création du jeton
+smartAuthLastUsed=Dernière connexion
+smartAuthLastIP=Adresse IP
+smartAuthEOL=Fin de vie du jeton
+
 
