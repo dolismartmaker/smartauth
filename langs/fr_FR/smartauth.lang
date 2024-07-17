@@ -17,46 +17,37 @@
 # Generic
 #
 SmartAuthMainMenu = SmartAuth
-ListOfTokens = Liste des tokens actifs
+ListOfTokens = Liste des jetons actifs
 
 # Module label 'ModuleSmartauthName'
 ModuleSmartauthName = Smartauth
 # Module description 'ModuleSmartauthDesc'
 ModuleSmartauthDesc = Smartauth description
 
-#
-# Admin page
-#
 SmartauthSetup = Smartauth setup
 Settings = Settings
 SmartauthSetupPage = Smartauth setup page
-SMARTAUTH_MYPARAM1 = My param 1
-SMARTAUTH_MYPARAM1Tooltip = My param 1 tooltip
-SMARTAUTH_MYPARAM2=My param 2
-SMARTAUTH_MYPARAM2Tooltip=My param 2 tooltip
 
-
-#
-# About page
-#
 About = About
 SmartauthAbout = About Smartauth
 SmartauthAboutPage = Smartauth about page
 
-#
-# Sample page
-#
-SmartauthArea = Gestion des tokens d'accès pour les applications mobiles
-MyPageName = My page name
+SmartauthArea = Gestion des jetons d'accès pour les applications mobiles
 
-#
-# Sample widget
-#
-Appuid = application
-Datecreation = Créée le
-Datelastused = Vue le
-Dateeol = Périmée le
+smartAuthAppuid = Application
+smartAuthSalt = Salage
+Datecreation = Date création
+Datelastused = Dernière connexion
+Dateeol = Date péremption
 IpAddr = Adresse IP
-SMARTAUTH_TOKEN_EOL_DAYS = Délais (en jours) au bout duquel un token est périmé
+SMARTAUTH_TOKEN_EOL_DAYS = Délais (en jours) au bout duquel un jeon est périmé
+smartAuthID=ID
+smartAuthApp=Application
+smartAuthUserOrSoc=Utilisateur/Société
+smartAuthCreated=Date de création du jeton
+smartAuthLastUsed=Dernière connexion
+smartAuthLastIP=Adresse IP
+smartAuthEOL=Fin de vie du jeton
+
 SMARTAUTH_DEFAULT_USER = Identifiant utilisateur par défaut à utiliser pour les actions anonymes
 

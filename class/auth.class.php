@@ -122,8 +122,8 @@ class Auth extends CommonObject
 	 */
 	public $fields=array(
 		'rowid' => array('type'=>'integer', 'label'=>'TechnicalID', 'enabled'=>'1', 'position'=>10, 'notnull'=>1, 'visible'=>-1,),
-		'appuid' => array('type'=>'integer', 'label'=>'Appuid', 'enabled'=>'1', 'position'=>15, 'notnull'=>0, 'visible'=>1,),
-		'salt' => array('type'=>'varchar(32)', 'label'=>'Salt', 'enabled'=>'1', 'position'=>20, 'notnull'=>0, 'visible'=>-1,),
+		'appuid' => array('type'=>'integer', 'label'=>'smartAuthAppuid', 'enabled'=>'1', 'position'=>15, 'notnull'=>0, 'visible'=>1,),
+		'salt' => array('type'=>'varchar(32)', 'label'=>'smartAuthSalt', 'enabled'=>'1', 'position'=>20, 'notnull'=>0, 'visible'=>-1,),
 		'date_creation' => array('type'=>'datetime', 'label'=>'Datecreation', 'enabled'=>'1', 'position'=>25, 'notnull'=>1, 'visible'=>1,),
 		'date_lastused' => array('type'=>'datetime', 'label'=>'Datelastused', 'enabled'=>'1', 'position'=>30, 'notnull'=>0, 'visible'=>1,),
 		'date_eol' => array('type'=>'datetime', 'label'=>'Dateeol', 'enabled'=>'1', 'position'=>35, 'notnull'=>0, 'visible'=>1,),
