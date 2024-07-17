@@ -58,4 +58,5 @@ Datelastused = Vue le
 Dateeol = Périmée le
 IpAddr = Adresse IP
 SMARTAUTH_TOKEN_EOL_DAYS = Délais (en jours) au bout duquel un token est périmé
+SMARTAUTH_DEFAULT_USER = Identifiant utilisateur par défaut à utiliser pour les actions anonymes
 

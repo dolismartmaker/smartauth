@@ -115,18 +115,7 @@ class AuthController
 			json_reply('Failed to load user', 401);
 		}
 
-		list($keyid, $key) = $this->_newKey($tmpuser->id, $entity);
-
-		$payload = array(
-		   "login"  => $tmpuser->login,
-		   "entity" => $entity
-		);
-		$jwt = JWT::encode($payload, $key, 'HS256');
-
-		if (!empty($keyid)) {
-			$new = $keyid . '|' . $jwt;
-			$jwt = $new;
-		}
+		$jwt = $this->_newUserKey($tmpuser->id, $login, $entity);
 
 		// Renew the hash ?
 		// Generate token for user
@@ -225,7 +214,7 @@ class AuthController
 		}
 
 		if(is_null($tokenid)) {
-			dol_syslog("smartauth : access dened token not found", LOG_ERR);
+			dol_syslog("smartauth : access denied token not found", LOG_ERR);
 			json_reply('Access denied (token not found)', 401);
 		}
 
@@ -256,7 +245,10 @@ class AuthController
 			json_reply($ret, 401);
 		}
 		dol_syslog("Debug smartauth : route decoded jwt is " . json_encode($decoded));
-		if (empty($decoded->login)) {
+
+		//$decoded->login == user auth
+		//$decoded->socid == soc auth (for obapi for example)
+		if (empty($decoded->login) && empty($decoded->socid)) {
 			dol_syslog("smartauth : login not found, return 401" . $sql, LOG_ERR);
 			json_reply('Access denied (login not found)', 401);
 		}
@@ -273,7 +265,7 @@ class AuthController
 			//
 		} else {
 			dol_syslog("smartauth : update token impossible ! return 401" . $sql, LOG_ERR);
-			json_reply('Access denied (login not found)', 401);
+			json_reply('Access denied', 401);
 		}
 
 		return $decoded;
@@ -287,20 +279,21 @@ class AuthController
 	 *
 	 * @return  [type]           [return description]
 	 */
-	private function _newKey($uid, $entity)
+	private function _newUserKey($uid, $login, $entity)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey, $SERVER;
-		dol_syslog("Debug smartauth : AuthController::_newkey");
+		dol_syslog("Debug smartauth : AuthController::_newUserKey");
 
-		$id = $salt = '';
+		$keyid = $salt = '';
 		//remove all other token for that user and that app
 		$sql = "DELETE ";
 		$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
 		$sql .= " WHERE appuid=".(int) $smartAuthAppID;
-		$sql .= " AND fk_user_creat=".(int) $uid;
+		$sql .= " AND fk_authid=".(int) $uid;
+		$sql .= " AND auth_element='user'";
 		$sql .= " AND entity=".(int) $entity;
 		$resql = $db->query($sql);
-		dol_syslog("Debug smartauth : $sql ...");
+		// dol_syslog("Debug smartauth : $sql ...");
 
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
@@ -308,20 +301,89 @@ class AuthController
 		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		$sql = "INSERT ";
-		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, ip, status, entity)";
-		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "','" . (int) $uid . "','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
+		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
-			$id = $db->last_insert_id(MAIN_DB_PREFIX."mailing");
+			$keyid = $db->last_insert_id(MAIN_DB_PREFIX."mailing");
 		} else {
 			$salt = "";
 		}
-		dol_syslog("Debug smartauth : $sql ...");
+		// dol_syslog("Debug smartauth : $sql ...");
 		$key = $salt . $salt2 . $smartAuthAppKey;
-		dol_syslog("Debug smartauth : AuthController::_newkey return $id / $key ...");
-		return [$id, $key];
+
+		$payload = array(
+			"login"  => $login,
+			"entity" => $entity
+		);
+		$jwt = JWT::encode($payload, $key, 'HS256');
+
+		if (!empty($keyid)) {
+			$new = $keyid . '|' . $jwt;
+			$jwt = $new;
+		}
+
+		dol_syslog("Debug smartauth : AuthController::_newUserKey return");
+		return $jwt;
 	}
 
+	/**
+	 * create a new salt stored into database and a key for thirdpart account
+	 *
+	 * @param   [type]  $uid     [$uid description]
+	 * @param   [type]  $entity  [$entity description]
+	 *
+	 * @return  [type]           [return description]
+	 */
+	public function newThirdpartKey($socid, $socname, $entity)
+	{
+		global $db, $smartAuthAppID, $smartAuthAppKey, $SERVER, $user;
+		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey");
+
+		$keyid = $salt = '';
+		//remove all other token for that user and that app
+		$sql = "DELETE ";
+		$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
+		$sql .= " WHERE appuid=".(int) $smartAuthAppID;
+		$sql .= " AND fk_authid=".(int) $socid;
+		$sql .= " AND auth_element='societe_account'";
+		$sql .= " AND entity=".(int) $entity;
+		$resql = $db->query($sql);
+		// dol_syslog("Debug smartauth : $sql ...");
+
+		$user = $this->_FetchUserWithRights($user);
+
+		//store a new one
+		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
+		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
+		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
+
+		$sql = "INSERT ";
+		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
+		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "','" . (int) $user->id . "','" . (int) $socid . "','societe_account','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$resql = $db->query($sql);
+		if ($resql) {
+			$keyid = $db->last_insert_id(MAIN_DB_PREFIX."mailing");
+		} else {
+			$salt = "";
+		}
+		// dol_syslog("Debug smartauth : $sql ...");
+		$key = $salt . $salt2 . $smartAuthAppKey;
+
+		$payload = array(
+			"socid"  => $socid,
+			"entity" => $entity
+		);
+		$jwt = JWT::encode($payload, $key, 'HS256');
+
+		if (!empty($keyid)) {
+			$new = $keyid . '|' . $jwt;
+			$jwt = $new;
+		}
+
+		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey return");
+		return $jwt;
+	}
 
 	private static function getAuthorizationHeader()
 	{
@@ -388,5 +450,29 @@ class AuthController
 		}
 		return $def;
 	}
+
+	/**
+	 * fetch a dolibarr user and load its rights
+	 *
+	 * @param   [type]$u  [$u description]
+	 * @param   null      [ description]
+	 *
+	 * @return  [type]    [return description]
+	 */
+	private function _FetchUserWithRights($u = null)
+	{
+		global $db;
+		if (empty($u)) {
+			$u = new \User($db);
+			$res = $u->fetch(getDolGlobalString('SMARTAUTH_DEFAULT_USER'));
+			if ($res <= 0) {
+				dol_syslog('opb: error fetching user id #' . getDolGlobalString('SMARTAUTH_DEFAULT_USER'), LOG_ERR);
+				exit -1;
+			}
+			$u->getrights();
+		}
+		return $u;
+	}
+
 
 }

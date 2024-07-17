@@ -21,8 +21,10 @@ CREATE TABLE llx_smartauth_auth(
 	date_lastused datetime,
 	date_eol datetime,
 	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-	fk_user_creat integer NOT NULL,
+	fk_user_creat integer NOT NULL, -- id of created user
 	fk_user_modif integer,
+	fk_authid integer NOT NULL, -- id of authenticated user or element
+	auth_element varchar(128) NOT NULL, -- may be user or societe_account or ...
 	ip varchar(50) DEFAULT '',
 	status integer NOT NULL,
 	entity integer DEFAULT 1 NOT NULL
