@@ -142,7 +142,7 @@ if (isModEnabled('smartauth') && $user->rights->smartauth->read)
 		print '<tr class="liste_titre">';
 		print '<th>ID</th>';
 		print '<th>App</th>';
-		print '<th>User</th>';
+		print '<th>UserOrSoc</th>';
 		print '<th>Created</th>';
 		print '<th>Used</th>';
 		print '<th>Last IP</th>';
@@ -156,14 +156,30 @@ if (isModEnabled('smartauth') && $user->rights->smartauth->read)
 			while ($i < $num)
 			{
 				$obj = $db->fetch_object($resql);
-				$user = new User($db);
-				$user->fetch($obj->fk_user_creat);
+				$userOrSoc = '';
+				if($obj->auth_element == 'user') {
+					$user = new User($db);
+					$res = $user->fetch($obj->fk_authid);
+					if($res <= 0) {
+						//error
+						continue;
+					}
+					$userOrSoc = $user->login;
+				} elseif($obj->auth_element == 'societe_account') {
+					$authSoc = new Societe($db);
+					$res = $authSoc->fetch($obj->fk_authid);
+					if($res <= 0) {
+						//error
+						continue;
+					}
+					$userOrSoc = $authSoc->name;
+				}
 				$appName = getModuleName($obj->appuid);
 
 				print '<tr class="oddeven">';
 				print '<td class="nowrap">' . $obj->rowid . '</td>';
 				print '<td class="nowrap">' . $appName . '</td>';
-				print '<td class="nowrap">' . $user->login . '</td>';
+				print '<td class="nowrap">' . $userOrSoc . '</td>';
 				print '<td class="nowrap">' . $obj->date_creation . '</td>';
 				print '<td class="nowrap">' . $obj->date_lastused . '</td>';
 				print '<td class="nowrap">' . $obj->ip . '</td>';
