@@ -100,6 +100,8 @@ $formSetup = new FormSetup($db);
 $item = $formSetup->newItem('SMARTAUTH_TOKEN_EOL_DAYS');
 $item->defaultFieldValue = '30';
 
+$item = $formSetup->newItem('SMARTAUTH_DEFAULT_USER')->setAsSelectUser();
+
 
 // // HTTP HOST
 // $item = $formSetup->newItem('NO_PARAM_JUST_TEXT');
