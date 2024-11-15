@@ -121,6 +121,8 @@ class AuthController
 		// Generate token for user
 		$result = $tmpuser->call_trigger('USER_LOGIN', $tmpuser);
 
+		$rememberme  = filter_var($data['rememberMe'], FILTER_SANITIZE_STRING) ?? '';
+
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
 		if (empty($tmpuser->email)) {
@@ -131,7 +133,8 @@ class AuthController
 		   'data' => [
 			   'user' => $user,
 			   'userid' => $tmpuser->id,
-			   'token' => $jwt
+			   'token' => $jwt,
+			   'rememberMe' => $rememberme
 		   ]
 		];
 		return([$ret, 200]);
@@ -306,21 +309,19 @@ class AuthController
 		$resql = $db->query($sql);
 		if ($resql) {
 			$keyid = $db->last_insert_id(MAIN_DB_PREFIX."mailing");
-		} else {
-			$salt = "";
-		}
-		// dol_syslog("Debug smartauth : $sql ...");
-		$key = $salt . $salt2 . $smartAuthAppKey;
+			// dol_syslog("Debug smartauth : $sql ...");
+			$key = $salt . $salt2 . $smartAuthAppKey;
 
-		$payload = array(
-			"login"  => $login,
-			"entity" => $entity
-		);
-		$jwt = JWT::encode($payload, $key, 'HS256');
+			$payload = array(
+				"login"  => $login,
+				"entity" => $entity
+			);
+			$jwt = JWT::encode($payload, $key, 'HS256');
 
-		if (!empty($keyid)) {
-			$new = $keyid . '|' . $jwt;
-			$jwt = $new;
+			if (!empty($keyid)) {
+				$new = $keyid . '|' . $jwt;
+				$jwt = $new;
+			}
 		}
 
 		dol_syslog("Debug smartauth : AuthController::_newUserKey return");
@@ -337,7 +338,7 @@ class AuthController
 	 */
 	public function newThirdpartKey($socid, $socname, $entity)
 	{
-		global $db, $smartAuthAppID, $smartAuthAppKey, $SERVER, $user;
+		global $db, $smartAuthAppID, $smartAuthAppKey, $SERVER;
 		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey");
 
 		$keyid = $salt = '';
@@ -351,7 +352,7 @@ class AuthController
 		$resql = $db->query($sql);
 		// dol_syslog("Debug smartauth : $sql ...");
 
-		$user = $this->_FetchUserWithRights($user);
+		$userobapi = $this->_FetchUserWithRights();
 
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
@@ -360,25 +361,23 @@ class AuthController
 
 		$sql = "INSERT ";
 		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "','" . (int) $user->id . "','" . (int) $socid . "','societe_account','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "','" . (int) $userobapi->id . "','" . (int) $socid . "','societe_account','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
 			$keyid = $db->last_insert_id(MAIN_DB_PREFIX."mailing");
-		} else {
-			$salt = "";
-		}
-		// dol_syslog("Debug smartauth : $sql ...");
-		$key = $salt . $salt2 . $smartAuthAppKey;
+			// dol_syslog("Debug smartauth : $sql ...");
+			$key = $salt . $salt2 . $smartAuthAppKey;
 
-		$payload = array(
-			"socid"  => $socid,
-			"entity" => $entity
-		);
-		$jwt = JWT::encode($payload, $key, 'HS256');
+			$payload = array(
+				"socid"  => $socid,
+				"entity" => $entity
+			);
+			$jwt = JWT::encode($payload, $key, 'HS256');
 
-		if (!empty($keyid)) {
-			$new = $keyid . '|' . $jwt;
-			$jwt = $new;
+			if (!empty($keyid)) {
+				$new = $keyid . '|' . $jwt;
+				$jwt = $new;
+			}
 		}
 
 		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey return");
@@ -420,12 +419,12 @@ class AuthController
 		return null;
 	}
 
-	private function _api_GetListOfEntities()
 	/**
 	 * return array with list of entities if multientity is enabled
 	 *
 	 * @return  [type]  [return description]
 	 */
+	private function _api_GetListOfEntities()
 	{
 		global $db;
 		$def = [];
