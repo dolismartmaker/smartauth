@@ -772,6 +772,28 @@ while ($i < $imaxinloop) {
 			}
 			//if (in_array($key, array('fk_soc', 'fk_user', 'fk_warehouse'))) $cssforfield = 'tdoverflowmax100';
 
+			if($key == 'fk_authid') {
+				$userOrSoc = "";
+				if($obj->auth_element == 'user') {
+					$user = new User($db);
+					$res = $user->fetch($obj->fk_authid);
+					if($res <= 0) {
+						//error
+						continue;
+					}
+					$userOrSoc = $user->login;
+				} elseif($obj->auth_element == 'societe_account') {
+					$authSoc = new Societe($db);
+					$res = $authSoc->fetch($obj->fk_authid);
+					if($res <= 0) {
+						//error
+						continue;
+					}
+					$userOrSoc = $authSoc->name;
+				}
+				$object->$key = $userOrSoc;
+			}
+
 			if (!empty($arrayfields['t.'.$key]['checked'])) {
 				print '<td'.($cssforfield ? ' class="'.$cssforfield.(preg_match('/tdoverflow/', $cssforfield) ? ' classfortooltip' : '').'"' : '');
 				if (preg_match('/tdoverflow/', $cssforfield) && !is_numeric($object->$key)) {
