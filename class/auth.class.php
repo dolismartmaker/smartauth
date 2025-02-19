@@ -126,13 +126,13 @@ class Auth extends CommonObject
 		'salt' => array('type'=>'varchar(32)', 'label'=>'smartAuthSalt', 'enabled'=>'1', 'position'=>20, 'notnull'=>0, 'visible'=>-1,),
 		'date_creation' => array('type'=>'datetime', 'label'=>'Datecreation', 'enabled'=>'1', 'position'=>25, 'notnull'=>1, 'visible'=>1,),
 		'date_lastused' => array('type'=>'datetime', 'label'=>'Datelastused', 'enabled'=>'1', 'position'=>30, 'notnull'=>0, 'visible'=>1,),
-		'date_eol' => array('type'=>'datetime', 'label'=>'Dateeol', 'enabled'=>'1', 'position'=>35, 'notnull'=>0, 'visible'=>1,),
+		'ip' => array('type'=>'varchar(50)', 'label'=>'smartAuthLastIP', 'enabled'=>'1', 'position'=>35, 'notnull'=>0, 'visible'=>1, 'default'=>''),
+		'date_eol' => array('type'=>'datetime', 'label'=>'Dateeol', 'enabled'=>'1', 'position'=>38, 'notnull'=>0, 'visible'=>1,),
 		'tms' => array('type'=>'timestamp', 'label'=>'DateModification', 'enabled'=>'1', 'position'=>40, 'notnull'=>1, 'visible'=>-1,),
 		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'enabled'=>'1', 'position'=>45, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
 		'fk_user_modif' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserModif', 'enabled'=>'1', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
 		'fk_authid' => array('type'=>'integer', 'label'=>'AuthElementID', 'enabled'=>'1', 'position'=>60, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
 		'auth_element' => array('type'=>'varchar(128)', 'label'=>'AuthElementSource', 'enabled'=>'1', 'position'=>65, 'notnull'=>1, 'visible'=>1,),
-		'ip' => array('type'=>'varchar(50)', 'label'=>'IpAddr', 'enabled'=>'1', 'position'=>55, 'notnull'=>0, 'visible'=>1, 'default'=>''),
 		'status' => array('type'=>'integer', 'label'=>'Status', 'enabled'=>'1', 'position'=>500, 'notnull'=>1, 'visible'=>-1,),
 	);
 	public $rowid;
@@ -144,8 +144,8 @@ class Auth extends CommonObject
 	public $tms;
 	public $fk_user_creat;
 	public $fk_user_modif;
-	public $fk_authid;
-	public $auth_element;
+	public $fk_authid; //id of auth element, it depends on auth_element value (user/societe_account)
+	public $auth_element;//user or societe_account for the moment
 	public $ip;
 	public $status;
 	// END MODULEBUILDER PROPERTIES
