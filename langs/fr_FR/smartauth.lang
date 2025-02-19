@@ -32,7 +32,7 @@ About = About
 SmartauthAbout = About Smartauth
 SmartauthAboutPage = Smartauth about page
 
-SmartauthArea = Gestion des jetons d'accès pour les applications mobiles
+SmartauthArea = Gestion des jetons d'accès
 
 smartAuthAppuid = Application
 smartAuthSalt = Salage
@@ -46,8 +46,9 @@ smartAuthApp=Application
 smartAuthUserOrSoc=Utilisateur/Société
 smartAuthCreated=Date de création du jeton
 smartAuthLastUsed=Dernière connexion
-smartAuthLastIP=Adresse IP
+smartAuthLastIP=Depuis l'IP
 smartAuthEOL=Fin de vie du jeton
-
+AuthElementID=Lié à
+AuthElementSource=Type de lien
 SMARTAUTH_DEFAULT_USER = Identifiant utilisateur par défaut à utiliser pour les actions anonymes
 
