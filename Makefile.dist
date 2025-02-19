@@ -15,5 +15,5 @@ zip:
 	(php ./build/buildzip.php)
 
 apidoc:
-	apidoc -i api/ -o /tmp/apidoc -c api/apidoc.json -f ".*.php"
-	# rsync -avP /tmp/apidoc/ z.cap-rel.fr://home/webs/z.cap-rel.fr/htdocs/doc/
+	# apidoc -i api/ -o ./documentation -c api/apidoc.json -f ".*.php"
+	apidoc-markdown -i api/ -o ./documentation/doc.md -c api/apidoc.json -f ".*.php"
