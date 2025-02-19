@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Here is all the documentation for SmartAuth API",
   "title": "API Documentation for SmartAuth",
-  "url": "/api.php",
   "apidoc": {
     "header": {
       "title": "Introduction",
