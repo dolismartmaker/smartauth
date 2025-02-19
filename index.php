@@ -145,7 +145,7 @@ if (isModEnabled('smartauth') && $user->rights->smartauth->read)
 		print '<th>' . $langs->trans('smartAuthUserOrSoc') . '</th>';
 		print '<th>' . $langs->trans('smartAuthCreated') . '</th>';
 		print '<th>' . $langs->trans('smartAuthLastUsed') . '</th>';
-		print '<th>' . $langs->trans('smartAuthLastIP') . ' IP</th>';
+		print '<th>' . $langs->trans('smartAuthLastIP') . '</th>';
 		print '<th>' . $langs->trans('smartAuthEOL') . '</th>';
 		print '</tr>';
 
