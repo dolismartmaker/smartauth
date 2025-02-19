@@ -8,6 +8,30 @@ This is what nextcloud and other makes : you make a link with your smartphone ? 
 
 Download zip from https://cloud.cap-rel.fr/index.php/s/G6AKiSKCwPR9HLx
 
+## Details of current implementation (to be enhanced)
+
+a new module (smartLivraison for example) is going to use smartauth, here is some tech details:
+
+- smartlivraison setup makes a random string an store it (`$salt2`)
+- smartlivraison will "pass the salt" to smartauth stack via the use of global `$smartAuthAppKey` var (point to be enhanced)
+- smartlivraison will path the appuid (see dolibarr module numero into `core/modules/mod*.class.php`) as global `$smartAuthAppID` (point to be enhanced)
+
+Note: with SALT 1 we hope a user of an other module like ... smartInterventions for example could not reuse same token as smartlivraisons
+
+- smartauth takes the client user agent as base to compute a second part of salt (`$salt1`)
+- during the generation of a new key smartauth use a full random sting (one way, "unpredictable") (`$salt`)
+- smartauth store data into local `llx_smartauth_auth` table `($smartAuthAppID, $salt1, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)`
+- we keep the last_insert_id as jwt first character (`number|data`)
+- then smartauth will use JWT::encode stack with `$salt . $salt1 . $salt2`;
+
+
+then after generation of the token, remote device will only use that token as
+
+`Authorization: Bearer $token`
+
+
+
+
 ## Licenses
 
 ### Main code
