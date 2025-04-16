@@ -17,3 +17,35 @@ zip:
 apidoc:
 	# apidoc -i api/ -o ./documentation -c api/apidoc.json -f ".*.php"
 	apidoc-markdown -i api/ -o ./documentation/doc.md -c api/apidoc.json -f ".*.php"
+	# rsync -avP /documentation/ z.cap-rel.fr://home/webs/z.cap-rel.fr/htdocs/doc/
+
+composerdump:
+	php7.4 /usr/local/bin/composer.phar dump-autoload --optimize --classmap-authoritative --ansi
+
+stubs: api/*.php dolMapping/*.php
+	~/.config/composer/vendor/bin/generate-stubs \
+		api/*.php \
+		--include-inaccessible-class-nodes \
+		--force \
+		--header="/** Generated stub declarations for SmartAuth. - @see https://cap-rel.fr */" \
+		--functions \
+		--classes \
+		--interfaces \
+		--traits \
+		--constants \
+		--documented-globals \
+		--out="stubs/smartauth-stubs.php"
+	~/.config/composer/vendor/bin/generate-stubs \
+		dolMapping/*.php \
+		--include-inaccessible-class-nodes \
+		--force \
+		--header="/** Generated stub declarations for SmartAuth. - @see https://cap-rel.fr */" \
+		--functions \
+		--classes \
+		--interfaces \
+		--traits \
+		--constants \
+		--documented-globals \
+		--out="stubs/dolmapping-stubs.php"
+	if [ ! -d /home/erics/dev/caprel-stubs/${MODULE} ]; then mkdir /home/erics/dev/caprel-stubs/${MODULE}; fi
+	cp -a stubs/* /home/erics/dev/caprel-stubs/${MODULE}
