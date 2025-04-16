@@ -8,8 +8,6 @@ trait dmTrait
     private $_dolmapping;
     /**
      * object constructor
-     *
-     * @return  [type]  [return description]
      */
     public function __construct()
     {
@@ -20,7 +18,7 @@ trait dmTrait
     /**
      * export object description for client app -- could be better with only serialization (todo/tests)
      *
-     * @return  stdClass  object description
+     * @return  \stdClass  object description
      */
     public function objectDesc()
     {
