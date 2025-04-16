@@ -21,7 +21,7 @@
 
 namespace SmartAuth\Api;
 
-dol_include_once('/smartauth/lib/tools.php');
+dol_include_once('/smartauth/api/tools.php');
 
 use Exception;
 use Firebase\JWT\JWT;
