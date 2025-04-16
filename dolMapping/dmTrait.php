@@ -20,6 +20,8 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+use SmartAuth\DolibarrMapping\dmHelper;
+
 require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 
 trait dmTrait
@@ -28,8 +30,6 @@ trait dmTrait
 
 	/**
 	 * object constructor
-	 *
-	 * @return  [type]  [return description]
 	 */
 	public function __construct()
 	{
@@ -38,13 +38,13 @@ trait dmTrait
 
 	public function boot()
 	{
-		$this->_dolmapping = new DolibarrMappingHelper();
+		$this->_dolmapping = new dmHelper();
 	}
 
 	/**
 	 * export object description for client app -- could be better with only serialization (todo/tests)
 	 *
-	 * @return  stdClass  object description
+	 * @return  \stdClass  object description
 	 */
 	public function objectDesc()
 	{
