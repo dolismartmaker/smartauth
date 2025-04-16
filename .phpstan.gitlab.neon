@@ -3,9 +3,11 @@ includes:
 parameters:
 	scanDirectories:
 		- /home/gitlab-runner/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
+		- /home/gitlab-runner/caprel-stubs
 	excludePaths:
 		analyse:
 			- /home/gitlab-runner/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
+			- /home/gitlab-runner/caprel-stubs
 	bootstrapFiles:
 		- .phpstan-bootstrap.php
 	tmpDir: /tmp/dolibarr-%env.DOLIBARR_VERSION%
