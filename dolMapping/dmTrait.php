@@ -75,8 +75,8 @@ trait dmTrait
 		$listExtra = $extrafields->fetch_name_optionals_label($parentClassToUseForExtraFields);
 		foreach ($listExtra as $extra) {
 			//search for mapping
-			$appside = $this->_listOfPublishedFields["options_".$extra];
-			if(trim($appside == '')) {
+			$appside = $this->_listOfPublishedFields["options_" . $extra];
+			if (trim($appside == '')) {
 				$appside = $extra;
 			}
 			$obj->$appside = $this->_dolmapping->extrafieldsFilter($parentElementToUseForExtraFields, $extra, $appside, $extrafields);
@@ -88,5 +88,24 @@ trait dmTrait
 	public function objectType()
 	{
 		return $this->_type;
+	}
+
+	/**
+	 * export object data mapped thanks to _listOfPublishedFields
+	 *
+	 * @param   [type]  $obj  [$obj description]
+	 *
+	 * @return  [type]        [return description]
+	 */
+	public function exportMappedData($obj)
+	{
+		// dol_syslog(" #################### exportMappedData for " . $obj->id ?? " no id ");
+		$mapped = new \stdClass;
+		foreach ($this->_listOfPublishedFields as $doliside => $appside) {
+			if (!empty($obj->$doliside)) {
+				$mapped->$appside = $obj->$doliside;
+			}
+		}
+		return $mapped;
 	}
 }
