@@ -110,6 +110,7 @@ parameters:
 		analyse:
 			- vendor/*
 			- test/*
+			- stubs/*
 	bootstrapFiles:
 		- .phpstan-bootstrap.php
 	errorFormat: table
