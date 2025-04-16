@@ -88,17 +88,19 @@ class AuthController
 		global $db;
 		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($payload));
 
-		$entity = (int) $payload['entity'] ?? 1;
+		$entity = (int) ($payload['entity'] ?? 1);
 		$login  = filter_var($payload['email'] ?? '', FILTER_SANITIZE_STRING);
 		if (empty($login)) {
 			//try old username field
 			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_STRING);
 		}
 		$pass   = filter_var($payload['password'] ?? '', FILTER_SANITIZE_STRING);
+
 		//check if login / pass is ok
 		include_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
-		$login = checkLoginPassEntity($login, $pass, $entity, ['dolibarr'], 'api');		// Check credentials.
-		if ($login === '--bad-login-validity--') {
+		$checklogin = checkLoginPassEntity($login, $pass, $entity, ['dolibarr'], 'api');		// Check credentials.
+		dol_syslog("Debug smartauth : AuthController::login : checklogin is " . json_encode($checklogin));
+		if ($checklogin === '--bad-login-validity--') {
 			$login = '';
 		}
 		if (empty($login)) {
