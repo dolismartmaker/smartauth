@@ -144,7 +144,17 @@ class RouteController
 			dol_syslog("API Route match, call class $targetClass and function $redirectFunction...");
 			$class = new $targetClass();
 			try {
-				list($ret, $code) = $class->$redirectFunction(['data' => $data, 'user' => $user, 'entity' => $entity, 'tokenid' => $tokenid]);
+				$payload['data'] = $data; //all data TODO to become deprecated due to $data[data][key] hard syntax to understand
+				//flat data array return as $key => $value
+				foreach($data as $key => $value) {
+					$payload[$key] = $value;
+				}
+				$payload['user'] = $user;
+				$payload['entity'] = $entity;
+				$payload['tokenid'] = $tokenid;
+
+				//call function with payload
+				list($ret, $code) = $class->$redirectFunction($payload);
 				json_reply($ret, $code);
 			} catch (Exception $e) {
 				dol_syslog("Debug smartauth : route exception : " . json_encode($e), LOG_ERR);

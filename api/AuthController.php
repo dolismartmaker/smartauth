@@ -1,4 +1,5 @@
 <?php
+
 /**
  * AuthController.php
  *
@@ -44,14 +45,13 @@ class AuthController
 	public function index($arr = null)
 	{
 		dol_syslog("Debug smartauth::AuthController : index");
-		$data = $arr['data'];
 		$ret = [
-		   'statusCode' => 200,
-		   'data' => [
-			   'entities' => $this->_api_GetListOfEntities(),
-		   ]
+			'statusCode' => 200,
+			'data' => [
+				'entities' => $this->_api_GetListOfEntities(),
+			]
 		];
-		return([$ret, 200]);
+		return ([$ret, 200]);
 	}
 
 	/**
@@ -82,23 +82,21 @@ class AuthController
 	 *     }
 	 *  }
 	 */
-	public function login($arr)
+	public function login($payload)
 	{
 		dol_syslog("Debug smartauth::AuthController : login");
 		global $db;
-		$data = $arr['data'];
-		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($data));
-		// dol_syslog("Debug smartauth : AuthController::login : arr is " . json_encode($arr));
+		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($payload));
 
-		$entity = (int) $data['entity'] ?? 1;
-		$login  = filter_var($data['email'], FILTER_SANITIZE_STRING) ?? '';
+		$entity = (int) $payload['entity'] ?? 1;
+		$login  = filter_var($payload['email'] ?? '', FILTER_SANITIZE_STRING);
 		if (empty($login)) {
 			//try old username field
-			$login  = filter_var($data['username'], FILTER_SANITIZE_STRING);
+			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_STRING);
 		}
-		$pass   = filter_var($data['password'], FILTER_SANITIZE_STRING);
+		$pass   = filter_var($payload['password'] ?? '', FILTER_SANITIZE_STRING);
 		//check if login / pass is ok
-		include_once DOL_DOCUMENT_ROOT.'/core/lib/security2.lib.php';
+		include_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
 		$login = checkLoginPassEntity($login, $pass, $entity, ['dolibarr'], 'api');		// Check credentials.
 		if ($login === '--bad-login-validity--') {
 			$login = '';
@@ -121,7 +119,7 @@ class AuthController
 		// Generate token for user
 		$result = $tmpuser->call_trigger('USER_LOGIN', $tmpuser);
 
-		$rememberme  = filter_var($data['rememberMe'], FILTER_SANITIZE_STRING) ?? '';
+		$rememberme  = filter_var($payload['rememberMe']  ?? '', FILTER_SANITIZE_STRING);
 
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
@@ -129,15 +127,15 @@ class AuthController
 			$user = $tmpuser->login;
 		}
 		$ret = [
-		   'statusCode' => 200,
-		   'data' => [
-			   'user' => $user,
-			   'userid' => $tmpuser->id,
-			   'token' => $jwt,
-			   'rememberMe' => $rememberme
-		   ]
+			'statusCode' => 200,
+			'data' => [
+				'user' => $user,
+				'userid' => $tmpuser->id,
+				'token' => $jwt,
+				'rememberMe' => $rememberme
+			]
 		];
-		return([$ret, 200]);
+		return ([$ret, 200]);
 	}
 
 	/**
@@ -147,16 +145,16 @@ class AuthController
 	 * @apiGroup Auth
 	 *
 	 */
-	public function logout($arr)
+	public function logout($payload)
 	{
 		dol_syslog("Debug smartauth::AuthController : logout");
 		global $db;
-		$user = $arr['user'];
-		if (!empty($arr['tokenid'])) {
+		$user = $payload['user'];
+		if (!empty($payload['tokenid'])) {
 			//delete token from db
 			$sql = "DELETE ";
-			$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
-			$sql .= " WHERE rowid = ". (int) $arr['tokenid'];
+			$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sql .= " WHERE rowid = " . (int) $payload['tokenid'];
 			dol_syslog("smartauth : delete token from db " . $sql);
 			$resql = $db->query($sql);
 			if ($resql) {
@@ -175,7 +173,7 @@ class AuthController
 				'token' => ''
 			]
 		];
-		return([$ret, 200]);
+		return ([$ret, 200]);
 	}
 
 	/**
@@ -192,7 +190,7 @@ class AuthController
 			json_reply('Access denied (protected route)', 401);
 		}
 
-		$tokenid=null;
+		$tokenid = null;
 		$salt = "";
 		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
 		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
@@ -200,14 +198,14 @@ class AuthController
 		if (strpos($jwt, '|') > 0) {
 			$tokenid = substr($jwt, 0, strpos($jwt, '|'));
 			//remove id from jwt for JWT::lib
-			$jwt = substr($jwt, strpos($jwt, '|')+1);
+			$jwt = substr($jwt, strpos($jwt, '|') + 1);
 			if (!is_numeric($tokenid)) {
 				json_reply('Access denied (invalid token)', 401);
 			}
 			//get salt from db
 			$sql = "SELECT salt";
-			$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
-			$sql .= " WHERE rowid = ". (int) $tokenid;
+			$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sql .= " WHERE rowid = " . (int) $tokenid;
 			dol_syslog("smartauth : get salt from db " . $sql);
 			$resql = $db->query($sql);
 			if ($resql) {
@@ -216,7 +214,7 @@ class AuthController
 			}
 		}
 
-		if(is_null($tokenid)) {
+		if (is_null($tokenid)) {
 			dol_syslog("smartauth : access denied token not found", LOG_ERR);
 			json_reply('Access denied (token not found)', 401);
 		}
@@ -258,10 +256,10 @@ class AuthController
 
 		//TODO ajouter des verifs de temps / clé périmée / utilisée sur un type de navigateur (signature browser) toussa
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " SET date_lastused = '". $db->idate(dol_now()) . "',";
-		$sql .= " date_eol = '" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "',";
-		$sql .= " ip = '". $_SERVER['REMOTE_ADDR'] . "' ";
-		$sql .= " WHERE rowid = ". (int) $tokenid;
+		$sql .= " SET date_lastused = '" . $db->idate(dol_now()) . "',";
+		$sql .= " date_eol = '" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "',";
+		$sql .= " ip = '" . $_SERVER['REMOTE_ADDR'] . "' ";
+		$sql .= " WHERE rowid = " . (int) $tokenid;
 		dol_syslog("smartauth : update token last used " . $sql);
 		$resql = $db->query($sql);
 		if ($resql) {
@@ -290,11 +288,11 @@ class AuthController
 		$keyid = $salt = '';
 		//remove all other token for that user and that app
 		$sql = "DELETE ";
-		$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
-		$sql .= " WHERE appuid=".(int) $smartAuthAppID;
-		$sql .= " AND fk_authid=".(int) $uid;
+		$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
+		$sql .= " AND fk_authid=" . (int) $uid;
 		$sql .= " AND auth_element='user'";
-		$sql .= " AND entity=".(int) $entity;
+		$sql .= " AND entity=" . (int) $entity;
 		$resql = $db->query($sql);
 		// dol_syslog("Debug smartauth : $sql ...");
 
@@ -304,11 +302,11 @@ class AuthController
 		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		$sql = "INSERT ";
-		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
+		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
-			$keyid = $db->last_insert_id(MAIN_DB_PREFIX."mailing");
+			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "mailing");
 			// dol_syslog("Debug smartauth : $sql ...");
 			$key = $salt . $salt2 . $smartAuthAppKey;
 
@@ -344,11 +342,11 @@ class AuthController
 		$keyid = $salt = '';
 		//remove all other token for that user and that app
 		$sql = "DELETE ";
-		$sql .= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
-		$sql .= " WHERE appuid=".(int) $smartAuthAppID;
-		$sql .= " AND fk_authid=".(int) $socid;
+		$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
+		$sql .= " AND fk_authid=" . (int) $socid;
 		$sql .= " AND auth_element='societe_account'";
-		$sql .= " AND entity=".(int) $entity;
+		$sql .= " AND entity=" . (int) $entity;
 		$resql = $db->query($sql);
 		// dol_syslog("Debug smartauth : $sql ...");
 
@@ -360,11 +358,11 @@ class AuthController
 		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		$sql = "INSERT ";
-		$sql .= " INTO ".MAIN_DB_PREFIX."smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('".(int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now()+ 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS',30)) . "','" . (int) $userobapi->id . "','" . (int) $socid . "','societe_account','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
+		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $userobapi->id . "','" . (int) $socid . "','societe_account','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
-			$keyid = $db->last_insert_id(MAIN_DB_PREFIX."mailing");
+			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "mailing");
 			// dol_syslog("Debug smartauth : $sql ...");
 			$key = $salt . $salt2 . $smartAuthAppKey;
 
@@ -431,10 +429,10 @@ class AuthController
 
 		if (isModEnabled('multicompany')) {
 			$sql = "SELECT DISTINCT(rowid), rang";
-			$sql.= " FROM ".MAIN_DB_PREFIX."entity";
-			$sql.= " WHERE active = 1";
-			$sql.= " AND visible = 1";
-			$sql.= " ORDER BY rang ASC, rowid ASC";
+			$sql .= " FROM " . MAIN_DB_PREFIX . "entity";
+			$sql .= " WHERE active = 1";
+			$sql .= " AND visible = 1";
+			$sql .= " ORDER BY rang ASC, rowid ASC";
 
 			$resql = $db->query($sql);
 			if ($resql) {
@@ -466,12 +464,10 @@ class AuthController
 			$res = $u->fetch(getDolGlobalString('SMARTAUTH_DEFAULT_USER'));
 			if ($res <= 0) {
 				dol_syslog('opb: error fetching user id #' . getDolGlobalString('SMARTAUTH_DEFAULT_USER'), LOG_ERR);
-				exit -1;
+				exit - 1;
 			}
 			$u->getrights();
 		}
 		return $u;
 	}
-
-
 }
