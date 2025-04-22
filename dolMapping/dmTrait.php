@@ -27,6 +27,8 @@ require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 trait dmTrait
 {
 	private $_dolmapping;
+	private $_dolmapclassname;
+	private $_db;
 
 	/**
 	 * object constructor
@@ -38,7 +40,10 @@ trait dmTrait
 
 	public function boot()
 	{
+		global $db;
+		$this->_db = $db;
 		$this->_dolmapping = new dmHelper();
+		$this->_dolmapclassname = preg_replace('/.*DolibarrMapping/', '', static::class);
 	}
 
 	/**
@@ -48,9 +53,7 @@ trait dmTrait
 	 */
 	public function objectDesc()
 	{
-		global $db;
-		$doliClassName = preg_replace('/.*DolibarrMapping/', '', get_class($this));
-		$doliMapClass = new $doliClassName($db);
+		$doliMapClass = new $this->_dolmapclassname($this->_db);
 		// $doliMapClass->fetch_optionals();
 		// print json_encode($doliMapClass);exit;
 		$obj = new \stdClass();
@@ -69,10 +72,11 @@ trait dmTrait
 		}
 
 		//les extrafields
-		$extrafields = new \ExtraFields($db);
-		$parentClassToUseForExtraFields = isset($doliMapClass->parentClassToUseForExtraFields) ? $doliMapClass->parentClassToUseForExtraFields : get_class($doliMapClass);
+		$extrafields = new \ExtraFields($this->_db);
+		//TODO CHECK
+		$parentClassToUseForExtraFields = isset($doliMapClass->parentClassToUseForExtraFields) ? $doliMapClass->parentClassToUseForExtraFields : $this->_dolmapclassname;
 		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
-		$listExtra = $extrafields->fetch_name_optionals_label($parentClassToUseForExtraFields);
+		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
 		foreach ($listExtra as $extra) {
 			//search for mapping
 			$appside = $this->_listOfPublishedFields["options_" . $extra];
@@ -99,6 +103,8 @@ trait dmTrait
 	 */
 	public function exportMappedData($obj)
 	{
+		$this->_dolmapclassname = preg_replace('/.*DolibarrMapping/', '', get_class($obj));
+
 		// dol_syslog(" #################### exportMappedData for " . $obj->id ?? " no id ");
 		$mapped = new \stdClass;
 		foreach ($this->_listOfPublishedFields as $doliside => $appside) {
@@ -109,10 +115,144 @@ trait dmTrait
 			// print json_encode($obj->array_options);exit;
 			if (substr($doliside, 0, 8) == "options_") {
 				if (!empty($obj->array_options[$doliside])) {
-					$mapped->$appside = $obj->array_options[$doliside];
+					$mapped->$appside = $this->exportExtrafieldData($doliside, $obj->array_options[$doliside]);
 				}
 			}
 		}
 		return $mapped;
+	}
+
+
+	/**
+	 * map extrafield, for example
+	 * smartinterventions_type_event is a sellist
+	 * and definition is 'options'=>array('c_actioncomm:libelle:id'=>null)
+	 * so we have to get value ...
+	 *
+	 * @param   [type]  $name   [$name description]
+	 * @param   [type]  $value  [$value description]
+	 *
+	 * @return  [type]          [return description]
+	 */
+	public function exportExtrafieldData($name, $value)
+	{
+		global $conf, $langs;
+
+		$doliMapClass = new $this->_dolmapclassname($this->_db);
+		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
+		if (empty($parentElementToUseForExtraFields)) {
+			return;
+		}
+
+		$sql = "SELECT param FROM " . $this->_db->prefix() . "extrafields WHERE  elementtype='" . $parentElementToUseForExtraFields . "' AND name='" . str_replace("options_", "", $name) . "'";
+		$resql = $this->_db->query($sql);
+		if ($resql) {
+			$obj = $this->_db->fetch_object($resql);
+			$param = jsonOrUnserialize($obj->param);
+			//TODO implement all dolibarr possibilites :-)
+			if (isset($param['options'])) {
+				$param_list = array_keys($param['options']);
+				$InfoFieldList = explode(":", $param_list[0]);
+				$parentName = '';
+				$parentField = '';
+				// 0 : tableName
+				// 1 : label field name
+				// 2 : key fields name (if differ of rowid)
+				// 3 : key field parent (for dependent lists)
+				// 4 : where clause filter on column or table extrafield, syntax field='value' or extra.field=value
+				// 5 : id category type
+				// 6 : ids categories list separated by comma for category root
+				$keyList = (empty($InfoFieldList[2]) ? 'rowid' : $InfoFieldList[2] . ' as rowid');
+
+				dol_syslog("** " . json_encode($keyList));
+				$out = "";
+
+				if (count($InfoFieldList) > 4 && !empty($InfoFieldList[4])) {
+					if (strpos($InfoFieldList[4], 'extra.') !== false) {
+						$keyList = 'main.' . $InfoFieldList[2] . ' as rowid';
+					} else {
+						$keyList = $InfoFieldList[2] . ' as rowid';
+					}
+				}
+				if (count($InfoFieldList) > 3 && !empty($InfoFieldList[3])) {
+					list($parentName, $parentField) = explode('|', $InfoFieldList[3]);
+					$keyList .= ', ' . $parentField;
+				}
+
+				$filter_categorie = false;
+				if (count($InfoFieldList) > 5) {
+					if ($InfoFieldList[0] == 'categorie') {
+						$filter_categorie = true;
+					}
+				}
+
+				if ($filter_categorie === false) {
+					$fields_label = explode('|', $InfoFieldList[1]);
+					if (is_array($fields_label)) {
+						$keyList .= ', ';
+						$keyList .= implode(', ', $fields_label);
+					}
+
+					$sqlwhere = '';
+					$sql = "SELECT " . $keyList;
+					$sql .= ' FROM ' . $this->_db->prefix() . $InfoFieldList[0];
+					if (!empty($InfoFieldList[4])) {
+						// can use current entity filter
+						if (strpos($InfoFieldList[4], '$ENTITY$') !== false) {
+							$InfoFieldList[4] = str_replace('$ENTITY$', $conf->entity, $InfoFieldList[4]);
+						}
+						// can use SELECT request
+						if (strpos($InfoFieldList[4], '$SEL$') !== false) {
+							$InfoFieldList[4] = str_replace('$SEL$', 'SELECT', $InfoFieldList[4]);
+						}
+
+						// current object id can be use into filter
+						if (strpos($InfoFieldList[4], '$ID$') !== false && !empty($objectid)) {
+							$InfoFieldList[4] = str_replace('$ID$', $objectid, $InfoFieldList[4]);
+						} else {
+							$InfoFieldList[4] = str_replace('$ID$', '0', $InfoFieldList[4]);
+						}
+						//We have to join on extrafield table
+						if (strpos($InfoFieldList[4], 'extra.') !== false) {
+							$sql .= ' as main, ' . $this->_db->prefix() . $InfoFieldList[0] . '_extrafields as extra';
+							$sqlwhere .= " WHERE extra.fk_object=main." . $InfoFieldList[2] . " AND " . $InfoFieldList[4];
+						} else {
+							$sqlwhere .= " WHERE " . $InfoFieldList[4];
+						}
+					} else {
+						$sqlwhere .= " WHERE id='" . $value . "'";
+					}
+					// Some tables may have field, some other not. For the moment we disable it.
+					if (in_array($InfoFieldList[0], array('tablewithentity'))) {
+						$sqlwhere .= ' AND entity = ' . ((int) $conf->entity);
+					}
+					$sql .= $sqlwhere;
+					//print $sql;
+
+					dol_syslog(get_class($this) . '::showInputField type=sellist', LOG_DEBUG);
+					$resql = $this->_db->query($sql);
+					if ($resql) {
+						$obj = $this->_db->fetch_object($resql);
+						return $obj->{$InfoFieldList[1]};
+						$this->_db->free($resql);
+					} else {
+						dol_syslog('Error in request ' . $sql . ' ' . $this->_db->lasterror() . '. Check setup of extra parameters', LOG_ERR);
+					}
+				} else {
+					require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
+					$data = $form->select_all_categories(\Categorie::$MAP_ID_TO_CODE[$InfoFieldList[5]], '', 'parent', 64, $InfoFieldList[6], 1, 1);
+					if (is_array($data)) {
+						foreach ($data as $data_key => $data_value) {
+							if($value == $data_key) {
+								return $data_value;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		//default return orignal value :-(
+		return $value;
 	}
 }
