@@ -66,7 +66,8 @@ trait dmTrait
 		return $this->_cacheDesc;
 	}
 
-	private function _objectDesc() {
+	private function _objectDesc()
+	{
 		// dol_syslog(get_class($this) . " call : objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
 		// $doliMapClass = new $this->_dolmapclassname($this->_db);
 		// dol_syslog(get_class($this) . " call : objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
@@ -155,10 +156,8 @@ trait dmTrait
 				//TODO if id from external table
 			}
 
-
-
-			//TODO : detect fk and push object into $mapped->$appside
-			if(in_array($doliside,array_keys($this->_listOfForeignKeys))) {
+			//detect fk and push object into $mapped->$appside
+			if (in_array($doliside, array_keys($this->_listOfForeignKeys))) {
 				dol_syslog('########## _listOfForeignKeys = ' . json_encode($this->_listOfForeignKeys));
 				$mapped->$appside = $this->exportData($doliside, $obj->$doliside);
 			}
@@ -205,7 +204,28 @@ trait dmTrait
 			if (isset($param['options'])) {
 				$param_list = array_keys($param['options']);
 				$InfoFieldList = explode(":", $param_list[0]);
-				$parentName = '';
+
+				if (strpos($param_list[0],'class.php')) {
+					$classname = $InfoFieldList[0];
+					$classpath = $InfoFieldList[1];
+					dol_syslog("############ classname=$classname, classpath=$classpath");
+					if (!empty($classpath)) {
+						$res = dol_include_once($classpath);
+						if ($res && $classname && class_exists($classname)) {
+							$dolmappingclass = "SmartAuth\\DolibarrMapping\\dm" . $classname;
+							$tmpobject = new $classname($this->_db);
+							$mapobject = new $dolmappingclass();
+							$res = $tmpobject->fetch($objectid);
+							if ($res) {
+								return $mapobject->exportMappedData($tmpobject);
+							}
+						}
+					}
+
+				}
+
+				// dol_syslog("************* " . json_encode($InfoFieldList));
+
 				$parentField = '';
 				// 0 : tableName
 				// 1 : label field name
@@ -216,7 +236,8 @@ trait dmTrait
 				// 6 : ids categories list separated by comma for category root
 				$keyList = (empty($InfoFieldList[2]) ? 'rowid' : $InfoFieldList[2] . ' as rowid');
 
-				dol_syslog("** " . json_encode($keyList));
+				$idfieldname = $InfoFieldList[2] ?? "rowid";
+
 				$out = "";
 
 				if (count($InfoFieldList) > 4 && !empty($InfoFieldList[4])) {
@@ -238,6 +259,7 @@ trait dmTrait
 					}
 				}
 
+				// dol_syslog("************* " . json_encode($keyList));
 				if ($filter_categorie === false) {
 					$fields_label = explode('|', $InfoFieldList[1]);
 					if (is_array($fields_label)) {
@@ -272,7 +294,7 @@ trait dmTrait
 							$sqlwhere .= " WHERE " . $InfoFieldList[4];
 						}
 					} else {
-						$sqlwhere .= " WHERE id='" . $objectid . "'";
+						$sqlwhere .= " WHERE $idfieldname='" . $objectid . "'";
 					}
 					// Some tables may have field, some other not. For the moment we disable it.
 					if (in_array($InfoFieldList[0], array('tablewithentity'))) {
@@ -281,7 +303,7 @@ trait dmTrait
 					$sql .= $sqlwhere;
 					//print $sql;
 
-					dol_syslog(get_class($this) . '::exportExtrafieldData type=sellist', LOG_DEBUG);
+					dol_syslog(get_class($this) . '::exportExtrafieldData type=', LOG_DEBUG);
 					$resql = $this->_db->query($sql);
 					if ($resql) {
 						$obj = $this->_db->fetch_object($resql);
@@ -322,8 +344,22 @@ trait dmTrait
 	public function exportData($name, $objectid)
 	{
 		global $conf, $langs;
-		dol_syslog("############ Call exportData for $name / $objectid / " . $this->_listOfForeignKeys[$name]);
-
-
+		// dol_syslog("############ Call exportData for $name / $objectid / " . $this->_listOfForeignKeys[$name]);
+		$InfoFieldList = explode(":", $this->_listOfForeignKeys[$name]);
+		$classname = $InfoFieldList[1];
+		$classpath = $InfoFieldList[2];
+		// dol_syslog("############ classname=$classname, classpath=$classpath");
+		if (!empty($classpath)) {
+			$res = dol_include_once($classpath);
+			if ($res && $classname && class_exists($classname)) {
+				$dolmappingclass = "SmartAuth\\DolibarrMapping\\dm" . $classname;
+				$tmpobject = new $classname($this->_db);
+				$mapobject = new $dolmappingclass();
+				$res = $tmpobject->fetch($objectid);
+				if ($res) {
+					return $mapobject->exportMappedData($tmpobject);
+				}
+			}
+		}
 	}
 }
