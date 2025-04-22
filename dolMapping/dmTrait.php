@@ -130,11 +130,11 @@ trait dmTrait
 	 * so we have to get value ...
 	 *
 	 * @param   [type]  $name   [$name description]
-	 * @param   [type]  $value  [$value description]
+	 * @param   [type]  $objectid  [$objectid description]
 	 *
 	 * @return  [type]          [return description]
 	 */
-	public function exportExtrafieldData($name, $value)
+	public function exportExtrafieldData($name, $objectid)
 	{
 		global $conf, $langs;
 
@@ -220,7 +220,7 @@ trait dmTrait
 							$sqlwhere .= " WHERE " . $InfoFieldList[4];
 						}
 					} else {
-						$sqlwhere .= " WHERE id='" . $value . "'";
+						$sqlwhere .= " WHERE id='" . $objectid . "'";
 					}
 					// Some tables may have field, some other not. For the moment we disable it.
 					if (in_array($InfoFieldList[0], array('tablewithentity'))) {
@@ -243,7 +243,7 @@ trait dmTrait
 					$data = $form->select_all_categories(\Categorie::$MAP_ID_TO_CODE[$InfoFieldList[5]], '', 'parent', 64, $InfoFieldList[6], 1, 1);
 					if (is_array($data)) {
 						foreach ($data as $data_key => $data_value) {
-							if($value == $data_key) {
+							if($objectid == $data_key) {
 								return $data_value;
 							}
 						}
@@ -253,6 +253,6 @@ trait dmTrait
 		}
 
 		//default return orignal value :-(
-		return $value;
+		return $objectid;
 	}
 }
