@@ -64,12 +64,12 @@ trait dmTrait
 	{
 		// dol_syslog(get_class($this) . " call : objectDesc " . $this->_cacheDesc);
 		return $this->_cacheDesc;
-		// return $this->_objectDesc();
 	}
 
 	private function _objectDesc() {
 		// dol_syslog(get_class($this) . " call : objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
 		// $doliMapClass = new $this->_dolmapclassname($this->_db);
+		// dol_syslog(get_class($this) . " call : objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
 		$doliBaseClass = new $this->_dolobjectclassname($this->_db);
 
 		// $doliMapClass->fetch_optionals();
@@ -93,8 +93,7 @@ trait dmTrait
 		//les extrafields
 		$extrafields = new \ExtraFields($this->_db);
 		//TODO CHECK
-		// $parentClassToUseForExtraFields = isset($doliMapClass->parentClassToUseForExtraFields) ? $doliMapClass->parentClassToUseForExtraFields : $this->_dolmapclassname;
-		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
+		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields;
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
 		foreach ($listExtra as $extra) {
 			//search for mapping
@@ -324,6 +323,7 @@ trait dmTrait
 	{
 		global $conf, $langs;
 		dol_syslog("############ Call exportData for $name / $objectid / " . $this->_listOfForeignKeys[$name]);
+
 
 	}
 }
