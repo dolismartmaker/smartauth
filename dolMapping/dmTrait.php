@@ -105,6 +105,13 @@ trait dmTrait
 			if (!empty($obj->$doliside)) {
 				$mapped->$appside = $obj->$doliside;
 			}
+
+			// print json_encode($obj->array_options);exit;
+			if (substr($doliside, 0, 8) == "options_") {
+				if (!empty($obj->array_options[$doliside])) {
+					$mapped->$appside = $obj->array_options[$doliside];
+				}
+			}
 		}
 		return $mapped;
 	}
