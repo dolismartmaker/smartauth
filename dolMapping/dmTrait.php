@@ -93,7 +93,7 @@ trait dmTrait
 		//les extrafields
 		$extrafields = new \ExtraFields($this->_db);
 		//TODO CHECK
-		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields;
+		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields ?? '';
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
 		foreach ($listExtra as $extra) {
 			//search for mapping
