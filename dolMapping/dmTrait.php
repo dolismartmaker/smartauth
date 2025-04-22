@@ -28,8 +28,11 @@ trait dmTrait
 {
 	private $_dolmapping;
 	private $_dolmapclassname;
-	private $__dolobjectclassname;
+	private $_dolobjectclassname;
 	private $_db;
+
+	private $_listOfForeignKeys = [];
+	private $_cacheDesc;
 
 	/**
 	 * object constructor
@@ -48,6 +51,8 @@ trait dmTrait
 		$this->_dolmapclassname = static::class;
 		//ex: Smartinter or Societe
 		$this->_dolobjectclassname = preg_replace('/.*\\\\dm/', '', static::class);
+
+		$this->_cacheDesc = $this->_objectDesc();
 	}
 
 	/**
@@ -57,8 +62,14 @@ trait dmTrait
 	 */
 	public function objectDesc()
 	{
+		// dol_syslog(get_class($this) . " call : objectDesc " . $this->_cacheDesc);
+		return $this->_cacheDesc;
+		// return $this->_objectDesc();
+	}
+
+	private function _objectDesc() {
 		// dol_syslog(get_class($this) . " call : objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
-		$doliMapClass = new $this->_dolmapclassname($this->_db);
+		// $doliMapClass = new $this->_dolmapclassname($this->_db);
 		$doliBaseClass = new $this->_dolobjectclassname($this->_db);
 
 		// $doliMapClass->fetch_optionals();
@@ -82,7 +93,7 @@ trait dmTrait
 		//les extrafields
 		$extrafields = new \ExtraFields($this->_db);
 		//TODO CHECK
-		$parentClassToUseForExtraFields = isset($doliMapClass->parentClassToUseForExtraFields) ? $doliMapClass->parentClassToUseForExtraFields : $this->_dolmapclassname;
+		// $parentClassToUseForExtraFields = isset($doliMapClass->parentClassToUseForExtraFields) ? $doliMapClass->parentClassToUseForExtraFields : $this->_dolmapclassname;
 		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
 		foreach ($listExtra as $extra) {
@@ -94,6 +105,9 @@ trait dmTrait
 			$obj->$appside = $this->_dolmapping->extrafieldsFilter($parentElementToUseForExtraFields, $extra, $appside, $extrafields);
 		}
 
+		if (isset($this->_dolmapping)) {
+			$this->_listOfForeignKeys = $this->_dolmapping->getListOfForeignKeys();
+		}
 		return $obj;
 	}
 
@@ -119,6 +133,20 @@ trait dmTrait
 
 		$mapped = new \stdClass;
 		foreach ($this->_listOfPublishedFields as $doliside => $appside) {
+			//race condition for fk_soc : dolibarr change it to socid
+			if ($doliside == "fk_soc") {
+				//to keep generic process on smart*
+				if (!empty($obj->socid)) {
+					$obj->fk_soc = $obj->socid;
+				}
+			}
+			//same with id/rowid
+			if ($doliside == "rowid") {
+				//to keep generic process on smart*
+				if (!empty($obj->id)) {
+					$obj->rowid = $obj->id;
+				}
+			}
 
 			// print json_encode($obj->array_options);//exit;
 			// dol_syslog(" ## dolisde=" . $doliside . " and appside=" . $appside);
@@ -127,15 +155,14 @@ trait dmTrait
 				$mapped->$appside = $obj->$doliside;
 				//TODO if id from external table
 			}
-			//race condition for fk_soc : dolibarr change it to socid
-			if ($doliside == "fk_soc") {
-				$doliside = "socid";
-				if (!empty($obj->$doliside)) {
-					$mapped->$appside = $obj->$doliside;
-				}
-			}
+
+
 
 			//TODO : detect fk and push object into $mapped->$appside
+			if(in_array($doliside,array_keys($this->_listOfForeignKeys))) {
+				dol_syslog('########## _listOfForeignKeys = ' . json_encode($this->_listOfForeignKeys));
+				$mapped->$appside = $this->exportData($doliside, $obj->$doliside);
+			}
 
 			// print json_encode($obj->array_options);exit;
 			//extrafields
@@ -280,5 +307,23 @@ trait dmTrait
 
 		//default return orignal value :-(
 		return $objectid;
+	}
+
+
+
+	/**
+	 * export data for foreign keys ex
+	 * fk_soc is a int so we get Societe object
+	 *
+	 * @param   [type]  $name   [$name description]
+	 * @param   [type]  $objectid  [$objectid description]
+	 *
+	 * @return  [type]          [return description]
+	 */
+	public function exportData($name, $objectid)
+	{
+		global $conf, $langs;
+		dol_syslog("############ Call exportData for $name / $objectid / " . $this->_listOfForeignKeys[$name]);
+
 	}
 }

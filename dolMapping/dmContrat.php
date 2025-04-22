@@ -28,6 +28,7 @@ class dmProject
 
     //corresponding fields left dolibarr right front app
     private $_listOfPublishedFields = [
+		'rowid' 			=> 'rowid',
         'ref'             => 'ref',
         'ref_customer'    => 'ref_customer',
         'ref_supplier'     => 'ref_supplier',

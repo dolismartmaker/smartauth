@@ -23,6 +23,8 @@ namespace SmartAuth\DolibarrMapping;
 
 class dmHelper
 {
+	private $_listOfForeignKeys = [];
+
 	//dolibarr < - > application mapping for main attributes
 	private $_mappingAttributes = [
 		'type' 				=> 'type',
@@ -210,7 +212,11 @@ class dmHelper
 				if (is_callable([$this, $specialFilter])) {
 					$r = call_user_func([$this, $specialFilter], $val);
 					// dol_syslog("call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));
+					// dol_syslog("add _listOfForeignKeys $dolikey || $val");
 
+					if (isset($r->type) && !isset($this->_listOfForeignKeys[$dolikey])) {
+						$this->_listOfForeignKeys[$dolikey] = $val;
+					}
 					foreach ($r as $k => $v) {
 						$ret[$k] = $v;
 					}
@@ -238,8 +244,8 @@ class dmHelper
 
 		//TODO mapping + RO/RW
 		$ret = [];
-		foreach($this->_mappingExtrafieldsAttributes as $dolattr => $appattr) {
-			$val = $extrafields->attributes[$objectElement][$dolattr][str_replace('options_','',$dolikey)];
+		foreach ($this->_mappingExtrafieldsAttributes as $dolattr => $appattr) {
+			$val = $extrafields->attributes[$objectElement][$dolattr][str_replace('options_', '', $dolikey)];
 			if ($dolattr == "label" && is_string($val)) {
 				// print "<p> pour $objectElement  / $dolikey :: $dolattr :: $appattr == " . json_encode($val) . "</p>";
 				$ret[$appattr] = $langs->transnoentities($val);
@@ -247,7 +253,7 @@ class dmHelper
 			}
 
 			//race condition, extrafields use "enabled", all dolibarr objects "disabled"
-			if($dolattr == "enabled") {
+			if ($dolattr == "enabled") {
 				$ret['disabled'] = !($val);
 				continue;
 			}
@@ -267,5 +273,10 @@ class dmHelper
 		// print " pour $objectElement  / $dolikey :: " . json_encode($extrafields->attributes[$objectElement]['label'][$dolikey]);
 		$ret['is_extrafield'] = true;
 		return $ret;
+	}
+
+	public function getListOfForeignKeys()
+	{
+		return $this->_listOfForeignKeys;
 	}
 }

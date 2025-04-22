@@ -28,6 +28,7 @@ class dmProject
 
 	//corresponding fields left dolibarr right front app
 	private $_listOfPublishedFields = [
+		'rowid' 			=> 'rowid',
 		'ref' 			=> 'ref',
 		'title' 		=> 'title',
 		'dateo'			=> 'date_open',
