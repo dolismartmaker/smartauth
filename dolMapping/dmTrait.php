@@ -28,6 +28,7 @@ trait dmTrait
 {
 	private $_dolmapping;
 	private $_dolmapclassname;
+	private $__dolobjectclassname;
 	private $_db;
 
 	/**
@@ -43,7 +44,10 @@ trait dmTrait
 		global $db;
 		$this->_db = $db;
 		$this->_dolmapping = new dmHelper();
-		$this->_dolmapclassname = preg_replace('/.*DolibarrMapping/', '', static::class);
+		//ex: dmSmartinter or dmSociete
+		$this->_dolmapclassname = static::class;
+		//ex: Smartinter or Societe
+		$this->_dolobjectclassname = preg_replace('/.*\\\\dm/', '', static::class);
 	}
 
 	/**
@@ -53,18 +57,22 @@ trait dmTrait
 	 */
 	public function objectDesc()
 	{
+		// dol_syslog(get_class($this) . " call : objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
 		$doliMapClass = new $this->_dolmapclassname($this->_db);
+		$doliBaseClass = new $this->_dolobjectclassname($this->_db);
+
 		// $doliMapClass->fetch_optionals();
-		// print json_encode($doliMapClass);exit;
+		// dol_syslog(get_class($this) . " doliBaseClass is " . json_encode($doliBaseClass));
 		$obj = new \stdClass();
 
 		foreach ($this->_listOfPublishedFields as $doliside => $appside) {
-			// print "<p> [" . get_class($this) . "] : $doliside => $appside for " . json_encode($doliMapClass->fields) . "</p>\n";
+			// dol_syslog(get_class($this) . " call : $doliside => $appside for " . json_encode($doliMapClass->fields));
 			//note : foreign key detect, could be done thanks to dolibarr name plan (prefix fk_)
 			//but it's better to do it in propertiesFilter function
 			if (isset($this->_dolmapping)) {
-				$obj->$appside = $this->_dolmapping->propertiesFilter($doliMapClass->fields[$doliside], $doliside, $appside);
+				$obj->$appside = $this->_dolmapping->propertiesFilter($doliBaseClass->fields[$doliside], $doliside, $appside);
 			}
+			//TODO
 			//foreign key like fk_pays : without integer:class:data ?
 			// if (substr($doliside, 0, 3) == "fk_") {
 			// 	$obj->$appside['label'] = 'special';
@@ -105,14 +113,32 @@ trait dmTrait
 	{
 		$this->_dolmapclassname = preg_replace('/.*DolibarrMapping/', '', get_class($obj));
 
-		// dol_syslog(" #################### exportMappedData for " . $obj->id ?? " no id ");
+		// dol_syslog(" #################### exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
+		// dol_syslog(" ############### " . json_encode($obj));
+		// dol_syslog(" ########### " . json_encode($this->_listOfPublishedFields));
+
 		$mapped = new \stdClass;
 		foreach ($this->_listOfPublishedFields as $doliside => $appside) {
+
+			// print json_encode($obj->array_options);//exit;
+			// dol_syslog(" ## dolisde=" . $doliside . " and appside=" . $appside);
+			// dol_syslog(" ## value on dolibarr object =" . $obj->$doliside ?? 'null');
 			if (!empty($obj->$doliside)) {
 				$mapped->$appside = $obj->$doliside;
+				//TODO if id from external table
+			}
+			//race condition for fk_soc : dolibarr change it to socid
+			if ($doliside == "fk_soc") {
+				$doliside = "socid";
+				if (!empty($obj->$doliside)) {
+					$mapped->$appside = $obj->$doliside;
+				}
 			}
 
+			//TODO : detect fk and push object into $mapped->$appside
+
 			// print json_encode($obj->array_options);exit;
+			//extrafields
 			if (substr($doliside, 0, 8) == "options_") {
 				if (!empty($obj->array_options[$doliside])) {
 					$mapped->$appside = $this->exportExtrafieldData($doliside, $obj->array_options[$doliside]);
@@ -229,7 +255,7 @@ trait dmTrait
 					$sql .= $sqlwhere;
 					//print $sql;
 
-					dol_syslog(get_class($this) . '::showInputField type=sellist', LOG_DEBUG);
+					dol_syslog(get_class($this) . '::exportExtrafieldData type=sellist', LOG_DEBUG);
 					$resql = $this->_db->query($sql);
 					if ($resql) {
 						$obj = $this->_db->fetch_object($resql);
@@ -243,7 +269,7 @@ trait dmTrait
 					$data = $form->select_all_categories(\Categorie::$MAP_ID_TO_CODE[$InfoFieldList[5]], '', 'parent', 64, $InfoFieldList[6], 1, 1);
 					if (is_array($data)) {
 						foreach ($data as $data_key => $data_value) {
-							if($objectid == $data_key) {
+							if ($objectid == $data_key) {
 								return $data_value;
 							}
 						}
