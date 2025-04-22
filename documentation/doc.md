@@ -72,7 +72,6 @@ POST /login
 ```json
 HTTP/1.1 200 OK
 {
-    "statusCode": 200,
     "data": {
         "user": "eric@cap-rel.fr",
         "userid": "3",

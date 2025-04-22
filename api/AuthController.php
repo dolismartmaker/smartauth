@@ -46,7 +46,6 @@ class AuthController
 	{
 		dol_syslog("Debug smartauth::AuthController : index");
 		$ret = [
-			'statusCode' => 200,
 			'data' => [
 				'entities' => $this->_api_GetListOfEntities(),
 			]
@@ -74,7 +73,6 @@ class AuthController
 	 * @apiSuccessExample {json} Success-Response:
 	 * HTTP/1.1 200 OK
 	 * {
-	 *     "statusCode": 200,
 	 *     "data": {
 	 *         "user": "eric@cap-rel.fr",
 	 *         "userid": "3",
@@ -129,7 +127,6 @@ class AuthController
 			$user = $tmpuser->login;
 		}
 		$ret = [
-			'statusCode' => 200,
 			'data' => [
 				'user' => $user,
 				'userid' => $tmpuser->id,
@@ -169,7 +166,6 @@ class AuthController
 		$result = $user->call_trigger('USER_LOGOUT', $user);
 
 		$ret = [
-			'statusCode' => 200,
 			'data' => [
 				'user' => '',
 				'token' => ''
@@ -230,22 +226,10 @@ class AuthController
 			$decoded->tokenid = $tokenid;
 		} catch (SignatureInvalidException $e) {
 			dol_syslog("Debug smartauth : jwt signature error : reset token please", LOG_ERR);
-			$ret = [
-				'statusCode' => 401,
-				'data' => [
-					'message' => 'invalid token, please login'
-				]
-			];
-			json_reply($ret, 401);
+			json_reply('invalid token, please login', 401);
 		} catch (Exception $e) {
 			dol_syslog("Debug smartauth : jwt signature error : " . $e->getMessage());
-			$ret = [
-				'statusCode' => 401,
-				'data' => [
-					'message' => 'invalid token, please login'
-				]
-			];
-			json_reply($ret, 401);
+			json_reply('invalid token, please login', 401);
 		}
 		dol_syslog("Debug smartauth : route decoded jwt is " . json_encode($decoded));
 

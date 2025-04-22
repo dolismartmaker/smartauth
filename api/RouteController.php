@@ -70,7 +70,7 @@ class RouteController
 		// dol_syslog("Route request uri is $request_uri");
 
 		$action = parse_url(preg_replace("/.*api.php\//", "", $_SERVER['REQUEST_URI']), PHP_URL_PATH);
-		$match_action = str_replace('/', '\/', preg_replace("/{.*}/", ".*", $targetAction));
+		$match_action = str_replace('/', '\/', preg_replace("/{.*?}/", ".*", $targetAction));
 
 		if (! preg_match("/" . $match_action . "$/", $action)) {
 			dol_syslog("Route does not REGEX match for $action != $targetAction, match_action=/$match_action/");
@@ -80,7 +80,8 @@ class RouteController
 		dol_syslog("Route method=$method, targetMethod=$targetMethod, action=$action and targetAction=$targetAction");
 		dol_syslog("Route match_action=$match_action, redirectFunction=$redirectFunction");
 
-		$data = $user = null;
+		$data = [];
+		$user = null;
 		if ($method == "POST" || $method == "PUT") {
 			$txt = file_get_contents('php://input');
 			$data = json_decode($txt, true);
@@ -105,7 +106,7 @@ class RouteController
 				$i++;
 			}
 		}
-		dol_syslog("route, parsed data is " . json_encode($data));
+		// dol_syslog("route, parsed data is " . json_encode($data));
 
 		//check JWT
 		$decoded = $tokenid = null;
@@ -118,13 +119,7 @@ class RouteController
 			$res = $user->fetch(0, $login, 0, 0, $entity);
 			if ($res <= 0) {
 				dol_syslog("Debug smartauth : route auth error : return 401");
-				$ret = [
-					'statusCode' => 401,
-					'data' => [
-						'message' => 'login error'
-					]
-				];
-				json_reply($ret, 401);
+				json_reply('login error', 401);
 			}
 			$auth_socid = $user->socid;
 		}
@@ -154,8 +149,8 @@ class RouteController
 				$payload['tokenid'] = $tokenid;
 
 				//call function with payload
-				list($ret, $code) = $class->$redirectFunction($payload);
-				json_reply($ret, $code);
+				list($message, $code) = $class->$redirectFunction($payload);
+				json_reply($message, $code);
 			} catch (Exception $e) {
 				dol_syslog("Debug smartauth : route exception : " . json_encode($e), LOG_ERR);
 			}
