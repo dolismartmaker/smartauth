@@ -81,10 +81,12 @@ class dmHelper
 	private function _customFilterAttributeTypeInteger($str)
 	{
 		global $db;
+		// dol_syslog("propertiesFilter > _customFilterAttributeTypeInteger call with $str");
 		$ret = [];
 		$tab = explode(":", $str);
 		if (isset($tab[2])) {
-			$dolmapclass = __NAMESPACE__ . "\\DolibarrMapping" . $tab[1];
+			$dolmapclass = __NAMESPACE__ . "\\dm" . $tab[1];
+			// dol_syslog("propertiesFilter >>> _customFilterAttributeTypeInteger try to call $dolmapclass");
 			if (class_exists($dolmapclass, true)) {
 				include_once(DOL_DOCUMENT_ROOT . '/' . $tab[2]);
 				$dm = new $dolmapclass();
@@ -190,7 +192,7 @@ class dmHelper
 		global $langs;
 		$langs->loadLangs(array('companies', 'smartinterventions'));
 
-		// print "call propertiesFilter on $dolikey / $frontkey :: " . json_encode($input);
+		// dol_syslog("call propertiesFilter on $dolikey / $frontkey :: " . json_encode($input));
 		$ret = [];
 		$type = $label = '';
 
@@ -204,9 +206,11 @@ class dmHelper
 					continue;
 				}
 				//try to call a private function like _customFilterAttributeXXXXXXX (XXXX last part is dynamic)
-				$specialFilter = "_customFilterAttribute" . $key;
+				$specialFilter = "_customFilterAttribute" . ucfirst($key);
 				if (is_callable([$this, $specialFilter])) {
 					$r = call_user_func([$this, $specialFilter], $val);
+					// dol_syslog("call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));
+
 					foreach ($r as $k => $v) {
 						$ret[$k] = $v;
 					}
