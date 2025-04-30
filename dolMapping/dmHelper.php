@@ -182,6 +182,37 @@ class dmHelper
 
 
 	/**
+	 * convert dolibarr visible code to smart* values
+	 * 
+	 *	0=Not visible
+	 *	1=Visible on list and create/update/view forms
+	 *	2=Visible on list only
+	 *	3=Visible on create/update/view form only (not list)
+	 *	4=Visible on list and update/view form only (not create).
+	 *	5=Visible on list and view only (not create/not update).
+	 *	Using a negative value means field is not shown by default on list but can be selected for viewing)
+	 *
+	 * @param   [type]  $val  [$val description]
+	 *
+	 * @return  [type]        [return description]
+	 */
+	private function _customFilterAttributeVisible($val)
+	{
+		//dolibarr values -> smart* values
+		$dolmap = [
+			0 => [],
+			1 => ["create", "update", "read"],
+			2 => ["read"],
+			3 => ["create", "update", "read"],
+			4 => ["update", "read"],
+			5 => ["read"],
+		];
+		$ret['visible'] = $dolmap[abs($val)];
+		return $ret;
+	}
+
+
+	/**
 	 * filter all dolibarr properties to make beautifull objects
 	 * definitions for smart app
 	 *
