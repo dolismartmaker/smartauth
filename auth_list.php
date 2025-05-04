@@ -775,13 +775,14 @@ while ($i < $imaxinloop) {
 			if($key == 'fk_authid') {
 				$userOrSoc = "";
 				if($obj->auth_element == 'user') {
-					$user = new User($db);
-					$res = $user->fetch($obj->fk_authid);
+					$localuser = new User($db);
+					$res = $localuser->fetch($obj->fk_authid);
 					if($res <= 0) {
 						//error
 						continue;
 					}
-					$userOrSoc = $user->login;
+					// $userOrSoc = $user->login;
+					$userOrSoc = $localuser->getNomUrl(1);
 				} elseif($obj->auth_element == 'societe_account') {
 					$authSoc = new Societe($db);
 					$res = $authSoc->fetch($obj->fk_authid);
@@ -789,7 +790,8 @@ while ($i < $imaxinloop) {
 						//error
 						continue;
 					}
-					$userOrSoc = $authSoc->name;
+					// $userOrSoc = $authSoc->name;
+					$userOrSoc = $authSoc->getNomUrl(1);
 				}
 				$object->$key = $userOrSoc;
 			}
