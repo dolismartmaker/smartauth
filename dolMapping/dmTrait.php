@@ -52,6 +52,7 @@ trait dmTrait
 		//ex: Smartinter or Societe
 		$this->_dolobjectclassname = preg_replace('/.*\\\\dm/', '', static::class);
 
+		// dol_syslog(get_class($this) . " is booting, call _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname . ", mappping=" . get_class($this->_dolmapping));
 		$this->_cacheDesc = $this->_objectDesc();
 	}
 
@@ -62,26 +63,36 @@ trait dmTrait
 	 */
 	public function objectDesc()
 	{
-		// dol_syslog(get_class($this) . " call : objectDesc " . $this->_cacheDesc);
+		// dol_syslog(get_class($this) . " call : objectDesc " . json_encode($this->_cacheDesc));
 		return $this->_cacheDesc;
 	}
 
+	/**
+	 * build all description of an object : field by field, browse dolibarr class and parse $fields
+	 * then convert it to smart* fields names and types
+	 *
+	 * @return  [type]  [return description]
+	 */
 	private function _objectDesc()
 	{
-		// dol_syslog(get_class($this) . " call : objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
-		// $doliMapClass = new $this->_dolmapclassname($this->_db);
-		// dol_syslog(get_class($this) . " call : objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
 		$doliBaseClass = new $this->_dolobjectclassname($this->_db);
+		// dol_syslog(get_class($this) . " _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
+
 
 		// $doliMapClass->fetch_optionals();
 		// dol_syslog(get_class($this) . " doliBaseClass is " . json_encode($doliBaseClass));
 		$obj = new \stdClass();
 
 		foreach ($this->_listOfPublishedFields as $doliside => $appside) {
-			// dol_syslog(get_class($this) . " call : $doliside => $appside for " . json_encode($doliMapClass->fields));
+			// dol_syslog(get_class($this) . " _objectDesc : $doliside => $appside for " . get_class($this->_dolmapping));
 			//note : foreign key detect, could be done thanks to dolibarr name plan (prefix fk_)
 			//but it's better to do it in propertiesFilter function
-			if (isset($this->_dolmapping)) {
+			if (substr($doliside, 0, 8) == "options_") {
+				// dol_syslog(get_class($this) . " _objectDesc : do not call propertiesFilter for that extrafield");
+				continue;
+			}
+			if (isset($this->_dolmapping) && !empty($this->_dolmapping)) {
+				// dol_syslog(get_class($this) . " _objectDesc : call propertiesFilter ...");
 				$obj->$appside = $this->_dolmapping->propertiesFilter($doliBaseClass->fields[$doliside], $doliside, $appside);
 			}
 			//TODO
@@ -91,17 +102,19 @@ trait dmTrait
 			// }
 		}
 
-		//les extrafields
+		//then all official extrafields listed in object definition (for enhanced objects)
 		$extrafields = new \ExtraFields($this->_db);
 		//TODO CHECK
 		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields ?? '';
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
+		// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter for element=" . $parentElementToUseForExtraFields . ", soit " . json_encode($listExtra));
 		foreach ($listExtra as $extra) {
 			//search for mapping
 			$appside = $this->_listOfPublishedFields["options_" . $extra];
 			if (trim($appside == '')) {
 				$appside = $extra;
 			}
+			// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter ...");
 			$obj->$appside = $this->_dolmapping->extrafieldsFilter($parentElementToUseForExtraFields, $extra, $appside, $extrafields);
 		}
 
@@ -189,6 +202,8 @@ trait dmTrait
 	{
 		global $conf, $langs;
 
+		// dol_syslog("Ask exportExtrafieldData for name=$name, objectid=$objectid");
+
 		$doliMapClass = new $this->_dolmapclassname($this->_db);
 		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
 		if (empty($parentElementToUseForExtraFields)) {
@@ -200,12 +215,14 @@ trait dmTrait
 		if ($resql) {
 			$obj = $this->_db->fetch_object($resql);
 			$param = jsonOrUnserialize($obj->param);
+			//a:1:{s:7:"options";a:1:{s:44:"c_smartinterventions_status:label:code::code";N;}}
+			// dol_syslog("Ask exportExtrafieldData for $name, param is " . json_encode($param));
 			//TODO implement all dolibarr possibilites :-)
 			if (isset($param['options'])) {
 				$param_list = array_keys($param['options']);
 				$InfoFieldList = explode(":", $param_list[0]);
 
-				if (strpos($param_list[0],'class.php')) {
+				if (strpos($param_list[0], 'class.php')) {
 					$classname = $InfoFieldList[0];
 					$classpath = $InfoFieldList[1];
 					dol_syslog("############ classname=$classname, classpath=$classpath");
@@ -221,7 +238,6 @@ trait dmTrait
 							}
 						}
 					}
-
 				}
 
 				// dol_syslog("************* " . json_encode($InfoFieldList));
@@ -234,6 +250,7 @@ trait dmTrait
 				// 4 : where clause filter on column or table extrafield, syntax field='value' or extra.field=value
 				// 5 : id category type
 				// 6 : ids categories list separated by comma for category root
+				// example c_smartinterventions_status:label:code::code
 				$keyList = (empty($InfoFieldList[2]) ? 'rowid' : $InfoFieldList[2] . ' as rowid');
 
 				$idfieldname = $InfoFieldList[2] ?? "rowid";
@@ -258,6 +275,7 @@ trait dmTrait
 						$filter_categorie = true;
 					}
 				}
+				// dol_syslog("Ask exportExtrafieldData (1) for name=$name, objectid=$objectid");
 
 				// dol_syslog("************* " . json_encode($keyList));
 				if ($filter_categorie === false) {
@@ -267,6 +285,8 @@ trait dmTrait
 						$keyList .= implode(', ', $fields_label);
 					}
 
+
+					// dol_syslog("Ask exportExtrafieldData (2) for name=$name, objectid=$objectid");
 					$sqlwhere = '';
 					$sql = "SELECT " . $keyList;
 					$sql .= ' FROM ' . $this->_db->prefix() . $InfoFieldList[0];
@@ -291,6 +311,7 @@ trait dmTrait
 							$sql .= ' as main, ' . $this->_db->prefix() . $InfoFieldList[0] . '_extrafields as extra';
 							$sqlwhere .= " WHERE extra.fk_object=main." . $InfoFieldList[2] . " AND " . $InfoFieldList[4];
 						} else {
+							// dol_syslog("Ask exportExtrafieldData (5) where for name=$name, objectid=$objectid");
 							$sqlwhere .= " WHERE " . $InfoFieldList[4];
 						}
 					} else {
@@ -303,7 +324,7 @@ trait dmTrait
 					$sql .= $sqlwhere;
 					//print $sql;
 
-					dol_syslog(get_class($this) . '::exportExtrafieldData type=', LOG_DEBUG);
+					// dol_syslog("Ask exportExtrafieldData (3) for name=$name, objectid=$objectid :: where=$sqlwhere");
 					$resql = $this->_db->query($sql);
 					if ($resql) {
 						$obj = $this->_db->fetch_object($resql);

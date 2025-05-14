@@ -172,8 +172,11 @@ class dmHelper
 				case "ip":
 					$ret['type'] = "varchar";
 					break;
+				case "text":
+					$ret['type'] = "text";
+					break;
 				default:
-					$ret['type'] = "";
+					// $ret['type'] = "";
 					break;
 			}
 		}
@@ -183,7 +186,7 @@ class dmHelper
 
 	/**
 	 * convert dolibarr visible code to smart* values
-	 * 
+	 *
 	 *	0=Not visible
 	 *	1=Visible on list and create/update/view forms
 	 *	2=Visible on list only
@@ -216,16 +219,18 @@ class dmHelper
 	 * filter all dolibarr properties to make beautifull objects
 	 * definitions for smart app
 	 *
-	 * @param   [type]  $array  [$array description]
+	 * @param   [type]  $input     [$input description]
+	 * @param   [type]  $dolikey   [$dolikey description]
+	 * @param   [type]  $frontkey  [$frontkey description]
 	 *
-	 * @return  [type]          [return description]
+	 * @return  [type]             [return description]
 	 */
 	public function propertiesFilter($input, $dolikey = null, $frontkey = null)
 	{
 		global $langs;
 		$langs->loadLangs(array('companies', 'smartinterventions'));
 
-		// dol_syslog("call propertiesFilter on $dolikey / $frontkey :: " . json_encode($input));
+		// dol_syslog("call propertiesFilter on $dolikey / $frontkey for input" . json_encode($input));
 		$ret = [];
 		$type = $label = '';
 
@@ -272,9 +277,11 @@ class dmHelper
 	public function extrafieldsFilter($objectElement, $dolikey, $frontkey, $extrafields)
 	{
 		global $langs;
-
+		// dol_syslog("dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey");
 		//TODO mapping + RO/RW
 		$ret = [];
+
+
 		foreach ($this->_mappingExtrafieldsAttributes as $dolattr => $appattr) {
 			$val = $extrafields->attributes[$objectElement][$dolattr][str_replace('options_', '', $dolikey)];
 			if ($dolattr == "label" && is_string($val)) {
@@ -299,6 +306,18 @@ class dmHelper
 			// } else {
 			$ret[$appattr] = $val;
 			// }
+		}
+
+		//race condition for new type(not yet available into dolibarr core)
+		//for that the solution is to use a special prefix for fields like "photo_"
+		//then we convert it into application type like doc :
+		//https://inligit.fr/cap-rel/dolibarr/plugin-smartinterventions/-/wikis/home
+		$mapNew = ['photo_' => 'photos', 'audio_' => 'audios', 'video_' => 'videos', 'file_' => 'files', 'signature_' => 'signature'];
+		foreach ($mapNew as $dolside => $appside) {
+			if (substr($dolikey, 0, strlen($dolside)) == $dolside) {
+				$ret['type'] = $appside;
+				$ret['visible'] = ["create", "update", "read"];
+			}
 		}
 
 		// print " pour $objectElement  / $dolikey :: " . json_encode($extrafields->attributes[$objectElement]['label'][$dolikey]);
