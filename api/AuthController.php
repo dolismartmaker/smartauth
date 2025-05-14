@@ -32,7 +32,7 @@ use User;
 class AuthController
 {
 	/**
-	 * @api {get} /login List of dolibarr entities
+	 * @api {get} /index List of dolibarr entities
 	 * @apiName GetLogin
 	 * @apiGroup Auth
 	 *
@@ -48,6 +48,26 @@ class AuthController
 		$ret = [
 			'data' => [
 				'entities' => $this->_api_GetListOfEntities(),
+			]
+		];
+		return ([$ret, 200]);
+	}
+
+	/**
+	 * @api {get} /ping check if your token is valid
+	 * @apiName GetLogin
+	 * @apiGroup Auth
+	 *
+	 * @apiSuccess {Array} entities array of dolibarr available entities
+	 *
+	 * @apiDescription Check if your token is already valid
+	 */
+	public function ping($arr = null)
+	{
+		dol_syslog("Debug smartauth::AuthController : ping");
+		$ret = [
+			'data' => [
+				'token' => 'success',
 			]
 		];
 		return ([$ret, 200]);
