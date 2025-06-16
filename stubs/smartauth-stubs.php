@@ -5,7 +5,7 @@ namespace SmartAuth\Api {
     class AuthController
     {
         /**
-         * @api {get} /login List of dolibarr entities
+         * @api {get} /index List of dolibarr entities
          * @apiName GetLogin
          * @apiGroup Auth
          *
@@ -16,6 +16,18 @@ namespace SmartAuth\Api {
          * if your dolibarr use multicompany module
          */
         public function index($arr = null)
+        {
+        }
+        /**
+         * @api {get} /ping check if your token is valid
+         * @apiName GetLogin
+         * @apiGroup Auth
+         *
+         * @apiSuccess {Array} entities array of dolibarr available entities
+         *
+         * @apiDescription Check if your token is already valid
+         */
+        public function ping($arr = null)
         {
         }
         /**
@@ -38,7 +50,6 @@ namespace SmartAuth\Api {
          * @apiSuccessExample {json} Success-Response:
          * HTTP/1.1 200 OK
          * {
-         *     "statusCode": 200,
          *     "data": {
          *         "user": "eric@cap-rel.fr",
          *         "userid": "3",
