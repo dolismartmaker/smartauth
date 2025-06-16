@@ -48,6 +48,7 @@ $listOfModuleContent = [
 	'sql',
 	'tpl',
 	'vendor',
+	'dolMapping',
 	'*.md',
 	'*.json',
 	'*.lock',
