@@ -102,6 +102,8 @@ $item->defaultFieldValue = '30';
 
 $item = $formSetup->newItem('SMARTAUTH_DEFAULT_USER')->setAsSelectUser();
 
+$item = $formSetup->newItem('SMARTAUTH_COLLECT_LOGS')->setAsYesNo();
+
 
 // // HTTP HOST
 // $item = $formSetup->newItem('NO_PARAM_JUST_TEXT');

@@ -232,6 +232,11 @@ class RouteController
 	{
 		global $db, $smartAuthAppID;
 
+		//logs disabled
+		if(getDolGlobalString('SMARTAUTH_COLLECT_LOGS') == '') {
+			return;
+		}
+
 		$arr = [
 			'fk_key' => $keyid,
 			'appuid' => $smartAuthAppID,
