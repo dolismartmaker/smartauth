@@ -18,7 +18,7 @@
 
 /**
  *   	\file       logs_list.php
- *		\ingroup    obapi
+ *		\ingroup    smartauth
  *		\brief      List page for logs
  */
 
@@ -82,10 +82,10 @@ require_once DOL_DOCUMENT_ROOT.'/core/lib/company.lib.php';
 require_once __DIR__.'/class/logs.class.php';
 
 // for other modules
-dol_include_once('/obapi/lib/obapi.lib.php');
+dol_include_once('/smartauth/lib/smartauth.lib.php');
 
 // Load translation files required by the page
-$langs->loadLangs(array("obapi@obapi", "other"));
+$langs->loadLangs(array("smartauth@smartauth", "other"));
 
 $action     = GETPOST('action', 'aZ09') ? GETPOST('action', 'aZ09') : 'view'; // The action 'create'/'add', 'edit'/'update', 'view', ...
 $massaction = GETPOST('massaction', 'alpha'); // The bulk action (combo box choice into lists)
@@ -117,7 +117,7 @@ $pagenext = $page + 1;
 // Initialize technical objects
 $object = new Logs($db);
 $extrafields = new ExtraFields($db);
-$diroutputmassaction = $conf->obapi->dir_output.'/temp/massgeneration/'.$user->id;
+$diroutputmassaction = $conf->smartauth->dir_output.'/temp/massgeneration/'.$user->id;
 $hookmanager->initHooks(array($contextpage)); 	// Note that conf->hooks_modules contains array of activated contexes
 
 // Fetch optionals attributes and labels
@@ -189,9 +189,9 @@ $arrayfields = dol_sort_array($arrayfields, 'position');
 // Set $enablepermissioncheck to 1 to enable a minimum low level of checks
 $enablepermissioncheck = 0;
 if ($enablepermissioncheck) {
-	$permissiontoread = $user->hasRight('obapi', 'logs', 'read');
-	$permissiontoadd = $user->hasRight('obapi', 'logs', 'write');
-	$permissiontodelete = $user->hasRight('obapi', 'logs', 'delete');
+	$permissiontoread = $user->hasRight('smartauth', 'logs', 'read');
+	$permissiontoadd = $user->hasRight('smartauth', 'logs', 'write');
+	$permissiontodelete = $user->hasRight('smartauth', 'logs', 'delete');
 } else {
 	$permissiontoread = 1;
 	$permissiontoadd = 1;
@@ -204,8 +204,8 @@ if ($user->socid > 0) accessforbidden();
 //$socid = 0; if ($user->socid > 0) $socid = $user->socid;
 //$isdraft = (($object->status == $object::STATUS_DRAFT) ? 1 : 0);
 //restrictedArea($user, $object->module, 0, $object->table_element, $object->element, 'fk_soc', 'rowid', $isdraft);
-if (!isModEnabled("obapi")) {
-	accessforbidden('Module obapi not enabled');
+if (!isModEnabled("smartauth")) {
+	accessforbidden('Module smartauth not enabled');
 }
 if (!$permissiontoread) accessforbidden();
 
@@ -252,7 +252,7 @@ if (empty($reshook)) {
 	// Mass actions
 	$objectclass = 'Logs';
 	$objectlabel = 'Logs';
-	$uploaddir = $conf->obapi->dir_output;
+	$uploaddir = $conf->smartauth->dir_output;
 	include DOL_DOCUMENT_ROOT.'/core/actions_massactions.inc.php';
 
 	// You can add more action here
@@ -269,7 +269,7 @@ $form = new Form($db);
 
 $now = dol_now();
 
-$title = $langs->trans("OBAPI Logs");
+$title = $langs->trans("SmartAuth API Logs");
 //$help_url = "EN:Module_Logs|FR:Module_Logs_FR|ES:Módulo_Logs";
 $help_url = '';
 $morejs = array();
@@ -414,7 +414,7 @@ $num = $db->num_rows($resql);
 if ($num == 1 && getDolGlobalInt('MAIN_SEARCH_DIRECT_OPEN_IF_ONLY_ONE') && $search_all && !$page) {
 	$obj = $db->fetch_object($resql);
 	$id = $obj->rowid;
-	header("Location: ".dol_buildpath('/obapi/logs_card.php', 1).'?id='.((int) $id));
+	header("Location: ".dol_buildpath('/smartauth/logs_card.php', 1).'?id='.((int) $id));
 	exit;
 }
 
@@ -510,7 +510,7 @@ $newcardbutton = '';
 $newcardbutton .= dolGetButtonTitle($langs->trans('ViewList'), '', 'fa fa-bars imgforviewmode', $_SERVER["PHP_SELF"].'?mode=common'.preg_replace('/(&|\?)*mode=[^&]+/', '', $param), '', ((empty($mode) || $mode == 'common') ? 2 : 1), array('morecss'=>'reposition'));
 $newcardbutton .= dolGetButtonTitle($langs->trans('ViewKanban'), '', 'fa fa-th-list imgforviewmode', $_SERVER["PHP_SELF"].'?mode=kanban'.preg_replace('/(&|\?)*mode=[^&]+/', '', $param), '', ($mode == 'kanban' ? 2 : 1), array('morecss'=>'reposition'));
 $newcardbutton .= dolGetButtonTitleSeparator();
-$newcardbutton .= dolGetButtonTitle($langs->trans('New'), '', 'fa fa-plus-circle', dol_buildpath('/obapi/logs_card.php', 1).'?action=create&backtopage='.urlencode($_SERVER['PHP_SELF']), '', $permissiontoadd);
+$newcardbutton .= dolGetButtonTitle($langs->trans('New'), '', 'fa fa-plus-circle', dol_buildpath('/smartauth/logs_card.php', 1).'?action=create&backtopage='.urlencode($_SERVER['PHP_SELF']), '', $permissiontoadd);
 
 print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sortorder, $massactionbutton, $num, $nbtotalofrecords, 'object_'.$object->picto, 0, $newcardbutton, '', $limit, 0, 0, 1);
 
@@ -554,7 +554,7 @@ if (!empty($moreforfilter)) {
 }
 
 $varpage = empty($contextpage) ? $_SERVER["PHP_SELF"] : $contextpage;
-$selectedfields = ($mode != 'kanban' ? $form->multiSelectArrayWithCheckbox('selectedfields', $arrayfields, $varpage, obapi_backport_getDolGlobalString('MAIN_CHECKBOX_LEFT_COLUMN', '')) : ''); // This also change content of $arrayfields
+$selectedfields = ($mode != 'kanban' ? $form->multiSelectArrayWithCheckbox('selectedfields', $arrayfields, $varpage, getDolGlobalString('MAIN_CHECKBOX_LEFT_COLUMN', '')) : ''); // This also change content of $arrayfields
 $selectedfields .= (count($arrayofmassactions) ? $form->showCheckAddButtons('checkforselect', 1) : '');
 
 print '<div class="div-table-responsive">'; // You can use div-table-responsive-no-min if you dont need reserved height for your table
