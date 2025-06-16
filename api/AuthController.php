@@ -170,16 +170,17 @@ class AuthController
 		global $db;
 		$user = $payload['user'];
 		if (!empty($payload['tokenid'])) {
-			//delete token from db
-			$sql = "DELETE ";
-			$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+			//soft delete token from db
+			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sql .= " SET status = -1 ";
+			$sql .= ", salt = 'xxxxxxxxxx' ";
 			$sql .= " WHERE rowid = " . (int) $payload['tokenid'];
-			dol_syslog("smartauth : delete token from db " . $sql);
+			dol_syslog("smartauth : disable token from db " . $sql);
 			$resql = $db->query($sql);
 			if ($resql) {
-				dol_syslog("smartauth : delete token from db success");
+				dol_syslog("smartauth : disable token from db success");
 			} else {
-				dol_syslog("smartauth : delete token from db error");
+				dol_syslog("smartauth : disable token from db error");
 			}
 		}
 
@@ -293,8 +294,9 @@ class AuthController
 
 		$keyid = $salt = '';
 		//remove all other token for that user and that app
-		$sql = "DELETE ";
-		$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " SET status = -1,";
+		$sql .= ", salt = 'xxxxxxxxxx' ";
 		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
 		$sql .= " AND fk_authid=" . (int) $uid;
 		$sql .= " AND auth_element='user'";
@@ -347,8 +349,9 @@ class AuthController
 
 		$keyid = $salt = '';
 		//remove all other token for that user and that app
-		$sql = "DELETE ";
-		$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " SET status = -1,";
+		$sql .= ", salt = 'xxxxxxxxxx' ";
 		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
 		$sql .= " AND fk_authid=" . (int) $socid;
 		$sql .= " AND auth_element='societe_account'";
