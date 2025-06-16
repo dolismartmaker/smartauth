@@ -359,7 +359,7 @@ class AuthController
 		$resql = $db->query($sql);
 		// dol_syslog("Debug smartauth : $sql ...");
 
-		$userobapi = $this->_FetchUserWithRights();
+		$useractions = $this->_FetchUserWithRights();
 
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
@@ -368,7 +368,7 @@ class AuthController
 
 		$sql = "INSERT ";
 		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $userobapi->id . "','" . (int) $socid . "','societe_account','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $useractions->id . "','" . (int) $socid . "','societe_account','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
 			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "mailing");
