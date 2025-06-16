@@ -1,4 +1,5 @@
 <?php
+
 /**
  * RouteController.php
  *
@@ -28,26 +29,60 @@ use User;
 
 class RouteController
 {
+	/**
+	 * get entry into routing table
+	 *
+	 * @param   [type] $targetAction      [$targetAction description]
+	 * @param   [type] $targetClass       [$targetClass description]
+	 * @param   [type] $redirectFunction  [$redirectFunction description]
+	 * @param   [type] $protected         [$protected description]
+	 * @param   false                     [ description]
+	 *
+	 * @return  [type]                    [return description]
+	 */
 	public static function get($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
-		return self::route('GET',$targetAction, $targetClass, $redirectFunction, $protected);
-	}
-
-	public static function post($targetAction, $targetClass, $redirectFunction, $protected = false)
-	{
-		return self::route('POST',$targetAction, $targetClass, $redirectFunction, $protected);
-	}
-
-	public static function put($targetAction, $targetClass, $redirectFunction, $protected = false)
-	{
-		return self::route('PUT',$targetAction, $targetClass, $redirectFunction, $protected);
+		return self::route('GET', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
 	/**
-	 * routage des appels sur l'api
+	 * post routing table
+	 *
+	 * @param   [type] $targetAction      [$targetAction description]
+	 * @param   [type] $targetClass       [$targetClass description]
+	 * @param   [type] $redirectFunction  [$redirectFunction description]
+	 * @param   [type] $protected         [$protected description]
+	 * @param   false                     [ description]
+	 *
+	 * @return  [type]                    [return description]
+	 */
+	public static function post($targetAction, $targetClass, $redirectFunction, $protected = false)
+	{
+		return self::route('POST', $targetAction, $targetClass, $redirectFunction, $protected);
+	}
+
+	/**
+	 * put routing table
+	 *
+	 * @param   [type] $targetAction      [$targetAction description]
+	 * @param   [type] $targetClass       [$targetClass description]
+	 * @param   [type] $redirectFunction  [$redirectFunction description]
+	 * @param   [type] $protected         [$protected description]
+	 * @param   false                     [ description]
+	 *
+	 * @return  [type]                    [return description]
+	 */
+	public static function put($targetAction, $targetClass, $redirectFunction, $protected = false)
+	{
+		return self::route('PUT', $targetAction, $targetClass, $redirectFunction, $protected);
+	}
+
+	/**
+	 * main routing mapper
 	 *
 	 * @param   [type]  $targetMethod      [$targetMethod description]
 	 * @param   [type]  $targetAction      [$targetAction description]
+	 * @param   [type]  $targetClass  	   [$targetClass description]
 	 * @param   [type]  $redirectFunction  [$redirectFunction description]
 	 * @param   [type]  $protected         [$protected description]
 	 *
@@ -119,7 +154,8 @@ class RouteController
 			$res = $user->fetch(0, $login, 0, 0, $entity);
 			if ($res <= 0) {
 				dol_syslog("Debug smartauth : route auth error : return 401");
-				json_reply('login error', 401);
+				RouteController::insertLogs($tokenid, 401, 'login error', $entity);
+				\json_reply('login error', 401);
 			}
 			$auth_socid = $user->socid;
 		}
@@ -130,7 +166,8 @@ class RouteController
 				dol_syslog("API Route buyer is loaded, is is " . $buyer->id);
 			} else {
 				dol_syslog("API Route buyer is NOT loaded !!!", LOG_ERR);
-				json_reply("error", 403);
+				RouteController::insertLogs($tokenid, 403, 'error', $entity);
+				\json_reply("error", 403);
 			}
 		}
 
@@ -141,7 +178,7 @@ class RouteController
 			try {
 				$payload['data'] = $data; //all data TODO to become deprecated due to $data[data][key] hard syntax to understand
 				//flat data array return as $key => $value
-				foreach($data as $key => $value) {
+				foreach ($data as $key => $value) {
 					$payload[$key] = $value;
 				}
 				$payload['user'] = $user;
@@ -150,12 +187,14 @@ class RouteController
 
 				//call function with payload
 				list($message, $code) = $class->$redirectFunction($payload);
-				json_reply($message, $code);
+				RouteController::insertLogs($tokenid, $code, $message, $entity);
+				\json_reply($message, $code);
 			} catch (Exception $e) {
 				dol_syslog("Debug smartauth : route exception : " . json_encode($e), LOG_ERR);
 			}
 		}
-		json_reply("error", 403);
+		RouteController::insertLogs($tokenid, 403, 'error', $entity);
+		\json_reply("error", 403);
 	}
 
 	private function _getAuthorizationHeader()
@@ -175,5 +214,45 @@ class RouteController
 		}
 
 		return $headers;
+	}
+
+
+	/**
+	 * add entries into logs database
+	 *
+	 * @param   [type]  $keyid    [$keyid description]
+	 * @param   [type]  $status   [$status description]
+	 * @param   [type]  $message  [$message description]
+	 * @param   [type]  $entity   [$entity description]
+	 * @param   [type]  $element  [$element description]
+	 *
+	 * @return  [type]            [return description]
+	 */
+	public static function insertLogs($keyid, $status, $message = "", $entity = 0, $element = "")
+	{
+		global $db, $smartAuthAppID;
+
+		$arr = [
+			'fk_key' => $keyid,
+			'appuid' => $smartAuthAppID,
+			'entity' => $entity,
+			'dol_element' => $element,
+			'ip' => $_SERVER['REMOTE_ADDR'],
+			'method' => $_SERVER['REQUEST_METHOD'],
+			'http_status' => $status,
+			'bytes_sent' => strlen(serialize($message)),
+			'content_type' => "json",
+			'url_requested' => preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI']),
+			'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+			'referer' => $_SERVER['HTTP_REFERER'],
+		];
+		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_logs (";
+		$sql .= implode(',', array_keys($arr));
+		$sql .= ") VALUES ('" . implode("','", array_values($arr)) . "')";
+		try {
+			$resql = $db->query($sql);
+		} catch (Exception $e) {
+			dol_syslog("Erreur SQL : " . $e->getMessage());
+		}
 	}
 }
