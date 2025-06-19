@@ -236,7 +236,7 @@ class dmHelper
 
 		if (is_array($input)) {
 			foreach ($input as $key => $val) {
-				if (!in_array($key, $this->_mappingAttributes)) {
+				if (!in_array($key, array_keys($this->_mappingAttributes))) {
 					continue;
 				}
 				if ($key == "label") {
@@ -257,7 +257,9 @@ class dmHelper
 						$ret[$k] = $v;
 					}
 				} else {
-					$ret[$key] = $val;
+					//use front key name from correspondance table mapping
+					$frontkey = $this->_mappingAttributes[$key];
+					$ret[$frontkey] = $val;
 				}
 			}
 		}
