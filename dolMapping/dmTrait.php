@@ -108,14 +108,14 @@ trait dmTrait
 		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields ?? '';
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
 		// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter for element=" . $parentElementToUseForExtraFields . ", soit " . json_encode($listExtra));
-		foreach ($listExtra as $extra) {
+		foreach ($listExtra as $extrakey => $extralabel) {
 			//search for mapping
-			$appside = $this->_listOfPublishedFields["options_" . $extra];
+			$appside = $this->_listOfPublishedFields["options_" . $extrakey];
 			if (trim($appside == '')) {
-				$appside = $extra;
+				$appside = $extrakey;
 			}
 			// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter ...");
-			$obj->$appside = $this->_dolmapping->extrafieldsFilter($parentElementToUseForExtraFields, $extra, $appside, $extrafields);
+			$obj->$appside = $this->_dolmapping->extrafieldsFilter($parentElementToUseForExtraFields, $extrakey, $appside, $extrafields);
 		}
 
 		if (isset($this->_dolmapping)) {
