@@ -120,6 +120,7 @@ class RouteController
 		if ($method == "POST" || $method == "PUT") {
 			$txt = file_get_contents('php://input');
 			$data = json_decode($txt, true);
+			dol_syslog("Route method is post, raw data is decoded as json " . json_encode($data));
 		} elseif ($method == "GET") {
 			//parse query string and add values to data object
 			foreach ($_GET as $key => $value) {
@@ -175,8 +176,10 @@ class RouteController
 		if ($method == $targetMethod) {
 			dol_syslog("API Route match, call class $targetClass and function $redirectFunction...");
 			$class = new $targetClass();
+			$payload = [];
 			try {
-				$payload['data'] = $data; //all data TODO to become deprecated due to $data[data][key] hard syntax to understand
+				//TODO to become deprecated due to $data[data][key] hard syntax to understand
+				$payload['data'] = $data;
 				//flat data array return as $key => $value
 				foreach ($data as $key => $value) {
 					$payload[$key] = $value;
@@ -220,11 +223,11 @@ class RouteController
 	/**
 	 * add entries into logs database
 	 *
-	 * @param   [type]  $keyid    [$keyid description]
-	 * @param   [type]  $status   [$status description]
-	 * @param   [type]  $message  [$message description]
-	 * @param   [type]  $entity   [$entity description]
-	 * @param   [type]  $element  [$element description]
+	 * @param   [type]  $keyid    token id used for that request
+	 * @param   [type]  $status   http status code
+	 * @param   [type]  $message  message
+	 * @param   [type]  $entity   dolibarr entity
+	 * @param   [type]  $element  dolibarr element
 	 *
 	 * @return  [type]            [return description]
 	 */
@@ -233,31 +236,35 @@ class RouteController
 		global $db, $smartAuthAppID;
 
 		//logs disabled
-		if(getDolGlobalString('SMARTAUTH_COLLECT_LOGS') == '') {
+		if (getDolGlobalString('SMARTAUTH_COLLECT_LOGS') == '') {
 			return;
 		}
 
-		$arr = [
-			'fk_key' => $keyid,
-			'appuid' => $smartAuthAppID,
-			'entity' => $entity,
-			'dol_element' => $element,
-			'ip' => $_SERVER['REMOTE_ADDR'],
-			'method' => $_SERVER['REQUEST_METHOD'],
-			'http_status' => $status,
-			'bytes_sent' => strlen(serialize($message)),
-			'content_type' => "json",
-			'url_requested' => preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI']),
-			'user_agent' => $_SERVER['HTTP_USER_AGENT'],
-			'referer' => $_SERVER['HTTP_REFERER'],
-		];
-		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_logs (";
-		$sql .= implode(',', array_keys($arr));
-		$sql .= ") VALUES ('" . implode("','", array_values($arr)) . "')";
-		try {
-			$resql = $db->query($sql);
-		} catch (Exception $e) {
-			dol_syslog("Erreur SQL : " . $e->getMessage());
+		if (!empty($keyid)) {
+			$arr = [
+				'fk_key' => $keyid,
+				'appuid' => $smartAuthAppID,
+				'entity' => $entity,
+				'dol_element' => $element,
+				'ip' => $_SERVER['REMOTE_ADDR'],
+				'method' => $_SERVER['REQUEST_METHOD'],
+				'http_status' => $status,
+				'bytes_sent' => strlen(serialize($message)),
+				'content_type' => "json",
+				'url_requested' => preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI']),
+				'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+				'referer' => $_SERVER['HTTP_REFERER'],
+			];
+			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_logs (";
+			$sql .= implode(',', array_keys($arr));
+			$sql .= ") VALUES ('" . implode("','", array_values($arr)) . "')";
+			try {
+				$resql = $db->query($sql);
+			} catch (Exception $e) {
+				dol_syslog("Erreur SQL : " . $e->getMessage());
+			}
+		} else {
+			dol_syslog("Can't log because of empty key id !");
 		}
 	}
 }
