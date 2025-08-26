@@ -296,7 +296,7 @@ class AuthController
 		//remove all other token for that user and that app
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
 		$sql .= " SET status = -1,";
-		$sql .= ", salt = 'xxxxxxxxxx' ";
+		$sql .= " salt = 'xxxxxxxxxx' ";
 		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
 		$sql .= " AND fk_authid=" . (int) $uid;
 		$sql .= " AND auth_element='user'";
