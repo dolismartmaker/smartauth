@@ -128,20 +128,54 @@ namespace SmartAuth\Api {
     }
     class RouteController
     {
+        /**
+         * get entry into routing table
+         *
+         * @param   [type] $targetAction      [$targetAction description]
+         * @param   [type] $targetClass       [$targetClass description]
+         * @param   [type] $redirectFunction  [$redirectFunction description]
+         * @param   [type] $protected         [$protected description]
+         * @param   false                     [ description]
+         *
+         * @return  [type]                    [return description]
+         */
         public static function get($targetAction, $targetClass, $redirectFunction, $protected = false)
         {
         }
+        /**
+         * post routing table
+         *
+         * @param   [type] $targetAction      [$targetAction description]
+         * @param   [type] $targetClass       [$targetClass description]
+         * @param   [type] $redirectFunction  [$redirectFunction description]
+         * @param   [type] $protected         [$protected description]
+         * @param   false                     [ description]
+         *
+         * @return  [type]                    [return description]
+         */
         public static function post($targetAction, $targetClass, $redirectFunction, $protected = false)
         {
         }
+        /**
+         * put routing table
+         *
+         * @param   [type] $targetAction      [$targetAction description]
+         * @param   [type] $targetClass       [$targetClass description]
+         * @param   [type] $redirectFunction  [$redirectFunction description]
+         * @param   [type] $protected         [$protected description]
+         * @param   false                     [ description]
+         *
+         * @return  [type]                    [return description]
+         */
         public static function put($targetAction, $targetClass, $redirectFunction, $protected = false)
         {
         }
         /**
-         * routage des appels sur l'api
+         * main routing mapper
          *
          * @param   [type]  $targetMethod      [$targetMethod description]
          * @param   [type]  $targetAction      [$targetAction description]
+         * @param   [type]  $targetClass  	   [$targetClass description]
          * @param   [type]  $redirectFunction  [$redirectFunction description]
          * @param   [type]  $protected         [$protected description]
          *
@@ -151,6 +185,20 @@ namespace SmartAuth\Api {
         {
         }
         private function _getAuthorizationHeader()
+        {
+        }
+        /**
+         * add entries into logs database
+         *
+         * @param   [type]  $keyid    token id used for that request
+         * @param   [type]  $status   http status code
+         * @param   [type]  $message  message
+         * @param   [type]  $entity   dolibarr entity
+         * @param   [type]  $element  dolibarr element
+         *
+         * @return  [type]            [return description]
+         */
+        public static function insertLogs($keyid, $status, $message = "", $entity = 0, $element = "")
         {
         }
     }
