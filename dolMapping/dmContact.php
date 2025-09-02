@@ -45,7 +45,8 @@ class dmContact
 		'email' 			=> 'email',
 		'note_public' 		=> 'note_public',
 		'note_private' 		=> 'note_private',
-		'fk_soc'            => 'customer'
+		'fk_soc'            => 'customer',
+		'fk_c_type_contact' => 'type_contact',
 	];
 
 	/**
