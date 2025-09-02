@@ -20,7 +20,7 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-class dmBase
+abstract class dmBase
 {
     private $_type;
 
@@ -67,7 +67,7 @@ class dmBase
      *
      * @var array
      */
-    private $_listOfPublishedFields;
+    protected $_listOfPublishedFields;
 
     /**
      * name of class for lines, for exemple FichinterLigne or InventoryLine
