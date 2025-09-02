@@ -23,7 +23,7 @@ namespace SmartAuth\DolibarrMapping;
 
 require_once DOL_DOCUMENT_ROOT . '/core/class/ccountry.class.php';
 
-class dmCcountry
+class dmCcountry extends dmBase
 {
 	use dmTrait;
 

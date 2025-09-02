@@ -20,7 +20,7 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-class dmFichinter
+class dmFichinter extends dmBase
 {
 	use dmTrait;
 

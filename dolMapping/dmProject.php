@@ -20,7 +20,7 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-class dmProject
+class dmProject extends dmBase
 {
 	use dmTrait;
 

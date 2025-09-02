@@ -23,7 +23,7 @@ namespace SmartAuth\DolibarrMapping;
 
 require_once DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php';
 
-class dmContact
+class dmContact extends dmBase
 {
 	use dmTrait;
 
