@@ -41,6 +41,7 @@ class dmHelper
 		'length' 			=> 'max',
 		'position' 			=> 'position',
 		'options' 			=> 'options',
+		'logo'				=> 'logo',
 		// 'prefix' => 'prefix',
 		// 'suffix' => 'suffix',
 		// 'typeVariant' => 'typeVariant',
@@ -80,6 +81,13 @@ class dmHelper
 		// 'accept' => 'accept'
 	];
 
+	/**
+	 * Filter attribute type integer
+	 *
+	 * @param   [type]  $str  [$str description]
+	 *
+	 * @return  [type]        [return description]
+	 */
 	private function _customFilterAttributeTypeInteger($str)
 	{
 		global $db;
@@ -99,6 +107,13 @@ class dmHelper
 		return $ret;
 	}
 
+	/**
+	 * Filter attribute type list of selection
+	 *
+	 * @param   [type]  $str  [$str description]
+	 *
+	 * @return  [type]        [return description]
+	 */
 	private function _customFilterAttributeTypeSellist($str)
 	{
 		return [
@@ -214,6 +229,17 @@ class dmHelper
 		return $ret;
 	}
 
+	/**
+	 * contacts linked to dolibarr object
+	 *
+	 * @param   [type]  $val  [$val description]
+	 *
+	 * @return  [type]        [return description]
+	 */
+	private function _customFilterAttributeContacts($val)
+	{
+		dol_syslog(("dmHelper : call for _customFilterAttributeContacts ..."));
+	}
 
 	/**
 	 * filter all dolibarr properties to make beautifull objects
@@ -230,13 +256,14 @@ class dmHelper
 		global $langs;
 		$langs->loadLangs(array('companies', 'smartinterventions'));
 
-		// dol_syslog("call propertiesFilter on $dolikey / $frontkey for input" . json_encode($input));
+		// dol_syslog("call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
 		$ret = [];
 		$type = $label = '';
 
 		if (is_array($input)) {
 			foreach ($input as $key => $val) {
 				if (!in_array($key, array_keys($this->_mappingAttributes))) {
+					// dol_syslog("call propertiesFilter on $key => continue");
 					continue;
 				}
 				if ($key == "label") {
@@ -245,6 +272,7 @@ class dmHelper
 				}
 				//try to call a private function like _customFilterAttributeXXXXXXX (XXXX last part is dynamic)
 				$specialFilter = "_customFilterAttribute" . ucfirst($key);
+				// dol_syslog("call propertiesFilter on $dolikey start $specialFilter");
 				if (is_callable([$this, $specialFilter])) {
 					$r = call_user_func([$this, $specialFilter], $val);
 					// dol_syslog("call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));

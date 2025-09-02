@@ -162,11 +162,17 @@ trait dmTrait
 			}
 
 			// print json_encode($obj->array_options);//exit;
-			// dol_syslog(" ## dolisde=" . $doliside . " and appside=" . $appside);
+			// dol_syslog(" ## doliside=" . $doliside . " and appside=" . $appside);
 			// dol_syslog(" ## value on dolibarr object =" . $obj->$doliside ?? 'null');
 			if (!empty($obj->$doliside)) {
-				$mapped->$appside = $obj->$doliside;
-				//TODO if id from external table
+				//try to apply a function as data filter for example for logo to base64 encoded logo (Societe / dmSociete)
+				$user_function = "_fieldFilterValue" . ucfirst($doliside);
+				// dol_syslog("##### Call user function $user_function on object " . get_class($this));
+				if (is_callable([$this, $user_function])) {
+					$mapped->$appside = call_user_func([$this, $user_function], $obj, $obj->$doliside);
+				} else {
+					$mapped->$appside = $obj->$doliside;
+				}
 			}
 
 			//detect fk and push object into $mapped->$appside

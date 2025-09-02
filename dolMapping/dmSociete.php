@@ -44,7 +44,6 @@ class dmSociete
 		'logo' 				=> 'logo'
 	];
 
-
 	//		'fk_pays' =>array('type'=>'integer:Ccountry:core/class/ccountry.class.php', 'label'=>'Country', 'enabled'=>1, 'visible'=>-1, 'position'=>95),
 
 	/**
@@ -55,5 +54,33 @@ class dmSociete
 	public function __construct()
 	{
 		$this->boot();
+
+		dol_syslog("cacheDesc after is " . json_encode($this->_cacheDesc));
+	}
+
+
+	/**
+	 * logo is stored as varchar dolibarr side (file name) but app need a base64 encoded data
+	 *
+	 * @param   [type]  $societe  [dolibarr $societe]
+	 *
+	 * @return  [type]        [return description]
+	 */
+	public function _fieldFilterValueLogo($societe)
+	{
+		global $conf;
+		// dol_syslog("##### dmHelper : call for _fieldFilterValueLogo for " . $societe->logo);
+		$dir     = $conf->societe->multidir_output[$societe->entity] . "/" . $societe->id . "/logos";
+		$logo = $dir . '/' . $societe->logo;
+		$logoBase64 = "";
+		if (file_exists($logo)) {
+			$type = pathinfo($logo, PATHINFO_EXTENSION);
+		} else {
+			$logo = dol_buildpath("/smartlivraisons/img/logo.png", 0);
+			$type = pathinfo($logo, PATHINFO_EXTENSION);
+		}
+		$logoBase64 = 'data:image/' . $type . ';base64,' . base64_encode(file_get_contents($logo));
+		// dol_syslog("##### dmHelper : returns " . strlen($logoBase64));
+		return $logoBase64;
 	}
 }
