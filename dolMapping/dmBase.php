@@ -29,21 +29,21 @@ abstract class dmBase
      *
      * @var string
      */
-    public $parentClassToUseForExtraFields;
+    protected $parentClassToUseForExtraFields;
 
     /**
      * parent element for example fichinter
      *
      * @var string
      */
-    public $parentElementToUseForExtraFields;
+    protected $parentElementToUseForExtraFields;
 
     /**
      * parent table name for example fichinter
      *
      * @var string
      */
-    public $parentTableElementToUseForExtraFields;
+    protected $parentTableElementToUseForExtraFields;
 
     /**
      * list of extrafields you want to push as read only on front side
@@ -52,14 +52,14 @@ abstract class dmBase
      *
      * @var array
      */
-    public $extrafieldsRO;
+    protected $extrafieldsRO;
 
     /**
      * same as $extrafieldsRO but in write, then people can set data into that extrafields
      *
      * @var array
      */
-    public $extrafieldsRW;
+    protected $extrafieldsRW;
 
     /**
      * list of fields you want to publish on front
@@ -74,7 +74,7 @@ abstract class dmBase
      *
      * @var string
      */
-    public $parentClassNameForLines;
+    protected $parentClassNameForLines;
 
     /**
      * label for "title of lines", for exemple on FichinterLigne lines title could be "History"
@@ -82,7 +82,7 @@ abstract class dmBase
      *
      * @var string
      */
-    public $parentLabelForLines;
+    protected $parentLabelForLines;
 
     /**
      * fields for lines like dolibarr publish for main object, for exemple FichinterLigne
@@ -90,7 +90,7 @@ abstract class dmBase
      *
      * @var array
      */
-    public $parentFieldsForLines;
+    protected $parentFieldsForLines;
 
 
     /**
