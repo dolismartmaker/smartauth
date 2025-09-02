@@ -75,6 +75,8 @@ trait dmTrait
 	 */
 	private function _objectDesc()
 	{
+		global $langs;
+
 		$doliBaseClass = new $this->_dolobjectclassname($this->_db);
 		// dol_syslog(get_class($this) . " _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
 
@@ -121,6 +123,33 @@ trait dmTrait
 		if (isset($this->_dolmapping)) {
 			$this->_listOfForeignKeys = $this->_dolmapping->getListOfForeignKeys();
 		}
+
+		//then lines if needed
+		if ($this->parentClassNameForLines != "") {
+			$lines = new \stdClass();
+			$lines->type = "repeater";
+			$lines->label = $langs->trans($this->parentLabelForLines);
+			$lines->visible = ["create", "update", "read"];
+
+			$doliBaseLineClass = new $this->parentClassNameForLines($this->_db);
+			foreach ($this->_listOfPublishedFieldsForLines as $doliside => $appside) {
+				// dol_syslog("call for parentClassNameForLines 2 ... : " . json_encode($this->parentFieldsForLines[$doliside]));
+				if (substr($doliside, 0, 8) == "options_") {
+					continue;
+				}
+
+				if (isset($this->parentFieldsForLines[$doliside]) && !empty($this->parentFieldsForLines[$doliside])) {
+					dol_syslog(get_class($this) . " _objectDesc : call propertiesFilterLine on line for $appside ...");
+					$lines->config->{$appside} = $this->_dolmapping->propertiesFilter($this->parentFieldsForLines[$doliside], $doliside, $appside);
+				}
+			}
+
+			$obj->lines = $lines;
+		}
+
+
+
+		//then "lines" if object is like fichinter / propal / invoice ...
 		return $obj;
 	}
 
