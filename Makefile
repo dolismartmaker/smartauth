@@ -3,10 +3,10 @@
 #
 SHELL = bash
 
+$(info using common Makefile)
+include Makefile.dist
+
 ifneq ("$(wildcard Makefile.local)","")
   $(info using Makefile.local)
   include Makefile.local
-else
-  $(info using common Makefile)
-  include Makefile.dist
 endif

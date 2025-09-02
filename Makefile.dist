@@ -49,3 +49,5 @@ stubs: api/*.php dolMapping/*.php
 		--out="stubs/dolmapping-stubs.php"
 	if [ ! -d /home/erics/dev/caprel-stubs/${MODULE} ]; then mkdir /home/erics/dev/caprel-stubs/${MODULE}; fi
 	cp -a stubs/* /home/erics/dev/caprel-stubs/${MODULE}
+	echo "stubs copied to /home/erics/dev/caprel-stubs/ please commit that repo !"
+
