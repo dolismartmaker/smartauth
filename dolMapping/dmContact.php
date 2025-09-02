@@ -27,10 +27,10 @@ class dmContact extends dmBase
 {
 	use dmTrait;
 
-	private $_type = "object";
+	protected $_type = "object";
 
 	//corresponding fields left dolibarr right front app
-	private $_listOfPublishedFields = [
+	protected $_listOfPublishedFields = [
 		'rowid' 			=> 'rowid',
 		'civility' 			=> 'civility',
 		'lastname' 			=> 'lastname',

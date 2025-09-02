@@ -22,7 +22,7 @@ namespace SmartAuth\DolibarrMapping;
 
 abstract class dmBase
 {
-    private $_type;
+    protected $_type;
 
     /**
      * name of class where you can find extrafields for that object for example Fichinter
@@ -99,5 +99,5 @@ abstract class dmBase
      *
      * @var array
      */
-    private $_listOfPublishedFieldsForLines;
+    protected $_listOfPublishedFieldsForLines;
 }

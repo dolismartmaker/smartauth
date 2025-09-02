@@ -27,10 +27,10 @@ class dmCcountry extends dmBase
 {
 	use dmTrait;
 
-	private $_type = "dict";
+	protected $_type = "dict";
 
 	//corresponding fields left dolibarr right front app
-	private $_listOfPublishedFields = [
+	protected $_listOfPublishedFields = [
 		// 'rowid' 			=> 'rowid',
 		// 'code' 			    => 'code',
 		'label' 			=> 'label'
