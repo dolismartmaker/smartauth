@@ -20,7 +20,7 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-class dmSociete
+class dmSociete extends dmBase
 {
 	use dmTrait;
 
