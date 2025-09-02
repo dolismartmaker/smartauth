@@ -130,6 +130,7 @@ trait dmTrait
 			$lines->type = "repeater";
 			$lines->label = $langs->trans($this->parentLabelForLines);
 			$lines->visible = ["create", "update", "read"];
+			$lines->config = new \stdClass();
 
 			$doliBaseLineClass = new $this->parentClassNameForLines($this->_db);
 			foreach ($this->_listOfPublishedFieldsForLines as $doliside => $appside) {
