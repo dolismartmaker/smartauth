@@ -219,6 +219,21 @@ trait dmTrait
 				}
 			}
 		}
+
+		//export lines content
+		if(isset($obj->lines) && count($obj->lines) > 0) {
+			foreach($obj->lines as $line) {
+				$filteredline = new \stdClass;
+				//export only needed fields listed into _listOfPublishedFieldsForLines
+				foreach ($this->_listOfPublishedFieldsForLines as $doliside => $appside) {
+					$filteredline->$appside = $line->$doliside;
+				}
+				$mapped->lines[] = $filteredline;
+			}
+			//for debug get full line raw data
+			//$mapped->rawlines = $obj->lines;
+		}
+
 		return $mapped;
 	}
 
