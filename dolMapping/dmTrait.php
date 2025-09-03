@@ -31,7 +31,7 @@ trait dmTrait
 	private $_dolobjectclassname;
 	private $_db;
 
-	private $_listOfForeignKeys = [];
+	private $listOfForeignKeys = [];
 	private $_cacheDesc;
 
 	/**
@@ -107,7 +107,7 @@ trait dmTrait
 		//then all official extrafields listed in object definition (for enhanced objects)
 		$extrafields = new \ExtraFields($this->_db);
 		//TODO CHECK
-		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields ?? '';
+		$parentElementToUseForExtraFields = $this->_parentTableElementToUseForExtraFields ?? '';
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
 		// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter for element=" . $parentElementToUseForExtraFields . ", soit " . json_encode($listExtra));
 		foreach ($listExtra as $extrakey => $extralabel) {
@@ -125,23 +125,23 @@ trait dmTrait
 		}
 
 		//then lines if needed
-		if ($this->parentClassNameForLines != "") {
+		if ($this->_parentClassNameForLines != "") {
 			$lines = new \stdClass();
 			$lines->type = "repeater";
 			$lines->label = $langs->trans($this->parentLabelForLines);
 			$lines->visible = ["create", "update", "read"];
 			$lines->config = new \stdClass();
 
-			$doliBaseLineClass = new $this->parentClassNameForLines($this->_db);
+			$doliBaseLineClass = new $this->_parentClassNameForLines($this->_db);
 			foreach ($this->_listOfPublishedFieldsForLines as $doliside => $appside) {
-				// dol_syslog("call for parentClassNameForLines 2 ... : " . json_encode($this->parentFieldsForLines[$doliside]));
+				dol_syslog("call for _parentClassNameForLines 2 ... : " . json_encode($this->_parentFieldsForLines[$doliside]));
 				if (substr($doliside, 0, 8) == "options_") {
 					continue;
 				}
 
-				if (isset($this->parentFieldsForLines[$doliside]) && !empty($this->parentFieldsForLines[$doliside])) {
-					dol_syslog(get_class($this) . " _objectDesc : call propertiesFilterLine on line for $appside ...");
-					$lines->config->{$appside} = $this->_dolmapping->propertiesFilter($this->parentFieldsForLines[$doliside], $doliside, $appside);
+				if (isset($this->_parentFieldsForLines[$doliside]) && !empty($this->_parentFieldsForLines[$doliside])) {
+					// dol_syslog(get_class($this) . " _objectDesc : call propertiesFilterLine on line for $appside ...");
+					$lines->config->{$appside} = $this->_dolmapping->propertiesFilter($this->_parentFieldsForLines[$doliside], $doliside, $appside);
 				}
 			}
 
@@ -231,7 +231,7 @@ trait dmTrait
 				$mapped->lines[] = $filteredline;
 			}
 			//for debug get full line raw data
-			//$mapped->rawlines = $obj->lines;
+			$mapped->rawlines = $obj->lines;
 		}
 
 		return $mapped;
@@ -256,7 +256,7 @@ trait dmTrait
 		// dol_syslog("Ask exportExtrafieldData for name=$name, objectid=$objectid");
 
 		$doliMapClass = new $this->_dolmapclassname($this->_db);
-		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
+		$parentElementToUseForExtraFields = isset($doliMapClass->_parentTableElementToUseForExtraFields) ? $doliMapClass->_parentTableElementToUseForExtraFields : '';
 		if (empty($parentElementToUseForExtraFields)) {
 			return;
 		}

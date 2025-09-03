@@ -24,10 +24,10 @@ class dmContrat extends dmBase
 {
     use dmTrait;
 
-    protected $_type = "object";
+    protected $type = "object";
 
     //corresponding fields left dolibarr right front app
-    protected $_listOfPublishedFields = [
+    protected $listOfPublishedFields = [
 		'rowid' 			=> 'rowid',
         'ref'             => 'ref',
         'ref_customer'    => 'ref_customer',

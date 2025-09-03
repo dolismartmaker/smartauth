@@ -23,7 +23,7 @@ namespace SmartAuth\DolibarrMapping;
 
 class dmHelper
 {
-	private $_listOfForeignKeys = [];
+	private $listOfForeignKeys = [];
 
 	//dolibarr < - > application mapping for main attributes
 	private $_mappingAttributes = [
