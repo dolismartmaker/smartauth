@@ -362,7 +362,7 @@ class dmSociete extends \SmartAuth\DolibarrMapping\dmBase
      *
      * @return  [type]        [return description]
      */
-    public function _fieldFilterValueLogo($societe)
+    public function fieldFilterValueLogo($societe)
     {
     }
 }
