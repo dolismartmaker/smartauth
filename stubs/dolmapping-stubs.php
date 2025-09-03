@@ -3,13 +3,83 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+abstract class dmBase
+{
+    protected $type;
+    /**
+     * name of class where you can find extrafields for that object for example Fichinter
+     *
+     * @var string
+     */
+    protected $parentClassToUseForExtraFields;
+    /**
+     * parent element for example fichinter
+     *
+     * @var string
+     */
+    protected $parentElementToUseForExtraFields;
+    /**
+     * parent table name for example fichinter
+     *
+     * @var string
+     */
+    protected $parentTableElementToUseForExtraFields;
+    /**
+     * list of extrafields you want to push as read only on front side
+     * (that list should be set via module setup if you want to make that list
+     * dynamic for end users)
+     *
+     * @var array
+     */
+    protected $extrafieldsRO;
+    /**
+     * same as $extrafieldsRO but in write, then people can set data into that extrafields
+     *
+     * @var array
+     */
+    protected $extrafieldsRW;
+    /**
+     * list of fields you want to publish on front
+     * key is dolibarr field name, value is front field name
+     *
+     * @var array
+     */
+    protected $listOfPublishedFields;
+    /**
+     * name of class for lines, for exemple FichinterLigne or InventoryLine
+     *
+     * @var string
+     */
+    protected $parentClassNameForLines;
+    /**
+     * label for "title of lines", for exemple on FichinterLigne lines title could be "History"
+     * (note: that label will be translated thanks to internal dolibarr translation system)
+     *
+     * @var string
+     */
+    protected $parentLabelForLines;
+    /**
+     * fields for lines like dolibarr publish for main object, for exemple FichinterLigne
+     * FichinterLigne could not have ->fields then we have to do it in our "custom" object
+     *
+     * @var array
+     */
+    protected $parentFieldsForLines;
+    /**
+     * list of fields you want to publish on front for lines
+     * key is dolibarr field name, value is front field name
+     *
+     * @var array
+     */
+    protected $listOfPublishedFieldsForLines;
+}
 trait dmTrait
 {
     private $_dolmapping;
     private $_dolmapclassname;
     private $_dolobjectclassname;
     private $_db;
-    private $_listOfForeignKeys = [];
+    private $listOfForeignKeys = [];
     private $_cacheDesc;
     /**
      * object constructor
@@ -77,12 +147,12 @@ trait dmTrait
     {
     }
 }
-class dmCcountry
+class dmCcountry extends \SmartAuth\DolibarrMapping\dmBase
 {
     use \SmartAuth\DolibarrMapping\dmTrait;
-    private $_type = "dict";
+    protected $type = "dict";
     //corresponding fields left dolibarr right front app
-    private $_listOfPublishedFields = [
+    protected $listOfPublishedFields = [
         // 'rowid' 			=> 'rowid',
         // 'code' 			    => 'code',
         'label' => 'label',
@@ -96,12 +166,12 @@ class dmCcountry
     {
     }
 }
-class dmContact
+class dmContact extends \SmartAuth\DolibarrMapping\dmBase
 {
     use \SmartAuth\DolibarrMapping\dmTrait;
-    private $_type = "object";
+    protected $type = "object";
     //corresponding fields left dolibarr right front app
-    private $_listOfPublishedFields = ['rowid' => 'rowid', 'civility' => 'civility', 'lastname' => 'lastname', 'firstname' => 'firstname', 'address' => 'address', 'zip' => 'zip', 'town' => 'city', 'fk_departement' => 'departement', 'fk_pays' => 'country', 'phone' => 'phone', 'phone_mobile' => 'phone_mobile', 'email' => 'email', 'note_public' => 'note_public', 'note_private' => 'note_private', 'fk_soc' => 'customer'];
+    protected $listOfPublishedFields = ['rowid' => 'rowid', 'civility' => 'civility', 'lastname' => 'lastname', 'firstname' => 'firstname', 'address' => 'address', 'zip' => 'zip', 'town' => 'city', 'fk_departement' => 'departement', 'fk_pays' => 'country', 'phone' => 'phone', 'phone_mobile' => 'phone_mobile', 'email' => 'email', 'note_public' => 'note_public', 'note_private' => 'note_private', 'fk_soc' => 'customer', 'fk_c_type_contact' => 'type_contact'];
     /**
      * object constructor
      *
@@ -111,12 +181,12 @@ class dmContact
     {
     }
 }
-class dmProject
+class dmContrat extends \SmartAuth\DolibarrMapping\dmBase
 {
     use \SmartAuth\DolibarrMapping\dmTrait;
-    private $_type = "object";
+    protected $type = "object";
     //corresponding fields left dolibarr right front app
-    private $_listOfPublishedFields = ['rowid' => 'rowid', 'ref' => 'ref', 'ref_customer' => 'ref_customer', 'ref_supplier' => 'ref_supplier', 'date_c' => 'date_c', 'date_contrat' => 'date_contrat', 'fk_soc' => 'fk_soc', 'fk_projet' => 'fk_projet', 'note_public' => 'note_public', 'note_private' => 'note_private'];
+    protected $listOfPublishedFields = ['rowid' => 'rowid', 'ref' => 'ref', 'ref_customer' => 'ref_customer', 'ref_supplier' => 'ref_supplier', 'date_c' => 'date_c', 'date_contrat' => 'date_contrat', 'fk_soc' => 'fk_soc', 'fk_projet' => 'fk_projet', 'note_public' => 'note_public', 'note_private' => 'note_private'];
     //		'fk_pays' =>array('type'=>'integer:Ccountry:core/class/ccountry.class.php', 'label'=>'Country', 'enabled'=>1, 'visible'=>-1, 'position'=>95),
     /**
      * object constructor
@@ -127,12 +197,12 @@ class dmProject
     {
     }
 }
-class dmFichinter
+class dmFichinter extends \SmartAuth\DolibarrMapping\dmBase
 {
     use \SmartAuth\DolibarrMapping\dmTrait;
-    private $_type = "object";
+    protected $type = "object";
     //corresponding fields left dolibarr right front app
-    private $_listOfPublishedFields = ['rowid' => 'rowid', 'ref' => 'ref', 'ref_client' => 'ref_client', 'datei' => 'datei', 'description' => 'description', 'note_public' => 'note_public', 'note_private' => 'note_private'];
+    protected $listOfPublishedFields = ['rowid' => 'rowid', 'ref' => 'ref', 'ref_client' => 'ref_client', 'datei' => 'datei', 'description' => 'description', 'note_public' => 'note_public', 'note_private' => 'note_private'];
     //		'fk_pays' =>array('type'=>'integer:Ccountry:core/class/ccountry.class.php', 'label'=>'Country', 'enabled'=>1, 'visible'=>-1, 'position'=>95),
     /**
      * object constructor
@@ -145,14 +215,28 @@ class dmFichinter
 }
 class dmHelper
 {
-    private $_listOfForeignKeys = [];
+    private $listOfForeignKeys = [];
     //dolibarr < - > application mapping for main attributes
-    private $_mappingAttributes = ['type' => 'type', 'label' => 'label', 'placeholder' => 'placeholder', 'help' => 'help', 'picto' => 'icon', 'default' => 'defaultValue', 'copytoclipboard' => 'hasCopyButton', 'notnull' => 'required', 'noteditable' => 'readOnly', 'disabled' => 'disabled', 'visible' => 'visible', 'length' => 'max', 'position' => 'position', 'options' => 'options'];
+    private $_mappingAttributes = ['type' => 'type', 'label' => 'label', 'placeholder' => 'placeholder', 'help' => 'help', 'picto' => 'icon', 'default' => 'defaultValue', 'copytoclipboard' => 'hasCopyButton', 'notnull' => 'required', 'noteditable' => 'readOnly', 'disabled' => 'disabled', 'visible' => 'visible', 'length' => 'max', 'position' => 'position', 'options' => 'options', 'logo' => 'logo'];
     //dolibarr < - > application mapping for extrafields attributes
     private $_mappingExtrafieldsAttributes = ['type' => 'type', 'label' => 'label', 'placeholder' => 'placeholder', 'help' => 'help', 'picto' => 'icon', 'default' => 'defaultValue', 'copytoclipboard' => 'hasCopyButton', 'required' => 'required', 'noteditable' => 'readOnly', 'visible' => 'visible', 'size' => 'max', 'pos' => 'position', 'options' => 'options'];
+    /**
+     * Filter attribute type integer
+     *
+     * @param   [type]  $str  [$str description]
+     *
+     * @return  [type]        [return description]
+     */
     private function _customFilterAttributeTypeInteger($str)
     {
     }
+    /**
+     * Filter attribute type list of selection
+     *
+     * @param   [type]  $str  [$str description]
+     *
+     * @return  [type]        [return description]
+     */
     private function _customFilterAttributeTypeSellist($str)
     {
     }
@@ -188,6 +272,16 @@ class dmHelper
     {
     }
     /**
+     * contacts linked to dolibarr object
+     *
+     * @param   [type]  $val  [$val description]
+     *
+     * @return  [type]        [return description]
+     */
+    private function _customFilterAttributeContacts($val)
+    {
+    }
+    /**
      * filter all dolibarr properties to make beautifull objects
      * definitions for smart app
      *
@@ -215,12 +309,28 @@ class dmHelper
     {
     }
 }
-class dmSociete
+class dmProject extends \SmartAuth\DolibarrMapping\dmBase
 {
     use \SmartAuth\DolibarrMapping\dmTrait;
-    private $_type = "object";
+    protected $type = "object";
     //corresponding fields left dolibarr right front app
-    private $_listOfPublishedFields = [
+    protected $listOfPublishedFields = ['rowid' => 'rowid', 'ref' => 'ref', 'title' => 'title', 'dateo' => 'date_open', 'datee' => 'date_end', 'description' => 'description'];
+    //		'fk_pays' =>array('type'=>'integer:Ccountry:core/class/ccountry.class.php', 'label'=>'Country', 'enabled'=>1, 'visible'=>-1, 'position'=>95),
+    /**
+     * object constructor
+     *
+     * @return  [type]  [return description]
+     */
+    public function __construct()
+    {
+    }
+}
+class dmSociete extends \SmartAuth\DolibarrMapping\dmBase
+{
+    use \SmartAuth\DolibarrMapping\dmTrait;
+    protected $type = "object";
+    //corresponding fields left dolibarr right front app
+    protected $listOfPublishedFields = [
         'rowid' => 'rowid',
         'nom' => 'name',
         'address' => 'address',
@@ -243,6 +353,16 @@ class dmSociete
      * @return  [type]  [return description]
      */
     public function __construct()
+    {
+    }
+    /**
+     * logo is stored as varchar dolibarr side (file name) but app need a base64 encoded data
+     *
+     * @param   [type]  $societe  [dolibarr $societe]
+     *
+     * @return  [type]        [return description]
+     */
+    public function _fieldFilterValueLogo($societe)
     {
     }
 }
