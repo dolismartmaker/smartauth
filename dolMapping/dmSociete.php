@@ -66,10 +66,10 @@ class dmSociete extends dmBase
 	 *
 	 * @return  [type]        [return description]
 	 */
-	public function _fieldFilterValueLogo($societe)
+	public function fieldFilterValueLogo($societe)
 	{
 		global $conf;
-		// dol_syslog("##### dmHelper : call for _fieldFilterValueLogo for " . $societe->logo);
+		// dol_syslog("##### dmHelper : call for fieldFilterValueLogo for " . $societe->logo);
 		$dir     = $conf->societe->multidir_output[$societe->entity] . "/" . $societe->id . "/logos";
 		$logo = $dir . '/' . $societe->logo;
 		$logoBase64 = "";
