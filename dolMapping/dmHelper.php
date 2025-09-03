@@ -278,8 +278,8 @@ class dmHelper
 					// dol_syslog("call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));
 					// dol_syslog("add _listOfForeignKeys $dolikey || $val");
 
-					if (isset($r->type) && !isset($this->_listOfForeignKeys[$dolikey])) {
-						$this->_listOfForeignKeys[$dolikey] = $val;
+					if (isset($r->type) && !isset($this->listOfForeignKeys[$dolikey])) {
+						$this->listOfForeignKeys[$dolikey] = $val;
 					}
 					foreach ($r as $k => $v) {
 						$ret[$k] = $v;
@@ -357,6 +357,6 @@ class dmHelper
 
 	public function getListOfForeignKeys()
 	{
-		return $this->_listOfForeignKeys;
+		return $this->listOfForeignKeys;
 	}
 }

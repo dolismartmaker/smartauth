@@ -85,7 +85,7 @@ trait dmTrait
 		// dol_syslog(get_class($this) . " doliBaseClass is " . json_encode($doliBaseClass));
 		$obj = new \stdClass();
 
-		foreach ($this->_listOfPublishedFields as $doliside => $appside) {
+		foreach ($this->listOfPublishedFields as $doliside => $appside) {
 			// dol_syslog(get_class($this) . " _objectDesc : $doliside => $appside for " . get_class($this->_dolmapping));
 			//note : foreign key detect, could be done thanks to dolibarr name plan (prefix fk_)
 			//but it's better to do it in propertiesFilter function
@@ -107,12 +107,12 @@ trait dmTrait
 		//then all official extrafields listed in object definition (for enhanced objects)
 		$extrafields = new \ExtraFields($this->_db);
 		//TODO CHECK
-		$parentElementToUseForExtraFields = $this->_parentTableElementToUseForExtraFields ?? '';
+		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields ?? '';
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
 		// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter for element=" . $parentElementToUseForExtraFields . ", soit " . json_encode($listExtra));
 		foreach ($listExtra as $extrakey => $extralabel) {
 			//search for mapping
-			$appside = $this->_listOfPublishedFields["options_" . $extrakey];
+			$appside = $this->listOfPublishedFields["options_" . $extrakey];
 			if (trim($appside == '')) {
 				$appside = $extrakey;
 			}
@@ -121,27 +121,27 @@ trait dmTrait
 		}
 
 		if (isset($this->_dolmapping)) {
-			$this->_listOfForeignKeys = $this->_dolmapping->getListOfForeignKeys();
+			$this->listOfForeignKeys = $this->_dolmapping->getListOfForeignKeys();
 		}
 
 		//then lines if needed
-		if ($this->_parentClassNameForLines != "") {
+		if ($this->parentClassNameForLines != "") {
 			$lines = new \stdClass();
 			$lines->type = "repeater";
 			$lines->label = $langs->trans($this->parentLabelForLines);
 			$lines->visible = ["create", "update", "read"];
 			$lines->config = new \stdClass();
 
-			$doliBaseLineClass = new $this->_parentClassNameForLines($this->_db);
-			foreach ($this->_listOfPublishedFieldsForLines as $doliside => $appside) {
-				dol_syslog("call for _parentClassNameForLines 2 ... : " . json_encode($this->_parentFieldsForLines[$doliside]));
+			$doliBaseLineClass = new $this->parentClassNameForLines($this->_db);
+			foreach ($this->listOfPublishedFieldsForLines as $doliside => $appside) {
+				dol_syslog("call for _parentClassNameForLines 2 ... : " . json_encode($this->parentFieldsForLines[$doliside]));
 				if (substr($doliside, 0, 8) == "options_") {
 					continue;
 				}
 
-				if (isset($this->_parentFieldsForLines[$doliside]) && !empty($this->_parentFieldsForLines[$doliside])) {
+				if (isset($this->parentFieldsForLines[$doliside]) && !empty($this->parentFieldsForLines[$doliside])) {
 					// dol_syslog(get_class($this) . " _objectDesc : call propertiesFilterLine on line for $appside ...");
-					$lines->config->{$appside} = $this->_dolmapping->propertiesFilter($this->_parentFieldsForLines[$doliside], $doliside, $appside);
+					$lines->config->{$appside} = $this->_dolmapping->propertiesFilter($this->parentFieldsForLines[$doliside], $doliside, $appside);
 				}
 			}
 
@@ -156,7 +156,7 @@ trait dmTrait
 
 	public function objectType()
 	{
-		return $this->_type;
+		return $this->type;
 	}
 
 	/**
@@ -172,10 +172,10 @@ trait dmTrait
 
 		// dol_syslog(" #################### exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
 		// dol_syslog(" ############### " . json_encode($obj));
-		// dol_syslog(" ########### " . json_encode($this->_listOfPublishedFields));
+		// dol_syslog(" ########### " . json_encode($this->listOfPublishedFields));
 
 		$mapped = new \stdClass;
-		foreach ($this->_listOfPublishedFields as $doliside => $appside) {
+		foreach ($this->listOfPublishedFields as $doliside => $appside) {
 			//race condition for fk_soc : dolibarr change it to socid
 			if ($doliside == "fk_soc") {
 				//to keep generic process on smart*
@@ -206,8 +206,8 @@ trait dmTrait
 			}
 
 			//detect fk and push object into $mapped->$appside
-			if (in_array($doliside, array_keys($this->_listOfForeignKeys))) {
-				dol_syslog('########## _listOfForeignKeys = ' . json_encode($this->_listOfForeignKeys));
+			if (in_array($doliside, array_keys($this->listOfForeignKeys))) {
+				dol_syslog('########## _listOfForeignKeys = ' . json_encode($this->listOfForeignKeys));
 				$mapped->$appside = $this->exportData($doliside, $obj->$doliside);
 			}
 
@@ -225,7 +225,7 @@ trait dmTrait
 			foreach($obj->lines as $line) {
 				$filteredline = new \stdClass;
 				//export only needed fields listed into _listOfPublishedFieldsForLines
-				foreach ($this->_listOfPublishedFieldsForLines as $doliside => $appside) {
+				foreach ($this->listOfPublishedFieldsForLines as $doliside => $appside) {
 					$filteredline->$appside = $line->$doliside;
 				}
 				$mapped->lines[] = $filteredline;
@@ -256,7 +256,7 @@ trait dmTrait
 		// dol_syslog("Ask exportExtrafieldData for name=$name, objectid=$objectid");
 
 		$doliMapClass = new $this->_dolmapclassname($this->_db);
-		$parentElementToUseForExtraFields = isset($doliMapClass->_parentTableElementToUseForExtraFields) ? $doliMapClass->_parentTableElementToUseForExtraFields : '';
+		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
 		if (empty($parentElementToUseForExtraFields)) {
 			return;
 		}
@@ -416,8 +416,8 @@ trait dmTrait
 	public function exportData($name, $objectid)
 	{
 		global $conf, $langs;
-		// dol_syslog("############ Call exportData for $name / $objectid / " . $this->_listOfForeignKeys[$name]);
-		$InfoFieldList = explode(":", $this->_listOfForeignKeys[$name]);
+		// dol_syslog("############ Call exportData for $name / $objectid / " . $this->listOfForeignKeys[$name]);
+		$InfoFieldList = explode(":", $this->listOfForeignKeys[$name]);
 		$classname = $InfoFieldList[1];
 		$classpath = $InfoFieldList[2];
 		// dol_syslog("############ classname=$classname, classpath=$classpath");
