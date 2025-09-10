@@ -40,6 +40,7 @@ class dmHelper
 		'visible' 			=> 'visible',
 		'length' 			=> 'max',
 		'position' 			=> 'position',
+		'rows' 				=> 'rows',
 		'options' 			=> 'options',
 		'logo'				=> 'logo',
 		// 'prefix' => 'prefix',
@@ -251,20 +252,32 @@ class dmHelper
 	 *
 	 * @return  [type]             [return description]
 	 */
-	public function propertiesFilter($input, $dolikey = null, $frontkey = null)
+	public function propertiesFilter($input, $dolikey = null, $frontkey = null, $parentOverride = null)
 	{
 		global $langs;
 		$langs->loadLangs(array('companies', 'smartinterventions'));
 
 		// dol_syslog("call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
+		// dol_syslog("call propertiesFilter on $dolikey / $frontkey for parentOverride " . json_encode($parentOverride));
 		$ret = [];
 		$type = $label = '';
+
+		//optim
+		$useParentOverride = false;
+		if (null !== $parentOverride && is_array($parentOverride[$dolikey])) {
+			$useParentOverride = true;
+		}
 
 		if (is_array($input)) {
 			foreach ($input as $key => $val) {
 				if (!in_array($key, array_keys($this->_mappingAttributes))) {
 					// dol_syslog("call propertiesFilter on $key => continue");
 					continue;
+				}
+				//use in priority settings from parentFieldsOverride
+				if ($useParentOverride && in_array($key, array_keys($parentOverride[$dolikey]))) {
+					dol_syslog("call propertiesFilter on field $dolikey, key=$key then parentOverride value to use is " . $parentOverride[$dolikey][$key] . ", instead of dolibarr default value = $val");
+					$val = $parentOverride[$dolikey][$key];
 				}
 				if ($key == "label") {
 					$ret[$key] = $langs->transnoentities($val);
@@ -288,6 +301,27 @@ class dmHelper
 					//use front key name from correspondance table mapping
 					$frontkey = $this->_mappingAttributes[$key];
 					$ret[$frontkey] = $val;
+				}
+			}
+		}
+
+		//then what about values defined into parentFieldsOverride if the key is not in main field object definition ?
+		//for example required is not defined into Fichinter duree fields and we need to set it for our app
+		if ($useParentOverride) {
+			foreach ($parentOverride[$dolikey] as $key => $val) {
+				if (!isset($ret[$key])) {
+					$specialFilter = "_customFilterAttribute" . ucfirst($key);
+					if (is_callable([$this, $specialFilter])) {
+						$r = call_user_func([$this, $specialFilter], $val);
+						if (isset($r->type) && !isset($this->listOfForeignKeys[$dolikey])) {
+							$this->listOfForeignKeys[$dolikey] = $val;
+						}
+						foreach ($r as $k => $v) {
+							$ret[$k] = $v;
+						}
+					} else {
+						$ret[$key] = $val;
+					}
 				}
 			}
 		}

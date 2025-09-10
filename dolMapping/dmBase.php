@@ -25,6 +25,13 @@ abstract class dmBase
     protected $type;
 
     /**
+     * name of class for parent object, for exemple Fichinter
+     *
+     * @var string
+     */
+    protected $parentClassName;
+
+    /**
      * name of class where you can find extrafields for that object for example Fichinter
      *
      * @var string
@@ -83,6 +90,18 @@ abstract class dmBase
      * @var string
      */
     protected $parentLabelForLines;
+
+    /**
+     * you can customize / overcharge fields for for parent object like dolibarr publish for main object
+     * if you would like to change some settings, for exemple changing a field of Fichinter main object
+     * to make it readonly in your specific use case
+     *
+     * example: $parentFieldsOverride['duree']['type'] = "duration";
+     *          $parentFieldsOverride['duree'] = [ 'type' => "duration", 'required' => "required" ];
+     *
+     * @var array
+     */
+    protected $parentFieldsOverride;
 
     /**
      * fields for lines like dolibarr publish for main object, for exemple FichinterLigne

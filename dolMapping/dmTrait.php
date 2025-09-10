@@ -95,7 +95,7 @@ trait dmTrait
 			}
 			if (isset($this->_dolmapping) && !empty($this->_dolmapping)) {
 				// dol_syslog(get_class($this) . " _objectDesc : call propertiesFilter ...");
-				$obj->$appside = $this->_dolmapping->propertiesFilter($doliBaseClass->fields[$doliside], $doliside, $appside);
+				$obj->$appside = $this->_dolmapping->propertiesFilter($doliBaseClass->fields[$doliside], $doliside, $appside, $this->parentFieldsOverride);
 			}
 			//TODO
 			//foreign key like fk_pays : without integer:class:data ?
@@ -231,7 +231,7 @@ trait dmTrait
 				$mapped->lines[] = $filteredline;
 			}
 			//for debug get full line raw data
-			$mapped->rawlines = $obj->lines;
+			// $mapped->rawlines = $obj->lines;
 		}
 
 		return $mapped;
