@@ -473,7 +473,7 @@ class AuthController
 			$res = $u->fetch(getDolGlobalString('SMARTAUTH_DEFAULT_USER'));
 			if ($res <= 0) {
 				dol_syslog('opb: error fetching user id #' . getDolGlobalString('SMARTAUTH_DEFAULT_USER'), LOG_ERR);
-				exit - 1;
+				exit(1);
 			}
 			$u->getrights();
 		}
