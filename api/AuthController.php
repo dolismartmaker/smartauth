@@ -116,9 +116,9 @@ class AuthController
 
 		//check if login / pass is ok
 		include_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
-		$checklogin = checkLoginPassEntity($login, $pass, $entity, ['dolibarr'], 'api');		// Check credentials.
-		dol_syslog("Debug smartauth : AuthController::login : checklogin is " . json_encode($checklogin));
-		if ($checklogin === '--bad-login-validity--') {
+		$login = checkLoginPassEntity($login, $pass, $entity, ['dolibarr'], 'api');		// Check credentials.
+		dol_syslog("Debug smartauth : AuthController::login : checklogin is " . json_encode($login));
+		if ($login === '--bad-login-validity--') {
 			$login = '';
 		}
 		if (empty($login)) {
