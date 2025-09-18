@@ -65,12 +65,18 @@ class AuthController
 	public function ping($arr = null)
 	{
 		dol_syslog("Debug smartauth::AuthController : ping");
-		$ret = [
-			'data' => [
-				'token' => 'success',
-			]
-		];
-		return ([$ret, 200]);
+		$decoded = $this->check();
+
+		//dev time
+		if (!empty($decoded->login)) {
+			$ret = [
+				'data' => [
+					'token' => 'success',
+				]
+			];
+			return ([$ret, 200]);
+		}
+		return (["Generic error", 401]);
 	}
 
 	/**
@@ -293,15 +299,17 @@ class AuthController
 		dol_syslog("Debug smartauth : AuthController::_newUserKey");
 
 		$keyid = $salt = '';
-		//remove all other token for that user and that app
-		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " SET status = -1,";
-		$sql .= " salt = 'xxxxxxxxxx' ";
-		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
-		$sql .= " AND fk_authid=" . (int) $uid;
-		$sql .= " AND auth_element='user'";
-		$sql .= " AND entity=" . (int) $entity;
-		$resql = $db->query($sql);
+		//remove all other token for that user and that app ?
+		//depends on setup ?
+		// TODO
+		// $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
+		// $sql .= " SET status = -1,";
+		// $sql .= " salt = 'xxxxxxxxxx' ";
+		// $sql .= " WHERE appuid=" . (int) $smartAuthAppID;
+		// $sql .= " AND fk_authid=" . (int) $uid;
+		// $sql .= " AND auth_element='user'";
+		// $sql .= " AND entity=" . (int) $entity;
+		// $resql = $db->query($sql);
 		// dol_syslog("Debug smartauth : $sql ...");
 
 		//store a new one
