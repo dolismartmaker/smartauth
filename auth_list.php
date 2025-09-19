@@ -251,8 +251,8 @@ if (empty($reshook)) {
 	}
 
 	// Mass actions
-	$objectclass = 'Auth';
-	$objectlabel = 'Auth';
+	$objectclass = 'SmartAuth';
+	$objectlabel = 'SmartAuth';
 	$uploaddir = $conf->smartauth->dir_output;
 	include DOL_DOCUMENT_ROOT.'/core/actions_massactions.inc.php';
 

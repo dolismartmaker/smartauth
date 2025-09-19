@@ -18,7 +18,7 @@
  */
 
 /**
- * \file        class/logs.class.php
+ * \file        class/smartlogs.class.php
  * \ingroup     smartauth
  * \brief       This file is a CRUD class file for Logs (Create/Read/Update/Delete)
  */
@@ -29,9 +29,9 @@ require_once DOL_DOCUMENT_ROOT.'/core/class/commonobject.class.php';
 //require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 
 /**
- * Class for Logs
+ * Class for SmartLogs
  */
-class Logs extends CommonObject
+class SmartLogs extends CommonObject
 {
 
 	public $output;
@@ -1167,7 +1167,7 @@ require_once DOL_DOCUMENT_ROOT.'/core/class/commonobjectline.class.php';
 /**
  * Class LogsLine. You can also remove this and generate a CRUD class for lines objects.
  */
-class LogsLine extends CommonObjectLine
+class SmartLogsLine extends CommonObjectLine
 {
 	// To complete with content of an object LogsLine
 	// We should have a field rowid, fk_logs and position

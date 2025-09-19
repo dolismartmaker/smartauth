@@ -79,7 +79,7 @@ require_once DOL_DOCUMENT_ROOT.'/core/lib/date.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/company.lib.php';
 
 // load module libraries
-require_once __DIR__.'/class/logs.class.php';
+require_once __DIR__.'/class/smartlogs.class.php';
 
 // for other modules
 dol_include_once('/smartauth/lib/smartauth.lib.php');
@@ -115,7 +115,7 @@ $pageprev = $page - 1;
 $pagenext = $page + 1;
 
 // Initialize technical objects
-$object = new Logs($db);
+$object = new SmartLogs($db);
 $extrafields = new ExtraFields($db);
 $diroutputmassaction = $conf->smartauth->dir_output.'/temp/massgeneration/'.$user->id;
 $hookmanager->initHooks(array($contextpage)); 	// Note that conf->hooks_modules contains array of activated contexes
@@ -250,8 +250,8 @@ if (empty($reshook)) {
 	}
 
 	// Mass actions
-	$objectclass = 'Logs';
-	$objectlabel = 'Logs';
+	$objectclass = 'SmartLogs';
+	$objectlabel = 'SmartLogs';
 	$uploaddir = $conf->smartauth->dir_output;
 	include DOL_DOCUMENT_ROOT.'/core/actions_massactions.inc.php';
 
@@ -517,7 +517,7 @@ print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sort
 // Add code for pre mass action (confirmation or email presend form)
 $topicmail = "SendLogsRef";
 $modelmail = "logs";
-$objecttmp = new Logs($db);
+$objecttmp = new SmartLogs($db);
 $trackid = 'xxxx'.$object->id;
 include DOL_DOCUMENT_ROOT.'/core/tpl/massactions_pre.tpl.php';
 

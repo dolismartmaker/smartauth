@@ -64,7 +64,7 @@ require_once DOL_DOCUMENT_ROOT.'/core/lib/images.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.formfile.class.php';
 // load module libraries
 require_once __DIR__.'/class/smartauth.class.php';
-require_once __DIR__.'/class/logs.class.php';
+require_once __DIR__.'/class/smartlogs.class.php';
 
 // Load translation files required by page
 $langs->loadLangs(array('users', 'other'));
@@ -205,8 +205,8 @@ if (empty($reshook)) {
 	include DOL_DOCUMENT_ROOT.'/core/actions_changeselectedfields.inc.php';
 
 	// Mass actions
-	$objectclass = 'Auth';
-	$objectlabel = 'Auth';
+	$objectclass = 'SmartAuth';
+	$objectlabel = 'SmartAuth';
 	$uploaddir = $conf->smartauth->dir_output;
 	include DOL_DOCUMENT_ROOT.'/core/actions_massactions.inc.php';
 
@@ -647,7 +647,7 @@ print '</form>'."\n";
 // ------------------------------------------------------------------------------------------------------------ API KEYS
 
 // ------------------------------------------------------------------------------------------------------------ API LOGS
-$object = new Logs($db);
+$object = new SmartLogs($db);
 // Definition of array of fields for columns
 $arrayfields = array();
 foreach ($object->fields as $key => $val) {
