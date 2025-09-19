@@ -1144,7 +1144,7 @@ class SmartAuth extends CommonObject
 		//cleanup old keys
 		$max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
 		if($max > 0) {
-			$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE date_eol < '" . date("Y-m-d H:i:s") . "' OR status=" . Auth::STATUS_CANCELED;
+			$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE date_eol < '" . date("Y-m-d H:i:s") . "' OR status=" . SmartAuth::STATUS_CANCELED;
 			$resql = $this->db->query($sql);
 		}
 
@@ -1193,9 +1193,9 @@ class SmartAuth extends CommonObject
 require_once DOL_DOCUMENT_ROOT.'/core/class/commonobjectline.class.php';
 
 /**
- * Class AuthLine. You can also remove this and generate a CRUD class for lines objects.
+ * Class SmartAuthLine. You can also remove this and generate a CRUD class for lines objects.
  */
-class AuthLine extends CommonObjectLine
+class SmartAuthLine extends CommonObjectLine
 {
 	// To complete with content of an object AuthLine
 	// We should have a field rowid, fk_auth and position
