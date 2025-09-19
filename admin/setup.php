@@ -96,14 +96,34 @@ if (!class_exists('FormSetup')) {
 
 $formSetup = new FormSetup($db);
 
+$days = [
+	'10' => '10',
+	'20' => '20',
+	'30' => '30',
+	'90' => '90',
+];
 
-$item = $formSetup->newItem('SMARTAUTH_TOKEN_EOL_DAYS');
+
+$item = $formSetup->newItem('SMARTAUTH_TOKEN_EOL_DAYS')->setAsSelect($days);
 $item->defaultFieldValue = '30';
 
 $item = $formSetup->newItem('SMARTAUTH_DEFAULT_USER')->setAsSelectUser();
 
 $item = $formSetup->newItem('SMARTAUTH_COLLECT_LOGS')->setAsYesNo();
 
+$item = $formSetup->newItem('SMARTAUTH_CLEAN_LOGS')->setAsYesNo();
+
+
+$days = [
+	'10' => '10',
+	'20' => '20',
+	'30' => '30',
+	'90' => '90',
+	'180' => '180',
+	'365' => '365',
+];
+
+$item = $formSetup->newItem('SMARTAUTH_LAST_LOGS')->setAsSelect($days);
 
 // // HTTP HOST
 // $item = $formSetup->newItem('NO_PARAM_JUST_TEXT');
