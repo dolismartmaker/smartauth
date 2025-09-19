@@ -250,7 +250,7 @@ class modSmartauth extends DolibarrModules
 			     'label' => 'SmartAuth',
 			     'jobtype' => 'method',
 			     'class' => '/smartauth/class/smartauth.class.php',
-			     'objectname' => 'Auth',
+			     'objectname' => 'SmartAuth',
 			     'method' => 'doScheduledJob',
 			     'parameters' => '',
 			     'comment' => 'Do SmartAuth clean tasks',
