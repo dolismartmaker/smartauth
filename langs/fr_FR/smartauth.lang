@@ -17,12 +17,13 @@
 # Generic
 #
 SmartAuthMainMenu = SmartAuth
+SmartAuthLogsMenu = 🚀 Journaux (Logs)
 ListOfTokens = Liste des jetons actifs
+SmartauthDescription = Boite à outil pour connexion réseau des applications mobiles
 
 # Module label 'ModuleSmartauthName'
 ModuleSmartauthName = Smartauth
-# Module description 'ModuleSmartauthDesc'
-ModuleSmartauthDesc = Smartauth description
+ModuleSmartauthDesc = Boite à outil pour connexion réseau des applications mobiles SmartMaker !
 
 SmartauthSetup = Smartauth setup
 Settings = Settings
@@ -53,3 +54,8 @@ AuthElementSource=Type de lien
 SMARTAUTH_DEFAULT_USER = Identifiant utilisateur par défaut à utiliser pour les actions anonymes
 SMARTAUTH_COLLECT_LOGS = Activer la collecte des journaux (logs) webs
 SMARTAUTH_COLLECT_LOGSTooltip = Si vous activez cette option chaque requête sur l'API sera consignée dans la base de données vous pourrez ainsi consulter l'historique des actions réalisées via l'API
+SmartAuthHereIsYourKeys = Liste de vos clés d'API SmartAuth
+SmartAuthAPILogs = Historique des connexions réalisées
+
+SMARTAUTH_CLEAN_LOGS = Nettoyage automatique des journaux (logs)
+SMARTAUTH_LAST_LOGS = Durée de conservation des journaux (logs) si le nettoyage automatique est actif
