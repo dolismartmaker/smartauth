@@ -79,7 +79,7 @@ require_once DOL_DOCUMENT_ROOT.'/core/lib/date.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/company.lib.php';
 
 // load module libraries
-require_once __DIR__.'/class/auth.class.php';
+require_once __DIR__.'/class/smartauth.class.php';
 
 // for other modules
 //dol_include_once('/othermodule/class/otherobject.class.php');
@@ -115,7 +115,7 @@ $pageprev = $page - 1;
 $pagenext = $page + 1;
 
 // Initialize technical objects
-$object = new Auth($db);
+$object = new SmartAuth($db);
 $extrafields = new ExtraFields($db);
 $diroutputmassaction = $conf->smartauth->dir_output.'/temp/massgeneration/'.$user->id;
 // print "<p>contexte: $contextpage</p>";
@@ -132,8 +132,8 @@ if (!$sortfield) {
 	reset($object->fields);					// Reset is required to avoid key() to return null.
 	$sortfield = "t.".key($object->fields); // Set here default search field. By default 1st field in definition.
 }
-if (!$sortorder) {
-	$sortorder = "ASC";
+if (empty($sortorder)) {
+	$sortorder = "DESC";
 }
 
 // Initialize array of search criterias
@@ -309,6 +309,11 @@ if ($object->ismultientitymanaged == 1) {
 } else {
 	$sql .= " WHERE 1 = 1";
 }
+
+if (! $user->admin) {
+	$sql .= " AND fk_authid=" . (int) $user->id;
+}
+
 foreach ($search as $key => $val) {
 	if (array_key_exists($key, $object->fields)) {
 		if ($key == 'status' && $search[$key] == -1) {
@@ -401,6 +406,7 @@ $sql .= $db->order($sortfield, $sortorder);
 if ($limit) {
 	$sql .= $db->plimit($limit + 1, $offset);
 }
+// print $sql;
 
 $resql = $db->query($sql);
 if (!$resql) {
@@ -518,7 +524,7 @@ print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sort
 // Add code for pre mass action (confirmation or email presend form)
 $topicmail = "SendAuthRef";
 $modelmail = "auth";
-$objecttmp = new Auth($db);
+$objecttmp = new SmartAuth($db);
 $trackid = 'xxxx'.$object->id;
 include DOL_DOCUMENT_ROOT.'/core/tpl/massactions_pre.tpl.php';
 

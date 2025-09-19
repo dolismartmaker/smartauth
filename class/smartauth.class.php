@@ -18,7 +18,7 @@
  */
 
 /**
- * \file        class/auth.class.php
+ * \file        class/smartauth.class.php
  * \ingroup     smartauth
  * \brief       This file is a CRUD class file for Auth (Create/Read/Update/Delete)
  */
@@ -31,7 +31,7 @@ require_once DOL_DOCUMENT_ROOT.'/core/class/commonobject.class.php';
 /**
  * Class for Auth
  */
-class Auth extends CommonObject
+class SmartAuth extends CommonObject
 {
 	public $socid;
 	public $labelStatusShort;
@@ -129,11 +129,11 @@ class Auth extends CommonObject
 		'ip' => array('type'=>'varchar(50)', 'label'=>'smartAuthLastIP', 'enabled'=>'1', 'position'=>35, 'notnull'=>0, 'visible'=>1, 'default'=>''),
 		'date_eol' => array('type'=>'datetime', 'label'=>'Dateeol', 'enabled'=>'1', 'position'=>38, 'notnull'=>0, 'visible'=>1,),
 		'tms' => array('type'=>'timestamp', 'label'=>'DateModification', 'enabled'=>'1', 'position'=>40, 'notnull'=>1, 'visible'=>-1,),
-		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'enabled'=>'1', 'position'=>45, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
-		'fk_user_modif' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserModif', 'enabled'=>'1', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
+		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'enabled'=>'$user->admin', 'position'=>45, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
+		'fk_user_modif' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserModif', 'enabled'=>'$user->admin', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
 		'fk_authid' => array('type'=>'integer', 'label'=>'AuthElementID', 'enabled'=>'1', 'position'=>60, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
 		'auth_element' => array('type'=>'varchar(128)', 'label'=>'AuthElementSource', 'enabled'=>'1', 'position'=>65, 'notnull'=>1, 'visible'=>1,),
-		'status' => array('type'=>'integer', 'label'=>'Status', 'enabled'=>'1', 'position'=>500, 'notnull'=>1, 'visible'=>-1,),
+		'status' => array('type'=>'integer', 'label'=>'Status', 'enabled'=>1, 'visible'=>2, 'position'=>1000, 'notnull'=>1, 'default'=>0, 'index'=>1, 'arrayofkeyval'=>array(1=>'Enabled', 9=>'Disabled')),
 	);
 	public $rowid;
 	public $appuid;
@@ -1012,7 +1012,7 @@ class Auth extends CommonObject
 	{
 		$this->lines = array();
 
-		$objectline = new AuthLine($this->db);
+		$objectline = new SmartAuthLine($this->db);
 		$result = $objectline->fetchAll('ASC', 'position', 0, 0, array('customsql'=>'fk_auth = '.((int) $this->id)));
 
 		if (is_numeric($result)) {
@@ -1141,10 +1141,23 @@ class Auth extends CommonObject
 
 		$this->db->begin();
 
-		// ...
+		//cleanup old keys
+		$max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
+		if($max > 0) {
+			$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE date_eol < '" . date("Y-m-d H:i:s") . "' OR status=" . Auth::STATUS_CANCELED;
+			$resql = $this->db->query($sql);
+		}
+
+		//cleanup old logs
+		if(getDolGlobalString('SMARTAUTH_CLEAN_LOGS')) {
+			$max = (int) getDolGlobalString('SMARTAUTH_LAST_LOGS');
+			if($max > 0) {
+				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_logs WHERE tms < '" . date("Y-m-d H:i:s", (time() - ($max * 24 * 3600))) . "'";
+				$resql = $this->db->query($sql);
+			}
+		}
 
 		$this->db->commit();
-
 		return $error;
 	}
 

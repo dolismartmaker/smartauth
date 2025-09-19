@@ -178,7 +178,7 @@ class AuthController
 		if (!empty($payload['tokenid'])) {
 			//soft delete token from db
 			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-			$sql .= " SET status = -1 ";
+			$sql .= " SET status = 9 ";
 			$sql .= ", salt = 'xxxxxxxxxx' ";
 			$sql .= " WHERE rowid = " . (int) $payload['tokenid'];
 			dol_syslog("smartauth : disable token from db " . $sql);
@@ -303,7 +303,7 @@ class AuthController
 		//depends on setup ?
 		// TODO
 		// $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		// $sql .= " SET status = -1,";
+		// $sql .= " SET status = 9,";
 		// $sql .= " salt = 'xxxxxxxxxx' ";
 		// $sql .= " WHERE appuid=" . (int) $smartAuthAppID;
 		// $sql .= " AND fk_authid=" . (int) $uid;
@@ -358,7 +358,7 @@ class AuthController
 		$keyid = $salt = '';
 		//remove all other token for that user and that app
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " SET status = -1,";
+		$sql .= " SET status = 9,";
 		$sql .= ", salt = 'xxxxxxxxxx' ";
 		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
 		$sql .= " AND fk_authid=" . (int) $socid;

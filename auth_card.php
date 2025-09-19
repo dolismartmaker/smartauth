@@ -76,7 +76,7 @@ if (!$res) {
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.formcompany.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.formfile.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.formprojet.class.php';
-dol_include_once('/smartauth/class/auth.class.php');
+dol_include_once('/smartauth/class/smartauth.class.php');
 dol_include_once('/smartauth/lib/smartauth_auth.lib.php');
 
 // Load translation files required by the page
@@ -102,7 +102,7 @@ if (!empty($backtopagejsfields)) {
 }
 
 // Initialize technical objects
-$object = new Auth($db);
+$object = new SmartAuth($db);
 $extrafields = new ExtraFields($db);
 $diroutputmassaction = $conf->smartauth->dir_output.'/temp/massgeneration/'.$user->id;
 $hookmanager->initHooks(array('authcard', 'globalcard')); // Note that conf->hooks_modules contains array

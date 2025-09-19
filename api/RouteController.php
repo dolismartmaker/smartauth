@@ -245,15 +245,15 @@ class RouteController
 				'fk_key' => $keyid,
 				'appuid' => $smartAuthAppID,
 				'entity' => $entity,
-				'dol_element' => $element,
-				'ip' => $_SERVER['REMOTE_ADDR'],
-				'method' => $_SERVER['REQUEST_METHOD'],
-				'http_status' => $status,
+				'dol_element' => substr($element,0,32),
+				'ip' => substr($_SERVER['REMOTE_ADDR'],0,20),
+				'method' => substr($_SERVER['REQUEST_METHOD'],0,8),
+				'http_status' => (int) $status,
 				'bytes_sent' => strlen(serialize($message)),
 				'content_type' => "json",
-				'url_requested' => preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI']),
-				'user_agent' => $_SERVER['HTTP_USER_AGENT'],
-				'referer' => $_SERVER['HTTP_REFERER'],
+				'url_requested' => substr(preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI']),0,255),
+				'user_agent' => substr($_SERVER['HTTP_USER_AGENT'],-100,100),
+				'referer' => substr($_SERVER['HTTP_REFERER'],0,255),
 			];
 			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_logs (";
 			$sql .= implode(',', array_keys($arr));
