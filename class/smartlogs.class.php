@@ -186,7 +186,7 @@ class SmartLogs extends CommonObject
 	// protected $childtablesoncascade = array('smartauth_logsdet');
 
 	// /**
-	//  * @var LogsLine[]     Array of subtable lines
+	//  * @var SmartLogsLine[]     Array of subtable lines
 	//  */
 	// public $lines = array();
 
@@ -1018,7 +1018,7 @@ class SmartLogs extends CommonObject
 	{
 		$this->lines = array();
 
-		$objectline = new LogsLine($this->db);
+		$objectline = new SmartLogsLine($this->db);
 		$result = $objectline->fetchAll('ASC', 'position', 0, 0, array('customsql'=>'fk_logs = '.((int) $this->id)));
 
 		if (is_numeric($result)) {
@@ -1165,11 +1165,11 @@ class SmartLogs extends CommonObject
 require_once DOL_DOCUMENT_ROOT.'/core/class/commonobjectline.class.php';
 
 /**
- * Class LogsLine. You can also remove this and generate a CRUD class for lines objects.
+ * Class SmartLogsLine. You can also remove this and generate a CRUD class for lines objects.
  */
 class SmartLogsLine extends CommonObjectLine
 {
-	// To complete with content of an object LogsLine
+	// To complete with content of an object SmartLogsLine
 	// We should have a field rowid, fk_logs and position
 
 	/**
