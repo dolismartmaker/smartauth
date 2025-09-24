@@ -121,7 +121,7 @@ class SmartAuth extends CommonObject
 	 * @var array  Array with all fields and their property. Do not use it as a static var. It may be modified by constructor.
 	 */
 	public $fields=array(
-		'rowid' => array('type'=>'integer', 'label'=>'TechnicalID', 'enabled'=>'1', 'position'=>10, 'notnull'=>1, 'visible'=>-1,),
+		'rowid' => array('type'=>'integer', 'label'=>'TechnicalID', 'enabled'=>'1', 'position'=>10, 'notnull'=>1, 'visible'=>-1,'showoncombobox' => 1),
 		'appuid' => array('type'=>'integer', 'label'=>'smartAuthAppuid', 'enabled'=>'1', 'position'=>15, 'notnull'=>0, 'visible'=>1,),
 		'salt' => array('type'=>'varchar(32)', 'label'=>'smartAuthSalt', 'enabled'=>'1', 'position'=>20, 'notnull'=>0, 'visible'=>-1,),
 		'date_creation' => array('type'=>'datetime', 'label'=>'Datecreation', 'enabled'=>'1', 'position'=>25, 'notnull'=>1, 'visible'=>1,),
@@ -1141,12 +1141,12 @@ class SmartAuth extends CommonObject
 
 		$this->db->begin();
 
-		//cleanup old keys
-		$max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
-		if($max > 0) {
-			$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE date_eol < '" . date("Y-m-d H:i:s") . "' OR status=" . SmartAuth::STATUS_CANCELED;
-			$resql = $this->db->query($sql);
-		}
+		//note : do not cleanup old keys -- used by logs !
+		// $max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
+		// if($max > 0) {
+		// 	$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE date_eol < '" . date("Y-m-d H:i:s") . "' OR status=" . SmartAuth::STATUS_CANCELED;
+		// 	$resql = $this->db->query($sql);
+		// }
 
 		//cleanup old logs
 		if(getDolGlobalString('SMARTAUTH_CLEAN_LOGS')) {
