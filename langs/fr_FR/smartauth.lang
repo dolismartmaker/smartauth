@@ -60,3 +60,4 @@ SmartAuthAPILogs = Historique des connexions réalisées
 
 SMARTAUTH_CLEAN_LOGS = Nettoyage automatique des journaux (logs)
 SMARTAUTH_LAST_LOGS = Durée de conservation des journaux (logs) si le nettoyage automatique est actif
+AuthElementKey = Clé SmartAuth
