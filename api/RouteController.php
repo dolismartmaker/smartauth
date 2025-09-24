@@ -99,6 +99,7 @@ class RouteController
 		$method = $_SERVER['REQUEST_METHOD'];
 		if ($method != $targetMethod) {
 			// dol_syslog("Route does not match for $method != $targetMethod");
+			RouteController::insertLogs(null, 404, 'Not found !', $entity);
 			return;
 		}
 		$request_uri = $_SERVER["PHP_SELF"];
@@ -109,6 +110,7 @@ class RouteController
 
 		if (! preg_match("/" . $match_action . "$/", $action)) {
 			dol_syslog("Route does not REGEX match for $action != $targetAction, match_action=/$match_action/");
+			RouteController::insertLogs(null, 404, 'Not found !', $entity);
 			return;
 		}
 
