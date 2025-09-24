@@ -271,7 +271,7 @@ class AuthController
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
 		$sql .= " SET date_lastused = '" . $db->idate(dol_now()) . "',";
 		$sql .= " date_eol = '" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "',";
-		$sql .= " ip = '" . $_SERVER['REMOTE_ADDR'] . "' ";
+		$sql .= " ip = '" . self::get_client_ip() . "' ";
 		$sql .= " WHERE rowid = " . (int) $tokenid;
 		dol_syslog("smartauth : update token last used " . $sql);
 		$resql = $db->query($sql);
@@ -319,7 +319,7 @@ class AuthController
 
 		$sql = "INSERT ";
 		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $this->get_client_ip() . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
 			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "mailing");
@@ -376,7 +376,7 @@ class AuthController
 
 		$sql = "INSERT ";
 		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $useractions->id . "','" . (int) $socid . "','societe_account','" . $SERVER['REMOTE_ADDR'] . "',1,'" . (int) $entity . "');";
+		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $useractions->id . "','" . (int) $socid . "','societe_account','" . $this->get_client_ip() . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
 			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "mailing");
@@ -486,5 +486,18 @@ class AuthController
 			$u->getrights();
 		}
 		return $u;
+	}
+
+	/**
+	 * get real remote ip
+	 *
+	 * @return  [type]  [return description]
+	 */
+	public static function get_client_ip()
+	{
+		return $_SERVER['HTTP_X_FORWARDED_FOR']
+			?? $_SERVER['REMOTE_ADDR']
+			?? $_SERVER['HTTP_CLIENT_IP']
+			?? '';
 	}
 }
