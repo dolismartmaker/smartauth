@@ -55,6 +55,7 @@ SMARTAUTH_DEFAULT_USER = Identifiant utilisateur par défaut à utiliser pour le
 SMARTAUTH_COLLECT_LOGS = Activer la collecte des journaux (logs) webs
 SMARTAUTH_COLLECT_LOGSTooltip = Si vous activez cette option chaque requête sur l'API sera consignée dans la base de données vous pourrez ainsi consulter l'historique des actions réalisées via l'API
 SmartAuthHereIsYourKeys = Liste de vos clés d'API SmartAuth
+SmartAuthHereIsYourLastKeys = Vous trouverez ci dessous vos dernières clés d'API. suivez ce lien pour consulter la <a href="%s">liste complète</a>
 SmartAuthAPILogs = Historique des connexions réalisées
 
 SMARTAUTH_CLEAN_LOGS = Nettoyage automatique des journaux (logs)
