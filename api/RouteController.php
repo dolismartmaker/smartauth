@@ -267,17 +267,36 @@ class RouteController
 			dol_syslog("Can't log because of empty key id !");
 		}
 	}
-
 	/**
-	 * get real remote ip
+	 * Get the server variable REMOTE_ADDR, or the first ip of HTTP_X_FORWARDED_FOR (when using proxy).
+	 * Source: thanks to prestashop
 	 *
-	 * @return  [type]  [return description]
+	 * @return string $remote_addr ip of client
 	 */
 	public static function get_client_ip()
 	{
-		return $_SERVER['HTTP_X_FORWARDED_FOR']
-			?? $_SERVER['REMOTE_ADDR']
-			?? $_SERVER['HTTP_CLIENT_IP']
-			?? '';
+		if (function_exists('apache_request_headers')) {
+			$headers = apache_request_headers();
+		} else {
+			$headers = $_SERVER;
+		}
+
+		if (array_key_exists('X-Forwarded-For', $headers)) {
+			$_SERVER['HTTP_X_FORWARDED_FOR'] = $headers['X-Forwarded-For'];
+		}
+
+		if (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) && (!isset($_SERVER['REMOTE_ADDR'])
+			|| preg_match('/^127\..*/i', trim($_SERVER['REMOTE_ADDR'])) || preg_match('/^172\.(1[6-9]|2\d|30|31)\..*/i', trim($_SERVER['REMOTE_ADDR']))
+			|| preg_match('/^192\.168\.*/i', trim($_SERVER['REMOTE_ADDR'])) || preg_match('/^10\..*/i', trim($_SERVER['REMOTE_ADDR'])))) {
+			if (strpos($_SERVER['HTTP_X_FORWARDED_FOR'], ',')) {
+				$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+
+				return $ips[0];
+			} else {
+				return $_SERVER['HTTP_X_FORWARDED_FOR'];
+			}
+		} else {
+			return $_SERVER['REMOTE_ADDR'];
+		}
 	}
 }
