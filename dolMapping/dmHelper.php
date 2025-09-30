@@ -381,6 +381,14 @@ class dmHelper
 			if (substr($dolikey, 0, strlen($dolside)) == $dolside) {
 				$ret['type'] = $appside;
 				$ret['visible'] = ["create", "update", "read"];
+				if ($dolside == "photo_") {
+					//add options
+					$co = new \stdClass();
+					$co->maxWidth = (int) $this->_getCacheValue('photo', 'width', 1024);
+					$co->maxHeight = (int) $this->_getCacheValue('smartmakers', 'photo', 'height', 1024);
+					$co->quality = (int) $this->_getCacheValue('smartmakers', 'photo', 'quality', 90);
+					$ret['compressOptions'] = $co;
+				}
 			}
 		}
 
@@ -392,5 +400,34 @@ class dmHelper
 	public function getListOfForeignKeys()
 	{
 		return $this->listOfForeignKeys;
+	}
+
+	/**
+	 * get cache value for $key
+	 * @return  [type]            [return description]
+	 */
+	private function _getCacheValue($key, $property, $default)
+	{
+		global $conf;
+		if (isset($conf->cache['smartmakers'][$key][$property])) {
+			$default = $conf->cache['smartmakers'][$key][$property];
+		}
+		return $default;
+	}
+
+	/**
+	 * set values to cache object
+	 *
+	 * @param   [type]  $maxWidth   [$maxWidth description]
+	 * @param   [type]  $maxHeight  [$maxHeight description]
+	 * @param   [type]  $quality    [$quality description]
+	 *
+	 * @return  [type]              [return description]
+	 */
+	public function setGlobalMaxImageSize($maxWidth, $maxHeight = -1, $quality = 90) {
+		global $conf;
+		$conf->cache['smartmakers']['photo']['maxWidth']  = (int) $maxWidth;
+		$conf->cache['smartmakers']['photo']['maxHeight'] = (int) $maxHeight;
+		$conf->cache['smartmakers']['photo']['quality']   = (int) $quality;
 	}
 }
