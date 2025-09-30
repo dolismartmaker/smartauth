@@ -385,8 +385,8 @@ class dmHelper
 					//add options
 					$co = new \stdClass();
 					$co->maxWidth = (int) $this->_getCacheValue('photo', 'width', 1024);
-					$co->maxHeight = (int) $this->_getCacheValue('smartmakers', 'photo', 'height', 1024);
-					$co->quality = (int) $this->_getCacheValue('smartmakers', 'photo', 'quality', 90);
+					$co->maxHeight = (int) $this->_getCacheValue('photo', 'height', 1024);
+					$co->quality = (int) $this->_getCacheValue('photo', 'quality', 90);
 					$ret['compressOptions'] = $co;
 				}
 			}
