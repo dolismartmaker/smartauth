@@ -1,6 +1,6 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 1.0.3 -- 20250930
+## 1.0.4 -- 20250930
 
 Add compressOptions to photo objects
 
