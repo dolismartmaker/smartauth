@@ -221,8 +221,8 @@ trait dmTrait
 		}
 
 		//export lines content
-		if(isset($obj->lines) && count($obj->lines) > 0) {
-			foreach($obj->lines as $line) {
+		if (isset($obj->lines) && count($obj->lines) > 0) {
+			foreach ($obj->lines as $line) {
 				$filteredline = new \stdClass;
 				//export only needed fields listed into _listOfPublishedFieldsForLines
 				foreach ($this->listOfPublishedFieldsForLines as $doliside => $appside) {
@@ -252,7 +252,6 @@ trait dmTrait
 	public function exportExtrafieldData($name, $objectid)
 	{
 		global $conf, $langs;
-
 		// dol_syslog("Ask exportExtrafieldData for name=$name, objectid=$objectid");
 
 		$doliMapClass = new $this->_dolmapclassname($this->_db);
@@ -302,27 +301,40 @@ trait dmTrait
 				// 5 : id category type
 				// 6 : ids categories list separated by comma for category root
 				// example c_smartinterventions_status:label:code::code
-				$keyList = (empty($InfoFieldList[2]) ? 'rowid' : $InfoFieldList[2] . ' as rowid');
 
-				$idfieldname = $InfoFieldList[2] ?? "rowid";
+				if (count($InfoFieldList) < 1) {
+					dol_syslog("exportExtrafieldData impossible due to data input " . $param_list[0]);
+					return $objectid;
+				}
+
+				$tableName 			= $InfoFieldList[0];
+				$labelFieldName 	= $InfoFieldList[1];
+				$keyFieldName 		= $InfoFieldList[2] ?? null;
+				$keyFieldParent 	= $InfoFieldList[3] ?? null;
+				$whereFieldOrExtra 	= $InfoFieldList[4] ?? null;
+
+				$keyList = (empty($keyFieldName) ? 'rowid' : $keyFieldName . ' as rowid');
+
+
+				$idfieldname = $keyFieldName ?? "rowid";
 
 				$out = "";
 
-				if (count($InfoFieldList) > 4 && !empty($InfoFieldList[4])) {
-					if (strpos($InfoFieldList[4], 'extra.') !== false) {
-						$keyList = 'main.' . $InfoFieldList[2] . ' as rowid';
+				if (count($InfoFieldList) > 4 && !empty($whereFieldOrExtra)) {
+					if (strpos($whereFieldOrExtra, 'extra.') !== false) {
+						$keyList = 'main.' . $keyFieldName . ' as rowid';
 					} else {
-						$keyList = $InfoFieldList[2] . ' as rowid';
+						$keyList = $keyFieldName . ' as rowid';
 					}
 				}
-				if (count($InfoFieldList) > 3 && !empty($InfoFieldList[3])) {
-					list($parentName, $parentField) = explode('|', $InfoFieldList[3]);
+				if (count($InfoFieldList) > 3 && !empty($keyFieldParent)) {
+					list($parentName, $parentField) = explode('|', $keyFieldParent);
 					$keyList .= ', ' . $parentField;
 				}
 
 				$filter_categorie = false;
 				if (count($InfoFieldList) > 5) {
-					if ($InfoFieldList[0] == 'categorie') {
+					if ($tableName == 'categorie') {
 						$filter_categorie = true;
 					}
 				}
@@ -330,7 +342,7 @@ trait dmTrait
 
 				// dol_syslog("************* " . json_encode($keyList));
 				if ($filter_categorie === false) {
-					$fields_label = explode('|', $InfoFieldList[1]);
+					$fields_label = explode('|', $labelFieldName);
 					if (is_array($fields_label)) {
 						$keyList .= ', ';
 						$keyList .= implode(', ', $fields_label);
@@ -340,36 +352,36 @@ trait dmTrait
 					// dol_syslog("Ask exportExtrafieldData (2) for name=$name, objectid=$objectid");
 					$sqlwhere = '';
 					$sql = "SELECT " . $keyList;
-					$sql .= ' FROM ' . $this->_db->prefix() . $InfoFieldList[0];
-					if (!empty($InfoFieldList[4])) {
+					$sql .= ' FROM ' . $this->_db->prefix() . $tableName;
+					if (!empty($whereFieldOrExtra)) {
 						// can use current entity filter
-						if (strpos($InfoFieldList[4], '$ENTITY$') !== false) {
-							$InfoFieldList[4] = str_replace('$ENTITY$', $conf->entity, $InfoFieldList[4]);
+						if (strpos($whereFieldOrExtra, '$ENTITY$') !== false) {
+							$whereFieldOrExtra = str_replace('$ENTITY$', $conf->entity, $whereFieldOrExtra);
 						}
 						// can use SELECT request
-						if (strpos($InfoFieldList[4], '$SEL$') !== false) {
-							$InfoFieldList[4] = str_replace('$SEL$', 'SELECT', $InfoFieldList[4]);
+						if (strpos($whereFieldOrExtra, '$SEL$') !== false) {
+							$whereFieldOrExtra = str_replace('$SEL$', 'SELECT', $whereFieldOrExtra);
 						}
 
 						// current object id can be use into filter
-						if (strpos($InfoFieldList[4], '$ID$') !== false && !empty($objectid)) {
-							$InfoFieldList[4] = str_replace('$ID$', $objectid, $InfoFieldList[4]);
+						if (strpos($whereFieldOrExtra, '$ID$') !== false && !empty($objectid)) {
+							$whereFieldOrExtra = str_replace('$ID$', $objectid, $whereFieldOrExtra);
 						} else {
-							$InfoFieldList[4] = str_replace('$ID$', '0', $InfoFieldList[4]);
+							$whereFieldOrExtra = str_replace('$ID$', '0', $whereFieldOrExtra);
 						}
 						//We have to join on extrafield table
-						if (strpos($InfoFieldList[4], 'extra.') !== false) {
-							$sql .= ' as main, ' . $this->_db->prefix() . $InfoFieldList[0] . '_extrafields as extra';
-							$sqlwhere .= " WHERE extra.fk_object=main." . $InfoFieldList[2] . " AND " . $InfoFieldList[4];
+						if (strpos($whereFieldOrExtra, 'extra.') !== false) {
+							$sql .= ' as main, ' . $this->_db->prefix() . $tableName . '_extrafields as extra';
+							$sqlwhere .= " WHERE extra.fk_object=main." . $keyFieldName . " AND " . $whereFieldOrExtra;
 						} else {
 							// dol_syslog("Ask exportExtrafieldData (5) where for name=$name, objectid=$objectid");
-							$sqlwhere .= " WHERE " . $InfoFieldList[4];
+							$sqlwhere .= " WHERE " . $whereFieldOrExtra;
 						}
 					} else {
 						$sqlwhere .= " WHERE $idfieldname='" . $objectid . "'";
 					}
 					// Some tables may have field, some other not. For the moment we disable it.
-					if (in_array($InfoFieldList[0], array('tablewithentity'))) {
+					if (in_array($tableName, array('tablewithentity'))) {
 						$sqlwhere .= ' AND entity = ' . ((int) $conf->entity);
 					}
 					$sql .= $sqlwhere;
@@ -379,7 +391,7 @@ trait dmTrait
 					$resql = $this->_db->query($sql);
 					if ($resql) {
 						$obj = $this->_db->fetch_object($resql);
-						return $obj->{$InfoFieldList[1]};
+						return $obj->{$labelFieldName};
 						$this->_db->free($resql);
 					} else {
 						dol_syslog('Error in request ' . $sql . ' ' . $this->_db->lasterror() . '. Check setup of extra parameters', LOG_ERR);
