@@ -31,6 +31,10 @@ use User;
 
 class AuthController
 {
+	const STATUS_DRAFT = 0;
+	const STATUS_VALID = 1;
+	const STATUS_LOGOUT = 9;
+
 	/**
 	 * @api {get} /index List of dolibarr entities
 	 * @apiName GetLogin
@@ -67,7 +71,7 @@ class AuthController
 		dol_syslog("Debug smartauth::AuthController : ping");
 		$decoded = $this->check();
 
-		//dev time
+		//TODO dev time !!!!
 		if (!empty($decoded->login)) {
 			$ret = [
 				'data' => [
@@ -112,8 +116,13 @@ class AuthController
 		global $db;
 		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($payload));
 
-		$entity = (int) ($payload['entity'] ?? 1);
 		$login  = filter_var($payload['email'] ?? '', FILTER_SANITIZE_STRING);
+
+		$entity = (int) ($payload['entity'] ?? 1);
+		if (isModEnabled('multicompany') && empty($payload['entity'])) {
+			//search entity for that user ?
+			$entity = $this->_findEntityForUser($login);
+		}
 		if (empty($login)) {
 			//try old username field
 			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_STRING);
@@ -178,7 +187,7 @@ class AuthController
 		if (!empty($payload['tokenid'])) {
 			//soft delete token from db
 			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-			$sql .= " SET status = 9 ";
+			$sql .= " SET status = " . self::STATUS_LOGOUT;
 			$sql .= ", salt = 'xxxxxxxxxx' ";
 			$sql .= " WHERE rowid = " . (int) $payload['tokenid'];
 			dol_syslog("smartauth : disable token from db " . $sql);
@@ -319,7 +328,7 @@ class AuthController
 
 		$sql = "INSERT ";
 		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $this->get_client_ip() . "',1,'" . (int) $entity . "');";
+		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $this->get_client_ip() . "'," . self::STATUS_VALID . ",'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
 			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "mailing");
@@ -358,7 +367,7 @@ class AuthController
 		$keyid = $salt = '';
 		//remove all other token for that user and that app
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " SET status = 9,";
+		$sql .= " SET status = " . self::STATUS_LOGOUT . ",";
 		$sql .= ", salt = 'xxxxxxxxxx' ";
 		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
 		$sql .= " AND fk_authid=" . (int) $socid;
@@ -401,6 +410,9 @@ class AuthController
 
 	private static function getAuthorizationHeader()
 	{
+		$headers = getallheaders();
+		dol_syslog("Debug smartauth : getAuthorizationHeader = " . json_encode($headers));
+
 		$headers = null;
 		if (isset($_SERVER['Authorization'])) {
 			$headers = trim($_SERVER["Authorization"]);
@@ -412,6 +424,10 @@ class AuthController
 
 			if (isset($requestHeaders['Authorization'])) {
 				$headers = trim($requestHeaders['Authorization']);
+			}
+		} else {
+			if (!function_exists('apache_request_headers')) {
+				dol_syslog("Debug getAuthorizationHeader : apache_request_headers does not exists!");
 			}
 		}
 
@@ -463,6 +479,39 @@ class AuthController
 			}
 		}
 		return $def;
+	}
+
+	/**
+	 * return entity for that login
+	 *
+	 * @return  [type]  [return description]
+	 */
+	private function _findEntityForUser($login)
+	{
+		global $db;
+		$def = 0;
+
+		if (isModEnabled('multicompany')) {
+			$sql = "SELECT DISTINCT(entity)";
+			$sql .= " FROM " . MAIN_DB_PREFIX . "usergroup_user";
+			$sql .= " WHERE fk_user in(";
+			$sql .= "   SELECT rowid ";
+			$sql .= "   FROM " . MAIN_DB_PREFIX . "user";
+			$sql .= "   WHERE login='" . $db->escape($login) . "'";
+			$sql .= "   OR email ='" . $db->escape($login) . "'";
+			$sql .= " )";
+
+			$resql = $db->query($sql);
+			if ($resql) {
+				$i = 0;
+				$num_rows = $db->num_rows($resql);
+				while ($i < $num_rows) {
+					$array = $db->fetch_array($resql);
+					return $array[0];
+				}
+			}
+		}
+		return 0;
 	}
 
 	/**
