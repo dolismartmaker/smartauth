@@ -410,9 +410,6 @@ class AuthController
 
 	private static function getAuthorizationHeader()
 	{
-		$headers = getallheaders();
-		dol_syslog("Debug smartauth : getAuthorizationHeader = " . json_encode($headers));
-
 		$headers = null;
 		if (isset($_SERVER['Authorization'])) {
 			$headers = trim($_SERVER["Authorization"]);
@@ -424,10 +421,6 @@ class AuthController
 
 			if (isset($requestHeaders['Authorization'])) {
 				$headers = trim($requestHeaders['Authorization']);
-			}
-		} else {
-			if (!function_exists('apache_request_headers')) {
-				dol_syslog("Debug getAuthorizationHeader : apache_request_headers does not exists!");
 			}
 		}
 
