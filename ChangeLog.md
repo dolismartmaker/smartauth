@@ -1,5 +1,11 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 1.0.5 -- 20251028
+
+Fix MultiCompany errors
+Fix extrafields without complete definition
+Use const names (better than integer hardcoded)
+
 ## 1.0.4 -- 20250930
 
 Add compressOptions to photo objects
