@@ -428,7 +428,8 @@ trait dmTrait
 	public function exportData($name, $objectid)
 	{
 		global $conf, $langs;
-		// dol_syslog("############ Call exportData for $name / $objectid / " . $this->listOfForeignKeys[$name]);
+		//dol_syslog("############ Call exportData for $name / $objectid / " . $this->listOfForeignKeys[$name]);
+		// dol_syslog("############ Call exportData for $name / $objectid / " . getEntity('societe'));
 		$InfoFieldList = explode(":", $this->listOfForeignKeys[$name]);
 		$classname = $InfoFieldList[1];
 		$classpath = $InfoFieldList[2];

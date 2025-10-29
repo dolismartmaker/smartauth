@@ -112,8 +112,8 @@ class AuthController
 	 */
 	public function login($payload)
 	{
+		global $db, $conf;
 		dol_syslog("Debug smartauth::AuthController : login");
-		global $db;
 		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($payload));
 
 		$login  = filter_var($payload['email'] ?? '', FILTER_SANITIZE_STRING);
@@ -123,6 +123,12 @@ class AuthController
 			//search entity for that user ?
 			$entity = $this->_findEntityForUser($login);
 		}
+
+		//waiting for regis answer
+		$_SESSION["dol_entity"] = $entity;
+		// force current entity but maybe a TODO with transverse mode or ...
+		$conf->entity = $entity;
+
 		if (empty($login)) {
 			//try old username field
 			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_STRING);
@@ -158,6 +164,7 @@ class AuthController
 
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
+
 		if (empty($tmpuser->email)) {
 			$user = $tmpuser->login;
 		}
@@ -165,6 +172,7 @@ class AuthController
 			'data' => [
 				'user' => $user,
 				'userid' => $tmpuser->id,
+				'entity' => $entity,
 				'token' => $jwt,
 				'rememberMe' => $rememberme
 			]

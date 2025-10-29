@@ -90,7 +90,7 @@ class RouteController
 	 */
 	public static function route($targetMethod, $targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
-		global $db, $user, $buyer; //global user super important pour propager les droits de l'utilisateur connecté
+		global $conf, $db, $user, $buyer; //global user super important pour propager les droits de l'utilisateur connecté
 		$user = $entity = $auth_socid = null;
 		$buyer = new \Societe($db);
 
@@ -159,6 +159,12 @@ class RouteController
 				dol_syslog("Debug smartauth : route auth error : return 401");
 				RouteController::insertLogs($tokenid, 401, 'login error', $entity);
 				\json_reply('login error', 401);
+			} else {
+				$user->entity = $entity;
+				//waiting for regis answer
+				$_SESSION["dol_entity"] = $entity;
+				// force current entity but maybe a TODO with transverse mode or ...
+				$conf->entity = $entity;
 			}
 			$auth_socid = $user->socid;
 		}
@@ -174,7 +180,7 @@ class RouteController
 			}
 		}
 
-		dol_syslog("API Route $targetMethod, class=$targetClass, action=$targetAction, redir=$redirectFunction, protected=$protected, buyerid=" . $buyer->id . ",authuserid=" . $data['auth_userid']);
+		dol_syslog("API Route $targetMethod, class=$targetClass, action=$targetAction, redir=$redirectFunction, protected=$protected, buyerid=" . $buyer->id . ",authuserid=" . $data['auth_userid'] . ",entity=" . $entity);
 		if ($method == $targetMethod) {
 			dol_syslog("API Route match, call class $targetClass and function $redirectFunction...");
 			$class = new $targetClass();
