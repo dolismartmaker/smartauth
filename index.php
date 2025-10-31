@@ -124,84 +124,84 @@ print '<div class="fichecenter"><div class="fichethirdleft">';
 
 /* BEGIN MODULEBUILDER DRAFT MYOBJECT */
 // Draft MyObject
-if (isModEnabled('smartauth') && $user->rights->smartauth->read)
-{
-	$langs->load("orders");
+// if (isModEnabled('smartauth') && $user->rights->smartauth->read)
+// {
+// 	$langs->load("orders");
 
-	$sql = "SELECT *";
-	$sql.= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
-	$resql = $db->query($sql);
-	if ($resql)
-	{
-		$total = 0;
-		$num = $db->num_rows($resql);
+// 	$sql = "SELECT *";
+// 	$sql.= " FROM ".MAIN_DB_PREFIX."smartauth_auth";
+// 	$resql = $db->query($sql);
+// 	if ($resql)
+// 	{
+// 		$total = 0;
+// 		$num = $db->num_rows($resql);
 
-		print "<p>" . $langs->trans("ListOfTokens").($num?'<span class="badge marginleftonlyshort">'.$num.'</span>':'') . "</p>";
+// 		print "<p>" . $langs->trans("ListOfTokens").($num?'<span class="badge marginleftonlyshort">'.$num.'</span>':'') . "</p>";
 
-		print '<table class="noborder centpercent">';
-		print '<tr class="liste_titre">';
-		print '<th>' . $langs->trans('smartAuthID') . '</th>';
-		print '<th>' . $langs->trans('smartAuthApp') . '</th>';
-		print '<th>' . $langs->trans('smartAuthUserOrSoc') . '</th>';
-		print '<th>' . $langs->trans('smartAuthCreated') . '</th>';
-		print '<th>' . $langs->trans('smartAuthLastUsed') . '</th>';
-		print '<th>' . $langs->trans('smartAuthLastIP') . '</th>';
-		print '<th>' . $langs->trans('smartAuthEOL') . '</th>';
-		print '</tr>';
+// 		print '<table class="noborder centpercent">';
+// 		print '<tr class="liste_titre">';
+// 		print '<th>' . $langs->trans('smartAuthID') . '</th>';
+// 		print '<th>' . $langs->trans('smartAuthApp') . '</th>';
+// 		print '<th>' . $langs->trans('smartAuthUserOrSoc') . '</th>';
+// 		print '<th>' . $langs->trans('smartAuthCreated') . '</th>';
+// 		print '<th>' . $langs->trans('smartAuthLastUsed') . '</th>';
+// 		print '<th>' . $langs->trans('smartAuthLastIP') . '</th>';
+// 		print '<th>' . $langs->trans('smartAuthEOL') . '</th>';
+// 		print '</tr>';
 
-		$var = true;
-		if ($num > 0)
-		{
-			$i = 0;
-			while ($i < $num)
-			{
-				$obj = $db->fetch_object($resql);
-				$userOrSoc = '';
-				if($obj->auth_element == 'user') {
-					$user = new User($db);
-					$res = $user->fetch($obj->fk_authid);
-					if($res <= 0) {
-						//error
-						continue;
-					}
-					$userOrSoc = $user->login;
-				} elseif($obj->auth_element == 'societe_account') {
-					$authSoc = new Societe($db);
-					$res = $authSoc->fetch($obj->fk_authid);
-					if($res <= 0) {
-						//error
-						continue;
-					}
-					$userOrSoc = $authSoc->name;
-				}
-				$appName = getModuleName($obj->appuid);
+// 		$var = true;
+// 		if ($num > 0)
+// 		{
+// 			$i = 0;
+// 			while ($i < $num)
+// 			{
+// 				$obj = $db->fetch_object($resql);
+// 				$userOrSoc = '';
+// 				if($obj->auth_element == 'user') {
+// 					$user = new User($db);
+// 					$res = $user->fetch($obj->fk_authid);
+// 					if($res <= 0) {
+// 						//error
+// 						continue;
+// 					}
+// 					$userOrSoc = $user->login;
+// 				} elseif($obj->auth_element == 'societe_account') {
+// 					$authSoc = new Societe($db);
+// 					$res = $authSoc->fetch($obj->fk_authid);
+// 					if($res <= 0) {
+// 						//error
+// 						continue;
+// 					}
+// 					$userOrSoc = $authSoc->name;
+// 				}
+// 				$appName = getModuleName($obj->appuid);
 
-				print '<tr class="oddeven">';
-				print '<td class="nowrap">' . $obj->rowid . '</td>';
-				print '<td class="nowrap">' . $appName . '</td>';
-				print '<td class="nowrap">' . $userOrSoc . '</td>';
-				print '<td class="nowrap">' . $obj->date_creation . '</td>';
-				print '<td class="nowrap">' . $obj->date_lastused . '</td>';
-				print '<td class="nowrap">' . $obj->ip . '</td>';
-				print '<td class="nowrap">' . $obj->date_eol . '</td>';
-				print '</tr>';
-				$i++;
-			}
-		}
-		else
-		{
+// 				print '<tr class="oddeven">';
+// 				print '<td class="nowrap">' . $obj->rowid . '</td>';
+// 				print '<td class="nowrap">' . $appName . '</td>';
+// 				print '<td class="nowrap">' . $userOrSoc . '</td>';
+// 				print '<td class="nowrap">' . $obj->date_creation . '</td>';
+// 				print '<td class="nowrap">' . $obj->date_lastused . '</td>';
+// 				print '<td class="nowrap">' . $obj->ip . '</td>';
+// 				print '<td class="nowrap">' . $obj->date_eol . '</td>';
+// 				print '</tr>';
+// 				$i++;
+// 			}
+// 		}
+// 		else
+// 		{
 
-			print '<tr class="oddeven"><td colspan="3" class="opacitymedium">'.$langs->trans("NoOrder").'</td></tr>';
-		}
-		print "</table><br>";
+// 			print '<tr class="oddeven"><td colspan="3" class="opacitymedium">'.$langs->trans("NoOrder").'</td></tr>';
+// 		}
+// 		print "</table><br>";
 
-		$db->free($resql);
-	}
-	else
-	{
-		dol_print_error($db);
-	}
-}
+// 		$db->free($resql);
+// 	}
+// 	else
+// 	{
+// 		dol_print_error($db);
+// 	}
+// }
 /* END MODULEBUILDER DRAFT MYOBJECT */
 
 
@@ -265,6 +265,34 @@ if (isModEnabled('smartauth') && $user->rights->smartauth->read)
 	}
 }
 */
+
+		// print "<p>MULTICOMPANY_SHARINGS_ENABLED : " . $conf->global->MULTICOMPANY_SHARINGS_ENABLED . "<p>";
+
+		// $listToTest = [
+		// 	'societe',
+		// 	'propal',
+		// 	'propal',
+		// 	'commande',
+		// 	'commande',
+		// 	'facture',
+		// 	'facture',
+		// 	'supplierproposal',
+		// 	'fournisseur',
+		// 	'fournisseur',
+		// 	'product',
+		// 	'product',
+		// 	'projet',
+		// 	'projet',
+		// 	'ticket',
+		// 	'adherent',
+		// 	'adherent',
+		// 	'ficheinter',
+		// 	'categorie',
+		// 	'banque'
+		// ];
+		// foreach($listToTest as $ltt) {
+		// 	print("<p>getentity pour " . $ltt . " = " . getEntity($ltt) . "</p>");
+		// }
 
 print '</div></div>';
 
