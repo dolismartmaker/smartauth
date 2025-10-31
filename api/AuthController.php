@@ -112,11 +112,15 @@ class AuthController
 	 */
 	public function login($payload)
 	{
-		global $db, $conf;
+		global $db, $conf, $mysoc;
 		dol_syslog("Debug smartauth::AuthController : login");
 		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($payload));
 
 		$login  = filter_var($payload['email'] ?? '', FILTER_SANITIZE_STRING);
+		if (empty($login)) {
+			//try old username field
+			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_STRING);
+		}
 
 		$entity = (int) ($payload['entity'] ?? 1);
 		if (isModEnabled('multicompany') && empty($payload['entity'])) {
@@ -128,11 +132,11 @@ class AuthController
 		$_SESSION["dol_entity"] = $entity;
 		// force current entity but maybe a TODO with transverse mode or ...
 		$conf->entity = $entity;
+		// dol_syslog("conf avant " . json_encode($conf->multicompany));
+		$conf->setValues($db);
+		$mysoc->setMysoc($conf);
+		// dol_syslog("conf apres " . json_encode($conf->multicompany));
 
-		if (empty($login)) {
-			//try old username field
-			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_STRING);
-		}
 		$pass   = filter_var($payload['password'] ?? '', FILTER_SANITIZE_STRING);
 
 		//check if login / pass is ok
@@ -148,8 +152,19 @@ class AuthController
 		}
 
 		$tmpuser = new User($db);
-		$tmpuser->fetch(0, $login, 0, 0, $entity);
-		if (empty($tmpuser->id)) {
+		$resuser = $tmpuser->fetch(0, $login);
+		if ($resuser < 0) {
+			dol_syslog("Debug smartauth::AuthController load user from login fail ... try with email");
+			$resuser = $tmpuser->fetch(0, '', '', 0, -1, $login);
+			if ($resuser < 0) {
+				dol_syslog("Debug smartauth::AuthController load user from email fail too !", LOG_ERR);
+			}
+		}
+
+		// dol_syslog("Debug smartauth::AuthController : conf " . json_encode($conf));
+		// dol_syslog("Debug smartauth::AuthController : user " . $tmpuser->entity);
+
+		if (!is_object($tmpuser) || empty($tmpuser->id)) {
 			dol_syslog("Debug smartauth : AuthController::login : failed to load user");
 			json_reply('Failed to load user', 401);
 		}
@@ -313,7 +328,7 @@ class AuthController
 	private function _newUserKey($uid, $login, $entity)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey, $SERVER;
-		dol_syslog("Debug smartauth : AuthController::_newUserKey");
+		dol_syslog("Debug smartauth : AuthController::_newUserKey for $uid / $login / $entity");
 
 		$keyid = $salt = '';
 		//remove all other token for that user and that app ?
