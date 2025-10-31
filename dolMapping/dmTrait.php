@@ -39,6 +39,10 @@ trait dmTrait
 	 */
 	public function __construct()
 	{
+		//Note: don't forget to load langs to get all translations on client side
+		//into your dmCustomClass with your module lang name, for example like that
+		//$langs->load("smartinterventions@smartinterventions");
+
 		$this->boot();
 	}
 
@@ -71,6 +75,8 @@ trait dmTrait
 	 * build all description of an object : field by field, browse dolibarr class and parse $fields
 	 * then convert it to smart* fields names and types
 	 *
+	 * Note: auto apply translation for label or help fields
+	 *
 	 * @return  [type]  [return description]
 	 */
 	private function _objectDesc()
@@ -85,6 +91,9 @@ trait dmTrait
 		// dol_syslog(get_class($this) . " doliBaseClass is " . json_encode($doliBaseClass));
 		$obj = new \stdClass();
 
+		// to make order at the end
+		$reorder = [];
+
 		foreach ($this->listOfPublishedFields as $doliside => $appside) {
 			// dol_syslog(get_class($this) . " _objectDesc : $doliside => $appside for " . get_class($this->_dolmapping));
 			//note : foreign key detect, could be done thanks to dolibarr name plan (prefix fk_)
@@ -96,6 +105,7 @@ trait dmTrait
 			if (isset($this->_dolmapping) && !empty($this->_dolmapping)) {
 				// dol_syslog(get_class($this) . " _objectDesc : call propertiesFilter ...");
 				$obj->$appside = $this->_dolmapping->propertiesFilter($doliBaseClass->fields[$doliside], $doliside, $appside, $this->parentFieldsOverride);
+				$reorder[$obj->$appside['position']] = $appside;
 			}
 			//TODO
 			//foreign key like fk_pays : without integer:class:data ?
@@ -106,11 +116,16 @@ trait dmTrait
 
 		//then all official extrafields listed in object definition (for enhanced objects)
 		$extrafields = new \ExtraFields($this->_db);
+
 		//TODO CHECK
 		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields ?? '';
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
 		// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter for element=" . $parentElementToUseForExtraFields . ", soit " . json_encode($listExtra));
 		foreach ($listExtra as $extrakey => $extralabel) {
+			//do we have to export that extrafield ?
+			if(!isset($this->listOfPublishedFields["options_" . $extrakey])) {
+				continue;
+			}
 			//search for mapping
 			$appside = $this->listOfPublishedFields["options_" . $extrakey];
 			if (trim($appside == '')) {
@@ -118,6 +133,7 @@ trait dmTrait
 			}
 			// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter ...");
 			$obj->$appside = $this->_dolmapping->extrafieldsFilter($parentElementToUseForExtraFields, $extrakey, $appside, $extrafields);
+			$reorder[$obj->$appside['position']] = $appside;
 		}
 
 		if (isset($this->_dolmapping)) {
@@ -148,7 +164,14 @@ trait dmTrait
 			$obj->lines = $lines;
 		}
 
-
+		//order by "position" to help react front code ...
+		// dol_syslog("Check for properties positions : " . json_encode($reorder));
+		// ksort($reorder);
+		// $objsorted = new \stdClass();
+		// foreach($reorder as $k => $v) {
+		// 	$objsorted->$v = $obj->$v;
+		// }
+		// $objsorted->lines = $obj->lines;
 
 		//then "lines" if object is like fichinter / propal / invoice ...
 		return $obj;
@@ -419,6 +442,7 @@ trait dmTrait
 	/**
 	 * export data for foreign keys ex
 	 * fk_soc is a int so we get Societe object
+	 * in bief : follow foreign keys and grab data
 	 *
 	 * @param   [type]  $name   [$name description]
 	 * @param   [type]  $objectid  [$objectid description]
