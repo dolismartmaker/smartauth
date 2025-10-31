@@ -90,7 +90,7 @@ class RouteController
 	 */
 	public static function route($targetMethod, $targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
-		global $conf, $db, $user, $buyer; //global user super important pour propager les droits de l'utilisateur connecté
+		global $conf, $db, $user, $buyer, $mysoc; //global user super important pour propager les droits de l'utilisateur connecté
 		$user = $entity = $auth_socid = null;
 		$buyer = new \Societe($db);
 
@@ -165,6 +165,11 @@ class RouteController
 				$_SESSION["dol_entity"] = $entity;
 				// force current entity but maybe a TODO with transverse mode or ...
 				$conf->entity = $entity;
+
+				// dol_syslog("conf avant " . json_encode($conf->multicompany));
+				$conf->setValues($db);
+				$mysoc->setMysoc($conf);
+				// dol_syslog("conf apres " . json_encode($conf->multicompany));
 			}
 			$auth_socid = $user->socid;
 		}
