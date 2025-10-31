@@ -246,19 +246,23 @@ class dmHelper
 	 * filter all dolibarr properties to make beautifull objects
 	 * definitions for smart app
 	 *
-	 * @param   [type]  $input     [$input description]
-	 * @param   [type]  $dolikey   [$dolikey description]
-	 * @param   [type]  $frontkey  [$frontkey description]
+	 * @param   [type]  $input     input data
+	 * @param   [type]  $dolikey   key name "dolibarr side"
+	 * @param   [type]  $frontkey  key name "front / react side"
 	 *
-	 * @return  [type]             [return description]
+	 * @return  array             [return description]
 	 */
 	public function propertiesFilter($input, $dolikey = null, $frontkey = null, $parentOverride = null)
 	{
 		global $langs;
-		$langs->loadLangs(array('companies', 'smartinterventions'));
 
-		// dol_syslog("call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
-		// dol_syslog("call propertiesFilter on $dolikey / $frontkey for parentOverride " . json_encode($parentOverride));
+		$localDebug = false;
+
+		//TODO load langs for myself current object -- objective is to remove hardcoded samartinterventions
+		$langs->loadLangs(array('companies'));
+
+		if($localDebug) dol_syslog("call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
+		// if($localDebug) dol_syslog("call propertiesFilter on $dolikey / $frontkey for parentOverride " . json_encode($parentOverride));
 		$ret = [];
 		$type = $label = '';
 
@@ -270,26 +274,33 @@ class dmHelper
 
 		if (is_array($input)) {
 			foreach ($input as $key => $val) {
+				if($localDebug) dol_syslog("       propertiesFilter apply on $key -> $val");
 				if (!in_array($key, array_keys($this->_mappingAttributes))) {
-					// dol_syslog("call propertiesFilter on $key => continue");
+					if($localDebug) dol_syslog("       propertiesFilter not in array, continue");
 					continue;
 				}
 				//use in priority settings from parentFieldsOverride
 				if ($useParentOverride && in_array($key, array_keys($parentOverride[$dolikey]))) {
-					dol_syslog("call propertiesFilter on field $dolikey, key=$key then parentOverride value to use is " . $parentOverride[$dolikey][$key] . ", instead of dolibarr default value = $val");
+					if($localDebug) dol_syslog("       propertiesFilter use parent override and key in parent override then parentOverride value to use is " . $parentOverride[$dolikey][$key] . ", instead of dolibarr default value = $val");
 					$val = $parentOverride[$dolikey][$key];
 				}
 				if ($key == "label") {
 					$ret[$key] = $langs->transnoentities($val);
+					if($localDebug) dol_syslog("       propertiesFilter on label, translated it to " . $ret[$key]);
+					continue;
+				}
+				if ($key == "help") {
+					$ret[$key] = $langs->transnoentities($val);
+					if($localDebug) dol_syslog("       propertiesFilter on help, translated it to " . $ret[$key]);
 					continue;
 				}
 				//try to call a private function like _customFilterAttributeXXXXXXX (XXXX last part is dynamic)
 				$specialFilter = "_customFilterAttribute" . ucfirst($key);
-				// dol_syslog("call propertiesFilter on $dolikey start $specialFilter");
 				if (is_callable([$this, $specialFilter])) {
+					if($localDebug) dol_syslog("       propertiesFilter specialFilter is callable ...");
 					$r = call_user_func([$this, $specialFilter], $val);
-					// dol_syslog("call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));
-					// dol_syslog("add _listOfForeignKeys $dolikey || $val");
+					// if($localDebug) dol_syslog("call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));
+					// if($localDebug) dol_syslog("add _listOfForeignKeys $dolikey || $val");
 
 					if (isset($r->type) && !isset($this->listOfForeignKeys[$dolikey])) {
 						$this->listOfForeignKeys[$dolikey] = $val;
@@ -298,6 +309,7 @@ class dmHelper
 						$ret[$k] = $v;
 					}
 				} else {
+					if($localDebug) dol_syslog("       propertiesFilter at least use front key name ...");
 					//use front key name from correspondance table mapping
 					$frontkey = $this->_mappingAttributes[$key];
 					$ret[$frontkey] = $val;
@@ -348,7 +360,7 @@ class dmHelper
 
 		foreach ($this->_mappingExtrafieldsAttributes as $dolattr => $appattr) {
 			$val = $extrafields->attributes[$objectElement][$dolattr][str_replace('options_', '', $dolikey)];
-			if ($dolattr == "label" && is_string($val)) {
+			if (in_array($dolattr, ["label","help"]) && is_string($val)) {
 				// print "<p> pour $objectElement  / $dolikey :: $dolattr :: $appattr == " . json_encode($val) . "</p>";
 				$ret[$appattr] = $langs->transnoentities($val);
 				continue;
@@ -373,15 +385,15 @@ class dmHelper
 		}
 
 		//race condition for new type(not yet available into dolibarr core)
-		//for that the solution is to use a special prefix for fields like "photo_"
+		//for that the solution is to use a special prefix for fields like "smartphoto_"
 		//then we convert it into application type like doc :
 		//https://inligit.fr/cap-rel/dolibarr/plugin-smartinterventions/-/wikis/home
-		$mapNew = ['photo_' => 'photos', 'audio_' => 'audios', 'video_' => 'videos', 'file_' => 'files', 'signature_' => 'signature'];
+		$mapNew = ['smartphoto_' => 'photos', 'smartaudio_' => 'audios', 'smartvideo_' => 'videos', 'smartfile_' => 'files', 'smartsignature_' => 'signature'];
 		foreach ($mapNew as $dolside => $appside) {
 			if (substr($dolikey, 0, strlen($dolside)) == $dolside) {
 				$ret['type'] = $appside;
 				$ret['visible'] = ["create", "update", "read"];
-				if ($dolside == "photo_") {
+				if ($dolside == "smartphoto_") {
 					//add options
 					$co = new \stdClass();
 					$co->maxWidth = (int) $this->_getCacheValue('photo', 'width', 1024);
