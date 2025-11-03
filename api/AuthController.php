@@ -220,12 +220,12 @@ class AuthController
 		}
 
 		// SUCCESS: Reset rate limits
-        $rateLimiter->reset($ip, 'login_ip');
-        $rateLimiter->reset($login, 'login_username');
+		$rateLimiter->reset($ip, 'login_ip');
+		$rateLimiter->reset($login, 'login_username');
 
-        // Record successful attempt
-        $rateLimiter->recordAttempt($ip, 'login_ip', true);
-        $rateLimiter->recordAttempt($login, 'login_username', true);
+		// Record successful attempt
+		$rateLimiter->recordAttempt($ip, 'login_ip', true);
+		$rateLimiter->recordAttempt($login, 'login_username', true);
 
 		// dol_syslog("Debug smartauth::AuthController : conf " . json_encode($conf));
 		// dol_syslog("Debug smartauth::AuthController : user " . $tmpuser->entity);
@@ -316,7 +316,7 @@ class AuthController
 		$tokenid = null;
 		$salt = "";
 		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
-		$salt2 = substr(md5($_SERVER['HTTP_USER_AGENT']), 0, 16);
+		$salt2 = self::getSalt2();
 
 		if (strpos($jwt, '|') > 0) {
 			$tokenid = substr($jwt, 0, strpos($jwt, '|'));
@@ -417,8 +417,7 @@ class AuthController
 
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
-		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
-		$salt2 = substr(md5($_SERVER['HTTP_USER_AGENT']), 0, 16);
+		$salt2 = $this->getSalt2();
 
 		$sql = "INSERT ";
 		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
@@ -461,7 +460,7 @@ class AuthController
 		$keyid = $salt = '';
 		//remove all other token for that user and that app
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " SET status = " . self::STATUS_LOGOUT . ",";
+		$sql .= " SET status = " . self::STATUS_LOGOUT;
 		$sql .= ", salt = 'xxxxxxxxxx' ";
 		$sql .= " WHERE appuid=" . (int) $smartAuthAppID;
 		$sql .= " AND fk_authid=" . (int) $socid;
@@ -474,15 +473,14 @@ class AuthController
 
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
-		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
-		$salt2 = substr(md5($_SERVER['HTTP_USER_AGENT']), 0, 16);
+		$salt2 = $this->getSalt2();
 
 		$sql = "INSERT ";
 		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
 		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $useractions->id . "','" . (int) $socid . "','societe_account','" . $this->get_client_ip() . "',1,'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
-			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "mailing");
+			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
 			// dol_syslog("Debug smartauth : $sql ...");
 			$key = $salt . $salt2 . $smartAuthAppKey;
 
@@ -660,5 +658,18 @@ class AuthController
 		} else {
 			return $conf->cache['smartmakers']['clientIP'] = $_SERVER['REMOTE_ADDR'];
 		}
+	}
+
+	private static function getSalt2()
+	{
+		// Check for X-App-ID header (future-proof)
+		$appId = $_SERVER['HTTP_X_APP_ID'] ?? '';
+		if (!empty($appId) && preg_match('/^[a-f0-9\-]{36}$/i', $appId)) {
+			return substr(hash('sha256', $appId), 0, 16);
+		}
+
+		// Fallback to User-Agent (works now)
+		$ua = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+		return substr(hash('sha256', $ua), 0, 16);
 	}
 }
