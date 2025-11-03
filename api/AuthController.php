@@ -23,14 +23,24 @@ namespace SmartAuth\Api;
 
 dol_include_once('/smartauth/api/tools.php');
 
+use User;
 use Exception;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
+use SmartAuth\Api\RateLimiter;
 use Firebase\JWT\SignatureInvalidException;
-use User;
 
 class AuthController
 {
+	// rate limiter
+	const SMARTAUTH_RATELIMIT_IP_MAX = 10;
+	const SMARTAUTH_RATELIMIT_IP_WINDOW = 300; // 5 min
+
+	// Strict pour username (protéger comptes)
+	const SMARTAUTH_RATELIMIT_USER_MAX = 5;
+	const SMARTAUTH_RATELIMIT_USER_WINDOW = 900; // 15 min
+
+
 	const STATUS_DRAFT = 0;
 	const STATUS_VALID = 1;
 	const STATUS_LOGOUT = 9;
@@ -116,11 +126,59 @@ class AuthController
 		dol_syslog("Debug smartauth::AuthController : login");
 		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($payload));
 
-		$login  = filter_var($payload['email'] ?? '', FILTER_SANITIZE_STRING);
+		$rateLimiter = new RateLimiter($db);
+		$ip = $this->get_client_ip();
+
+		$login  = filter_var($payload['email'] ?? '', FILTER_SANITIZE_EMAIL);
 		if (empty($login)) {
 			//try old username field
-			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_STRING);
+			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_EMAIL);
 		}
+
+		// Check 1: IP-based rate limit (prevent distributed attacks on same IP)
+		$ip_limit = $rateLimiter->checkLimit(
+			$ip,
+			'login_ip',
+			$max_attempts = getDolGlobalInt('SMARTAUTH_RATELIMIT_IP_MAX', 10),
+			$window_seconds = getDolGlobalInt('SMARTAUTH_RATELIMIT_IP_WINDOW', 300) // 5 minutes
+		);
+
+		if (!$ip_limit['allowed']) {
+			dol_syslog("Rate limit: IP $ip blocked", LOG_WARNING);
+			return [[
+				'error' => 'Too many attempts. Please try again later.',
+				'retry_after' => $ip_limit['retry_after']
+			], 429]; // HTTP 429 Too Many Requests
+		}
+
+		// Check 2: Username-based rate limit (prevent brute force on specific account)
+		if (!empty($login)) {
+			$login_limit = $rateLimiter->checkLimit(
+				$login,
+				'login_username',
+				$max_attempts = getDolGlobalInt('SMARTAUTH_RATELIMIT_USER_MAX', 5),
+				$window_seconds = getDolGlobalInt('SMARTAUTH_RATELIMIT_USER_WINDOW', 900) // 15 minutes
+			);
+
+			if (!$login_limit['allowed']) {
+				dol_syslog("Rate limit: Username $login blocked", LOG_WARNING);
+
+				// Record IP attempt anyway
+				$rateLimiter->recordAttempt($ip, 'login_ip', false);
+
+				return [[
+					'error' => 'Too many failed attempts for this account. Please try again later.',
+					'retry_after' => $login_limit['retry_after']
+				], 429];
+			}
+		}
+
+		// Record attempts BEFORE authentication
+		$rateLimiter->recordAttempt($ip, 'login_ip', false);
+		if (!empty($login)) {
+			$rateLimiter->recordAttempt($login, 'login_username', false);
+		}
+
 
 		$entity = (int) ($payload['entity'] ?? 1);
 		if (isModEnabled('multicompany') && empty($payload['entity'])) {
@@ -137,7 +195,7 @@ class AuthController
 		$mysoc->setMysoc($conf);
 		// dol_syslog("conf apres " . json_encode($conf->multicompany));
 
-		$pass   = filter_var($payload['password'] ?? '', FILTER_SANITIZE_STRING);
+		$pass   = $payload['password'] ?? '';
 
 		//check if login / pass is ok
 		include_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
@@ -161,6 +219,14 @@ class AuthController
 			}
 		}
 
+		// SUCCESS: Reset rate limits
+        $rateLimiter->reset($ip, 'login_ip');
+        $rateLimiter->reset($login, 'login_username');
+
+        // Record successful attempt
+        $rateLimiter->recordAttempt($ip, 'login_ip', true);
+        $rateLimiter->recordAttempt($login, 'login_username', true);
+
 		// dol_syslog("Debug smartauth::AuthController : conf " . json_encode($conf));
 		// dol_syslog("Debug smartauth::AuthController : user " . $tmpuser->entity);
 
@@ -175,7 +241,7 @@ class AuthController
 		// Generate token for user
 		$result = $tmpuser->call_trigger('USER_LOGIN', $tmpuser);
 
-		$rememberme  = filter_var($payload['rememberMe']  ?? '', FILTER_SANITIZE_STRING);
+		$rememberme  = (int) $payload['rememberMe']  ?? '';
 
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
@@ -240,7 +306,7 @@ class AuthController
 	 */
 	public static function check()
 	{
-		global $db, $smartAuthAppID, $smartAuthAppKey;
+		global $db, $smartAuthAppID, $smartAuthAppKey, $conf;
 
 		$jwt = self::getBearerToken();
 		if (empty($jwt)) {
@@ -250,7 +316,7 @@ class AuthController
 		$tokenid = null;
 		$salt = "";
 		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
-		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
+		$salt2 = substr(md5($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		if (strpos($jwt, '|') > 0) {
 			$tokenid = substr($jwt, 0, strpos($jwt, '|'));
@@ -259,16 +325,19 @@ class AuthController
 			if (!is_numeric($tokenid)) {
 				json_reply('Access denied (invalid token)', 401);
 			}
-			//get salt from db
-			$sql = "SELECT salt";
-			$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-			$sql .= " WHERE rowid = " . (int) $tokenid;
-			dol_syslog("smartauth : get salt from db " . $sql);
-			$resql = $db->query($sql);
-			if ($resql) {
-				$obj = $db->fetch_object($resql);
-				$salt = $obj->salt;
+			if (!isset($conf->cache['smartmakers']['token-' . $tokenid])) {
+				//get salt from db
+				$sql = "SELECT salt";
+				$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+				$sql .= " WHERE rowid = " . (int) $tokenid;
+				dol_syslog("smartauth : get salt from db " . $sql);
+				$resql = $db->query($sql);
+				if ($resql) {
+					$obj = $db->fetch_object($resql);
+					$conf->cache['smartmakers']['token-' . $tokenid] = $obj->salt;
+				}
 			}
+			$salt = $conf->cache['smartmakers']['token-' . $tokenid];
 		}
 
 		if (is_null($tokenid)) {
@@ -347,14 +416,14 @@ class AuthController
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
 		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
-		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
+		$salt2 = substr(md5($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		$sql = "INSERT ";
 		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
 		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $this->get_client_ip() . "'," . self::STATUS_VALID . ",'" . (int) $entity . "');";
 		$resql = $db->query($sql);
 		if ($resql) {
-			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "mailing");
+			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
 			// dol_syslog("Debug smartauth : $sql ...");
 			$key = $salt . $salt2 . $smartAuthAppKey;
 
@@ -404,7 +473,7 @@ class AuthController
 		//store a new one
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
 		//add salt from client's unique id / other from user agent to avoid reuse of token on an other device
-		$salt2 = substr(crc32($_SERVER['HTTP_USER_AGENT']), 0, 16);
+		$salt2 = substr(md5($_SERVER['HTTP_USER_AGENT']), 0, 16);
 
 		$sql = "INSERT ";
 		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
@@ -561,6 +630,10 @@ class AuthController
 	 */
 	public static function get_client_ip()
 	{
+		global $conf;
+		if (isset($conf->cache['smartmakers']['clientIP'])) {
+			return $conf->cache['smartmakers']['clientIP'];
+		}
 		if (function_exists('apache_request_headers')) {
 			$headers = apache_request_headers();
 		} else {
@@ -576,13 +649,14 @@ class AuthController
 			|| preg_match('/^192\.168\.*/i', trim($_SERVER['REMOTE_ADDR'])) || preg_match('/^10\..*/i', trim($_SERVER['REMOTE_ADDR'])))) {
 			if (strpos($_SERVER['HTTP_X_FORWARDED_FOR'], ',')) {
 				$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-
+				$conf->cache['smartmakers']['clientIP'] = $ips[0];
 				return $ips[0];
 			} else {
+				$conf->cache['smartmakers']['clientIP'] = $_SERVER['HTTP_X_FORWARDED_FOR'];
 				return $_SERVER['HTTP_X_FORWARDED_FOR'];
 			}
 		} else {
-			return $_SERVER['REMOTE_ADDR'];
+			return $conf->cache['smartmakers']['clientIP'] = $_SERVER['REMOTE_ADDR'];
 		}
 	}
 }

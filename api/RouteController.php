@@ -22,23 +22,19 @@
 namespace SmartAuth\Api;
 
 use Exception;
-use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
-use Firebase\JWT\SignatureInvalidException;
 use User;
 
 class RouteController
 {
 	/**
-	 * get entry into routing table
+	 * Register a GET route in the routing table
 	 *
-	 * @param   [type] $targetAction      [$targetAction description]
-	 * @param   [type] $targetClass       [$targetClass description]
-	 * @param   [type] $redirectFunction  [$redirectFunction description]
-	 * @param   [type] $protected         [$protected description]
-	 * @param   false                     [ description]
+	 * @param   string  $targetAction       URL pattern to match (e.g., '/users/{id}')
+	 * @param   string  $targetClass        Controller class name to instantiate
+	 * @param   string  $redirectFunction   Method name to call on the controller
+	 * @param   bool    $protected          Whether JWT authentication is required
 	 *
-	 * @return  [type]                    [return description]
+	 * @return  void
 	 */
 	public static function get($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
@@ -46,15 +42,14 @@ class RouteController
 	}
 
 	/**
-	 * post routing table
+	 * Register a POST route in the routing table
 	 *
-	 * @param   [type] $targetAction      [$targetAction description]
-	 * @param   [type] $targetClass       [$targetClass description]
-	 * @param   [type] $redirectFunction  [$redirectFunction description]
-	 * @param   [type] $protected         [$protected description]
-	 * @param   false                     [ description]
+	 * @param   string  $targetAction       URL pattern to match (e.g., '/users')
+	 * @param   string  $targetClass        Controller class name to instantiate
+	 * @param   string  $redirectFunction   Method name to call on the controller
+	 * @param   bool    $protected          Whether JWT authentication is required
 	 *
-	 * @return  [type]                    [return description]
+	 * @return  void
 	 */
 	public static function post($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
@@ -62,15 +57,14 @@ class RouteController
 	}
 
 	/**
-	 * put routing table
+	 * Register a PUT route in the routing table
 	 *
-	 * @param   [type] $targetAction      [$targetAction description]
-	 * @param   [type] $targetClass       [$targetClass description]
-	 * @param   [type] $redirectFunction  [$redirectFunction description]
-	 * @param   [type] $protected         [$protected description]
-	 * @param   false                     [ description]
+	 * @param   string  $targetAction       URL pattern to match (e.g., '/users/{id}')
+	 * @param   string  $targetClass        Controller class name to instantiate
+	 * @param   string  $redirectFunction   Method name to call on the controller
+	 * @param   bool    $protected          Whether JWT authentication is required
 	 *
-	 * @return  [type]                    [return description]
+	 * @return  void
 	 */
 	public static function put($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
@@ -78,15 +72,38 @@ class RouteController
 	}
 
 	/**
-	 * main routing mapper
+	 * Register a DELETE route in the routing table
 	 *
-	 * @param   [type]  $targetMethod      [$targetMethod description]
-	 * @param   [type]  $targetAction      [$targetAction description]
-	 * @param   [type]  $targetClass  	   [$targetClass description]
-	 * @param   [type]  $redirectFunction  [$redirectFunction description]
-	 * @param   [type]  $protected         [$protected description]
+	 * @param   string  $targetAction       URL pattern to match (e.g., '/users/{id}')
+	 * @param   string  $targetClass        Controller class name to instantiate
+	 * @param   string  $redirectFunction   Method name to call on the controller
+	 * @param   bool    $protected          Whether JWT authentication is required
 	 *
-	 * @return  [type]                     [return description]
+	 * @return  void
+	 */
+	public static function delete($targetAction, $targetClass, $redirectFunction, $protected = false)
+	{
+		return self::route('DELETE', $targetAction, $targetClass, $redirectFunction, $protected);
+	}
+
+	/**
+	 * Main routing dispatcher that handles HTTP requests
+	 *
+	 * This method:
+	 * - Validates HTTP method matches the target
+	 * - Parses the request URI and extracts parameters
+	 * - Handles authentication for protected routes
+	 * - Loads user and entity context
+	 * - Executes the target controller method
+	 * - Logs all requests for audit purposes
+	 *
+	 * @param   string  $targetMethod       Expected HTTP method (GET, POST, PUT, DELETE)
+	 * @param   string  $targetAction       URL pattern with optional placeholders like '/users/{id}'
+	 * @param   string  $targetClass        Fully qualified controller class name
+	 * @param   string  $redirectFunction   Method name to invoke on controller
+	 * @param   bool    $protected          If true, requires valid JWT token
+	 *
+	 * @return  void                        Outputs JSON response and exits
 	 */
 	public static function route($targetMethod, $targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
@@ -97,219 +114,449 @@ class RouteController
 		// note: uri is like /action/ but with rewrite rules it's /index.php/action
 		$action = "";
 		$method = $_SERVER['REQUEST_METHOD'];
-		if ($method != $targetMethod) {
-			// dol_syslog("Route does not match for $method != $targetMethod");
-			RouteController::insertLogs(null, 404, 'Not found !', $entity);
-			return;
-		}
-		$request_uri = $_SERVER["PHP_SELF"];
-		// dol_syslog("Route request uri is $request_uri");
-
-		$action = parse_url(preg_replace("/.*api.php\//", "", $_SERVER['REQUEST_URI']), PHP_URL_PATH);
-		$match_action = str_replace('/', '\/', preg_replace("/{.*?}/", ".*", $targetAction));
-
-		if (! preg_match("/" . $match_action . "$/", $action)) {
-			dol_syslog("Route does not REGEX match for $action != $targetAction, match_action=/$match_action/");
-			RouteController::insertLogs(null, 404, 'Not found !', $entity);
+		if ($method !== $targetMethod) {
+			self::insertLogs(null, 404, 'Method not allowed', null);
 			return;
 		}
 
-		dol_syslog("Route method=$method, targetMethod=$targetMethod, action=$action and targetAction=$targetAction");
-		dol_syslog("Route match_action=$match_action, redirectFunction=$redirectFunction");
-
-		$data = [];
-		$user = null;
-		if ($method == "POST" || $method == "PUT") {
-			$txt = file_get_contents('php://input');
-			$data = json_decode($txt, true);
-			dol_syslog("Route method is post, raw data is decoded as json " . json_encode($data));
-		} elseif ($method == "GET") {
-			//parse query string and add values to data object
-			foreach ($_GET as $key => $value) {
-				$data[$key] = $value;
-				dol_syslog("Extract GET value $key = $value");
-			}
-		}
-		//other possibilities /{id}/{toto}/...
-		if (strpos($targetAction, '{')) {
-			preg_match_all("/\{(\w+)\}/", $targetAction, $matches);
-			$tags_names = $matches[1];
-			//remove start part of get request
-			$toremove = substr($targetAction, 0, strpos($targetAction, '{'));
-			$str = str_replace($toremove, '/', $action);
-			$tags_values = explode('/', $str);
-			$i = 1;
-			foreach ($tags_names as $key) {
-				$data[$key] = $tags_values[$i] ?? '';
-				$i++;
-			}
-		}
-		// dol_syslog("route, parsed data is " . json_encode($data));
-
-		//check JWT
-		$decoded = $tokenid = null;
-		if ($protected) {
-			$decoded = AuthController::Check();
-			$entity = $decoded->entity;
-			$login = $decoded->login;
-			$tokenid = $decoded->tokenid;
-			$user = new User($db);
-			$res = $user->fetch(0, $login, 0, 0, $entity);
-			if ($res <= 0) {
-				dol_syslog("Debug smartauth : route auth error : return 401");
-				RouteController::insertLogs($tokenid, 401, 'login error', $entity);
-				\json_reply('login error', 401);
-			} else {
-				$user->entity = $entity;
-				//waiting for regis answer
-				$_SESSION["dol_entity"] = $entity;
-				// force current entity but maybe a TODO with transverse mode or ...
-				$conf->entity = $entity;
-
-				// dol_syslog("conf avant " . json_encode($conf->multicompany));
-				$conf->setValues($db);
-				$mysoc->setMysoc($conf);
-				// dol_syslog("conf apres " . json_encode($conf->multicompany));
-			}
-			$auth_socid = $user->socid;
+		// Parse action from URI
+		$action = self::parseAction();
+		if ($action === false) {
+			self::insertLogs(null, 400, 'Bad request URI', null);
+			\json_reply('Bad request', 400);
+			return;
 		}
 
-		if (!empty($auth_socid)) {
-			$res = $buyer->fetch($auth_socid);
-			if ($res) {
-				dol_syslog("API Route buyer is loaded, is is " . $buyer->id);
-			} else {
-				dol_syslog("API Route buyer is NOT loaded !!!", LOG_ERR);
-				RouteController::insertLogs($tokenid, 403, 'error', $entity);
-				\json_reply("error", 403);
-			}
+		// Match action against target pattern
+		if (!self::matchAction($action, $targetAction)) {
+			dol_syslog("Debug smartauth  Route does not match: $action != $targetAction");
+			self::insertLogs(null, 404, 'Not found', null);
+			return;
 		}
 
-		dol_syslog("API Route $targetMethod, class=$targetClass, action=$targetAction, redir=$redirectFunction, protected=$protected, buyerid=" . $buyer->id . ",authuserid=" . $data['auth_userid'] . ",entity=" . $entity);
-		if ($method == $targetMethod) {
-			dol_syslog("API Route match, call class $targetClass and function $redirectFunction...");
-			$class = new $targetClass();
-			$payload = [];
-			try {
-				//TODO to become deprecated due to $data[data][key] hard syntax to understand
-				$payload['data'] = $data;
-				//flat data array return as $key => $value
-				foreach ($data as $key => $value) {
-					$payload[$key] = $value;
-				}
-				$payload['user'] = $user;
-				$payload['entity'] = $entity;
-				$payload['tokenid'] = $tokenid;
+		dol_syslog("Debug smartauth  Route matched: method=$method, action=$action, target=$targetAction");
 
-				//call function with payload
-				list($message, $code) = $class->$redirectFunction($payload);
-				RouteController::insertLogs($tokenid, $code, $message, $entity);
-				\json_reply($message, $code);
-			} catch (Exception $e) {
-				dol_syslog("Debug smartauth : route exception : " . json_encode($e), LOG_ERR);
-			}
+		// Parse request data
+		$data = self::parseRequestData($method);
+
+		// Extract URL parameters
+		$data = self::extractUrlParameters($targetAction, $action, $data);
+
+		// Authentication and authorization
+		$authContext = self::handleAuthentication($protected, $db, $conf, $mysoc);
+		if ($authContext === false) {
+			return; // Error already handled
 		}
-		RouteController::insertLogs($tokenid, 403, 'error', $entity);
-		\json_reply("error", 403);
+
+		list($user, $entity, $tokenid, $buyer) = $authContext;
+
+		// Execute controller action
+		self::executeAction(
+			$targetClass,
+			$redirectFunction,
+			$data,
+			$user,
+			$entity,
+			$tokenid,
+			$buyer
+		);
 	}
 
-	private function _getAuthorizationHeader()
+	/**
+	 * Parse and extract the action path from REQUEST_URI
+	 *
+	 * Removes the 'api.php/' prefix to get the clean action path.
+	 * Example: '/api.php/users/123' becomes 'users/123'
+	 *
+	 * @return  string|false    The action path or false on error
+	 */
+	private static function parseAction()
 	{
-		$headers = null;
-		if (isset($_SERVER['Authorization'])) {
-			$headers = trim($_SERVER["Authorization"]);
-		} elseif (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-			$headers = trim($_SERVER["HTTP_AUTHORIZATION"]);
-		} elseif (function_exists('apache_request_headers')) {
-			$requestHeaders = apache_request_headers();
-			$requestHeaders = array_combine(array_map('ucwords', array_keys($requestHeaders)), array_values($requestHeaders));
+		if (!isset($_SERVER['REQUEST_URI'])) {
+			return false;
+		}
 
-			if (isset($requestHeaders['Authorization'])) {
-				$headers = trim($requestHeaders['Authorization']);
+		$uri = $_SERVER['REQUEST_URI'];
+		$action = parse_url(preg_replace("/.*api.php\//", "", $uri), PHP_URL_PATH);
+
+		return $action !== false ? $action : false;
+	}
+
+	/**
+	 * Match request action against target pattern using regex
+	 *
+	 * Supports URL placeholders like {id}, {code}, etc.
+	 * Example: pattern '/users/{id}' matches '/users/123'
+	 *
+	 * @param   string  $action         Actual request path from parseAction()
+	 * @param   string  $targetAction   Pattern with optional {placeholder} syntax
+	 *
+	 * @return  bool                    True if action matches pattern
+	 */
+	private static function matchAction($action, $targetAction)
+	{
+		// Convert {param} to regex wildcards
+		$pattern = str_replace('/', '\/', preg_replace("/{[^}]+}/", "[^/]+", $targetAction));
+
+		return preg_match("/^" . $pattern . "$/", $action) === 1;
+	}
+
+	/**
+	 * Parse and extract request data based on HTTP method
+	 *
+	 * - GET: extracts query string parameters from $_GET
+	 * - POST/PUT/DELETE: parses JSON body from php://input
+	 * - Validates JSON syntax and filters malicious input
+	 *
+	 * @param   string  $method     HTTP method (GET, POST, PUT, DELETE)
+	 *
+	 * @return  array               Associative array of request parameters
+	 */
+	private static function parseRequestData($method)
+	{
+		$user = null;
+		$data = [];
+
+		if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE') {
+			$raw = file_get_contents('php://input');
+			if ($raw !== false && $raw !== '') {
+				$decoded = json_decode($raw, true);
+				if (json_last_error() === JSON_ERROR_NONE) {
+					$data = $decoded;
+				} else {
+					dol_syslog("Debug smartauth  JSON decode error: " . json_last_error_msg(), LOG_WARNING);
+				}
+			}
+		} elseif ($method === 'GET') {
+			// Filter and sanitize GET parameters
+			foreach ($_GET as $key => $value) {
+				if (is_string($key) && strlen($key) < 100) { // Basic validation
+					$data[$key] = $value;
+				}
 			}
 		}
 
-		return $headers;
+		return $data;
+	}
+
+	/**
+	 * Extract URL parameters from placeholder syntax
+	 *
+	 * Converts URL placeholders into associative array entries.
+	 * Example:
+	 *   targetAction: '/users/{id}/posts/{postid}'
+	 *   action: '/users/123/posts/456'
+	 *   Returns: ['id' => '123', 'postid' => '456']
+	 *
+	 * @param   string  $targetAction   Pattern with {placeholder} syntax
+	 * @param   string  $action         Actual request path
+	 * @param   array   $data           Existing data array to merge into
+	 *
+	 * @return  array                   Data array with extracted parameters
+	 */
+	private static function extractUrlParameters($targetAction, $action, $data)
+	{
+		if (strpos($targetAction, '{') === false) {
+			return $data;
+		}
+
+		// Extract parameter names from {name} placeholders
+		preg_match_all("/\{(\w+)\}/", $targetAction, $matches);
+		$paramNames = $matches[1];
+
+		if (empty($paramNames)) {
+			return $data;
+		}
+
+		// Get the prefix before first placeholder
+		$prefix = substr($targetAction, 0, strpos($targetAction, '{'));
+
+		// Remove prefix from action to get parameter values
+		$valuePart = preg_replace('/^' . preg_quote($prefix, '/') . '/', '', $action);
+		$paramValues = array_filter(explode('/', $valuePart));
+
+		// Map parameter names to values
+		$i = 0;
+		foreach ($paramNames as $name) {
+			$data[$name] = $paramValues[$i] ?? '';
+			$i++;
+		}
+		return $data;
 	}
 
 
 	/**
-	 * add entries into logs database
+	 * Handle JWT authentication and load user context
 	 *
-	 * @param   [type]  $keyid    token id used for that request
-	 * @param   [type]  $status   http status code
-	 * @param   [type]  $message  message
-	 * @param   [type]  $entity   dolibarr entity
-	 * @param   [type]  $element  dolibarr element
+	 * For protected routes:
+	 * - Validates JWT token via AuthController::Check()
+	 * - Loads Dolibarr User object
+	 * - Sets entity context and reloads configuration
+	 * - Loads associated third-party (Societe) if exists
 	 *
-	 * @return  [type]            [return description]
+	 * For public routes:
+	 * - Returns empty context (null user/entity)
+	 *
+	 * @param   bool        $protected  Whether authentication is required
+	 * @param   Database    $db         Dolibarr database connection
+	 * @param   Conf        $conf       Dolibarr configuration object
+	 * @param   Societe     $mysoc      Dolibarr company object
+	 *
+	 * @return  array|false             [User, entity, tokenid, Societe] or false on auth error
+	 */
+	private static function handleAuthentication($protected, $db, $conf, $mysoc)
+	{
+		$user = null;
+		$entity = null;
+		$tokenid = null;
+		$buyer = new \Societe($db);
+
+		if (!$protected) {
+			return [$user, $entity, $tokenid, $buyer];
+		}
+
+		// Check JWT token
+		try {
+			$decoded = AuthController::Check();
+		} catch (Exception $e) {
+			dol_syslog("Debug smartauth  Auth check failed: " . $e->getMessage(), LOG_WARNING);
+			self::insertLogs(null, 401, 'Authentication failed', null);
+			\json_reply('Authentication required', 401);
+			return false;
+		}
+
+		$entity = $decoded->entity ?? null;
+		$login = $decoded->login ?? null;
+		$tokenid = $decoded->tokenid ?? null;
+
+		if (!$login) {
+			self::insertLogs($tokenid, 401, 'Invalid token', $entity);
+			\json_reply('Invalid token', 401);
+			return false;
+		}
+
+		// Load user
+		$user = new User($db);
+		$res = $user->fetch(0, $login, 0, 0, $entity);
+		if ($res <= 0) {
+			dol_syslog("Debug smartauth  User not found: login=$login, entity=$entity");
+			self::insertLogs($tokenid, 401, 'User not found', $entity);
+			\json_reply('Authentication failed', 401);
+			return false;
+		}
+
+		// Set user entity
+		$user->entity = $entity;
+		$_SESSION["dol_entity"] = $entity;
+		$conf->entity = $entity;
+
+		// Reload configuration for entity
+		$conf->setValues($db);
+		$mysoc->setMysoc($conf);
+		// Load buyer (third-party) if user is attached to one
+		if (!empty($user->socid)) {
+			$res = $buyer->fetch($user->socid);
+			if (!$res) {
+				dol_syslog("Debug smartauth  Failed to load buyer socid=" . $user->socid, LOG_ERR);
+				self::insertLogs($tokenid, 403, 'Buyer load error', $entity);
+				\json_reply('Access denied', 403);
+				return false;
+			}
+		}
+
+		return [$user, $entity, $tokenid, $buyer];
+	}
+	/**
+	 * Execute the target controller method with proper error handling
+	 *
+	 * Process:
+	 * - Validates target class exists
+	 * - Validates target method exists on class
+	 * - Builds payload with request data and context
+	 * - Invokes controller method
+	 * - Validates response format [message, httpCode]
+	 * - Logs execution and returns JSON response
+	 *
+	 * @param   string      $targetClass        Controller class name
+	 * @param   string      $redirectFunction   Method name to call
+	 * @param   array       $data               Request parameters
+	 * @param   User|null   $user               Authenticated user or null
+	 * @param   int|null    $entity             Dolibarr entity ID
+	 * @param   int|null    $tokenid            JWT token ID for logging
+	 * @param   Societe     $buyer              Third-party object
+	 *
+	 * @return  void                            Outputs JSON and exits
+	 */
+	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $tokenid, $buyer)
+	{
+		// Validate class exists
+		if (!class_exists($targetClass)) {
+			dol_syslog("Debug smartauth  Class not found: $targetClass", LOG_ERR);
+			self::insertLogs($tokenid, 500, 'Internal error - Class not found', $entity);
+			\json_reply('Internal server error - Class not found', 500);
+			return;
+		}
+
+		$class = new $targetClass();
+
+		// Validate method exists
+		if (!method_exists($class, $redirectFunction)) {
+			dol_syslog("Debug smartauth  Method not found: $targetClass::$redirectFunction", LOG_ERR);
+			self::insertLogs($tokenid, 500, 'Internal error', $entity);
+			\json_reply('Internal server error - Method not found', 500);
+			return;
+		}
+
+		// Build payload
+		$payload = [
+			'data' => $data, // Legacy support
+			'user' => $user,
+			'entity' => $entity,
+			'tokenid' => $tokenid,
+			'buyer' => $buyer,
+		];
+
+		// Flatten data into payload for easier access
+		foreach ($data as $key => $value) {
+			if (!isset($payload[$key])) { // Don't override meta keys
+				$payload[$key] = $value;
+			}
+		}
+
+		// Execute action
+		try {
+			$result = $class->$redirectFunction($payload);
+
+			// Validate response format
+			if (!is_array($result) || count($result) !== 2) {
+				dol_syslog("Debug smartauth  Invalid response format from $targetClass::$redirectFunction", LOG_ERR);
+				self::insertLogs($tokenid, 500, 'Internal error', $entity);
+				\json_reply('Internal server error - Invalid response format', 500);
+				return;
+			}
+
+			list($message, $code) = $result;
+
+			self::insertLogs($tokenid, $code, $message, $entity);
+			\json_reply($message, $code);
+		} catch (Exception $e) {
+			dol_syslog("Debug smartauth  Exception in $targetClass::$redirectFunction: " . $e->getMessage(), LOG_ERR);
+			self::insertLogs($tokenid, 500, 'Exception: ' . $e->getMessage(), $entity);
+			\json_reply('Internal server error - Exception', 500);
+		}
+	}
+
+	/**
+	 * Insert API request log entry into database
+	 *
+	 * Logs include:
+	 * - Token ID, app UID, entity
+	 * - Client IP (with proxy support)
+	 * - HTTP method and status code
+	 * - Request URL and user agent
+	 * - Response size in bytes
+	 *
+	 * Only logs when SMARTAUTH_COLLECT_LOGS configuration is enabled.
+	 * SQL values are properly escaped to prevent injection.
+	 *
+	 * @param   int|null    $keyid      JWT token ID (null for unauthenticated requests)
+	 * @param   int         $status     HTTP status code (200, 401, 404, etc.)
+	 * @param   string      $message    Response message or error description
+	 * @param   int         $entity     Dolibarr entity ID
+	 * @param   string      $element    Dolibarr element type (optional)
+	 *
+	 * @return  void
 	 */
 	public static function insertLogs($keyid, $status, $message = "", $entity = 0, $element = "")
 	{
 		global $db, $smartAuthAppID;
 
-		//logs disabled
+		// Check if logging is enabled
 		if (getDolGlobalString('SMARTAUTH_COLLECT_LOGS') == '') {
+			dol_syslog("Debug smartauth  do not collect logs");
 			return;
 		}
 
-		if (!empty($keyid)) {
-			$arr = [
-				'fk_key' => $keyid,
-				'appuid' => $smartAuthAppID,
-				'entity' => $entity,
-				'dol_element' => substr($element, 0, 32),
-				'ip' => substr(self::get_client_ip(), 0, 20),
-				'method' => substr($_SERVER['REQUEST_METHOD'], 0, 8),
-				'http_status' => (int) $status,
-				'bytes_sent' => strlen(serialize($message)),
-				'content_type' => "json",
-				'url_requested' => substr(preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI']), 0, 255),
-				'user_agent' => substr($_SERVER['HTTP_USER_AGENT'], -100, 100),
-				'referer' => substr($_SERVER['HTTP_REFERER'], 0, 255),
-			];
-			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_logs (";
-			$sql .= implode(',', array_keys($arr));
-			$sql .= ") VALUES ('" . implode("','", array_values($arr)) . "')";
-			try {
-				$resql = $db->query($sql);
-			} catch (Exception $e) {
-				dol_syslog("Erreur SQL : " . $e->getMessage());
+		// Always log, even without keyid (for failed auth attempts)
+		$arr = [
+			'fk_key' => $keyid ?? 0,
+			'appuid' => $smartAuthAppID ?? '',
+			'entity' => (int)$entity,
+			'dol_element' => substr($element, 0, 32),
+			'ip' => substr(self::get_client_ip(), 0, 20),
+			'method' => substr($_SERVER['REQUEST_METHOD'] ?? '', 0, 8),
+			'http_status' => (int) $status,
+			'bytes_sent' => strlen(serialize($message)),
+			'content_type' => "json",
+			'url_requested' => substr(preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI'] ?? ''), 0, 255),
+			'user_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 100),
+			'referer' => substr($_SERVER['HTTP_REFERER'] ?? '', 0, 255),
+		];
+		// Escape values for SQL injection prevention
+		$escapedValues = array_map(function ($val) use ($db) {
+			return $db->escape($val);
+		}, $arr);
+		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_logs (";
+		$sql .= implode(',', array_keys($arr));
+		$sql .= ") VALUES ('" . implode("','", $escapedValues) . "')";
+		try {
+			$resql = $db->query($sql);
+			if (!$resql) {
+				dol_syslog("Debug smartauth  Failed to insert log: " . $db->lasterror(), LOG_WARNING);
 			}
-		} else {
-			dol_syslog("Can't log because of empty key id !");
+		} catch (Exception $e) {
+			dol_syslog("Debug smartauth  Log insertion error: " . $e->getMessage(), LOG_WARNING);
 		}
 	}
+
 	/**
-	 * Get the server variable REMOTE_ADDR, or the first ip of HTTP_X_FORWARDED_FOR (when using proxy).
-	 * Source: thanks to prestashop
+	 * Get real client IP address with proxy support
 	 *
-	 * @return string $remote_addr ip of client
+	 * Handles various proxy configurations:
+	 * - Checks X-Forwarded-For header when behind proxy
+	 * - Validates REMOTE_ADDR is not a private IP
+	 * - Returns first IP from forwarded chain (most reliable)
+	 * - Falls back to REMOTE_ADDR for direct connections
+	 *
+	 * Private IP ranges detected:
+	 * - 127.x.x.x (localhost)
+	 * - 10.x.x.x (Class A private)
+	 * - 172.16-31.x.x (Class B private)
+	 * - 192.168.x.x (Class C private)
+	 *
+	 * @return  string      Client IP address
 	 */
 	public static function get_client_ip()
 	{
-		if (function_exists('apache_request_headers')) {
-			$headers = apache_request_headers();
-		} else {
-			$headers = $_SERVER;
-		}
+		// Get headers
+		$headers = function_exists('apache_request_headers')
+			? apache_request_headers()
+			: $_SERVER;
 
-		if (array_key_exists('X-Forwarded-For', $headers)) {
+		// Check X-Forwarded-For header
+		if (isset($headers['X-Forwarded-For'])) {
 			$_SERVER['HTTP_X_FORWARDED_FOR'] = $headers['X-Forwarded-For'];
 		}
 
-		if (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) && (!isset($_SERVER['REMOTE_ADDR'])
-			|| preg_match('/^127\..*/i', trim($_SERVER['REMOTE_ADDR'])) || preg_match('/^172\.(1[6-9]|2\d|30|31)\..*/i', trim($_SERVER['REMOTE_ADDR']))
-			|| preg_match('/^192\.168\.*/i', trim($_SERVER['REMOTE_ADDR'])) || preg_match('/^10\..*/i', trim($_SERVER['REMOTE_ADDR'])))) {
-			if (strpos($_SERVER['HTTP_X_FORWARDED_FOR'], ',')) {
-				$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+		// Use X-Forwarded-For if present and REMOTE_ADDR is local/private
+		if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+			$remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
 
-				return $ips[0];
-			} else {
-				return $_SERVER['HTTP_X_FORWARDED_FOR'];
+			// Check if remote addr is localhost or private IP
+			if (
+				empty($remoteAddr) ||
+				preg_match('/^127\./i', $remoteAddr) ||
+				preg_match('/^10\./i', $remoteAddr) ||
+				preg_match('/^172\.(1[6-9]|2\d|3[01])\./i', $remoteAddr) ||
+				preg_match('/^192\.168\./i', $remoteAddr)
+			) {
+
+				// Take first IP from X-Forwarded-For chain
+				$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+				return trim($ips[0]);
 			}
-		} else {
-			return $_SERVER['REMOTE_ADDR'];
 		}
+		// Default to REMOTE_ADDR
+		return $_SERVER['REMOTE_ADDR'] ?? '';
 	}
 }
