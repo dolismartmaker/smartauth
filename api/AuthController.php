@@ -522,7 +522,7 @@ class AuthController
 		// Check JWT expiration claim if present
 		if (!empty($decoded->exp) && $decoded->exp < time()) {
 			dol_syslog("smartauth : JWT exp claim expired", LOG_INFO);
-			json_reply('Access token expired. Use /ping endpoint.', 401);
+			json_reply('Access token expired. Refresh token on /ping endpoint.', 401);
 		}
 
 		// Update token last used timestamp and refresh expiry
