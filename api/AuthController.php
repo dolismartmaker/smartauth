@@ -342,7 +342,7 @@ class AuthController
 		$family_id = $this->createTokenFamily($tmpuser->id);
 
 		// Generate BOTH tokens
-		$tokens = $this->generateTokenPair($tmpuser->id, $login, $entity, $family_id);
+		$tokens = $this->generateTokenPair('user',$tmpuser->id,$tmpuser->id, $login, $entity, $family_id);
 
 		// Renew the hash ?
 		// Generate token for user
@@ -825,6 +825,15 @@ class AuthController
 
 	/**
 	 * Generate access + refresh token pair
+	 *
+	 * @param   String  $element     dolibarr element (user or societe_account for the moment)
+	 * @param   Int  	$element_id  dolibarr id of element
+	 * @param   Int  	$user_id     user creator id
+	 * @param   String  $login       login to use for that token
+	 * @param   Int  	$entity      dolibarr entity
+	 * @param   String  $family_id   token family
+	 *
+	 * @return  array               two token (access & refresh)
 	 */
 	private function generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id)
 	{
