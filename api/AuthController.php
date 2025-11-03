@@ -173,6 +173,8 @@ class AuthController
 
 		// Generate new token pair
 		$new_tokens = $this->generateTokenPair(
+			'user',
+			$token_data->fk_authid,
 			$token_data->fk_authid,
 			$login,
 			$entity,
@@ -543,63 +545,20 @@ class AuthController
 
 
 	/**
-	 * create a new salt stored into database and a key
-	 *
-	 * @param   [type]  $uid     [$uid description]
-	 * @param   [type]  $entity  [$entity description]
-	 *
-	 * @return  [type]           [return description]
-	 */
-	private function _newUserKey($uid, $login, $entity)
-	{
-		global $db, $smartAuthAppID, $smartAuthAppKey, $SERVER;
-		dol_syslog("Debug smartauth : AuthController::_newUserKey for $uid / $login / $entity");
-
-		$keyid = $salt = '';
-
-		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
-		$salt2 = $this->getSalt2();
-
-		$sql = "INSERT ";
-		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $uid . "','" . (int) $uid . "','user','" . $this->get_client_ip() . "'," . self::STATUS_VALID . ",'" . (int) $entity . "');";
-		$resql = $db->query($sql);
-		if ($resql) {
-			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
-			// dol_syslog("Debug smartauth : $sql ...");
-			$key = $salt . $salt2 . $smartAuthAppKey;
-
-			$payload = array(
-				"login"  => $login,
-				"entity" => $entity
-			);
-			$jwt = JWT::encode($payload, $key, 'HS256');
-
-			if (!empty($keyid)) {
-				$new = $keyid . '|' . $jwt;
-				$jwt = $new;
-			}
-		}
-
-		dol_syslog("Debug smartauth : AuthController::_newUserKey return");
-		return $jwt;
-	}
-
-	/**
 	 * create a new salt stored into database and a key for thirdpart account
 	 *
-	 * @param   [type]  $uid     [$uid description]
-	 * @param   [type]  $entity  [$entity description]
+	 * @param   int  $socid     dolibarr Societe id
+	 * @param   strning $socmail Societe emali addr
+	 * @param   int  $entity     dolibarr entity
 	 *
 	 * @return  [type]           [return description]
 	 */
-	public function newThirdpartKey($socid, $socname, $entity)
+	public function newThirdpartKey($socid, $socmail, $entity = 1)
 	{
-		global $db, $smartAuthAppID, $smartAuthAppKey, $SERVER;
+		global $db, $smartAuthAppID;
 		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey");
 
-		$keyid = $salt = '';
-		//remove all other token for that user and that app
+		//remove all other token for that user and that app ?
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
 		$sql .= " SET status = " . self::STATUS_LOGOUT;
 		$sql .= ", salt = 'xxxxxxxxxx' ";
@@ -608,37 +567,22 @@ class AuthController
 		$sql .= " AND auth_element='societe_account'";
 		$sql .= " AND entity=" . (int) $entity;
 		$resql = $db->query($sql);
-		// dol_syslog("Debug smartauth : $sql ...");
 
 		$useractions = $this->_FetchUserWithRights();
 
-		//store a new one
-		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
-		$salt2 = $this->getSalt2();
+		$family_id = $this->createTokenFamily($useractions->id);
 
-		$sql = "INSERT ";
-		$sql .= " INTO " . MAIN_DB_PREFIX . "smartauth_auth(appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, auth_element, ip, status, entity)";
-		$sql .= " VALUES ('" . (int) $smartAuthAppID . "','" . $salt . "','" . $db->idate(dol_now()) . "','" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "','" . (int) $useractions->id . "','" . (int) $socid . "','societe_account','" . $this->get_client_ip() . "',1,'" . (int) $entity . "');";
-		$resql = $db->query($sql);
-		if ($resql) {
-			$keyid = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
-			// dol_syslog("Debug smartauth : $sql ...");
-			$key = $salt . $salt2 . $smartAuthAppKey;
-
-			$payload = array(
-				"socid"  => $socid,
-				"entity" => $entity
-			);
-			$jwt = JWT::encode($payload, $key, 'HS256');
-
-			if (!empty($keyid)) {
-				$new = $keyid . '|' . $jwt;
-				$jwt = $new;
-			}
-		}
+		$new_tokens = $this->generateTokenPair(
+			'societe_account',
+			$socid,
+			$useractions->fk_authid,
+			$socmail,
+			$entity,
+			$family_id
+		);
 
 		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey return");
-		return $jwt;
+		return $new_tokens;
 	}
 
 	private static function getAuthorizationHeader()
@@ -882,10 +826,12 @@ class AuthController
 	/**
 	 * Generate access + refresh token pair
 	 */
-	private function generateTokenPair($user_id, $login, $entity, $family_id)
+	private function generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id)
 	{
 		// Generate access token (short-lived)
 		$access_token = $this->generateToken(
+			$element,
+			$element_id,
 			$user_id,
 			$login,
 			$entity,
@@ -896,6 +842,8 @@ class AuthController
 
 		// Generate refresh token (long-lived)
 		$refresh_token = $this->generateToken(
+			$element,
+			$element_id,
 			$user_id,
 			$login,
 			$entity,
@@ -913,7 +861,7 @@ class AuthController
 	/**
 	 * Unified token generation (replaces _newUserKey)
 	 */
-	private function generateToken($user_id, $login, $entity, $token_type, $lifetime, $family_id, $parent_token_id = null)
+	private function generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $parent_token_id = null)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
 
@@ -930,8 +878,8 @@ class AuthController
 		$sql .= "'" . $db->idate(dol_now()) . "', ";
 		$sql .= "'" . $db->idate(dol_now() + $lifetime) . "', ";
 		$sql .= (int) $user_id . ", ";
-		$sql .= (int) $user_id . ", ";
-		$sql .= "'user', ";
+		$sql .= (int) $element_id . ", ";
+		$sql .= "'" . $element . "', ";
 		$sql .= "'" . $token_type . "', ";
 		$sql .= ($parent_token_id ? (int) $parent_token_id : "NULL") . ", ";
 		$sql .= "'" . $this->get_client_ip() . "', ";
