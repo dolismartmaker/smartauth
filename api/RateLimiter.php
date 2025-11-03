@@ -22,7 +22,7 @@ namespace SmartAuth\Api;
 
 class RateLimiter
 {
-    private $db;
+    protected $db;
 
     public function __construct($db)
     {

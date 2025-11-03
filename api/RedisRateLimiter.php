@@ -22,39 +22,39 @@
 namespace SmartAuth\Api;
 
 
-class RedisRateLimiter
-{
-    private $redis;
+// class RedisRateLimiter
+// {
+//     private $redis;
 
-    public function __construct()
-    {
-        $this->redis = new Redis();
-        $this->redis->connect(
-            getDolGlobalString('SMARTAUTH_REDIS_HOST', '127.0.0.1'),
-            getDolGlobalInt('SMARTAUTH_REDIS_PORT', 6379)
-        );
-    }
+//     public function __construct()
+//     {
+//         $this->redis = new Redis();
+//         $this->redis->connect(
+//             getDolGlobalString('SMARTAUTH_REDIS_HOST', '127.0.0.1'),
+//             getDolGlobalInt('SMARTAUTH_REDIS_PORT', 6379)
+//         );
+//     }
 
-    public function checkLimit($identifier, $action, $max_attempts, $window_seconds)
-    {
-        $key = "ratelimit:{$action}:{$identifier}";
-        $current = $this->redis->incr($key);
+//     public function checkLimit($identifier, $action, $max_attempts, $window_seconds)
+//     {
+//         $key = "ratelimit:{$action}:{$identifier}";
+//         $current = $this->redis->incr($key);
 
-        if ($current == 1) {
-            $this->redis->expire($key, $window_seconds);
-        }
+//         if ($current == 1) {
+//             $this->redis->expire($key, $window_seconds);
+//         }
 
-        if ($current > $max_attempts) {
-            $ttl = $this->redis->ttl($key);
-            return ['allowed' => false, 'retry_after' => $ttl];
-        }
+//         if ($current > $max_attempts) {
+//             $ttl = $this->redis->ttl($key);
+//             return ['allowed' => false, 'retry_after' => $ttl];
+//         }
 
-        return ['allowed' => true, 'retry_after' => null];
-    }
+//         return ['allowed' => true, 'retry_after' => null];
+//     }
 
-    public function reset($identifier, $action)
-    {
-        $key = "ratelimit:{$action}:{$identifier}";
-        $this->redis->del($key);
-    }
-}
+//     public function reset($identifier, $action)
+//     {
+//         $key = "ratelimit:{$action}:{$identifier}";
+//         $this->redis->del($key);
+//     }
+// }

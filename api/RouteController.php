@@ -38,7 +38,7 @@ class RouteController
 	 */
 	public static function get($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
-		return self::route('GET', $targetAction, $targetClass, $redirectFunction, $protected);
+		self::route('GET', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
 	/**
@@ -53,7 +53,7 @@ class RouteController
 	 */
 	public static function post($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
-		return self::route('POST', $targetAction, $targetClass, $redirectFunction, $protected);
+		self::route('POST', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
 	/**
@@ -68,7 +68,7 @@ class RouteController
 	 */
 	public static function put($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
-		return self::route('PUT', $targetAction, $targetClass, $redirectFunction, $protected);
+		self::route('PUT', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
 	/**
@@ -83,7 +83,7 @@ class RouteController
 	 */
 	public static function delete($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
-		return self::route('DELETE', $targetAction, $targetClass, $redirectFunction, $protected);
+		self::route('DELETE', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
 	/**
