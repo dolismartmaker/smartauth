@@ -19,8 +19,8 @@
 CREATE TABLE llx_smartauth_logs(
 	-- BEGIN MODULEBUILDER FIELDS
 	rowid integer AUTO_INCREMENT PRIMARY KEY NOT NULL,
-	appuid integer, --from module->numero
-	fk_key integer, --link to smartauth_auth rowid
+	appuid integer, -- from module->numero
+	fk_key integer, -- link to smartauth_auth rowid
 	entity INTEGER,
 	dol_element varchar(32),
 	ip varchar(20),
@@ -29,8 +29,9 @@ CREATE TABLE llx_smartauth_logs(
     bytes_sent int(11),
     content_type varchar(20),
     url_requested varchar(255),
-    user_agent varchar(100),
-    referer varchar(255),
+    user_agent varchar(100) DEDFAULT NULL,
+    referer varchar(255) DEDFAULT NULL,
 	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 	-- END MODULEBUILDER FIELDS
 ) ENGINE=innodb;
+
