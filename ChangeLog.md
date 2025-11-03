@@ -1,8 +1,13 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 1.0.6 -- 20251103
+## 1.0.8 -- 20251103
 
-Fix security
+New dashboard on index
+New user page for token list (experimental)
+Switch to two token (access & refresh)
+Code factoring
+Update cron job
+Fix for better security
 Code cleanup
 Use cache and new Rate Limiter
 Better dolibarr < 18 compat'
