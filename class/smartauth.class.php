@@ -1142,17 +1142,17 @@ class SmartAuth extends CommonObject
 		$this->db->begin();
 
 		//note : do not cleanup old keys -- used by logs !
-		// $max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
-		// if($max > 0) {
-		// 	$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE date_eol < '" . date("Y-m-d H:i:s") . "' OR status=" . SmartAuth::STATUS_CANCELED;
-		// 	$resql = $this->db->query($sql);
-		// }
+		$max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
+		if($max > 0) {
+			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth SET status='" . self::STATUS_CANCELED . "', token='outdated' WHERE date_eol < '" . $this->db->idate($now) . "'";
+			$resql = $this->db->query($sql);
+		}
 
 		//cleanup old logs
 		if(getDolGlobalString('SMARTAUTH_CLEAN_LOGS')) {
 			$max = (int) getDolGlobalString('SMARTAUTH_LAST_LOGS');
 			if($max > 0) {
-				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_logs WHERE tms < '" . date("Y-m-d H:i:s", (time() - ($max * 24 * 3600))) . "'";
+				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_logs WHERE tms < '" . (time() - ($max * 24 * 3600)) . "'";
 				$resql = $this->db->query($sql);
 			}
 		}
