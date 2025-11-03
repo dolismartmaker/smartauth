@@ -1,5 +1,15 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 1.0.6 -- 20251103
+
+Fix security
+Code cleanup
+Use cache and new Rate Limiter
+Better dolibarr < 18 compat'
+Change photo and other special fields to smart* (prefix)
+Fix options and extrafields
+New multicompany support
+
 ## 1.0.5 -- 20251028
 
 Fix MultiCompany errors
