@@ -115,7 +115,6 @@ class RouteController
 		$action = "";
 		$method = $_SERVER['REQUEST_METHOD'];
 		if ($method !== $targetMethod) {
-			self::insertLogs(null, 404, 'Method not allowed', null);
 			return;
 		}
 
@@ -130,7 +129,6 @@ class RouteController
 		// Match action against target pattern
 		if (!self::matchAction($action, $targetAction)) {
 			dol_syslog("Debug smartauth  Route does not match: $action != $targetAction");
-			self::insertLogs(null, 404, 'Not found', null);
 			return;
 		}
 
@@ -489,7 +487,7 @@ class RouteController
 			'bytes_sent' => strlen(serialize($message)),
 			'content_type' => "json",
 			'url_requested' => substr(preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI'] ?? ''), 0, 255),
-			'user_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 100),
+			'user_agent' => substr($_SERVER['HTTP_X_APP_ID'] ?? $_SERVER['HTTP_USER_AGENT'] ?? '', 0, 100),
 			'referer' => substr($_SERVER['HTTP_REFERER'] ?? '', 0, 255),
 		];
 		// Escape values for SQL injection prevention

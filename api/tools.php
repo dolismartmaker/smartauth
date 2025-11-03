@@ -19,12 +19,18 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use SmartAuth\Api\RouteController;
+
 function json_reply($message, $code)
 {
 	// remove any string that could create an invalid JSON
 	// such as PHP Notice, Warning, logs...
 	ob_start();
 	ob_clean();
+
+	if(substr($code,0,1) == "4") {
+		RouteController::insertLogs(null, $code, $message, null);
+	}
 
 	header('Content-Type: application/json; charset=utf-8');
 	http_response_code($code);
