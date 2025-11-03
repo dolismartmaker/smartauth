@@ -330,6 +330,8 @@ class AuthController
 				$sql = "SELECT salt";
 				$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
 				$sql .= " WHERE rowid = " . (int) $tokenid;
+				$sql .= " AND status=" . self::STATUS_VALID;
+
 				dol_syslog("smartauth : get salt from db " . $sql);
 				$resql = $db->query($sql);
 				if ($resql) {
