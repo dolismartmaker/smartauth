@@ -62,7 +62,8 @@ SmartAuthAPILogs = Historique des connexions réalisées
 SMARTAUTH_CLEAN_LOGS = Nettoyage automatique des journaux (logs)
 SMARTAUTH_LAST_LOGS = Durée de conservation des journaux (logs) si le nettoyage automatique est actif
 AuthElementKey = Clé SmartAuth
-
+SmartauthGeoIP = GeoIP
+SmartauthGeoIPSetupPage = Configuration du module GeoIP
 SmartAuthDashboard=Tableau de bord SmartAuth
 ActiveTokens=Tokens actifs
 ConnectedUsers=Utilisateurs connectés
@@ -109,3 +110,4 @@ days=jours
 Refresh=Refresh
 Access=Access
 Expired=Expiré
+SetupGeoIPForSmartAuth = Télécharger et initialiser GeoIP

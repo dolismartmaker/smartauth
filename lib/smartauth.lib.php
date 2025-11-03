@@ -55,6 +55,11 @@ function smartauthAdminPrepareHead()
 	$h++;
 	*/
 
+	$head[$h][0] = dol_buildpath("/smartauth/admin/geoip.php", 1);
+	$head[$h][1] = $langs->trans("SetupGeoIP");
+	$head[$h][2] = 'geoip';
+	$h++;
+
 	$head[$h][0] = dol_buildpath("/smartauth/admin/about.php", 1);
 	$head[$h][1] = $langs->trans("About");
 	$head[$h][2] = 'about';
