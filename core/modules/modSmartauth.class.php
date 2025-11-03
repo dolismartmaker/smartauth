@@ -72,7 +72,7 @@ class modSmartauth extends DolibarrModules
 		$this->editor_url = 'https://cap-rel.fr/';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '1.0.6';
+		$this->version = '1.0.7';
 		// Url to the file with your last numberversion of this module
 		$this->url_last_version = "https://cap-rel.fr/dolibarr/ver.php?m=" . $this->rights_class . "&v=" . $this->version;
 
@@ -303,9 +303,25 @@ class modSmartauth extends DolibarrModules
 			'fk_menu'=>'fk_mainmenu=tools',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
 			'type'=>'left',                          // This is a Top menu entry
 			'titre'=>'SmartAuthMainMenu',
-			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
+			'prefix' => "",
 			'mainmenu'=>'tools',
 			'leftmenu'=>'smartauth',
+			'url'=>'/smartauth/index.php',
+			'langs'=>'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
+			'position'=>1000+$r,
+			'enabled'=>'$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
+			'perms'=>'$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
+			'target'=>'',
+			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
+		);
+
+		$this->menu[$r++]=array(
+			'fk_menu'=>'fk_mainmenu=tools,fk_leftmenu=smartauth',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
+			'type'=>'left',                          // This is a Top menu entry
+			'titre'=>'SmartAuthTokensMenu',
+			'prefix' => "",
+			'mainmenu'=>'tools',
+			'leftmenu'=>'smartauthtokens',
 			'url'=>'/smartauth/auth_list.php',
 			'langs'=>'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
 			'position'=>1000+$r,
@@ -319,7 +335,7 @@ class modSmartauth extends DolibarrModules
 			'fk_menu'=>'fk_mainmenu=tools,fk_leftmenu=smartauth',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
 			'type'=>'left',                          // This is a Top menu entry
 			'titre'=>'SmartAuthLogsMenu',
-			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
+			'prefix' => "",
 			'mainmenu'=>'tools',
 			'leftmenu'=>'smartauthlogs',
 			'url'=>'/smartauth/logs_list.php',
