@@ -70,8 +70,8 @@ class dmSociete extends dmBase
 	{
 		global $conf;
 		// dol_syslog("##### dmHelper : call for fieldFilterValueLogo for " . $societe->logo);
-		$dir     = $conf->societe->multidir_output[$societe->entity] . "/" . $societe->id . "/logos";
-		$logo = $dir . '/' . $societe->logo;
+		$dir     = $conf->societe->multidir_output[$societe->entity] . "/" . $societe->id . "/logos/thumbs";
+		$logo = $dir . '/' . $this->_miniLogoFileName($societe->logo);
 		$logoBase64 = "";
 		if (file_exists($logo)) {
 			$type = pathinfo($logo, PATHINFO_EXTENSION);
@@ -82,5 +82,17 @@ class dmSociete extends dmBase
 		$logoBase64 = 'data:image/' . $type . ';base64,' . base64_encode(file_get_contents($logo));
 		// dol_syslog("##### dmHelper : returns " . strlen($logoBase64));
 		return $logoBase64;
+	}
+
+	/**
+	 * return mini logo file
+	 *
+	 * @param   [type]  $logoFileName  [$logoFileName description]
+	 *
+	 * @return  [type]                 [return description]
+	 */
+	private function _miniLogoFileName($logoFileName)
+	{
+		return str_replace(['.jpg', '.jpeg', '.png'], ['_mini.jpg','_mini.jpg','_mini.png'], $logoFileName);
 	}
 }
