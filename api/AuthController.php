@@ -75,11 +75,26 @@ class AuthController
 	 * @apiSuccess {Array} entities array of dolibarr available entities
 	 *
 	 * @apiDescription Check if your token is already valid
+	 * @deprecated
 	 */
-	public function ping($arr = null)
+	public function ping($arr = null) {
+		dol_syslog("Call on SmartAuth::ping deprecated function");
+		return $this->refresh($arr);
+	}
+
+	/**
+	 * @api {get} /refresh refresh the token
+	 * @apiName GetLogin
+	 * @apiGroup Auth
+	 *
+	 * @apiSuccess {Array} entities array of dolibarr available entities
+	 *
+	 * @apiDescription Check if your token is already valid
+	 */
+	public function refresh($arr = null)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
-		dol_syslog("Debug smartauth::AuthController : ping");
+		dol_syslog("Debug smartauth::AuthController : refresh");
 
 		$decoded = $this->check();
 
@@ -342,7 +357,7 @@ class AuthController
 		$family_id = $this->createTokenFamily($tmpuser->id);
 
 		// Generate BOTH tokens
-		$tokens = $this->generateTokenPair('user',$tmpuser->id,$tmpuser->id, $login, $entity, $family_id);
+		$tokens = $this->generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id);
 
 		// Renew the hash ?
 		// Generate token for user
@@ -478,7 +493,7 @@ class AuthController
 			// Check expiration from database (belt and suspenders with JWT exp)
 			if (!empty($date_eol) && $date_eol < dol_now()) {
 				dol_syslog("smartauth : token expired (date_eol=" . $date_eol . "), dol_now=" . dol_now(), LOG_INFO);
-				json_reply('Access token expired. Use /ping endpoint with refresh token.', 401);
+				json_reply('Access token expired. Use /refresh endpoint with refresh token.', 401);
 			}
 		}
 
@@ -522,7 +537,7 @@ class AuthController
 		// Check JWT expiration claim if present
 		if (!empty($decoded->exp) && $decoded->exp < time()) {
 			dol_syslog("smartauth : JWT exp claim expired", LOG_INFO);
-			json_reply('Access token expired. Refresh token on /ping endpoint.', 401);
+			json_reply('Access token expired. Refresh token on /refresh endpoint.', 401);
 		}
 
 		// Update token last used timestamp and refresh expiry
