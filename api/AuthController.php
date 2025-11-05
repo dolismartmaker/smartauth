@@ -624,7 +624,7 @@ class AuthController
 
 		if (!empty($headers)) {
 			if (preg_match('/Bearer\s(\S+)/', $headers, $matches)) {
-				dol_syslog("Debug smartauth : _getBearerToken, matches, return " . $matches[1]);
+				dol_syslog("Debug smartauth : _getBearerToken, matches, return " . json_encode($matches));
 				return $matches[1];
 			}
 		}
