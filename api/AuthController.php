@@ -96,8 +96,6 @@ class AuthController
 		global $db, $smartAuthAppID, $smartAuthAppKey;
 		dol_syslog("Debug smartauth::AuthController : refresh");
 
-		$decoded = $this->check();
-
 		//TODO dev time !!!!
 		// Get refresh token from Authorization header
 		$refresh_token = self::getBearerToken();
