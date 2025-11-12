@@ -123,7 +123,7 @@ trait dmTrait
 		// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter for element=" . $parentElementToUseForExtraFields . ", soit " . json_encode($listExtra));
 		foreach ($listExtra as $extrakey => $extralabel) {
 			//do we have to export that extrafield ?
-			if(!isset($this->listOfPublishedFields["options_" . $extrakey])) {
+			if (!isset($this->listOfPublishedFields["options_" . $extrakey])) {
 				continue;
 			}
 			//search for mapping
@@ -193,8 +193,9 @@ trait dmTrait
 	{
 		$this->_dolmapclassname = preg_replace('/.*DolibarrMapping/', '', get_class($obj));
 
-		// dol_syslog(" #################### exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
+		dol_syslog(" #################### exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
 		// dol_syslog(" ############### " . json_encode($obj));
+		// dol_syslog(" ########### " . json_encode($this->listOfPublishedFields));
 		// dol_syslog(" ########### " . json_encode($this->listOfPublishedFields));
 
 		$mapped = new \stdClass;
@@ -223,22 +224,36 @@ trait dmTrait
 				// dol_syslog("##### Call user function $user_function on object " . get_class($this));
 				if (is_callable([$this, $user_function])) {
 					$mapped->$appside = call_user_func([$this, $user_function], $obj, $obj->$doliside);
+					continue;
 				} else {
 					$mapped->$appside = $obj->$doliside;
+					continue;
 				}
 			}
 
 			//detect fk and push object into $mapped->$appside
 			if (in_array($doliside, array_keys($this->listOfForeignKeys))) {
-				dol_syslog('########## _listOfForeignKeys = ' . json_encode($this->listOfForeignKeys));
+				// dol_syslog('########## _listOfForeignKeys = ' . json_encode($this->listOfForeignKeys));
 				$mapped->$appside = $this->exportData($doliside, $obj->$doliside);
 			}
 
 			// print json_encode($obj->array_options);exit;
 			//extrafields
 			if (substr($doliside, 0, 8) == "options_") {
+				//new special types
+				foreach ($this->_dolmapping->smartNewObjectsTypes as $ntype => $notused) {
+					$verifType = substr($doliside, 8, strlen($ntype));
+					if ($verifType == $ntype) {
+						$user_function = "fieldFilterValue" . str_replace("_", "", ucfirst($ntype));
+						// dol_syslog(" ## call $user_function");
+						$mapped->$appside = call_user_func([$this, $user_function], $obj, $doliside);
+						continue;
+					}
+				}
+
 				if (!empty($obj->array_options[$doliside])) {
 					$mapped->$appside = $this->exportExtrafieldData($doliside, $obj->array_options[$doliside]);
+					continue;
 				}
 			}
 		}
@@ -265,7 +280,7 @@ trait dmTrait
 	 * map extrafield, for example
 	 * smartinterventions_type_event is a sellist
 	 * and definition is 'options'=>array('c_actioncomm:libelle:id'=>null)
-	 * so we have to get value ...
+	 * so we have to get values ...
 	 *
 	 * @param   [type]  $name   [$name description]
 	 * @param   [type]  $objectid  [$objectid description]
@@ -290,6 +305,7 @@ trait dmTrait
 			$param = jsonOrUnserialize($obj->param);
 			//a:1:{s:7:"options";a:1:{s:44:"c_smartinterventions_status:label:code::code";N;}}
 			// dol_syslog("Ask exportExtrafieldData for $name, param is " . json_encode($param));
+
 			//TODO implement all dolibarr possibilites :-)
 			if (isset($param['options'])) {
 				$param_list = array_keys($param['options']);
@@ -470,5 +486,63 @@ trait dmTrait
 				}
 			}
 		}
+	}
+
+	public function getStoragePath($object)
+	{
+		global $conf;
+
+		$dir = '';
+		$element = $elementpath = $object->parentElementToUseForExtraFields;
+		if (empty($element)) {
+			$element = $elementpath = $object->element;
+		}
+
+		//et toutes les races conditions de dolibarr
+		if ($element == "fichinter") {
+			$elementpath = "ficheinter";
+		}
+
+		if(empty($elementpath)) {
+			return null;
+		}
+
+		$dir = $conf->{$elementpath}->multidir_output[$object->entity];
+		if (empty($dir)) {
+			$dir = $conf->{$elementpath}->dir_output;
+		}
+		$dir .= "/" . dol_sanitizeFileName($object->ref);
+
+		return $dir;
+	}
+
+
+	/**
+	 * photo is stored as varchar dolibarr side (file name) but app need a base64 encoded data
+	 *
+	 * @param   [type]  $societe  [dolibarr $societe]
+	 *
+	 * @return  [type]        [return description]
+	 */
+	public function fieldFilterValueSmartPhoto($object, $doliside)
+	{
+		global $conf;
+		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto for $doliside"); // . json_encode($object));
+		$dir = $this->getStoragePath($object);
+		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto dir=$dir");
+
+		$img = $dir . "/" . dol_sanitizeFileName($object->array_options[$doliside]);
+		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto img=$img");
+		return $img;
+
+		//for example could be a base64 field
+		// imgBase64 = "";
+		// if (file_exists(img)) {
+		// 	$type = pathinfo(img, PATHINFO_EXTENSION);
+		// } else {
+		// return null;
+		// }
+		// imgBase64 = 'data:image/' . $type . ';base64,' . base64_encode(file_get_contents(img));
+		// return imgBase64;
 	}
 }

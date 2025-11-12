@@ -82,6 +82,10 @@ class dmHelper
 		// 'accept' => 'accept'
 	];
 
+	// smartmaker add new soft of objects type : photo, audio, video, files and signs
+	public $smartNewObjectsTypes = ['smartphoto_' => 'photos', 'smartaudio_' => 'audios', 'smartvideo_' => 'videos', 'smartfile_' => 'files', 'smartsignature_' => 'signature'];
+
+
 	/**
 	 * Filter attribute type integer
 	 *
@@ -353,7 +357,7 @@ class dmHelper
 	public function extrafieldsFilter($objectElement, $dolikey, $frontkey, $extrafields)
 	{
 		global $langs;
-		// dol_syslog("dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey");
+		dol_syslog("dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey");
 		//TODO mapping + RO/RW
 		$ret = [];
 
@@ -388,8 +392,8 @@ class dmHelper
 		//for that the solution is to use a special prefix for fields like "smartphoto_"
 		//then we convert it into application type like doc :
 		//https://inligit.fr/cap-rel/dolibarr/plugin-smartinterventions/-/wikis/home
-		$mapNew = ['smartphoto_' => 'photos', 'smartaudio_' => 'audios', 'smartvideo_' => 'videos', 'smartfile_' => 'files', 'smartsignature_' => 'signature'];
-		foreach ($mapNew as $dolside => $appside) {
+		foreach ($this->smartNewObjectsTypes as $dolside => $appside) {
+			dol_syslog("extrafieldsFilter special new object type");
 			if (substr($dolikey, 0, strlen($dolside)) == $dolside) {
 				$ret['type'] = $appside;
 				$ret['visible'] = ["create", "update", "read"];
