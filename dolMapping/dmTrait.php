@@ -193,7 +193,7 @@ trait dmTrait
 	{
 		$this->_dolmapclassname = preg_replace('/.*DolibarrMapping/', '', get_class($obj));
 
-		dol_syslog(" #################### exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
+		// dol_syslog(" #################### exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
 		// dol_syslog(" ############### " . json_encode($obj));
 		// dol_syslog(" ########### " . json_encode($this->listOfPublishedFields));
 		// dol_syslog(" ########### " . json_encode($this->listOfPublishedFields));
@@ -216,8 +216,8 @@ trait dmTrait
 			}
 
 			// print json_encode($obj->array_options);//exit;
-			// dol_syslog(" ## doliside=" . $doliside . " and appside=" . $appside);
-			// dol_syslog(" ## value on dolibarr object =" . $obj->$doliside ?? 'null');
+			// dol_syslog("  ## doliside=" . $doliside . " and appside=" . $appside);
+			// dol_syslog("  ## value on dolibarr object =" . $obj->$doliside ?? 'null');
 			if (!empty($obj->$doliside)) {
 				//try to apply a function as data filter for example for logo to base64 encoded logo (Societe / dmSociete)
 				$user_function = "fieldFilterValue" . ucfirst($doliside);
@@ -240,14 +240,15 @@ trait dmTrait
 			// print json_encode($obj->array_options);exit;
 			//extrafields
 			if (substr($doliside, 0, 8) == "options_") {
+				// dol_syslog("  ### special extrafields doliside=" . $doliside);
 				//new special types
 				foreach ($this->_dolmapping->smartNewObjectsTypes as $ntype => $notused) {
 					$verifType = substr($doliside, 8, strlen($ntype));
 					if ($verifType == $ntype) {
 						$user_function = "fieldFilterValue" . str_replace("_", "", ucfirst($ntype));
-						// dol_syslog(" ## call $user_function");
 						$mapped->$appside = call_user_func([$this, $user_function], $obj, $doliside);
-						continue;
+						// dol_syslog("  #### call $user_function for doliside=$doliside, appside=$appside returns " . json_encode($mapped->{$appside}));
+						continue 2;
 					}
 				}
 
@@ -272,6 +273,7 @@ trait dmTrait
 			// $mapped->rawlines = $obj->lines;
 		}
 
+		// dol_syslog("##### fieldFilterValueSmartPhoto mapped is " . json_encode($mapped));
 		return $mapped;
 	}
 
@@ -503,7 +505,7 @@ trait dmTrait
 			$elementpath = "ficheinter";
 		}
 
-		if(empty($elementpath)) {
+		if (empty($elementpath)) {
 			return null;
 		}
 
@@ -527,13 +529,23 @@ trait dmTrait
 	public function fieldFilterValueSmartPhoto($object, $doliside)
 	{
 		global $conf;
-		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto for $doliside"); // . json_encode($object));
+		// dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto for $doliside"); // . json_encode($object));
 		$dir = $this->getStoragePath($object);
-		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto dir=$dir");
+		// dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto dir=$dir");
 
 		$img = $dir . "/" . dol_sanitizeFileName($object->array_options[$doliside]);
-		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto img=$img");
-		return $img;
+		// dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto img=$img");
+
+		$ret = new \stdClass;
+		$ret->filename = basename($img);
+		//TODO all
+		$ret->title = "TODO titre";
+		$ret->desc = "TODO la description longue";
+		$ret->gps = "";
+		$ret->src = "";
+
+		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto, return " . json_encode($ret));
+		return $ret;
 
 		//for example could be a base64 field
 		// imgBase64 = "";
