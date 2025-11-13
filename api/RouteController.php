@@ -531,13 +531,16 @@ class RouteController
 			? apache_request_headers()
 			: $_SERVER;
 
-		// Check X-Forwarded-For header
-		if (isset($headers['X-Forwarded-For'])) {
-			$_SERVER['HTTP_X_FORWARDED_FOR'] = $headers['X-Forwarded-For'];
-		}
+		// dol_syslog("get_client_ip :: " . json_encode($headers));
 
-		// Use X-Forwarded-For if present and REMOTE_ADDR is local/private
-		if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+		// Check X-Real-IP header
+		if (isset($headers['X-Real-IP'])) {
+			$remoteAddr = $headers['X-Real-IP'];
+		} elseif (isset($headers['X-Forwarded-For'])) {
+			// Check X-Forwarded-For header
+			$remoteAddr = $headers['X-Forwarded-For'];
+		} elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+			// Use X-Forwarded-For if present and REMOTE_ADDR is local/private
 			$remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
 
 			// Check if remote addr is localhost or private IP
@@ -548,13 +551,15 @@ class RouteController
 				preg_match('/^172\.(1[6-9]|2\d|3[01])\./i', $remoteAddr) ||
 				preg_match('/^192\.168\./i', $remoteAddr)
 			) {
-
 				// Take first IP from X-Forwarded-For chain
 				$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-				return trim($ips[0]);
+				$remoteAddr = trim($ips[0]);
 			}
+		} else {
+			// Default to REMOTE_ADDR
+			$remoteAddr = $_SERVER['REMOTE_ADDR'];
 		}
-		// Default to REMOTE_ADDR
-		return $_SERVER['REMOTE_ADDR'] ?? '';
+
+		return $remoteAddr;
 	}
 }
