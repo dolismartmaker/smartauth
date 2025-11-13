@@ -23,6 +23,7 @@ namespace SmartAuth\DolibarrMapping;
 use SmartAuth\DolibarrMapping\dmHelper;
 
 require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+require_once DOL_DOCUMENT_ROOT . '/ecm/class/ecmfiles.class.php';
 
 trait dmTrait
 {
@@ -490,7 +491,16 @@ trait dmTrait
 		}
 	}
 
-	public function getStoragePath($object)
+	/**
+	 * get storage path of a linked file
+	 *
+	 * @param   CommonObject $object dolibarr object
+	 * @param   bool $relativepath   if true return only the last part relative to DOL_DATA_ROOT
+	 * 								 if false, return full file path with /home/server/www/ part
+	 *
+	 * @return  array           file path, element
+	 */
+	public function getStoragePath($object, $relativepath = true)
 	{
 		global $conf;
 
@@ -515,7 +525,11 @@ trait dmTrait
 		}
 		$dir .= "/" . dol_sanitizeFileName($object->ref);
 
-		return $dir;
+		if ($relativepath) {
+			$dir = str_replace(DOL_DATA_ROOT . "/", '', $dir);
+		}
+
+		return [$dir, $element];
 	}
 
 
@@ -528,9 +542,9 @@ trait dmTrait
 	 */
 	public function fieldFilterValueSmartPhoto($object, $doliside)
 	{
-		global $conf;
+		global $conf, $db;
 		// dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto for $doliside"); // . json_encode($object));
-		$dir = $this->getStoragePath($object);
+		list($dir, $element) = $this->getStoragePath($object);
 		// dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto dir=$dir");
 
 		$img = $dir . "/" . dol_sanitizeFileName($object->array_options[$doliside]);
@@ -538,11 +552,31 @@ trait dmTrait
 
 		$ret = new \stdClass;
 		$ret->filename = basename($img);
-		//TODO all
-		$ret->title = "TODO titre";
-		$ret->desc = "TODO la description longue";
+		$ret->title = "default titre";
+		$ret->description = "default description";
 		$ret->gps = "";
 		$ret->src = "";
+		$ret->ref = "xxxxxxxxxxx";
+		$ret->element = $element;
+		$ret->parentid = $object->id;
+		$ret->keywords = "one,two,other";
+		$ret->note_private = "private note (probably unused)";
+		$ret->note_public = "public note (probably unused)";
+
+		$ecm = new \EcmFiles($db);
+		$res = $ecm->fetch('', '', $img, '', '', $element, $object->id, $object->entity);
+		if ($res) {
+			$ret->title = $ecm->cover;
+			$ret->description = $ecm->description;
+			$ret->ref = $ecm->ref;
+			$ret->keywords = $ecm->keywords;
+			$ret->note_private = $ecm->note_private;
+			$ret->note_public = $ecm->note_public;
+			$ret->gps = "";
+			$ret->src = "";
+		} else {
+			dol_syslog("##### dmHelper : file not found " . json_encode($ecm));
+		}
 
 		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto, return " . json_encode($ret));
 		return $ret;
