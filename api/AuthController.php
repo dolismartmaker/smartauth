@@ -139,6 +139,7 @@ class AuthController
 		}
 
 		// Verify expiration
+		dol_syslog("Refresh token check eol refresh : db=" . $db->jdate($token_data->date_eol) . ", now=" . dol_now());
 		if ($db->jdate($token_data->date_eol) < dol_now()) {
 			return [['error' => 'Refresh token expired. Please login again.'], 401];
 		}
@@ -492,6 +493,8 @@ class AuthController
 			if (!empty($date_eol) && $date_eol < dol_now()) {
 				dol_syslog("smartauth : token expired (date_eol=" . $date_eol . "), dol_now=" . dol_now(), LOG_INFO);
 				json_reply('Access token expired. Use /refresh endpoint with refresh token.', 401);
+			} else {
+				dol_syslog("smartauth : token check eol : db=" . $date_eol . ", now=" . dol_now());
 			}
 		}
 
@@ -538,10 +541,11 @@ class AuthController
 			json_reply('Access token expired. Refresh token on /refresh endpoint.', 401);
 		}
 
+		// * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)
 		// Update token last used timestamp and refresh expiry
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
 		$sql .= " SET date_lastused = '" . $db->idate(dol_now()) . "',";
-		$sql .= " date_eol = '" . $db->idate(dol_now() + 60 * 60 * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)) . "',";
+		$sql .= " date_eol = '" . $db->idate(dol_now() + SmartTokenConfig::ACCESS_TOKEN_LIFETIME) . "',";
 		$sql .= " ip = '" . $db->escape(self::get_client_ip()) . "' ";
 		$sql .= " WHERE rowid = " . (int) $tokenid;
 
