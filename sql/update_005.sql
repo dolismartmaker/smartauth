@@ -1,4 +1,4 @@
--- add geodata to ecm files
+-- add geodata to ecm files - look at dolibarr 23.0 contrib :-)
 ALTER TABLE llx_ecm_files ADD COLUMN geolat double(24,8) DEFAULT NULL;
 ALTER TABLE llx_ecm_files ADD COLUMN geolong double(24,8) DEFAULT NULL;
 ALTER TABLE llx_ecm_files ADD COLUMN geopoint point DEFAULT NULL;
