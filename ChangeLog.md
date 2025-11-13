@@ -1,5 +1,15 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 1.0.10 -- 20251113
+
+Auto-Install GeoIP database
+Change ping to refresh route
+Check refresh token
+Optimize companies logo size
+SmartObject type
+SmartFileController (maybe, POC to become or not)
+Get metadata from ECM database for files
+
 ## 1.0.8 -- 20251103
 
 New dashboard on index
