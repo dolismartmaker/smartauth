@@ -30,6 +30,7 @@ CREATE TABLE llx_smartauth_logs(
     content_type varchar(20),
     url_requested varchar(255),
     user_agent varchar(100) DEDFAULT NULL,
+	device_id integer NOT NULL, -- log it, a device is linked to a key but using a key from an other device is a security data we need to have
     referer varchar(255) DEDFAULT NULL,
 	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 	-- END MODULEBUILDER FIELDS
