@@ -128,16 +128,17 @@ class SmartLogs extends CommonObject
 		'rowid' => array('type'=>'integer', 'label'=>'TechnicalID', 'enabled'=>'1', 'position'=>1, 'notnull'=>1, 'visible'=>0, 'noteditable'=>'1', 'index'=>1, 'css'=>'left', 'comment'=>"Id"),
 		'appuid' => array('type'=>'integer', 'label'=>'smartAuthAppuid', 'enabled'=>'1', 'position'=>15, 'notnull'=>0, 'visible'=>1,'noteditable'=>'1',),
 		'fk_key' => array('type'=>'integer:SmartAuth:smartauth/class/smartauth.class.php', 'label'=>'AuthElementKey', 'enabled'=>'1', 'position'=>20, 'notnull'=>1, 'visible'=>1,'noteditable'=>'1',),
-		'entity' => array('type'=>'integer', 'label'=>'Entity', 'picto'=>'company', 'enabled'=>'isModEnabled("societe")', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150', 'help'=>"OrganizationEventLinkToThirdParty", 'validate'=>'1','noteditable'=>'1',),
-		'dol_element' => array('type'=>'varchar(32)', 'label'=>'element', 'enabled'=>'isModEnabled("societe")', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'ip' => array('type'=>'varchar(20)', 'label'=>'IP', 'enabled'=>'isModEnabled("societe")', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'method' => array('type'=>'varchar(8)', 'label'=>'method', 'enabled'=>'isModEnabled("societe")', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'http_status' => array('type'=>'integer', 'label'=>'status', 'enabled'=>'isModEnabled("societe")', 'position'=>60, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'bytes_sent' => array('type'=>'integer', 'label'=>'byes_sent', 'enabled'=>'isModEnabled("societe")', 'position'=>70, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'content_type' => array('type'=>'varchar(20)', 'label'=>'content_type', 'enabled'=>'isModEnabled("societe")', 'position'=>80, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'url_requested' => array('type'=>'varchar(255)', 'label'=>'url_requested', 'enabled'=>'isModEnabled("societe")', 'position'=>55, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'user_agent' => array('type'=>'varchar(100)', 'label'=>'user_agent', 'enabled'=>'isModEnabled("societe")', 'position'=>100, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'referer' => array('type'=>'varchar(255)', 'label'=>'refered', 'enabled'=>'isModEnabled("societe")', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'entity' => array('type'=>'integer', 'label'=>'Entity', 'picto'=>'company', 'enabled'=>'1', 'position'=>30, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150', 'help'=>"OrganizationEventLinkToThirdParty", 'validate'=>'1','noteditable'=>'1',),
+		'dol_element' => array('type'=>'varchar(32)', 'label'=>'element', 'enabled'=>'1', 'position'=>40, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'ip' => array('type'=>'varchar(20)', 'label'=>'IP', 'enabled'=>'1', 'position'=>45, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'method' => array('type'=>'varchar(8)', 'label'=>'method', 'enabled'=>'1', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'http_status' => array('type'=>'integer', 'label'=>'status', 'enabled'=>'1', 'position'=>60, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'bytes_sent' => array('type'=>'integer', 'label'=>'byes_sent', 'enabled'=>'1', 'position'=>70, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'content_type' => array('type'=>'varchar(20)', 'label'=>'content_type', 'enabled'=>'1', 'position'=>80, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'url_requested' => array('type'=>'varchar(255)', 'label'=>'url_requested', 'enabled'=>'1', 'position'=>90, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'user_agent' => array('type'=>'varchar(100)', 'label'=>'user_agent', 'enabled'=>'1', 'position'=>100, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'fk_device_id' => array('type'=>'integer:SmartAuthDevices:smartauth/class/smartauthdevices.class.php', 'label'=>'device', 'enabled'=>'1', 'position'=>110, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
+		'referer' => array('type'=>'varchar(255)', 'label'=>'refered', 'enabled'=>'1', 'position'=>120, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
 		'tms' => array('type'=>'timestamp', 'label'=>'DateHour', 'enabled'=>'1', 'position'=>2, 'notnull'=>0, 'visible'=>2,),
 	);
 	public $rowid;
@@ -152,6 +153,7 @@ class SmartLogs extends CommonObject
 	public $content_type;
 	public $url_requested;
 	public $user_agent;
+	public $fk_device_id;
 	public $referer;
 	public $tms;
 	// END MODULEBUILDER PROPERTIES
