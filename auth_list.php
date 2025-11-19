@@ -258,6 +258,17 @@ if (empty($reshook)) {
 
 	// You can add more action here
 	// if ($action == 'xxx' && $permissiontoxxx) ...
+	if($massaction == 'disable') {
+		$objToDisable = new SmartAuth($db);
+		foreach($toselect as $keytodisable) {
+			$resToDisable = $objToDisable->fetch($keytodisable);
+			if($resToDisable>0) {
+				$objToDisable->setDisabled($user);
+			} else {
+				dol_syslog("SmartAuth : error on disable token id #" . $keytodisable, LOG_ERR);
+			}
+		}
+	}
 }
 
 
@@ -485,6 +496,7 @@ $param .= $hookmanager->resPrint;
 
 // List of mass actions available
 $arrayofmassactions = array(
+	'disable'=>img_picto('', 'sign-out', 'class="pictofixedwidth"').$langs->trans("Disable"),
 	//'validate'=>img_picto('', 'check', 'class="pictofixedwidth"').$langs->trans("Validate"),
 	//'generate_doc'=>img_picto('', 'pdf', 'class="pictofixedwidth"').$langs->trans("ReGeneratePDF"),
 	//'builddoc'=>img_picto('', 'pdf', 'class="pictofixedwidth"').$langs->trans("PDFMerge"),
