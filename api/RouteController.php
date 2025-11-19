@@ -487,7 +487,8 @@ class RouteController
 			'bytes_sent' => strlen(serialize($message)),
 			'content_type' => "json",
 			'url_requested' => substr(preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI'] ?? ''), 0, 255),
-			'user_agent' => substr($_SERVER['HTTP_X_APP_ID'] ?? $_SERVER['HTTP_USER_AGENT'] ?? '', 0, 100),
+			'user_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? "", 0, 100),
+			'deviced_id' => substr($_SERVER['HTTP_X_DEVICEID'] ?? '', 0, 40),
 			'referer' => substr($_SERVER['HTTP_REFERER'] ?? '', 0, 255),
 		];
 		// Escape values for SQL injection prevention
