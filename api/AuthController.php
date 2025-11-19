@@ -773,20 +773,20 @@ class AuthController
 	 */
 	private static function getSalt2()
 	{
-		// Check for X-App-ID header (future-proof for mobile apps)
-		$appId = $_SERVER['HTTP_X_APP_ID'] ?? '';
+		// Check for X-DEVICEID header (future-proof for mobile apps)
+		$deviceID = $_SERVER['HTTP_X_DEVICEID'] ?? '';
 
-		if (!empty($appId)) {
+		if (!empty($deviceID)) {
 			// Validate UUID format (36 chars with dashes)
-			if (preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $appId)) {
+			if (preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $deviceID)) {
 				dol_syslog("smartauth : using X-App-ID header for salt2", LOG_DEBUG);
-				return substr(hash('sha256', $appId), 0, 16);
+				return substr(hash('sha256', $deviceID), 0, 16);
 			}
 
 			// Or validate SHA256 format (64 hex chars)
-			if (preg_match('/^[a-f0-9]{64}$/i', $appId)) {
+			if (preg_match('/^[a-f0-9]{64}$/i', $deviceID)) {
 				dol_syslog("smartauth : using X-App-ID header (hash format) for salt2", LOG_DEBUG);
-				return substr(hash('sha256', $appId), 0, 16);
+				return substr(hash('sha256', $deviceID), 0, 16);
 			}
 
 			// Invalid format, log warning and fallback
@@ -799,20 +799,20 @@ class AuthController
 	}
 
 	/**
-	 * Validate app_id format (UUID or SHA256 hash)
+	 * Validate uuid format (UUID or SHA256 hash)
 	 *
-	 * @param string $app_id Application identifier
+	 * @param string $uuid identifier
 	 * @return bool True if valid format
 	 */
-	private static function validateAppId($app_id)
+	private static function validateUUID($uuid)
 	{
 		// Accept UUID format (36 chars with dashes)
-		if (preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $app_id)) {
+		if (preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $uuid)) {
 			return true;
 		}
 
 		// Accept SHA256 hash format (64 hex chars)
-		if (preg_match('/^[a-f0-9]{64}$/i', $app_id)) {
+		if (preg_match('/^[a-f0-9]{64}$/i', $uuid)) {
 			return true;
 		}
 
