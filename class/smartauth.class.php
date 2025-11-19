@@ -73,6 +73,7 @@ class SmartAuth extends CommonObject
 	public const STATUS_DRAFT = 0;
 	public const STATUS_VALIDATED = 1;
 	public const STATUS_CANCELED = 9;
+	public const STATUS_DISABLED = 10;
 
 	//cache
 	private $_appNameUIDCache = [];
@@ -127,26 +128,34 @@ class SmartAuth extends CommonObject
 		'date_creation' => array('type'=>'datetime', 'label'=>'Datecreation', 'enabled'=>'1', 'position'=>25, 'notnull'=>1, 'visible'=>1,),
 		'date_lastused' => array('type'=>'datetime', 'label'=>'Datelastused', 'enabled'=>'1', 'position'=>30, 'notnull'=>0, 'visible'=>1,),
 		'ip' => array('type'=>'varchar(50)', 'label'=>'smartAuthLastIP', 'enabled'=>'1', 'position'=>35, 'notnull'=>0, 'visible'=>1, 'default'=>''),
+		'refresh_count' => array('type'=>'integer', 'label'=>'smartAuthRefreshCount', 'enabled'=>'1', 'position'=>36, 'notnull'=>0, 'visible'=>1,),
 		'date_eol' => array('type'=>'datetime', 'label'=>'Dateeol', 'enabled'=>'1', 'position'=>38, 'notnull'=>0, 'visible'=>1,),
 		'tms' => array('type'=>'timestamp', 'label'=>'DateModification', 'enabled'=>'1', 'position'=>40, 'notnull'=>1, 'visible'=>-1,),
 		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'enabled'=>'$user->admin', 'position'=>45, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
 		'fk_user_modif' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserModif', 'enabled'=>'$user->admin', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
+		'fk_device_id' => array('type'=>'integer:SmartAuthDevices:smartauth/class/smartauthdevices.class.php', 'label'=>'device', 'enabled'=>'1', 'position'=>55, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
 		'fk_authid' => array('type'=>'integer', 'label'=>'AuthElementID', 'enabled'=>'1', 'position'=>60, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
 		'auth_element' => array('type'=>'varchar(128)', 'label'=>'AuthElementSource', 'enabled'=>'1', 'position'=>65, 'notnull'=>1, 'visible'=>1,),
+		'parent_token_id' => array('type'=>'integer', 'label'=>'smartAuthParentTokenId', 'enabled'=>'1', 'position'=>70, 'notnull'=>0, 'visible'=>1,),
+		'token_type' => array('type'=>'varchar(20)', 'label'=>'smartAuthTokenType', 'enabled'=>'1', 'position'=>75, 'notnull'=>0, 'visible'=>1,),
 		'status' => array('type'=>'integer', 'label'=>'Status', 'enabled'=>1, 'visible'=>2, 'position'=>1000, 'notnull'=>1, 'default'=>0, 'index'=>1, 'arrayofkeyval'=>array(1=>'Enabled', 9=>'Disabled')),
 	);
 	public $rowid;
 	public $appuid;
 	public $salt;
+	public $refresh_count;
 	public $date_creation;
 	public $date_lastused;
 	public $date_eol;
 	public $tms;
 	public $fk_user_creat;
 	public $fk_user_modif;
+	public $fk_device_id;
 	public $fk_authid; //id of auth element, it depends on auth_element value (user/societe_account)
 	public $auth_element;//user or societe_account for the moment
+	public $parent_token_id;
 	public $ip;
+	public $token_type;
 	public $status;
 	// END MODULEBUILDER PROPERTIES
 
@@ -935,15 +944,21 @@ class SmartAuth extends CommonObject
 			$this->labelStatus[self::STATUS_DRAFT] = $langs->transnoentitiesnoconv('Draft');
 			$this->labelStatus[self::STATUS_VALIDATED] = $langs->transnoentitiesnoconv('Enabled');
 			$this->labelStatus[self::STATUS_CANCELED] = $langs->transnoentitiesnoconv('Disabled');
+			$this->labelStatus[self::STATUS_DISABLED] = $langs->transnoentitiesnoconv('Disabled');
 			$this->labelStatusShort[self::STATUS_DRAFT] = $langs->transnoentitiesnoconv('Draft');
 			$this->labelStatusShort[self::STATUS_VALIDATED] = $langs->transnoentitiesnoconv('Enabled');
 			$this->labelStatusShort[self::STATUS_CANCELED] = $langs->transnoentitiesnoconv('Disabled');
+			$this->labelStatusShort[self::STATUS_DISABLED] = $langs->transnoentitiesnoconv('Disabled');
 		}
 
 		$statusType = 'status'.$status;
 		//if ($status == self::STATUS_VALIDATED) $statusType = 'status1';
 		if ($status == self::STATUS_CANCELED) {
 			$statusType = 'status6';
+		}
+
+		if ($status == self::STATUS_DISABLED) {
+			$statusType = 'status9';
 		}
 
 		return dolGetStatus($this->labelStatus[$status], $this->labelStatusShort[$status], '', $statusType, $mode);
@@ -1188,6 +1203,20 @@ class SmartAuth extends CommonObject
 		}
 		return $_appNameUIDCache;
 	}
+
+	/**
+	 *	Set status to disabled
+	 *
+	 *	@param	User	$user			Object user that modify
+	 *  @param	int		$notrigger		1=Does not execute triggers, 0=Execute triggers
+	 *	@return	int						<0 if KO, >0 if OK
+	 */
+	public function setDisabled($user, $notrigger = 0)
+	{
+		return $this->setStatusCommon($user, self::STATUS_DISABLED, $notrigger, 'SMARTAUTH_KEY_DISABLED');
+	}
+
+
 }
 
 require_once DOL_DOCUMENT_ROOT.'/core/class/commonobjectline.class.php';
