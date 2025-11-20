@@ -379,7 +379,7 @@ class AuthController
 	public function device($payload = null)
 	{
 		global $db;
-		dol_syslog("Debug smartauth::AuthController : device, payload = " . json_encode($payload));
+		dol_syslog("Debug smartauth::AuthController : device"); // full debug, payload = " . json_encode($payload));
 
 		$result = "error";
 
