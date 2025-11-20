@@ -18,7 +18,7 @@
 ALTER TABLE llx_smartauth_devices ADD INDEX idx_smartauth_devices_rowid (rowid);
 ALTER TABLE llx_smartauth_devices ADD CONSTRAINT llx_smartauth_devices_fk_user_creat FOREIGN KEY (fk_user_creat) REFERENCES llx_user(rowid);
 ALTER TABLE llx_smartauth_devices ADD INDEX idx_smartauth_devices_status (status);
-ALTER TABLE llx_smartauth_devices ADD INDEX idx_smartauth_devices_uuid (uuid);
+ALTER TABLE llx_smartauth_devices ADD UNIQUE INDEX idx_smartauth_devices_uuid (uuid);
 -- END MODULEBUILDER INDEXES
 
 --ALTER TABLE llx_smartauth_devices ADD UNIQUE INDEX uk_smartauth_devices_fieldxy(fieldx, fieldy);

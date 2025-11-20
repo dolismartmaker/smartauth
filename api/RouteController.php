@@ -327,6 +327,9 @@ class RouteController
 		$entity = $decoded->entity ?? null;
 		$login = $decoded->login ?? null;
 		$tokenid = $decoded->tokenid ?? null;
+		//TODO ? put into payload ? check for other data ?
+		$family_id = $decoded->family_id ?? null;
+		$device_id = $decoded->device_id ?? null;
 
 		if (!$login) {
 			self::insertLogs($tokenid, 401, 'Invalid token', $entity);

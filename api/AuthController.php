@@ -141,7 +141,7 @@ class AuthController
 		$this->_revokeToken($decoded->token_id, 'refresh_used');
 
 		// Generate new token pair
-		$new_tokens = $this->__generateTokenPair(
+		$new_tokens = $this->_generateTokenPair(
 			'user',
 			$decoded->fk_authid,
 			$decoded->fk_authid,
@@ -312,7 +312,7 @@ class AuthController
 		$device_id = $this->_createDeviceIdIfNeeded($tmpuser->id);
 
 		// Generate BOTH tokens
-		$tokens = $this->__generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id, $device_id);
+		$tokens = $this->_generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id, $device_id);
 
 		// Renew the hash ?
 		// Generate token for user
@@ -376,14 +376,63 @@ class AuthController
 	 * @apiDescription Set the name of current device uuid or uuid of device_id
 	 * user has choosed
 	 */
-	public function device($arr = null)
+	public function device($payload = null)
 	{
-		dol_syslog("Debug smartauth::AuthController : device");
+		global $db;
+		dol_syslog("Debug smartauth::AuthController : device, payload = " . json_encode($payload));
 
+		$result = "error";
 
-		$ret = [
-			'device_id' => $this->_api_GetListOfEntities(),
-		];
+		$token = self::_getBearerToken();
+		$decoded = self::_decodeJWT($token, SmartTokenConfig::TYPE_ACCESS);
+
+		$current_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		$new_uuid = $payload['uuid'];
+		$new_name = sanitizeVal($payload['label']);
+
+		//first case : same uuid, update device name
+		if ($current_uuid == $new_uuid) {
+			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
+			$sql .= " SET label='" . $db->escape($new_name) . "'";
+			$sql .= " WHERE uuid='" . $db->escape($current_uuid) . "'";
+			dol_syslog('smartauth::AuthController : device update label ' . $sql, LOG_DEBUG);
+
+			$resql = $db->query($sql);
+			if ($resql) {
+				$result = "success";
+			} else {
+				dol_syslog("Failed to update UUID device name : " . $db->lasterror(), LOG_ERR);
+			}
+			$ret = [
+				'message' => $result,
+			];
+		} else {
+			dol_syslog('smartauth::AuthController : device user choice an existing device ' . $new_uuid, LOG_DEBUG);
+			//user choosed an other key ... need to delete current key and make a new one
+			$user = $payload['user'];
+
+			//revoke temporary tokens - sorry for them
+			$this->_revokeTokenFamily($decoded->family_id);
+
+			// Create token family (for tracking refresh chain)
+			$family_id = $this->_createTokenFamily($user->id);
+
+			//use uuid user choosed
+			$device_id = $this->_createDeviceIdIfNeeded($user->id, $new_uuid);
+
+			// Generate BOTH tokens
+			$tokens = $this->_generateTokenPair('user', $user->id, $user->id, $user->login, $payload['entity'], $family_id, $device_id, $new_uuid);
+
+			$ret = [
+				'token' => $tokens['access_token'], // to be compatible with "old" process
+				'access_token' => $tokens['access_token'],
+				'refresh_token' => $tokens['refresh_token'],
+				'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
+				'token_type' => 'Bearer',
+				'message' => 'please use this new token',
+			];
+		}
+
 		return ([$ret, 200]);
 	}
 
@@ -466,7 +515,7 @@ class AuthController
 
 		$device_id = $this->_createDeviceIdIfNeeded($useractions->id);
 
-		$new_tokens = $this->__generateTokenPair(
+		$new_tokens = $this->_generateTokenPair(
 			'societe_account',
 			$socid,
 			$useractions->fk_authid,
@@ -657,22 +706,28 @@ class AuthController
 	 *
 	 * @return string 16-character salt for key derivation
 	 */
-	private static function _getSalt2()
+	private static function _getSalt2($device_uuid = '')
 	{
 		// Check for X-DEVICEID header (future-proof for mobile apps)
-		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
-		dol_syslog("_getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
+		if ($device_uuid == '') {
+			$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
+			dol_syslog("_getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
 
-		if (!empty($device_uuid)) {
-			dol_syslog("smartauth : using X-DEVICEID header (hash format) for salt2", LOG_DEBUG);
+			if (!empty($device_uuid)) {
+				dol_syslog("smartauth : using X-DEVICEID header (hash format) for salt2", LOG_DEBUG);
+				return substr(hash('sha256', $device_uuid), 0, 16);
+			}
+
+			dol_syslog("smartauth : X-DEVICEID empty, falling back to User-Agent", LOG_WARNING);
+
+			// Fallback to User-Agent hash
+			$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+			return substr(hash('sha256', $userAgent), 0, 16);
+		} else {
+			dol_syslog("_getSalt2 debug deviceid is set from function arg value : " . $device_uuid);
+			dol_syslog("smartauth : using deviceid from function arg (hash format) for salt2", LOG_DEBUG);
 			return substr(hash('sha256', $device_uuid), 0, 16);
 		}
-
-		dol_syslog("smartauth : X-DEVICEID empty, falling back to User-Agent", LOG_WARNING);
-
-		// Fallback to User-Agent hash
-		$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
-		return substr(hash('sha256', $userAgent), 0, 16);
 	}
 
 	/**
@@ -727,10 +782,11 @@ class AuthController
 	 * @param   Int  	$entity      dolibarr entity
 	 * @param   String  $family_id   token family
 	 * @param   Int 	$device_id   device id (foreign key)
+	 * @param   String 	$device_uuid device uuid (in case of previous is null and we don't want to use http header value)
 	 *
 	 * @return  array               two token (access & refresh)
 	 */
-	private function __generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id)
+	private function _generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id, $device_uuid = '')
 	{
 		// Generate access token (short-lived)
 		$access_token = $this->_generateToken(
@@ -742,7 +798,9 @@ class AuthController
 			SmartTokenConfig::TYPE_ACCESS,
 			SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
 			$family_id,
-			$device_id
+			$device_id,
+			null,
+			$device_uuid
 		);
 
 		// Generate refresh token (long-lived)
@@ -755,7 +813,9 @@ class AuthController
 			SmartTokenConfig::TYPE_REFRESH,
 			SmartTokenConfig::REFRESH_TOKEN_LIFETIME,
 			$family_id,
-			$device_id
+			$device_id,
+			null,
+			$device_uuid
 		);
 
 		return [
@@ -767,12 +827,12 @@ class AuthController
 	/**
 	 * Unified token generation (replaces _newUserKey)
 	 */
-	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id, $parent_token_id = null)
+	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id, $parent_token_id = null,  $device_uuid = null)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
 
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
-		$salt2 = $this->_getSalt2(); // app_id logic
+		$salt2 = $this->_getSalt2($device_uuid); // same as app_id logic but for device
 
 		// Insert token into database
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth";
@@ -928,6 +988,7 @@ class AuthController
 			$resql = $db->query($sql);
 			$res = -1;
 			if ($resql && $obj = $db->fetch_object($resql)) {
+				$res = $obj->rowid;
 			}
 			$conf->cache['smartmakers'][$cache_key] = $res;
 		}
@@ -955,7 +1016,7 @@ class AuthController
 		$sql .= " AND status = 1";
 		$sql .= " AND entity IN (" . getEntity('user') . ")";
 		if ($current_uuid != "") {
-			$sql .= " OR uuid='" . $db->escape($current_uuid) . "'";
+			$sql .= " OR ( uuid='" . $db->escape($current_uuid) . "' AND label != '')";
 			$sql .= " GROUP BY uuid";
 		}
 		$resql = $db->query($sql);
@@ -965,20 +1026,23 @@ class AuthController
 				$ret[] = $obj;
 			}
 		}
+
+		dol_syslog('_getAllDevicesForUser returns ' . json_encode($ret), LOG_DEBUG);
 		return $ret;
 	}
 
 
-	private function _createDeviceIdIfNeeded($user_id)
+	private function _createDeviceIdIfNeeded($user_id, $device_uuid = '')
 	{
 		global $db, $user;
 
 		$deviceid = '';
-		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		if ($device_uuid == '') {
+			$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		}
 
 		if ($device_uuid == 'undefined') {
 			//auto création d'un device uuid local
-
 		}
 
 		if ($device_uuid == '') {
