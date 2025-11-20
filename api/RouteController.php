@@ -407,7 +407,6 @@ class RouteController
 
 		// Build payload
 		$payload = [
-			'data' => $data, // Legacy support
 			'user' => $user,
 			'entity' => $entity,
 			'tokenid' => $tokenid,
@@ -416,7 +415,7 @@ class RouteController
 
 		// Flatten data into payload for easier access
 		foreach ($data as $key => $value) {
-			if (!isset($payload[$key])) { // Don't override meta keys
+			if (!isset($payload[$key])) { // Don't override main keys
 				$payload[$key] = $value;
 			}
 		}
@@ -475,6 +474,15 @@ class RouteController
 			return;
 		}
 
+		$deviceid = '';
+		$device_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		if ($device_uuid == '') {
+			$deviceid = AuthController::getDeviceIDFromUUID($device_uuid);
+		}
+		if (empty($deviceid) || $deviceid <= 0) {
+			$deviceid = '-1';
+		}
+
 		// Always log, even without keyid (for failed auth attempts)
 		$arr = [
 			'fk_key' => $keyid ?? 0,
@@ -488,7 +496,7 @@ class RouteController
 			'content_type' => "json",
 			'url_requested' => substr(preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI'] ?? ''), 0, 255),
 			'user_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? "", 0, 100),
-			'deviced_id' => substr($_SERVER['HTTP_X_DEVICEID'] ?? '', 0, 40),
+			'fk_device_id' => $deviceid,
 			'referer' => substr($_SERVER['HTTP_REFERER'] ?? '', 0, 255),
 		];
 		// Escape values for SQL injection prevention

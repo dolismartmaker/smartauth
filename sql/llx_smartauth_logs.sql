@@ -29,9 +29,9 @@ CREATE TABLE llx_smartauth_logs(
     bytes_sent int(11),
     content_type varchar(20),
     url_requested varchar(255),
-    user_agent varchar(100) DEDFAULT NULL,
-	device_id integer NOT NULL, -- log it, a device is linked to a key but using a key from an other device is a security data we need to have
-    referer varchar(255) DEDFAULT NULL,
+    user_agent varchar(100) DEFAULT NULL,
+	fk_device_id integer NOT NULL, -- log it, a device is linked to a key but using a key from an other device is a security data we need to have
+    referer varchar(255) DEFAULT NULL,
 	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 	-- END MODULEBUILDER FIELDS
 ) ENGINE=innodb;

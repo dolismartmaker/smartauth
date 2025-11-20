@@ -26,7 +26,7 @@
  *  \ingroup    smartauth
  *  \brief      Description and activation file for module Smartauth
  */
-include_once DOL_DOCUMENT_ROOT.'/core/modules/DolibarrModules.class.php';
+include_once DOL_DOCUMENT_ROOT . '/core/modules/DolibarrModules.class.php';
 
 /**
  *  Description and activation class for module Smartauth
@@ -77,7 +77,7 @@ class modSmartauth extends DolibarrModules
 		$this->url_last_version = "https://cap-rel.fr/dolibarr/ver.php?m=" . $this->rights_class . "&v=" . $this->version;
 
 		// Key used in llx_const table to save module status enabled/disabled (where SMARTAUTH is value of property name of module in uppercase)
-		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
+		$this->const_name = 'MAIN_MODULE_' . strtoupper($this->name);
 
 		// Name of image file used for this module.
 		// If file is in theme/yourtheme/img directory under name object_pictovalue.png, use this->picto='pictovalue'
@@ -177,7 +177,7 @@ class modSmartauth extends DolibarrModules
 
 		// Array to add new pages in new tabs
 		$this->tabs = array();
-		$this->tabs[] = array('data'=>'user:+tabSmartAuth:SmartAuth:smartauth@smartauth:1:/smartauth/user_tab.php?id=__ID__');
+		$this->tabs[] = array('data' => 'user:+tabSmartAuth:SmartAuth:smartauth@smartauth:1:/smartauth/user_tab.php?id=__ID__');
 		// Example:
 		// $this->tabs[] = array('data'=>'objecttype:+tabname1:Title1:mylangfile@smartauth:$user->rights->smartauth->read:/smartauth/mynewtab1.php?id=__ID__');  					// To add a new tab identified by code tabname1
 		// $this->tabs[] = array('data'=>'objecttype:+tabname2:SUBSTITUTION_Title2:mylangfile@smartauth:$user->rights->othermodule->read:/smartauth/mynewtab2.php?id=__ID__',  	// To add another new tab identified by code tabname2. Label will be result of calling all substitution functions on 'Title2' key.
@@ -246,20 +246,20 @@ class modSmartauth extends DolibarrModules
 		// Cronjobs (List of cron jobs entries to add when module is enabled)
 		// unit_frequency must be 60 for minute, 3600 for hour, 86400 for day, 604800 for week
 		$this->cronjobs = array(
-			 0 => array(
-			     'label' => 'SmartAuth',
-			     'jobtype' => 'method',
-			     'class' => '/smartauth/class/smartauth.class.php',
-			     'objectname' => 'SmartAuth',
-			     'method' => 'doScheduledJob',
-			     'parameters' => '',
-			     'comment' => 'Do SmartAuth clean tasks',
-			     'frequency' => 1,
-			     'unitfrequency' => 3600*24,
-			     'status' => 0,
-			     'test' => 'isModEnabled("smartauth")',
-			     'priority' => 50,
-			 ),
+			0 => array(
+				'label' => 'SmartAuth',
+				'jobtype' => 'method',
+				'class' => '/smartauth/class/smartauth.class.php',
+				'objectname' => 'SmartAuth',
+				'method' => 'doScheduledJob',
+				'parameters' => '',
+				'comment' => 'Do SmartAuth clean tasks',
+				'frequency' => 1,
+				'unitfrequency' => 3600 * 24,
+				'status' => 0,
+				'test' => 'isModEnabled("smartauth")',
+				'priority' => 50,
+			),
 		);
 		// Example: $this->cronjobs=array(
 		//    0=>array('label'=>'My label', 'jobtype'=>'method', 'class'=>'/dir/class/file.class.php', 'objectname'=>'MyClass', 'method'=>'myMethod', 'parameters'=>'param1, param2', 'comment'=>'Comment', 'frequency'=>2, 'unitfrequency'=>3600, 'status'=>0, 'test'=>'isModEnabled("smartauth")', 'priority'=>50),
@@ -299,54 +299,69 @@ class modSmartauth extends DolibarrModules
 		// Main menu entries to add
 		$this->menu = array();
 		$r = 0;
-		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=tools',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
-			'type'=>'left',                          // This is a Top menu entry
-			'titre'=>'SmartAuthMainMenu',
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=tools',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
+			'type' => 'left',                          // This is a Top menu entry
+			'titre' => 'SmartAuthMainMenu',
 			'prefix' => "",
-			'mainmenu'=>'tools',
-			'leftmenu'=>'smartauth',
-			'url'=>'/smartauth/index.php',
-			'langs'=>'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
-			'position'=>1000+$r,
-			'enabled'=>'$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
-			'perms'=>'$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
-			'target'=>'',
-			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
+			'mainmenu' => 'tools',
+			'leftmenu' => 'smartauth',
+			'url' => '/smartauth/index.php',
+			'langs' => 'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
+			'position' => 1000 + $r,
+			'enabled' => '$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
+			'perms' => '$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
+			'target' => '',
+			'user' => 2,				                // 0=Menu for internal users, 1=external users, 2=both
 		);
 
-		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=tools,fk_leftmenu=smartauth',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
-			'type'=>'left',                          // This is a Top menu entry
-			'titre'=>'SmartAuthTokensMenu',
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=smartauth',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
+			'type' => 'left',                          // This is a Top menu entry
+			'titre' => 'SmartAuthTokensMenu',
 			'prefix' => "",
-			'mainmenu'=>'tools',
-			'leftmenu'=>'smartauthtokens',
-			'url'=>'/smartauth/auth_list.php',
-			'langs'=>'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
-			'position'=>1000+$r,
-			'enabled'=>'$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
-			'perms'=>'$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
-			'target'=>'',
-			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
+			'mainmenu' => 'tools',
+			'leftmenu' => 'smartauthtokens',
+			'url' => '/smartauth/auth_list.php',
+			'langs' => 'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
+			'position' => 1000 + $r,
+			'enabled' => '$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
+			'perms' => '$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
+			'target' => '',
+			'user' => 2,				                // 0=Menu for internal users, 1=external users, 2=both
 		);
 
-		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=tools,fk_leftmenu=smartauth',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
-			'type'=>'left',                          // This is a Top menu entry
-			'titre'=>'SmartAuthLogsMenu',
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=smartauth',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
+			'type' => 'left',                          // This is a Top menu entry
+			'titre' => 'SmartAuthLogsMenu',
 			'prefix' => "",
-			'mainmenu'=>'tools',
-			'leftmenu'=>'smartauthlogs',
-			'url'=>'/smartauth/logs_list.php',
-			'langs'=>'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
-			'position'=>1000+$r,
-			'enabled'=>'$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
-			'perms'=>'$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
-			'target'=>'',
-			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
+			'mainmenu' => 'tools',
+			'leftmenu' => 'smartauthlogs',
+			'url' => '/smartauth/logs_list.php',
+			'langs' => 'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
+			'position' => 1000 + $r,
+			'enabled' => '$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
+			'perms' => '$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
+			'target' => '',
+			'user' => 2,				                // 0=Menu for internal users, 1=external users, 2=both
 		);
 
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=smartauth',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
+			'type' => 'left',                          // This is a Top menu entry
+			'titre' => 'SmartAuthDevicesMenu',
+			'prefix' => "",
+			'mainmenu' => 'tools',
+			'leftmenu' => 'smartauthlogs',
+			'url' => '/smartauth/smartauthdevices_list.php',
+			'langs' => 'smartauth@smartauth',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
+			'position' => 1000 + $r,
+			'enabled' => '$conf->smartauth->enabled',  // Define condition to show or hide menu entry. Use '$conf->smartauth->enabled' if entry must be visible if module is enabled.
+			'perms' => '$user->rights->smartauth->read',			                // Use 'perms'=>'$user->rights->smartauth->level1->level2' if you want your menu with a permission rules
+			'target' => '',
+			'user' => 2,				                // 0=Menu for internal users, 1=external users, 2=both
+		);
 	}
 
 	/**

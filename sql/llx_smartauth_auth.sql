@@ -29,7 +29,7 @@ CREATE TABLE llx_smartauth_auth(
 	auth_element varchar(128) NOT NULL, -- may be user or societe_account or ...
 	token_type VARCHAR(20) DEFAULT 'access',
 	ip varchar(50) DEFAULT '',
-	device_id integer NOT NULL, -- note: a key is linked to a device
+	fk_device_id integer NOT NULL, -- note: a key is linked to a device
 	status integer NOT NULL,
 	entity integer DEFAULT 1 NOT NULL
 ) ENGINE=innodb;

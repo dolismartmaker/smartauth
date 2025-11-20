@@ -29,9 +29,7 @@ class SmartFileControler
         dol_syslog("Debug smartauth::SmartFileController : download");
         //note : middleware is needed to check user access
         $ret = [
-            'data' => [
-                'tobecome' => 'dev in progress',
-            ]
+            'tobecome' => 'dev in progress',
         ];
         return ([$ret, 200]);
     }

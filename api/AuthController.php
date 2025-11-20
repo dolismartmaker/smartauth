@@ -60,9 +60,7 @@ class AuthController
 	{
 		dol_syslog("Debug smartauth::AuthController : index");
 		$ret = [
-			'data' => [
-				'entities' => $this->_api_GetListOfEntities(),
-			]
+			'entities' => $this->_api_GetListOfEntities(),
 		];
 		return ([$ret, 200]);
 	}
@@ -77,7 +75,8 @@ class AuthController
 	 * @apiDescription Check if your token is already valid
 	 * @deprecated
 	 */
-	public function ping($arr = null) {
+	public function ping($arr = null)
+	{
 		dol_syslog("Call on SmartAuth::ping deprecated function");
 		return $this->refresh($arr);
 	}
@@ -159,8 +158,9 @@ class AuthController
 		$login = $decoded->login ?? '';
 		$entity = $decoded->entity ?? 0;
 		$family_id = $decoded->family_id ?? '';
+		$device_id = $decoded->device_id ?? '';
 
-		if (empty($login) || empty($family_id)) {
+		if (empty($login) || empty($family_id) || empty($device_id)) {
 			return [['error' => 'Invalid token payload'], 401];
 		}
 
@@ -192,7 +192,8 @@ class AuthController
 			$token_data->fk_authid,
 			$login,
 			$entity,
-			$family_id
+			$family_id,
+			$device_id
 		);
 
 		// Update token family stats
@@ -201,12 +202,10 @@ class AuthController
 		dol_syslog("Token refreshed successfully for user $login");
 
 		return [[
-			'data' => [
-				'access_token' => $new_tokens['access_token'],
-				'refresh_token' => $new_tokens['refresh_token'],
-				'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
-				'token_type' => 'Bearer'
-			]
+			'access_token' => $new_tokens['access_token'],
+			'refresh_token' => $new_tokens['refresh_token'],
+			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
+			'token_type' => 'Bearer'
 		], 200];
 	}
 
@@ -355,8 +354,10 @@ class AuthController
 		// Create token family (for tracking refresh chain)
 		$family_id = $this->createTokenFamily($tmpuser->id);
 
+		$device_id = $this->createDeviceIdIfNeeded($tmpuser->id);
+
 		// Generate BOTH tokens
-		$tokens = $this->generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id);
+		$tokens = $this->generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id, $device_id);
 
 		// Renew the hash ?
 		// Generate token for user
@@ -364,24 +365,23 @@ class AuthController
 
 		$rememberme  = (int) $payload['rememberMe']  ?? '';
 
-		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id . ", " . json_encode($tmpuser));
+		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id); // full debug . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
 
 		if (empty($tmpuser->email)) {
 			$user = $tmpuser->login;
 		}
 		$ret = [
-			'data' => [
-				'user' => $user,
-				'userid' => $tmpuser->id,
-				'entity' => $entity,
-				'token' => $tokens['access_token'], // to be compatible with "old" process
-				'access_token' => $tokens['access_token'],
-				'refresh_token' => $tokens['refresh_token'],
-				'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
-				'token_type' => 'Bearer',
-				'rememberMe' => $rememberme
-			]
+			'user' => $user,
+			'userid' => $tmpuser->id,
+			'entity' => $entity,
+			'token' => $tokens['access_token'], // to be compatible with "old" process
+			'access_token' => $tokens['access_token'],
+			'refresh_token' => $tokens['refresh_token'],
+			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
+			'token_type' => 'Bearer',
+			'devices_choice' => $this->getAllDevicesForUser($tmpuser->id),
+			'rememberMe' => $rememberme
 		];
 		return ([$ret, 200]);
 	}
@@ -405,10 +405,8 @@ class AuthController
 		$result = $user->call_trigger('USER_LOGOUT', $user);
 
 		$ret = [
-			'data' => [
-				'user' => '',
-				'token' => ''
-			]
+			'user' => '',
+			'token' => ''
 		];
 		return ([$ret, 200]);
 	}
@@ -589,13 +587,16 @@ class AuthController
 
 		$family_id = $this->createTokenFamily($useractions->id);
 
+		$device_id = $this->createDeviceIdIfNeeded($useractions->id);
+
 		$new_tokens = $this->generateTokenPair(
 			'societe_account',
 			$socid,
 			$useractions->fk_authid,
 			$socmail,
 			$entity,
-			$family_id
+			$family_id,
+			$device_id
 		);
 
 		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey return");
@@ -774,24 +775,15 @@ class AuthController
 	private static function getSalt2()
 	{
 		// Check for X-DEVICEID header (future-proof for mobile apps)
-		$deviceID = $_SERVER['HTTP_X_DEVICEID'] ?? '';
+		$device_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		dol_syslog("getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
 
-		if (!empty($deviceID)) {
-			// Validate UUID format (36 chars with dashes)
-			if (preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $deviceID)) {
-				dol_syslog("smartauth : using X-App-ID header for salt2", LOG_DEBUG);
-				return substr(hash('sha256', $deviceID), 0, 16);
-			}
-
-			// Or validate SHA256 format (64 hex chars)
-			if (preg_match('/^[a-f0-9]{64}$/i', $deviceID)) {
-				dol_syslog("smartauth : using X-App-ID header (hash format) for salt2", LOG_DEBUG);
-				return substr(hash('sha256', $deviceID), 0, 16);
-			}
-
-			// Invalid format, log warning and fallback
-			dol_syslog("smartauth : invalid X-App-ID format, falling back to User-Agent", LOG_WARNING);
+		if (!empty($device_uuid)) {
+			dol_syslog("smartauth : using X-DEVICEID header (hash format) for salt2", LOG_DEBUG);
+			return substr(hash('sha256', $device_uuid), 0, 16);
 		}
+
+		dol_syslog("smartauth : X-DEVICEID empty, falling back to User-Agent", LOG_WARNING);
 
 		// Fallback to User-Agent hash
 		$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
@@ -849,10 +841,11 @@ class AuthController
 	 * @param   String  $login       login to use for that token
 	 * @param   Int  	$entity      dolibarr entity
 	 * @param   String  $family_id   token family
+	 * @param   Int 	$device_id   device id (foreign key)
 	 *
 	 * @return  array               two token (access & refresh)
 	 */
-	private function generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id)
+	private function generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id)
 	{
 		// Generate access token (short-lived)
 		$access_token = $this->generateToken(
@@ -863,7 +856,8 @@ class AuthController
 			$entity,
 			SmartTokenConfig::TYPE_ACCESS,
 			SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
-			$family_id
+			$family_id,
+			$device_id
 		);
 
 		// Generate refresh token (long-lived)
@@ -875,7 +869,8 @@ class AuthController
 			$entity,
 			SmartTokenConfig::TYPE_REFRESH,
 			SmartTokenConfig::REFRESH_TOKEN_LIFETIME,
-			$family_id
+			$family_id,
+			$device_id
 		);
 
 		return [
@@ -887,7 +882,7 @@ class AuthController
 	/**
 	 * Unified token generation (replaces _newUserKey)
 	 */
-	private function generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $parent_token_id = null)
+	private function generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id, $parent_token_id = null)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
 
@@ -896,7 +891,7 @@ class AuthController
 
 		// Insert token into database
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " (appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid,";
+		$sql .= " (appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, fk_device_id, ";
 		$sql .= " auth_element, token_type, parent_token_id, ip, status, entity)";
 		$sql .= " VALUES (";
 		$sql .= (int) $smartAuthAppID . ", ";
@@ -905,6 +900,7 @@ class AuthController
 		$sql .= "'" . $db->idate(dol_now() + $lifetime) . "', ";
 		$sql .= (int) $user_id . ", ";
 		$sql .= (int) $element_id . ", ";
+		$sql .= (int) $device_id . ", ";
 		$sql .= "'" . $element . "', ";
 		$sql .= "'" . $token_type . "', ";
 		$sql .= ($parent_token_id ? (int) $parent_token_id : "NULL") . ", ";
@@ -926,6 +922,7 @@ class AuthController
 			"entity" => $entity,
 			"token_type" => $token_type,
 			"family_id" => $family_id,
+			"device_id" => $device_id,
 			"exp" => time() + $lifetime // Expiration timestamp
 		];
 
@@ -1023,5 +1020,99 @@ class AuthController
 		} else {
 			dol_syslog("smartauth : revokeToken error", LOG_ERR);
 		}
+	}
+
+
+
+	/**
+	 * search the rowid of a device thanks to its uuid
+	 *
+	 * @param   String  $uuid  string of unique id identifier for the device
+	 *
+	 * @return  int     <= 0 in error, > 0 : rowid on success
+	 */
+	public static function getDeviceIDFromUUID($uuid)
+	{
+		global $db;
+		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+		$sql .= " WHERE uuid = '" . $db->escape($uuid) . "'";
+
+		$resql = $db->query($sql);
+		if ($resql && $obj = $db->fetch_object($resql)) {
+			return $obj->rowid;
+		}
+
+		return -1;
+	}
+
+	private function getAllDevicesForUser($user_id)
+	{
+		global $db;
+
+		$current_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
+
+		$ret = [];
+		$sql = "SELECT label,uuid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+		$sql .= " WHERE fk_user_creat = " . (int) $user_id;
+		$sql .= " AND label != ''";
+		$sql .= " AND status = 1";
+		$sql .= " AND entity IN (" . getEntity('user') . ")";
+		if ($current_uuid != "") {
+			$sql .= " OR uuid='" . $db->escape($current_uuid) . "'";
+			$sql .= " GROUP BY uuid";
+		}
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				$ret[] = ['label' => $obj->label, 'uuid' => $obj->uuid];
+			}
+		}
+		// ajouter l'actuelle -- temporaire
+		return $ret;
+	}
+
+
+	private function createDeviceIdIfNeeded($user_id)
+	{
+		global $db, $user;
+
+		$deviceid = '';
+		$device_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
+
+		if ($device_uuid == 'undefined') {
+			//auto création d'un device uuid local
+
+		}
+
+		if ($device_uuid == '') {
+			dol_syslog("SmartAuth : there is no device uuid into HTTP_X_DEVICEID header, this is mandatory !", LOG_AUTH);
+			dol_syslog("SmartAuth : there is no device uuid into HTTP_X_DEVICEID header, this is mandatory !", LOG_ALERT);
+			throw new Exception("SmartAuth : there is no device uuid into HTTP_X_DEVICEID header, this is mandatory !");
+		}
+
+		if ($device_uuid != '') {
+			$deviceid = $this->getDeviceIDFromUUID($device_uuid);
+		}
+
+		if ($deviceid <= 0) {
+			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
+			$sql .= " (uuid, fk_user_creat, date_creation, status)";
+			$sql .= " VALUES ('" . substr($db->escape($device_uuid), 0, 40) . "', ";
+			$sql .= (int) $user_id . ", ";
+			$sql .= "'" . $db->idate(time()) . "', " . 1 . ")";
+
+			$resql = $db->query($sql);
+			if (!$resql) {
+				dol_syslog("Failed to create device: " . $db->lasterror(), LOG_ERR);
+				throw new Exception("Failed to create device: " . $db->lasterror());
+			}
+
+			$rowid = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_devices");
+			if ($rowid > 0) {
+				return $rowid;
+			}
+		}
+
+		return -1;
 	}
 }
