@@ -660,7 +660,7 @@ class AuthController
 	private static function _getSalt2()
 	{
 		// Check for X-DEVICEID header (future-proof for mobile apps)
-		$device_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
 		dol_syslog("_getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
 
 		if (!empty($device_uuid)) {
@@ -918,16 +918,20 @@ class AuthController
 	 */
 	public static function getDeviceIDFromUUID($uuid)
 	{
-		global $db;
-		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
-		$sql .= " WHERE uuid = '" . $db->escape($uuid) . "'";
+		global $db, $conf;
 
-		$resql = $db->query($sql);
-		if ($resql && $obj = $db->fetch_object($resql)) {
-			return $obj->rowid;
+		$cache_key = 'device-' . $uuid;
+		if (!isset($conf->cache['smartmakers'][$cache_key])) {
+			$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+			$sql .= " WHERE uuid = '" . $db->escape($uuid) . "'";
+
+			$resql = $db->query($sql);
+			$res = -1;
+			if ($resql && $obj = $db->fetch_object($resql)) {
+			}
+			$conf->cache['smartmakers'][$cache_key] = $res;
 		}
-
-		return -1;
+		return $conf->cache['smartmakers'][$cache_key];
 	}
 
 	/**
@@ -942,10 +946,10 @@ class AuthController
 	{
 		global $db;
 
-		$current_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		$current_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
 
 		$ret = [];
-		$sql = "SELECT label,uuid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+		$sql = "SELECT label, uuid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
 		$sql .= " WHERE fk_user_creat = " . (int) $user_id;
 		$sql .= " AND label != ''";
 		$sql .= " AND status = 1";
@@ -957,10 +961,10 @@ class AuthController
 		$resql = $db->query($sql);
 		if ($resql) {
 			while ($obj = $db->fetch_object($resql)) {
-				$ret[] = ['label' => $obj->label, 'uuid' => $obj->uuid];
+				// $ret[] = ['label' => $obj->label, 'uuid' => $obj->uuid];
+				$ret[] = $obj;
 			}
 		}
-		// ajouter l'actuelle -- temporaire
 		return $ret;
 	}
 
@@ -970,7 +974,7 @@ class AuthController
 		global $db, $user;
 
 		$deviceid = '';
-		$device_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
 
 		if ($device_uuid == 'undefined') {
 			//auto création d'un device uuid local
