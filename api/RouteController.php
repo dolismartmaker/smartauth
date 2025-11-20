@@ -21,8 +21,9 @@
 
 namespace SmartAuth\Api;
 
-use Exception;
 use User;
+use Exception;
+use SmartAuth\Api\AuthController;
 
 class RouteController
 {
@@ -474,11 +475,9 @@ class RouteController
 			return;
 		}
 
-		$deviceid = '';
-		$device_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
-		if ($device_uuid == '') {
-			$deviceid = AuthController::getDeviceIDFromUUID($device_uuid);
-		}
+		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']);
+
+		$deviceid = AuthController::getDeviceIDFromUUID($device_uuid);
 		if (empty($deviceid) || $deviceid <= 0) {
 			$deviceid = '-1';
 		}
