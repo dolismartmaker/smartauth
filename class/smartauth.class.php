@@ -1156,7 +1156,7 @@ class SmartAuth extends CommonObject
 
 		$this->db->begin();
 
-		//note : do not cleanup old keys -- used by logs !
+		//note : do not delete old keys -- used by logs !
 		$max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
 		if($max > 0) {
 			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth SET status='" . self::STATUS_CANCELED . "', token='outdated' WHERE date_eol < '" . $this->db->idate($now) . "'";
