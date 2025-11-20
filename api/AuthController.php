@@ -97,7 +97,7 @@ class AuthController
 
 		//TODO dev time !!!!
 		// Get refresh token from Authorization header
-		$refresh_token = self::getBearerToken();
+		$refresh_token = self::_getBearerToken();
 		if (empty($refresh_token)) {
 			return [['error' => 'Refresh token required'], 401];
 		}
@@ -120,12 +120,12 @@ class AuthController
 		}
 
 		// Check token family (detect token replay attacks)
-		$family_check = $this->checkTokenFamily($family_id, $decoded->fk_authid);
+		$family_check = $this->_checkTokenFamily($family_id, $decoded->fk_authid);
 		if (!$family_check['valid']) {
 			dol_syslog("Token family check failed: " . $family_check['reason'], LOG_WARNING);
 
 			// SECURITY: Revoke entire token family on suspicious activity
-			$this->revokeTokenFamily($family_id);
+			$this->_revokeTokenFamily($family_id);
 
 			return [['error' => 'Security violation detected. All sessions revoked.'], 401];
 		}
@@ -138,10 +138,10 @@ class AuthController
 
 		// === TOKEN ROTATION ===
 		// Invalidate current refresh token (one-time use)
-		$this->revokeToken($decoded->token_id, 'refresh_used');
+		$this->_revokeToken($decoded->token_id, 'refresh_used');
 
 		// Generate new token pair
-		$new_tokens = $this->generateTokenPair(
+		$new_tokens = $this->__generateTokenPair(
 			'user',
 			$decoded->fk_authid,
 			$decoded->fk_authid,
@@ -152,7 +152,7 @@ class AuthController
 		);
 
 		// Update token family stats
-		$this->updateTokenFamily($family_id, $decoded->refresh_count + 1);
+		$this->_updateTokenFamily($family_id, $decoded->refresh_count + 1);
 
 		dol_syslog("Token refreshed successfully for user $login");
 
@@ -307,12 +307,12 @@ class AuthController
 		}
 
 		// Create token family (for tracking refresh chain)
-		$family_id = $this->createTokenFamily($tmpuser->id);
+		$family_id = $this->_createTokenFamily($tmpuser->id);
 
-		$device_id = $this->createDeviceIdIfNeeded($tmpuser->id);
+		$device_id = $this->_createDeviceIdIfNeeded($tmpuser->id);
 
 		// Generate BOTH tokens
-		$tokens = $this->generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id, $device_id);
+		$tokens = $this->__generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id, $device_id);
 
 		// Renew the hash ?
 		// Generate token for user
@@ -335,7 +335,7 @@ class AuthController
 			'refresh_token' => $tokens['refresh_token'],
 			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
 			'token_type' => 'Bearer',
-			'devices_choice' => $this->getAllDevicesForUser($tmpuser->id),
+			'devices_choice' => $this->_getAllDevicesForUser($tmpuser->id),
 			'rememberMe' => $rememberme
 		];
 		return ([$ret, 200]);
@@ -354,7 +354,7 @@ class AuthController
 		global $db;
 		$user = $payload['user'];
 		if (!empty($payload['tokenid'])) {
-			$this->revokeToken($payload['tokenid'], 'logout');
+			$this->_revokeToken($payload['tokenid'], 'logout');
 		}
 
 		$result = $user->call_trigger('USER_LOGOUT', $user);
@@ -402,7 +402,7 @@ class AuthController
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey, $conf;
 
-		$token = self::getBearerToken();
+		$token = self::_getBearerToken();
 
 		$decoded = self::_decodeJWT($token, SmartTokenConfig::TYPE_ACCESS);
 
@@ -462,11 +462,11 @@ class AuthController
 
 		$useractions = $this->_FetchUserWithRights();
 
-		$family_id = $this->createTokenFamily($useractions->id);
+		$family_id = $this->_createTokenFamily($useractions->id);
 
-		$device_id = $this->createDeviceIdIfNeeded($useractions->id);
+		$device_id = $this->_createDeviceIdIfNeeded($useractions->id);
 
-		$new_tokens = $this->generateTokenPair(
+		$new_tokens = $this->__generateTokenPair(
 			'societe_account',
 			$socid,
 			$useractions->fk_authid,
@@ -480,7 +480,7 @@ class AuthController
 		return $new_tokens;
 	}
 
-	private static function getAuthorizationHeader()
+	private static function _getAuthorizationHeader()
 	{
 		$headers = null;
 		if (isset($_SERVER['Authorization'])) {
@@ -499,9 +499,9 @@ class AuthController
 		return $headers;
 	}
 
-	private static function getBearerToken()
+	private static function _getBearerToken()
 	{
-		$headers = self::getAuthorizationHeader();
+		$headers = self::_getAuthorizationHeader();
 		dol_syslog("Debug smartauth : _getBearerToken");
 
 		if (!empty($headers)) {
@@ -657,11 +657,11 @@ class AuthController
 	 *
 	 * @return string 16-character salt for key derivation
 	 */
-	private static function getSalt2()
+	private static function _getSalt2()
 	{
 		// Check for X-DEVICEID header (future-proof for mobile apps)
 		$device_uuid = trim($_SERVER['HTTP_X_DEVICEID']) ?? '';
-		dol_syslog("getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
+		dol_syslog("_getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
 
 		if (!empty($device_uuid)) {
 			dol_syslog("smartauth : using X-DEVICEID header (hash format) for salt2", LOG_DEBUG);
@@ -681,7 +681,7 @@ class AuthController
 	 * @param string $uuid identifier
 	 * @return bool True if valid format
 	 */
-	private static function validateUUID($uuid)
+	private static function _validateUUID($uuid)
 	{
 		// Accept UUID format (36 chars with dashes)
 		if (preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $uuid)) {
@@ -700,7 +700,7 @@ class AuthController
 	/**
 	 * Create a new token family for tracking refresh chain
 	 */
-	private function createTokenFamily($user_id)
+	private function _createTokenFamily($user_id)
 	{
 		global $db;
 
@@ -730,10 +730,10 @@ class AuthController
 	 *
 	 * @return  array               two token (access & refresh)
 	 */
-	private function generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id)
+	private function __generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id)
 	{
 		// Generate access token (short-lived)
-		$access_token = $this->generateToken(
+		$access_token = $this->_generateToken(
 			$element,
 			$element_id,
 			$user_id,
@@ -746,7 +746,7 @@ class AuthController
 		);
 
 		// Generate refresh token (long-lived)
-		$refresh_token = $this->generateToken(
+		$refresh_token = $this->_generateToken(
 			$element,
 			$element_id,
 			$user_id,
@@ -767,12 +767,12 @@ class AuthController
 	/**
 	 * Unified token generation (replaces _newUserKey)
 	 */
-	private function generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id, $parent_token_id = null)
+	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id, $parent_token_id = null)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
 
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
-		$salt2 = $this->getSalt2(); // app_id logic
+		$salt2 = $this->_getSalt2(); // app_id logic
 
 		// Insert token into database
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth";
@@ -821,7 +821,7 @@ class AuthController
 	/**
 	 * Check token family validity (detect replay attacks)
 	 */
-	private function checkTokenFamily($family_id, $user_id)
+	private function _checkTokenFamily($family_id, $user_id)
 	{
 		global $db;
 
@@ -850,7 +850,7 @@ class AuthController
 	/**
 	 * Update token family after successful refresh
 	 */
-	private function updateTokenFamily($family_id, $new_count)
+	private function _updateTokenFamily($family_id, $new_count)
 	{
 		global $db;
 
@@ -865,7 +865,7 @@ class AuthController
 	/**
 	 * Revoke entire token family (security breach detected)
 	 */
-	private function revokeTokenFamily($family_id)
+	private function _revokeTokenFamily($family_id)
 	{
 		global $db;
 
@@ -890,7 +890,7 @@ class AuthController
 	/**
 	 * Revoke single token
 	 */
-	private function revokeToken($token_id, $reason = 'manual')
+	private function _revokeToken($token_id, $reason = 'manual')
 	{
 		global $db;
 
@@ -930,7 +930,15 @@ class AuthController
 		return -1;
 	}
 
-	private function getAllDevicesForUser($user_id)
+	/**
+	 * get all devices for a user, then user can choose his device or
+	 * give a name to the new one
+	 *
+	 * @param   [type]  $user_id  [$user_id description]
+	 *
+	 * @return  [type]            [return description]
+	 */
+	private function _getAllDevicesForUser($user_id)
 	{
 		global $db;
 
@@ -957,7 +965,7 @@ class AuthController
 	}
 
 
-	private function createDeviceIdIfNeeded($user_id)
+	private function _createDeviceIdIfNeeded($user_id)
 	{
 		global $db, $user;
 
@@ -1070,7 +1078,7 @@ class AuthController
 		}
 
 		// Verify JWT signature
-		$salt2 = self::getSalt2();
+		$salt2 = self::_getSalt2();
 		$key = $token_data->salt . $salt2 . $smartAuthAppKey;
 
 		try {
