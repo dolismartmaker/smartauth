@@ -118,7 +118,7 @@ class SmartAuthDevices extends CommonObject
 		'ref' => array('type'=>'varchar(128)', 'label'=>'Ref', 'enabled'=>'1', 'position'=>20, 'notnull'=>1, 'visible'=>4, 'noteditable'=>'1', 'default'=>'(PROV)', 'index'=>1, 'searchall'=>1, 'showoncombobox'=>'1', 'validate'=>'1', 'comment'=>"Reference of object"),
 		'label' => array('type'=>'varchar(255)', 'label'=>'Label', 'enabled'=>'1', 'position'=>30, 'notnull'=>0, 'visible'=>1, 'alwayseditable'=>'1', 'searchall'=>1, 'css'=>'minwidth300', 'cssview'=>'wordbreak', 'help'=>"Help text", 'showoncombobox'=>'2', 'validate'=>'1',),
 		'description' => array('type'=>'text', 'label'=>'Description', 'enabled'=>'1', 'position'=>60, 'notnull'=>0, 'visible'=>3, 'validate'=>'1',),
-		'uuid' => array('type'=>'varchar(40)', 'label'=>'UUID', 'enabled'=>'1', 'position'=>65, 'notnull'=>0, 'visible'=>1, 'validate'=>'1',),
+		'uuid' => array('type'=>'varchar(40)', 'label'=>'UUID', 'enabled'=>'1', 'position'=>65, 'notnull'=>0, 'visible'=>1, 'validate'=>'1','noteditable'=>'1'),
 		'date_creation' => array('type'=>'datetime', 'label'=>'DateCreation', 'enabled'=>'1', 'position'=>500, 'notnull'=>1, 'visible'=>-2,),
 		'tms' => array('type'=>'timestamp', 'label'=>'DateModification', 'enabled'=>'1', 'position'=>501, 'notnull'=>0, 'visible'=>-2,),
 		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'picto'=>'user', 'enabled'=>'1', 'position'=>510, 'notnull'=>1, 'visible'=>-2, 'foreignkey'=>'user.rowid', 'csslist'=>'tdoverflowmax150',),
@@ -230,7 +230,7 @@ class SmartAuthDevices extends CommonObject
 	{
 		$resultcreate = $this->createCommon($user, $notrigger);
 
-		//$resultvalidate = $this->validate($user, $notrigger);
+		$resultvalidate = $this->validate($user, $notrigger);
 
 		return $resultcreate;
 	}
@@ -550,7 +550,7 @@ class SmartAuthDevices extends CommonObject
 
 			if (!$error && !$notrigger) {
 				// Call trigger
-				$result = $this->call_trigger('MYOBJECT_VALIDATE', $user);
+				$result = $this->call_trigger('SMARTAUTHDEVICE_VALIDATE', $user);
 				if ($result < 0) {
 					$error++;
 				}
@@ -638,7 +638,7 @@ class SmartAuthDevices extends CommonObject
 		 return -1;
 		 }*/
 
-		return $this->setStatusCommon($user, self::STATUS_DRAFT, $notrigger, 'SMARTAUTH_MYOBJECT_UNVALIDATE');
+		return $this->setStatusCommon($user, self::STATUS_DRAFT, $notrigger, 'SMARTAUTH_SMARTAUTHDEVICE_UNVALIDATE');
 	}
 
 	/**
@@ -662,7 +662,7 @@ class SmartAuthDevices extends CommonObject
 		 return -1;
 		 }*/
 
-		return $this->setStatusCommon($user, self::STATUS_CANCELED, $notrigger, 'SMARTAUTH_MYOBJECT_CANCEL');
+		return $this->setStatusCommon($user, self::STATUS_CANCELED, $notrigger, 'SMARTAUTH_SMARTAUTHDEVICE_CANCEL');
 	}
 
 	/**
@@ -686,7 +686,7 @@ class SmartAuthDevices extends CommonObject
 		 return -1;
 		 }*/
 
-		return $this->setStatusCommon($user, self::STATUS_VALIDATED, $notrigger, 'SMARTAUTH_MYOBJECT_REOPEN');
+		return $this->setStatusCommon($user, self::STATUS_VALIDATED, $notrigger, 'SMARTAUTH_SMARTAUTHDEVICE_REOPEN');
 	}
 
 	/**
@@ -1014,52 +1014,43 @@ class SmartAuthDevices extends CommonObject
 	 */
 	public function getNextNumRef()
 	{
-		global $langs, $conf;
-		$langs->load("smartauth@smartauth");
+		global $langs, $conf, $db;
 
-		if (!getDolGlobalString('SMARTAUTH_MYOBJECT_ADDON')) {
-			$conf->global->SMARTAUTH_MYOBJECT_ADDON = 'mod_smartauthdevices_standard';
+		$prefix = "SMAUTHD";
+
+		$langs->load("smartauth@smartauth");
+		// first we get the max value
+		$posindice = strlen($prefix) + 2;
+		$sql = "SELECT MAX(CAST(SUBSTRING(ref FROM ".$posindice.") AS SIGNED)) as max";
+		$sql .= " FROM ".MAIN_DB_PREFIX.$this->table_element;
+		$sql .= " WHERE ref LIKE '".$db->escape($prefix)."-%'";
+		if ($this->ismultientitymanaged == 1) {
+			$sql .= " AND entity = ".$conf->entity;
+		} elseif ($this->ismultientitymanaged == 2) {
+			// TODO
 		}
 
-		if (getDolGlobalString('SMARTAUTH_MYOBJECT_ADDON')) {
-			$mybool = false;
-
-			$file = getDolGlobalString('SMARTAUTH_MYOBJECT_ADDON').".php";
-			$classname = getDolGlobalString('SMARTAUTH_MYOBJECT_ADDON');
-
-			// Include file with class
-			$dirmodels = array_merge(array('/'), (array) $conf->modules_parts['models']);
-			foreach ($dirmodels as $reldir) {
-				$dir = dol_buildpath($reldir."core/modules/smartauth/");
-
-				// Load file with numbering class (if found)
-				$mybool |= @include_once $dir.$file;
-			}
-
-			if ($mybool === false) {
-				dol_print_error('', "Failed to include file ".$file);
-				return '';
-			}
-
-			if (class_exists($classname)) {
-				$obj = new $classname();
-				$numref = $obj->getNextValue($this);
-
-				if ($numref != '' && $numref != '-1') {
-					return $numref;
-				} else {
-					$this->error = $obj->error;
-					//dol_print_error($this->db,get_class($this)."::getNextNumRef ".$obj->error);
-					return "";
-				}
+		$resql = $db->query($sql);
+		if ($resql) {
+			$obj = $db->fetch_object($resql);
+			if ($obj) {
+				$max = intval($obj->max);
 			} else {
-				print $langs->trans("Error")." ".$langs->trans("ClassNotFound").' '.$classname;
-				return "";
+				$max = 0;
 			}
 		} else {
-			print $langs->trans("ErrorNumberingModuleNotSetup", $this->element);
-			return "";
+			dol_syslog("getNextValue", LOG_DEBUG);
+			return -1;
 		}
+
+		if ($max >= (pow(10, 4) - 1)) {
+			$num = $max + 1; // If counter > 9999, we do not format on 4 chars, we take number as it is
+		} else {
+			$num = sprintf("%04s", $max + 1);
+		}
+
+		dol_syslog("getNextValue return ".$prefix."-".$num);
+		return $prefix."-".$num;
 	}
 
 	/**
@@ -1077,28 +1068,29 @@ class SmartAuthDevices extends CommonObject
 	{
 		global $conf, $langs;
 
-		$result = 0;
-		$includedocgeneration = 1;
+		return 1;
+		// $result = 0;
+		// $includedocgeneration = 1;
 
-		$langs->load("smartauth@smartauth");
+		// $langs->load("smartauth@smartauth");
 
-		if (!dol_strlen($modele)) {
-			$modele = 'standard_smartauthdevices';
+		// if (!dol_strlen($modele)) {
+		// 	$modele = 'standard_smartauthdevices';
 
-			if (!empty($this->model_pdf)) {
-				$modele = $this->model_pdf;
-			} elseif (getDolGlobalString('MYOBJECT_ADDON_PDF')) {
-				$modele = getDolGlobalString('MYOBJECT_ADDON_PDF');
-			}
-		}
+		// 	if (!empty($this->model_pdf)) {
+		// 		$modele = $this->model_pdf;
+		// 	} elseif (getDolGlobalString('SMARTAUTHDEVICE_ADDON_PDF')) {
+		// 		$modele = getDolGlobalString('SMARTAUTHDEVICE_ADDON_PDF');
+		// 	}
+		// }
 
-		$modelpath = "core/modules/smartauth/doc/";
+		// $modelpath = "core/modules/smartauth/doc/";
 
-		if ($includedocgeneration && !empty($modele)) {
-			$result = $this->commonGenerateDocument($modelpath, $modele, $outputlangs, $hidedetails, $hidedesc, $hideref, $moreparams);
-		}
+		// if ($includedocgeneration && !empty($modele)) {
+		// 	$result = $this->commonGenerateDocument($modelpath, $modele, $outputlangs, $hidedetails, $hidedesc, $hideref, $moreparams);
+		// }
 
-		return $result;
+		// return $result;
 	}
 
 	/**
