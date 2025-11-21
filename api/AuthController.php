@@ -323,6 +323,13 @@ class AuthController
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id); // full debug . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
 
+
+		$name = $this->getDeviceName(null, $device_uuid);
+		$devices_choice = null;
+		if (empty($name)) {
+			$devices_choice = $this->_getAllDevicesForUser($tmpuser->id);
+		}
+
 		if (empty($tmpuser->email)) {
 			$user = $tmpuser->login;
 		}
@@ -335,7 +342,7 @@ class AuthController
 			'refresh_token' => $tokens['refresh_token'],
 			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
 			'token_type' => 'Bearer',
-			'devices_choice' => $this->_getAllDevicesForUser($tmpuser->id),
+			'devices_choice' => $devices_choice,
 			'rememberMe' => $rememberme
 		];
 		return ([$ret, 200]);
@@ -395,20 +402,26 @@ class AuthController
 
 		//first case : same uuid, update device name
 		if ($current_uuid == $new_uuid) {
-			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
-			$sql .= " SET label='" . $db->escape($new_name) . "'";
-			$sql .= " WHERE uuid='" . $db->escape($current_uuid) . "'";
-			dol_syslog('smartauth::AuthController : device update label ' . $sql, LOG_DEBUG);
+			if ($new_name != "") {
+				$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
+				$sql .= " SET label='" . $db->escape($new_name) . "'";
+				$sql .= " WHERE uuid='" . $db->escape($current_uuid) . "'";
+				dol_syslog('smartauth::AuthController : device update label ' . $sql, LOG_DEBUG);
 
-			$resql = $db->query($sql);
-			if ($resql) {
-				$result = "success";
+				$resql = $db->query($sql);
+				if ($resql) {
+					$result = "success";
+				} else {
+					dol_syslog("Failed to update UUID device name : " . $db->lasterror(), LOG_ERR);
+				}
+				$ret = [
+					'message' => $result,
+				];
 			} else {
-				dol_syslog("Failed to update UUID device name : " . $db->lasterror(), LOG_ERR);
+				$ret = [
+					'message' => "success but device name is empty",
+				];
 			}
-			$ret = [
-				'message' => $result,
-			];
 		} else {
 			dol_syslog('smartauth::AuthController : device user choice an existing device ' . $new_uuid, LOG_DEBUG);
 			//user choosed an other key ... need to delete current key and make a new one
@@ -1024,6 +1037,32 @@ class AuthController
 		}
 		return $conf->cache['smartmakers'][$cache_key];
 	}
+
+	/**
+	 * search the name of a device
+	 *
+	 * @return  int     <= 0 in error, > 0 : rowid on success
+	 */
+	public static function getDeviceName($id = null, $uuid = null)
+	{
+		global $db, $conf;
+
+		$sql = "SELECT label FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+		if (null !== $id) {
+			$sql .= " WHERE id='" . (int) $id . "'";
+		} elseif (null !== $uuid) {
+			$sql .= " WHERE uuid='" . $db->escape($uuid) . "'";
+		} else {
+			return '';
+		}
+
+		$resql = $db->query($sql);
+		if ($resql && $obj = $db->fetch_object($resql)) {
+			return $obj->label;
+		}
+		return '';
+	}
+
 
 	/**
 	 * get all devices for a user, then user can choose his device or
