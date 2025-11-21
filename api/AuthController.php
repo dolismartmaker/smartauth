@@ -390,6 +390,9 @@ class AuthController
 		$new_uuid = $payload['uuid'];
 		$new_name = sanitizeVal($payload['label']);
 
+		// dol_syslog("smartauth device payload=" . json_encode($payload));
+		// dol_syslog("smartauth device current = $current_uuid and new = $new_uuid");
+
 		//first case : same uuid, update device name
 		if ($current_uuid == $new_uuid) {
 			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
@@ -669,32 +672,59 @@ class AuthController
 	{
 		global $conf;
 		if (isset($conf->cache['smartmakers']['clientIP'])) {
+			dol_syslog("get_client_ip from cache : " . $conf->cache['smartmakers']['clientIP']);
 			return $conf->cache['smartmakers']['clientIP'];
 		}
+		// Try Apache function first if available
 		if (function_exists('apache_request_headers')) {
 			$headers = apache_request_headers();
-		} else {
-			$headers = $_SERVER;
-		}
+			$headers = array_change_key_case($headers, CASE_UPPER);
 
-		if (array_key_exists('X-Forwarded-For', $headers)) {
-			$_SERVER['HTTP_X_FORWARDED_FOR'] = $headers['X-Forwarded-For'];
-		}
+			$priority = [
+				'CF-CONNECTING-IP',
+				'X-REAL-IP',
+				'X-FORWARDED-FOR',
+				'CLIENT-IP'
+			];
 
-		if (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) && (!isset($_SERVER['REMOTE_ADDR'])
-			|| preg_match('/^127\..*/i', trim($_SERVER['REMOTE_ADDR'])) || preg_match('/^172\.(1[6-9]|2\d|30|31)\..*/i', trim($_SERVER['REMOTE_ADDR']))
-			|| preg_match('/^192\.168\.*/i', trim($_SERVER['REMOTE_ADDR'])) || preg_match('/^10\..*/i', trim($_SERVER['REMOTE_ADDR'])))) {
-			if (strpos($_SERVER['HTTP_X_FORWARDED_FOR'], ',')) {
-				$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-				$conf->cache['smartmakers']['clientIP'] = $ips[0];
-				return $ips[0];
-			} else {
-				$conf->cache['smartmakers']['clientIP'] = $_SERVER['HTTP_X_FORWARDED_FOR'];
-				return $_SERVER['HTTP_X_FORWARDED_FOR'];
+			foreach ($priority as $header) {
+				if (!empty($headers[$header])) {
+					$ips = explode(',', $headers[$header]);
+					$ip = trim($ips[0]);
+
+					if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+						$conf->cache['smartmakers']['clientIP'] = $ip;
+						// dol_syslog("get_client_ip (1) use return $ip");
+						return $ip;
+					}
+				}
 			}
-		} else {
-			return $conf->cache['smartmakers']['clientIP'] = $_SERVER['REMOTE_ADDR'];
 		}
+
+		// Fallback to $_SERVER
+		$ip_keys = [
+			'HTTP_CF_CONNECTING_IP',
+			'HTTP_X_REAL_IP',
+			'HTTP_X_FORWARDED_FOR',
+			'HTTP_CLIENT_IP',
+			'REMOTE_ADDR'
+		];
+
+		foreach ($ip_keys as $key) {
+			if (!empty($_SERVER[$key])) {
+				$ips = explode(',', $_SERVER[$key]);
+				$ip = trim($ips[0]);
+
+				if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+					$conf->cache['smartmakers']['clientIP'] = $ip;
+					// dol_syslog("get_client_ip (2) use return $ip");
+					return $ip;
+				}
+			}
+		}
+
+		// dol_syslog("get_client_ip use return 0.0.0.0");
+		return "0.0.0.0";
 	}
 
 	/**
