@@ -25,6 +25,7 @@ dol_include_once('/smartauth/api/tools.php');
 
 use User;
 use Exception;
+use SmartAuthDevices;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use SmartAuth\Api\RateLimiter;
@@ -323,9 +324,10 @@ class AuthController
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id); // full debug . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
 
-
+		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
 		$name = $this->getDeviceName(null, $device_uuid);
 		$devices_choice = null;
+		dol_syslog("AuthController : device name is $name for uuid=$device_uuid");
 		if (empty($name)) {
 			$devices_choice = $this->_getAllDevicesForUser($tmpuser->id);
 		}
@@ -403,24 +405,24 @@ class AuthController
 		//first case : same uuid, update device name
 		if ($current_uuid == $new_uuid) {
 			if ($new_name != "") {
-				$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
-				$sql .= " SET label='" . $db->escape($new_name) . "'";
-				$sql .= " WHERE uuid='" . $db->escape($current_uuid) . "'";
-				dol_syslog('smartauth::AuthController : device update label ' . $sql, LOG_DEBUG);
-
-				$resql = $db->query($sql);
-				if ($resql) {
-					$result = "success";
+				$device = new SmartAuthDevices($db);
+				if ($device->fetch(null, null, $new_uuid)) {
+					$user = $payload['user'];
+					$device->label = $new_name;
+					$result = $device->update($user);
+					$message = "update device name : success";
+					if($result) {
+						$message = "";
+						$device->validate($user);
+					}
+					$ret = [
+						'message' => $message,
+					];
 				} else {
-					dol_syslog("Failed to update UUID device name : " . $db->lasterror(), LOG_ERR);
+					$ret = [
+						'message' => "success but device name is empty",
+					];
 				}
-				$ret = [
-					'message' => $result,
-				];
-			} else {
-				$ret = [
-					'message' => "success but device name is empty",
-				];
 			}
 		} else {
 			dol_syslog('smartauth::AuthController : device user choice an existing device ' . $new_uuid, LOG_DEBUG);
@@ -1094,6 +1096,11 @@ class AuthController
 				// $ret[] = ['label' => $obj->label, 'uuid' => $obj->uuid];
 				$ret[] = $obj;
 			}
+		}
+
+		//filtrage: si le device uuid a un nom et qu'on a qu'un seul match on return un vide pour éviter d'avoir la popup de choix/nom sur le front
+		if (count($ret) == 1 && trim($ret[0]->label) != "") {
+			$ret = [];
 		}
 
 		dol_syslog('_getAllDevicesForUser returns ' . json_encode($ret), LOG_DEBUG);
