@@ -147,7 +147,7 @@ class RouteController
 			return; // Error already handled
 		}
 
-		list($user, $entity, $tokenid, $buyer) = $authContext;
+		list($user, $entity, $token_id, $buyer, $family_id) = $authContext;
 
 		// Execute controller action
 		self::executeAction(
@@ -156,8 +156,9 @@ class RouteController
 			$data,
 			$user,
 			$entity,
-			$tokenid,
-			$buyer
+			$token_id,
+			$buyer,
+			$family_id
 		);
 	}
 
@@ -301,17 +302,17 @@ class RouteController
 	 * @param   Conf        $conf       Dolibarr configuration object
 	 * @param   Societe     $mysoc      Dolibarr company object
 	 *
-	 * @return  array|false             [User, entity, tokenid, Societe] or false on auth error
+	 * @return  array|false             [User, entity, token_id, Societe] or false on auth error
 	 */
 	private static function handleAuthentication($protected, $db, $conf, $mysoc)
 	{
 		$user = null;
 		$entity = null;
-		$tokenid = null;
+		$token_id = null;
 		$buyer = new \Societe($db);
 
 		if (!$protected) {
-			return [$user, $entity, $tokenid, $buyer];
+			return [$user, $entity, $token_id, $buyer];
 		}
 
 		// Check JWT token
@@ -326,13 +327,13 @@ class RouteController
 
 		$entity = $decoded->entity ?? null;
 		$login = $decoded->login ?? null;
-		$tokenid = $decoded->tokenid ?? null;
+		$token_id = $decoded->token_id ?? null;
 		//TODO ? put into payload ? check for other data ?
 		$family_id = $decoded->family_id ?? null;
 		$device_id = $decoded->device_id ?? null;
 
 		if (!$login) {
-			self::insertLogs($tokenid, 401, 'Invalid token', $entity);
+			self::insertLogs($token_id, 401, 'Invalid token', $entity);
 			\json_reply('Invalid token', 401);
 			return false;
 		}
@@ -342,7 +343,7 @@ class RouteController
 		$res = $user->fetch(0, $login, 0, 0, $entity);
 		if ($res <= 0) {
 			dol_syslog("Debug smartauth  User not found: login=$login, entity=$entity");
-			self::insertLogs($tokenid, 401, 'User not found', $entity);
+			self::insertLogs($token_id, 401, 'User not found', $entity);
 			\json_reply('Authentication failed', 401);
 			return false;
 		}
@@ -360,13 +361,14 @@ class RouteController
 			$res = $buyer->fetch($user->socid);
 			if (!$res) {
 				dol_syslog("Debug smartauth  Failed to load buyer socid=" . $user->socid, LOG_ERR);
-				self::insertLogs($tokenid, 403, 'Buyer load error', $entity);
+				self::insertLogs($token_id, 403, 'Buyer load error', $entity);
 				\json_reply('Access denied', 403);
 				return false;
 			}
 		}
 
-		return [$user, $entity, $tokenid, $buyer];
+		dol_syslog("Debug smartauth handleAuthentication return entity=$entity, token_id=$token_id", LOG_ERR);
+		return [$user, $entity, $token_id, $buyer, $family_id];
 	}
 	/**
 	 * Execute the target controller method with proper error handling
@@ -384,17 +386,20 @@ class RouteController
 	 * @param   array       $data               Request parameters
 	 * @param   User|null   $user               Authenticated user or null
 	 * @param   int|null    $entity             Dolibarr entity ID
-	 * @param   int|null    $tokenid            JWT token ID for logging
+	 * @param   int|null    $token_id           JWT token ID for logging
 	 * @param   Societe     $buyer              Third-party object
+	 * @param   int|null    $family_id          Token family
 	 *
 	 * @return  void                            Outputs JSON and exits
 	 */
-	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $tokenid, $buyer)
+	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id)
 	{
+		dol_syslog("Debug smartauth executeAction: $targetClass, $redirectFunction, $token_id, $family_id", LOG_ERR);
+
 		// Validate class exists
 		if (!class_exists($targetClass)) {
 			dol_syslog("Debug smartauth  Class not found: $targetClass", LOG_ERR);
-			self::insertLogs($tokenid, 500, 'Internal error - Class not found', $entity);
+			self::insertLogs($token_id, 500, 'Internal error - Class not found', $entity);
 			\json_reply('Internal server error - Class not found', 500);
 			return;
 		}
@@ -404,7 +409,7 @@ class RouteController
 		// Validate method exists
 		if (!method_exists($class, $redirectFunction)) {
 			dol_syslog("Debug smartauth  Method not found: $targetClass::$redirectFunction", LOG_ERR);
-			self::insertLogs($tokenid, 500, 'Internal error', $entity);
+			self::insertLogs($token_id, 500, 'Internal error', $entity);
 			\json_reply('Internal server error - Method not found', 500);
 			return;
 		}
@@ -413,8 +418,9 @@ class RouteController
 		$payload = [
 			'user' => $user,
 			'entity' => $entity,
-			'tokenid' => $tokenid,
+			'token_id' => $token_id,
 			'buyer' => $buyer,
+			'family_id' => $family_id,
 		];
 
 		// Flatten data into payload for easier access
@@ -431,18 +437,18 @@ class RouteController
 			// Validate response format
 			if (!is_array($result) || count($result) !== 2) {
 				dol_syslog("Debug smartauth  Invalid response format from $targetClass::$redirectFunction", LOG_ERR);
-				self::insertLogs($tokenid, 500, 'Internal error', $entity);
+				self::insertLogs($token_id, 500, 'Internal error', $entity);
 				\json_reply('Internal server error - Invalid response format', 500);
 				return;
 			}
 
 			list($message, $code) = $result;
 
-			self::insertLogs($tokenid, $code, $message, $entity);
+			self::insertLogs($token_id, $code, $message, $entity);
 			\json_reply($message, $code);
 		} catch (Exception $e) {
 			dol_syslog("Debug smartauth  Exception in $targetClass::$redirectFunction: " . $e->getMessage(), LOG_ERR);
-			self::insertLogs($tokenid, 500, 'Exception: ' . $e->getMessage(), $entity);
+			self::insertLogs($token_id, 500, 'Exception: ' . $e->getMessage(), $entity);
 			\json_reply('Internal server error - Exception', 500);
 		}
 	}

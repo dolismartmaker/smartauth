@@ -27,11 +27,12 @@
 require_once DOL_DOCUMENT_ROOT . '/core/class/commonobject.class.php';
 //require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
 //require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+require_once 'smartauthdevices.class.php';
 
 /**
  * Class for SmartAuthDevices
  */
-class SmartAuthDevices extends CommonObject
+class SmartAuthDevices extends \CommonObject
 {
 	/**
 	 * @var string ID of module.

@@ -188,12 +188,12 @@ if (empty($reshook)) {
 
 // Handle revoke action
 if ($action == 'revoke' && $permtoedit) {
-	$tokenid = GETPOST('tokenid', 'int');
+	$token_id = GETPOST('token_id', 'int');
 
-	if ($tokenid > 0) {
+	if ($token_id > 0) {
 		// Verify token belongs to current user (security check)
 		$sql = "SELECT fk_authid FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " WHERE rowid = " . (int)$tokenid;
+		$sql .= " WHERE rowid = " . (int)$token_id;
 		$sql .= " AND fk_authid = " . (int)$id;
 
 		$resql = $db->query($sql);
@@ -201,7 +201,7 @@ if ($action == 'revoke' && $permtoedit) {
 			// Token belongs to user, revoke it
 			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
 			$sql .= " SET status = 9, salt = 'revoked_by_user'";
-			$sql .= " WHERE rowid = " . (int)$tokenid;
+			$sql .= " WHERE rowid = " . (int)$token_id;
 
 			$result = $db->query($sql);
 			if ($result) {
@@ -219,13 +219,13 @@ if ($action == 'revoke' && $permtoedit) {
 
 // Handle rename device action
 if ($action == 'rename' && $permtoedit) {
-	$tokenid = GETPOST('tokenid', 'int');
+	$token_id = GETPOST('token_id', 'int');
 	$device_label = GETPOST('device_label', 'restricthtml');
 
-	if ($tokenid > 0) {
+	if ($token_id > 0) {
 		// Verify token belongs to current user
 		$sql = "SELECT fk_authid FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " WHERE rowid = " . (int)$tokenid;
+		$sql .= " WHERE rowid = " . (int)$token_id;
 		$sql .= " AND fk_authid = " . (int)$id;
 
 		$resql = $db->query($sql);
@@ -234,7 +234,7 @@ if ($action == 'rename' && $permtoedit) {
 			// For now, we'll store in a custom field if it exists
 			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
 			$sql .= " SET note_private = '" . $db->escape($device_label) . "'";
-			$sql .= " WHERE rowid = " . (int)$tokenid;
+			$sql .= " WHERE rowid = " . (int)$token_id;
 
 			$result = $db->query($sql);
 			if ($result) {
@@ -638,7 +638,7 @@ if ($object->id) {
 		print '</a> ';
 
 		// Revoke button
-		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=revoke&tokenid=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . $langs->trans("ConfirmRevokeToken") . '\');" title="' . $langs->trans("RevokeToken") . '">';
+		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=revoke&token_id=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . $langs->trans("ConfirmRevokeToken") . '\');" title="' . $langs->trans("RevokeToken") . '">';
 		print '<i class="fa fa-trash" style="color: #ef4444;"></i>';
 		print '</a>';
 
@@ -989,15 +989,15 @@ if ($object->id) {
 
 <script type="text/javascript">
 // Rename device function
-function renameDevice(tokenid, currentName) {
+function renameDevice(token_id, currentName) {
 	var newName = prompt('<?php echo dol_escape_js($langs->trans("EnterDeviceName")); ?>', currentName);
 	if (newName != null && newName != '') {
-		window.location.href = '<?php echo $_SERVER['PHP_SELF']; ?>?id=<?php echo $id; ?>&action=rename&tokenid=' + tokenid + '&device_label=' + encodeURIComponent(newName) + '&token=<?php echo newToken(); ?>';
+		window.location.href = '<?php echo $_SERVER['PHP_SELF']; ?>?id=<?php echo $id; ?>&action=rename&token_id=' + token_id + '&device_label=' + encodeURIComponent(newName) + '&token=<?php echo newToken(); ?>';
 	}
 }
 
 // View history in modal
-function viewHistory(tokenid) {
+function viewHistory(token_id) {
 	// Create modal
 	var modal = document.createElement('div');
 	modal.id = 'historyModal';
@@ -1012,7 +1012,7 @@ function viewHistory(tokenid) {
 	document.body.appendChild(modal);
 
 	// Load history via AJAX
-	fetch('<?php echo $_SERVER['PHP_SELF']; ?>?id=<?php echo $id; ?>&action=viewhistory&tokenid=' + tokenid)
+	fetch('<?php echo $_SERVER['PHP_SELF']; ?>?id=<?php echo $id; ?>&action=viewhistory&token_id=' + token_id)
 		.then(response => response.json())
 		.then(data => {
 			var html = '<table class="noborder centpercent">';

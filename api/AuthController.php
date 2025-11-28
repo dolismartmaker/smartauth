@@ -22,6 +22,7 @@
 namespace SmartAuth\Api;
 
 dol_include_once('/smartauth/api/tools.php');
+dol_include_once('/smartauth/class/smartauthdevices.class.php');
 
 use User;
 use Exception;
@@ -135,6 +136,10 @@ class AuthController
 		if ($decoded->refresh_count >= SmartTokenConfig::MAX_REFRESH_COUNT) {
 			dol_syslog("Max refresh count exceeded for token " . $decoded->token_id, LOG_WARNING);
 			return [['error' => 'Maximum refresh limit reached. Please login again.'], 401];
+		}
+
+		if (empty($family_id)) {
+			$family_id = $this->_createTokenFamily($decoded->fk_authid);
 		}
 
 		// === TOKEN ROTATION ===
@@ -359,12 +364,17 @@ class AuthController
 	 */
 	public function logout($payload)
 	{
-		dol_syslog("Debug smartauth::AuthController : logout");
 		global $db;
 		$user = $payload['user'];
-		if (!empty($payload['tokenid'])) {
-			$this->_revokeToken($payload['tokenid'], 'logout');
+		// dol_syslog("Debug smartauth::AuthController : logout for " . json_encode($payload));
+		if (!empty($payload['family_id'])) {
+			dol_syslog("Debug smartauth::AuthController : logout for " . $user->id . ", tokenFamily id=" . $payload['family_id']);
+			$this->_revokeTokenFamily($payload['family_id'], 'logout');
 		}
+		// if (!empty($payload['token_id'])) {
+		// 	dol_syslog("Debug smartauth::AuthController : logout for " . $user->id . ", token id=" . $payload['token_id']);
+		// 	$this->_revokeToken($payload['token_id'], 'logout');
+		// }
 
 		$result = $user->call_trigger('USER_LOGOUT', $user);
 
@@ -411,7 +421,7 @@ class AuthController
 					$device->label = $new_name;
 					$result = $device->update($user);
 					$message = "update device name : success";
-					if($result) {
+					if ($result) {
 						$message = "";
 						$device->validate($user);
 					}
@@ -470,10 +480,12 @@ class AuthController
 		global $db, $smartAuthAppID, $smartAuthAppKey, $conf;
 
 		$token = self::_getBearerToken();
+		$tokenparts = explode('|', $token);
+		$token_id = $tokenparts[0];
 
 		$decoded = self::_decodeJWT($token, SmartTokenConfig::TYPE_ACCESS);
 
-		dol_syslog("smartauth : decoded jwt is " . json_encode($decoded));
+		dol_syslog("smartauth : decoded token is $token :: jwt is " . json_encode($decoded));
 
 		// Verify token contains user identification
 		// $decoded->login == user auth
@@ -482,6 +494,7 @@ class AuthController
 			dol_syslog("smartauth : login/socid not found in token", LOG_ERR);
 			json_reply('Access denied (invalid token payload)', 401);
 		}
+		$decoded->token_id = $token_id;
 
 		// * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)
 		// Update token last used timestamp and refresh expiry
@@ -814,6 +827,8 @@ class AuthController
 
 		$db->query($sql);
 
+		$family_id = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_token_family");
+
 		return $family_id;
 	}
 
@@ -844,7 +859,6 @@ class AuthController
 			SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
 			$family_id,
 			$device_id,
-			null,
 			$device_uuid
 		);
 
@@ -859,7 +873,6 @@ class AuthController
 			SmartTokenConfig::REFRESH_TOKEN_LIFETIME,
 			$family_id,
 			$device_id,
-			null,
 			$device_uuid
 		);
 
@@ -872,7 +885,7 @@ class AuthController
 	/**
 	 * Unified token generation (replaces _newUserKey)
 	 */
-	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id, $parent_token_id = null,  $device_uuid = null)
+	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id,  $device_uuid = null)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
 
@@ -893,7 +906,7 @@ class AuthController
 		$sql .= (int) $device_id . ", ";
 		$sql .= "'" . $element . "', ";
 		$sql .= "'" . $token_type . "', ";
-		$sql .= ($parent_token_id ? (int) $parent_token_id : "NULL") . ", ";
+		$sql .= ($family_id ? (int) $family_id : "NULL") . ", ";
 		$sql .= "'" . $this->get_client_ip() . "', ";
 		$sql .= self::STATUS_VALID . ", ";
 		$sql .= (int) $entity . ")";
@@ -919,7 +932,7 @@ class AuthController
 		$key = $salt . $salt2 . $smartAuthAppKey;
 		$jwt = JWT::encode($payload, $key, 'HS256');
 
-		// Return tokenid|jwt format
+		// Return token_id|jwt format
 		return $token_id . '|' . $jwt;
 	}
 
@@ -982,14 +995,12 @@ class AuthController
 
 		// Revoke all tokens in this family
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth a";
-		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "smartauth_token_family f";
-		$sql .= " ON a.fk_authid = f.fk_user";
 		$sql .= " SET a.status = " . self::STATUS_LOGOUT;
 		$sql .= ", a.salt = 'family_revoked'";
-		$sql .= " WHERE f.family_id = '" . $db->escape($family_id) . "'";
+		$sql .= " WHERE a.parent_token_id = '" . $db->escape($family_id) . "'";
 		$db->query($sql);
 
-		dol_syslog("Token family $family_id revoked due to security violation", LOG_WARNING);
+		dol_syslog("Token family $family_id revoked", LOG_INFO);
 	}
 
 	/**
@@ -1136,7 +1147,7 @@ class AuthController
 			$sql .= " (uuid, fk_user_creat, date_creation, status)";
 			$sql .= " VALUES ('" . substr($db->escape($device_uuid), 0, 40) . "', ";
 			$sql .= (int) $user_id . ", ";
-			$sql .= "'" . $db->idate(time()) . "', " . 1 . ")";
+			$sql .= "'" . $db->idate(time()) . "', " . self::STATUS_DRAFT . ")";
 
 			$resql = $db->query($sql);
 			if (!$resql) {
@@ -1161,7 +1172,7 @@ class AuthController
 			json_reply('Access denied (protected route)', 401);
 		}
 
-		// Parse token format: tokenid|jwt
+		// Parse token format: token_id|jwt
 		if (false === strpos($token, '|') > 0) {
 			dol_syslog("smartauth : access denied token not found", LOG_ERR);
 			json_reply('Access denied (token not found)', 401);
