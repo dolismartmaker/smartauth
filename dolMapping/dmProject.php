@@ -28,7 +28,7 @@ class dmProject extends dmBase
 
 	//corresponding fields left dolibarr right front app
 	protected $listOfPublishedFields = [
-		'rowid' 			=> 'rowid',
+		'rowid' 		=> 'rowid',
 		'ref' 			=> 'ref',
 		'title' 		=> 'title',
 		'dateo'			=> 'date_open',

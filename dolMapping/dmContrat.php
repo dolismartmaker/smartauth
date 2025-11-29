@@ -28,16 +28,16 @@ class dmContrat extends dmBase
 
     //corresponding fields left dolibarr right front app
     protected $listOfPublishedFields = [
-		'rowid' 			=> 'rowid',
-        'ref'             => 'ref',
-        'ref_customer'    => 'ref_customer',
-        'ref_supplier'     => 'ref_supplier',
+        'rowid'             => 'rowid',
+        'ref'               => 'ref',
+        'ref_customer'      => 'ref_customer',
+        'ref_supplier'      => 'ref_supplier',
         'date_c'            => 'date_c',
-        'date_contrat'            => 'date_contrat',
+        'date_contrat'      => 'date_contrat',
         'fk_soc'            => 'fk_soc',
-        'fk_projet'            => 'fk_projet',
-        'note_public'            => 'note_public',
-        'note_private'            => 'note_private',
+        'fk_projet'         => 'fk_projet',
+        'note_public'       => 'note_public',
+        'note_private'      => 'note_private',
     ];
 
 

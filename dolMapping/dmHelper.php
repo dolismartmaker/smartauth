@@ -347,7 +347,7 @@ class dmHelper
 
 
 	/**
-	 * filter all dolibarr extrafields to make beautifull objects
+	 * filter all dolibarr extrafields to make beautifull objects front side
 	 * definitions for smart app
 	 *
 	 * @param   [type]  $array  [$array description]
@@ -370,9 +370,15 @@ class dmHelper
 				continue;
 			}
 
-			//race condition, extrafields use "enabled", all dolibarr objects "disabled"
+			//extrafields use "enabled", all dolibarr objects "disabled"
 			if ($dolattr == "enabled") {
 				$ret['disabled'] = !($val);
+				continue;
+			}
+
+			//extrafields use "required" as int or 'int' dolibarr side -> as bool for front
+			if ($dolattr == "required") {
+				$ret['required'] = boolval($val);
 				continue;
 			}
 
@@ -388,7 +394,7 @@ class dmHelper
 			// }
 		}
 
-		//race condition for new type(not yet available into dolibarr core)
+		//new type(not yet available into dolibarr core)
 		//for that the solution is to use a special prefix for fields like "smartphoto_"
 		//then we convert it into application type like doc :
 		//https://inligit.fr/cap-rel/dolibarr/plugin-smartinterventions/-/wikis/home
