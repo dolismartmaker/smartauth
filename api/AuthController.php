@@ -125,10 +125,8 @@ class AuthController
 		$family_check = $this->_checkTokenFamily($family_id, $decoded->fk_authid);
 		if (!$family_check['valid']) {
 			dol_syslog("Token family check failed: " . $family_check['reason'], LOG_WARNING);
-
 			// SECURITY: Revoke entire token family on suspicious activity
-			$this->_revokeTokenFamily($family_id);
-
+			$this->_revokeTokenFamily($family_id, 'suspicious activity');
 			return [['error' => 'Security violation detected. All sessions revoked.'], 401];
 		}
 
@@ -440,7 +438,7 @@ class AuthController
 			$user = $payload['user'];
 
 			//revoke temporary tokens - sorry for them
-			$this->_revokeTokenFamily($decoded->family_id);
+			$this->_revokeTokenFamily($decoded->family_id, 'choice an other existing device');
 
 			// Create token family (for tracking refresh chain)
 			$family_id = $this->_createTokenFamily($user->id);
@@ -981,9 +979,13 @@ class AuthController
 	}
 
 	/**
-	 * Revoke entire token family (security breach detected)
+	 * Revoke entire token family, example of reason: security breach detected)
+	 *
+	 * @param   [type]          $family_id  id of family token
+	 * @param   [type]          $reason     reason of revocation
+	 *
 	 */
-	private function _revokeTokenFamily($family_id)
+	private function _revokeTokenFamily($family_id, $reason = 'family_revoked')
 	{
 		global $db;
 
@@ -996,7 +998,7 @@ class AuthController
 		// Revoke all tokens in this family
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth a";
 		$sql .= " SET a.status = " . self::STATUS_LOGOUT;
-		$sql .= ", a.salt = 'family_revoked'";
+		$sql .= ", a.salt = '" . $db->escape($reason) . "'";
 		$sql .= " WHERE a.parent_token_id = '" . $db->escape($family_id) . "'";
 		$db->query($sql);
 
