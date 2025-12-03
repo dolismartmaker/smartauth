@@ -122,7 +122,8 @@ class AuthController
 		}
 
 		// Check token family (detect token replay attacks)
-		$family_check = $this->_checkTokenFamily($family_id, $decoded->fk_authid);
+		$family_check = $this->_checkTokenFamily($family_id, $decoded->user_id);
+		dol_syslog("_checkTokenFamily returns " . json_encode($family_check));
 		if (!$family_check['valid']) {
 			dol_syslog("Token family check failed: " . $family_check['reason'], LOG_WARNING);
 			// SECURITY: Revoke entire token family on suspicious activity
@@ -137,7 +138,7 @@ class AuthController
 		}
 
 		if (empty($family_id)) {
-			$family_id = $this->_createTokenFamily($decoded->fk_authid);
+			$family_id = $this->_createTokenFamily($decoded->user_id);
 		}
 
 		// === TOKEN ROTATION ===
@@ -147,8 +148,8 @@ class AuthController
 		// Generate new token pair
 		$new_tokens = $this->_generateTokenPair(
 			'user',
-			$decoded->fk_authid,
-			$decoded->fk_authid,
+			$decoded->user_id,
+			$decoded->user_id,
 			$login,
 			$entity,
 			$family_id,
@@ -926,6 +927,7 @@ class AuthController
 		// Build JWT payload
 		$payload = [
 			"login" => $login,
+			"user_id" => $user_id,
 			"entity" => $entity,
 			"token_type" => $token_type,
 			"family_id" => $family_id,
@@ -946,10 +948,11 @@ class AuthController
 	private function _checkTokenFamily($family_id, $user_id)
 	{
 		global $db;
+		dol_syslog("_checkTokenFamily family_id=$family_id, user_id=$user_id");
 
 		$sql = "SELECT revoked, refresh_count, fk_user";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_token_family";
-		$sql .= " WHERE family_id = '" . $db->escape($family_id) . "'";
+		$sql .= " WHERE rowid = '" . $db->escape($family_id) . "'";
 
 		$resql = $db->query($sql);
 		if (!$resql || $db->num_rows($resql) == 0) {
@@ -979,7 +982,7 @@ class AuthController
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_token_family";
 		$sql .= " SET last_refresh_at = " . time();
 		$sql .= ", refresh_count = " . (int) $new_count;
-		$sql .= " WHERE family_id = '" . $db->escape($family_id) . "'";
+		$sql .= " WHERE rowid = '" . $db->escape($family_id) . "'";
 
 		$db->query($sql);
 	}
@@ -998,7 +1001,7 @@ class AuthController
 		// Mark family as revoked
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_token_family";
 		$sql .= " SET revoked = 1";
-		$sql .= " WHERE family_id = '" . $db->escape($family_id) . "'";
+		$sql .= " WHERE rowid = '" . $db->escape($family_id) . "'";
 		$db->query($sql);
 
 		// Revoke all tokens in this family
@@ -1182,16 +1185,17 @@ class AuthController
 
 		// Parse token format: token_id|jwt
 		if (false === strpos($token, '|') > 0) {
-			dol_syslog("smartauth : access denied token not found", LOG_ERR);
+			dol_syslog("smartauth : access denied token not found, missing | ", LOG_ERR);
 			json_reply('Access denied (token not found)', 401);
 		}
 
 		$token_id = substr($token, 0, strpos($token, '|'));
 		if (trim($token_id) == '') {
-			dol_syslog("smartauth : access denied token not found", LOG_ERR);
+			dol_syslog("smartauth : access denied token not found, missing token id", LOG_ERR);
 			json_reply('Access denied (token not found)', 401);
 		}
 		if (!is_numeric($token_id)) {
+			dol_syslog("Access denied, token not numeric", LOG_ERR);
 			json_reply('Access denied (invalid token)', 401);
 			//or ??? return [['error' => 'Invalid token ID'], 401];
 		}
@@ -1211,7 +1215,7 @@ class AuthController
 			$resql = $db->query($sql);
 
 			if (!$resql || $db->num_rows($resql) == 0) {
-				dol_syslog("smartauth : token not found or revoked", LOG_WARNING);
+				dol_syslog("smartauth : Invalid or revoked token", LOG_WARNING);
 				json_reply('Invalid or revoked token', 401);
 			}
 
@@ -1225,18 +1229,20 @@ class AuthController
 
 		// Verify token type
 		if ($token_data->token_type !== $checktype) {
-			dol_syslog("Attempt to use bad type of token !", LOG_WARNING);
+			dol_syslog("smartauth :Attempt to use bad type of token !", LOG_WARNING);
 			json_reply(['error' => 'Invalid token type.'], 401);
 		}
 
 		// Verify token status
 		if ($token_data->status != self::STATUS_VALID) {
+			dol_syslog("smartauth :Token revoked !", LOG_WARNING);
 			json_reply(['error' => 'Token revoked'], 401);
 		}
 
 		// Verify expiration
 		dol_syslog("Refresh token check eol : db=" . $db->jdate($token_data->date_eol) . ", now=" . dol_now());
 		if ($db->jdate($token_data->date_eol) < dol_now()) {
+			dol_syslog("smartauth :Token expired. Please login again !", LOG_WARNING);
 			json_reply(['error' => 'Token expired. Please login again.'], 401);
 		}
 
@@ -1253,6 +1259,8 @@ class AuthController
 			dol_syslog("smartauth : jwt error : " . $e->getMessage(), LOG_ERR);
 			json_reply('Invalid token, please login', 401);
 		}
+
+		dol_syslog("smartauth : _decodeJWT is " . json_encode($decoded));
 		return $decoded;
 	}
 }
