@@ -368,7 +368,7 @@ class RouteController
 			}
 		}
 
-		dol_syslog("Debug smartauth handleAuthentication return entity=$entity, token_id=$token_id", LOG_ERR);
+		dol_syslog("Debug smartauth handleAuthentication return entity=$entity, token_id=$token_id");
 		return [$user, $entity, $token_id, $buyer, $family_id, $device_id];
 	}
 	/**
@@ -396,7 +396,7 @@ class RouteController
 	 */
 	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id, $device_id)
 	{
-		dol_syslog("Debug smartauth executeAction: $targetClass, $redirectFunction, $token_id, $family_id, $device_id", LOG_ERR);
+		dol_syslog("Debug smartauth executeAction: $targetClass, redirectFunction=$redirectFunction, token_id=$token_id, family_id=$family_id, device_id=$device_id");
 
 		// Validate class exists
 		if (!class_exists($targetClass)) {
