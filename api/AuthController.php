@@ -853,6 +853,7 @@ class AuthController
 	 */
 	private function _generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id, $device_uuid = '')
 	{
+		dol_syslog("_generateTokenPair element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, family_id=$family_id, device_id=$device_id, device_uuid=$device_uuid");
 		// Generate access token (short-lived)
 		$access_token = $this->_generateToken(
 			$element,
@@ -893,6 +894,8 @@ class AuthController
 	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id,  $device_uuid = null)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
+
+		dol_syslog("_generateToken element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, token_type=$token_type, lifetime=$lifetime, family_id=$family_id, device_id=$device_id,  device_uuid=$device_uuid");
 
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
 		$salt2 = $this->_getSalt2($device_uuid); // same as app_id logic but for device
@@ -1140,7 +1143,7 @@ class AuthController
 		}
 
 		if ($device_uuid == 'undefined') {
-			//auto création d'un device uuid local
+			//note this case is for auto create device uuid on front side
 		}
 
 		if ($device_uuid == '') {
@@ -1172,7 +1175,7 @@ class AuthController
 			}
 		}
 
-		return -1;
+		return $deviceid;
 	}
 
 	private static function _decodeJWT($token, $checktype)
