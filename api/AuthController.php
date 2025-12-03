@@ -407,6 +407,8 @@ class AuthController
 		$new_uuid = $payload['uuid'];
 		$new_name = sanitizeVal($payload['label']);
 
+		$ret = null;
+
 		// dol_syslog("smartauth device payload=" . json_encode($payload));
 		// dol_syslog("smartauth device current = $current_uuid and new = $new_uuid");
 
@@ -431,6 +433,10 @@ class AuthController
 						'message' => "success but device name is empty",
 					];
 				}
+			} else {
+				$ret = [
+					'message' => "success, same device",
+				];
 			}
 		} else {
 			dol_syslog('smartauth::AuthController : device user choice an existing device ' . $new_uuid, LOG_DEBUG);
@@ -1220,18 +1226,18 @@ class AuthController
 		// Verify token type
 		if ($token_data->token_type !== $checktype) {
 			dol_syslog("Attempt to use bad type of token !", LOG_WARNING);
-			return [['error' => 'Invalid token type.'], 401];
+			json_reply(['error' => 'Invalid token type.'], 401);
 		}
 
 		// Verify token status
 		if ($token_data->status != self::STATUS_VALID) {
-			return [['error' => 'Token revoked'], 401];
+			json_reply(['error' => 'Token revoked'], 401);
 		}
 
 		// Verify expiration
 		dol_syslog("Refresh token check eol : db=" . $db->jdate($token_data->date_eol) . ", now=" . dol_now());
 		if ($db->jdate($token_data->date_eol) < dol_now()) {
-			return [['error' => 'Token expired. Please login again.'], 401];
+			json_reply(['error' => 'Token expired. Please login again.'], 401);
 		}
 
 		// Verify JWT signature
