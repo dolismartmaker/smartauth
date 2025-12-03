@@ -147,7 +147,7 @@ class RouteController
 			return; // Error already handled
 		}
 
-		list($user, $entity, $token_id, $buyer, $family_id) = $authContext;
+		list($user, $entity, $token_id, $buyer, $family_id, $device_id) = $authContext;
 
 		// Execute controller action
 		self::executeAction(
@@ -158,7 +158,8 @@ class RouteController
 			$entity,
 			$token_id,
 			$buyer,
-			$family_id
+			$family_id,
+			$device_id
 		);
 	}
 
@@ -368,7 +369,7 @@ class RouteController
 		}
 
 		dol_syslog("Debug smartauth handleAuthentication return entity=$entity, token_id=$token_id", LOG_ERR);
-		return [$user, $entity, $token_id, $buyer, $family_id];
+		return [$user, $entity, $token_id, $buyer, $family_id, $device_id];
 	}
 	/**
 	 * Execute the target controller method with proper error handling
@@ -389,16 +390,17 @@ class RouteController
 	 * @param   int|null    $token_id           JWT token ID for logging
 	 * @param   Societe     $buyer              Third-party object
 	 * @param   int|null    $family_id          Token family
+	 * @param   int|null    $device_id          Device ID
 	 *
 	 * @return  void                            Outputs JSON and exits
 	 */
-	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id)
+	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id, $device_id)
 	{
-		dol_syslog("Debug smartauth executeAction: $targetClass, $redirectFunction, $token_id, $family_id", LOG_ERR);
+		dol_syslog("Debug smartauth executeAction: $targetClass, $redirectFunction, $token_id, $family_id, $device_id", LOG_ERR);
 
 		// Validate class exists
 		if (!class_exists($targetClass)) {
-			dol_syslog("Debug smartauth  Class not found: $targetClass", LOG_ERR);
+			dol_syslog("Debug smartauth  Class ($targetClass) not found", LOG_ERR);
 			self::insertLogs($token_id, 500, 'Internal error - Class not found', $entity);
 			\json_reply('Internal server error - Class not found', 500);
 			return;
@@ -421,6 +423,7 @@ class RouteController
 			'token_id' => $token_id,
 			'buyer' => $buyer,
 			'family_id' => $family_id,
+			'device_id' => $device_id,
 		];
 
 		// Flatten data into payload for easier access
