@@ -48,15 +48,27 @@ class AuthController
 	const STATUS_LOGOUT = 9;
 
 	/**
-	 * @api {get} /index List of dolibarr entities
-	 * @apiName GetLogin
+	 * @api {get} /index List available entities
+	 * @apiName GetEntities
 	 * @apiGroup Auth
+	 * @apiVersion 1.0.0
 	 *
-	 * @apiSuccess {Array} entities array of dolibarr available entities
+	 * @apiDescription Get the list of available Dolibarr entities.
+	 * Use this endpoint before login if your Dolibarr uses the MultiCompany module.
+	 * This allows the user to select the correct entity before authentication.
 	 *
-	 * @apiDescription Get the list of dolibarr entities before login
-	 * then you can make a login request on the right dolibarr entity
-	 * if your dolibarr use multicompany module
+	 * @apiSuccess {Object[]} entities List of available entities
+	 * @apiSuccess {Number} entities.id Entity ID
+	 * @apiSuccess {String} entities.label Entity name
+	 *
+	 * @apiSuccessExample {json} Success-Response:
+	 * HTTP/1.1 200 OK
+	 * {
+	 *     "entities": [
+	 *         {"id": 1, "label": "Main Company"},
+	 *         {"id": 2, "label": "Branch Office"}
+	 *     ]
+	 * }
 	 */
 	public function index($arr = null)
 	{
@@ -68,14 +80,16 @@ class AuthController
 	}
 
 	/**
-	 * @api {get} /ping check if your token is valid
-	 * @apiName GetLogin
+	 * @api {get} /ping Check token validity
+	 * @apiName Ping
 	 * @apiGroup Auth
+	 * @apiVersion 1.0.0
+	 * @apiDeprecated Use (#Auth:Refresh) instead.
 	 *
-	 * @apiSuccess {Array} access token + refresh token + expiry date
+	 * @apiDescription Check if your token is still valid. Redirects to refresh endpoint.
 	 *
-	 * @apiDescription Check if your token is already valid
-	 * @deprecated
+	 * @apiHeader {String} Authorization Bearer token
+	 * @apiHeader {String} X-DeviceId Unique device identifier
 	 */
 	public function ping($arr = null)
 	{
@@ -84,13 +98,36 @@ class AuthController
 	}
 
 	/**
-	 * @api {get} /refresh refresh the token
+	 * @api {get} /refresh Refresh tokens
 	 * @apiName Refresh
 	 * @apiGroup Auth
+	 * @apiVersion 1.0.0
 	 *
-	 * @apiSuccess {Array} access token + refresh token + expiry date
+	 * @apiDescription Use the refresh token to obtain a new access token and refresh token pair.
+	 * The current refresh token is invalidated after use (token rotation).
 	 *
-	 * @apiDescription Check if your token is already valid
+	 * @apiHeader {String} Authorization Bearer refresh_token (format: token_id|jwt)
+	 * @apiHeader {String} X-DeviceId Unique device identifier
+	 *
+	 * @apiSuccess {String} access_token New JWT access token
+	 * @apiSuccess {String} refresh_token New JWT refresh token
+	 * @apiSuccess {Number} expires_in Access token lifetime in seconds
+	 * @apiSuccess {String} token_type Token type (Bearer)
+	 *
+	 * @apiSuccessExample {json} Success-Response:
+	 * HTTP/1.1 200 OK
+	 * {
+	 *     "access_token": "123|eyJ0eXAiOiJKV1Q...",
+	 *     "refresh_token": "124|eyJ0eXAiOiJKV1Q...",
+	 *     "expires_in": 3600,
+	 *     "token_type": "Bearer"
+	 * }
+	 *
+	 * @apiError (401) RefreshTokenRequired Refresh token is missing
+	 * @apiError (401) InvalidTokenFormat Token format is invalid
+	 * @apiError (401) InvalidTokenPayload Token payload is invalid
+	 * @apiError (401) SecurityViolation Token replay attack detected, all sessions revoked
+	 * @apiError (401) MaxRefreshExceeded Maximum refresh limit reached, login required
 	 */
 	public function refresh($arr = null)
 	{
@@ -170,30 +207,57 @@ class AuthController
 
 	/**
 	 * @api {post} /login Login
-	 *
-	 * @apiDescription Try to log into dolibarr with login / password and
-	 * in case of success generate a token for that app / session
-	 *
 	 * @apiName PostLogin
 	 * @apiGroup Auth
+	 * @apiVersion 1.0.0
 	 *
-	 * @apiBody (Login) {String} email     Mandatory dolibarr user name (email)
-	 * @apiBody (Login) {String} password  Mandatory user password
-	 * @apiBody (Login) {Number} entity    Mandatory dolibarr entity
+	 * @apiDescription Authenticate user with email/password and obtain JWT tokens.
+	 * On success, returns both an access token and a refresh token.
+	 * Rate limiting is applied per IP and per username.
 	 *
-	 * @apiSuccess {String} user      User login
-	 * @apiSuccess {Number} userid    User ID
-	 * @apiSuccess {String} token     Session JWT to use for next requests as Bearer Auth Token (JWT)
+	 * @apiHeader {String} X-DeviceId Unique device identifier (UUID or SHA256 hash)
+	 * @apiHeader {String} Content-Type Must be application/json
+	 *
+	 * @apiBody {String} email User email or login
+	 * @apiBody {String} password User password
+	 * @apiBody {Number} [entity=1] Dolibarr entity ID (for MultiCompany)
+	 * @apiBody {Number} [rememberMe=0] Remember me flag
+	 *
+	 * @apiSuccess {String} user User email or login
+	 * @apiSuccess {Number} userid User ID
+	 * @apiSuccess {Number} entity Entity ID
+	 * @apiSuccess {String} token Access token (legacy, same as access_token)
+	 * @apiSuccess {String} access_token JWT access token
+	 * @apiSuccess {String} refresh_token JWT refresh token
+	 * @apiSuccess {Number} expires_in Access token lifetime in seconds
+	 * @apiSuccess {String} token_type Token type (Bearer)
+	 * @apiSuccess {Object[]} [devices_choice] List of known devices for this user (if device is new)
+	 * @apiSuccess {Number} rememberMe Remember me flag
 	 *
 	 * @apiSuccessExample {json} Success-Response:
 	 * HTTP/1.1 200 OK
 	 * {
-	 *     "data": {
-	 *         "user": "eric@cap-rel.fr",
-	 *         "userid": "3",
-	 *         "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUz88NiJ9.eyJsb2dpbiI622RsYyIsImVu88l0eSI6MH0._XWcHLf999kMqkP65dgXcbkqT522W9zbdUiIA3BU0pI"
-	 *     }
-	 *  }
+	 *     "user": "user@example.com",
+	 *     "userid": 3,
+	 *     "entity": 1,
+	 *     "token": "123|eyJ0eXAiOiJKV1Q...",
+	 *     "access_token": "123|eyJ0eXAiOiJKV1Q...",
+	 *     "refresh_token": "124|eyJ0eXAiOiJKV1Q...",
+	 *     "expires_in": 3600,
+	 *     "token_type": "Bearer",
+	 *     "devices_choice": null,
+	 *     "rememberMe": 0
+	 * }
+	 *
+	 * @apiError (401) AccessDenied Invalid credentials
+	 * @apiError (429) TooManyRequests Rate limit exceeded
+	 *
+	 * @apiErrorExample {json} Rate-Limit-Response:
+	 * HTTP/1.1 429 Too Many Requests
+	 * {
+	 *     "error": "Too many attempts. Please try again later.",
+	 *     "retry_after": 180
+	 * }
 	 */
 	public function login($payload)
 	{
@@ -355,10 +419,25 @@ class AuthController
 
 	/**
 	 * @api {post} /logout Logout
-	 * @apiDescription Logout and close session
 	 * @apiName PostLogout
 	 * @apiGroup Auth
+	 * @apiVersion 1.0.0
 	 *
+	 * @apiDescription Logout the user and revoke all tokens in the current token family.
+	 * This invalidates both access and refresh tokens.
+	 *
+	 * @apiHeader {String} Authorization Bearer access_token
+	 * @apiHeader {String} X-DeviceId Unique device identifier
+	 *
+	 * @apiSuccess {String} user Empty string (logged out)
+	 * @apiSuccess {String} token Empty string (revoked)
+	 *
+	 * @apiSuccessExample {json} Success-Response:
+	 * HTTP/1.1 200 OK
+	 * {
+	 *     "user": "",
+	 *     "token": ""
+	 * }
 	 */
 	public function logout($payload)
 	{
@@ -384,14 +463,45 @@ class AuthController
 	}
 
 	/**
-	 * @api {post} /device choose device uuid or set name of current uuid
+	 * @api {post} /device Manage device
 	 * @apiName PostDevice
-	 * @apiGroup Auth
+	 * @apiGroup Device
+	 * @apiVersion 1.0.0
 	 *
-	 * @apiSuccess {Array} success code
+	 * @apiDescription Manage device association for the authenticated user.
+	 * Two use cases:
+	 * 1. Same UUID: Update the device name/label
+	 * 2. Different UUID: Switch to an existing device (generates new tokens)
 	 *
-	 * @apiDescription Set the name of current device uuid or uuid of device_id
-	 * user has choosed
+	 * @apiHeader {String} Authorization Bearer access_token
+	 * @apiHeader {String} X-DeviceId Current device UUID
+	 *
+	 * @apiBody {String} uuid Device UUID to associate
+	 * @apiBody {String} [label] Device name/label (for naming the device)
+	 *
+	 * @apiSuccess {String} [message] Status message
+	 * @apiSuccess {String} [token] New access token (if device switched)
+	 * @apiSuccess {String} [access_token] New access token (if device switched)
+	 * @apiSuccess {String} [refresh_token] New refresh token (if device switched)
+	 * @apiSuccess {Number} [expires_in] Token lifetime in seconds (if device switched)
+	 * @apiSuccess {String} [token_type] Token type (if device switched)
+	 *
+	 * @apiSuccessExample {json} Success-Response (same device, name updated):
+	 * HTTP/1.1 200 OK
+	 * {
+	 *     "message": "update device name : success"
+	 * }
+	 *
+	 * @apiSuccessExample {json} Success-Response (device switched):
+	 * HTTP/1.1 200 OK
+	 * {
+	 *     "token": "125|eyJ0eXAiOiJKV1Q...",
+	 *     "access_token": "125|eyJ0eXAiOiJKV1Q...",
+	 *     "refresh_token": "126|eyJ0eXAiOiJKV1Q...",
+	 *     "expires_in": 3600,
+	 *     "token_type": "Bearer",
+	 *     "message": "please use this new token"
+	 * }
 	 */
 	public function device($payload = null)
 	{
