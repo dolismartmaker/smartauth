@@ -20,13 +20,12 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/fichinter/class/fichinter.class.php';
+require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 
 /**
- * Mapping for Dolibarr Fichinter -> API Intervention
- * Alias: dmFichinter (for backward compatibility with Dolibarr internal calls)
+ * Mapping for Dolibarr BOM -> API Bom (Bill of Materials)
  */
-class dmIntervention extends dmBase
+class dmBom extends dmBase
 {
 	use dmTrait;
 	use dmLinesTrait;
@@ -38,28 +37,28 @@ class dmIntervention extends dmBase
 	protected $listOfPublishedFields = [
 		'rowid'             => 'id',
 		'ref'               => 'ref',
-		'ref_client'        => 'customer_ref',
-		'datec'             => 'created_at',
+		'label'             => 'label',
+		'bomtype'           => 'bom_type',
+		'description'       => 'description',
+		'date_creation'     => 'created_at',
+		'date_valid'        => 'validated_at',
 		'tms'               => 'updated_at',
-		'datei'             => 'date_intervention',
-		'dateo'             => 'date_start',
-		'datee'             => 'date_end',
-		'fk_soc'            => 'thirdparty',
-		'fk_projet'         => 'project',
-		'fk_contrat'        => 'contract',
-		'fk_user_author'    => 'created_by',
+		'fk_user_creat'     => 'created_by',
 		'fk_user_modif'     => 'updated_by',
 		'fk_user_valid'     => 'validated_by',
-		'description'       => 'description',
-		'duree'             => 'duration',
+		'fk_warehouse'      => 'warehouse',
+		'fk_product'        => 'product',
+		'qty'               => 'quantity',
+		'duration'          => 'duration',
+		'efficiency'        => 'efficiency',
+		'status'            => 'status',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
-		'statut'            => 'status',
 	];
 
 	// Configuration for lines support
-	protected $parentClassNameForLines = 'FichinterLigne';
-	protected $parentLabelForLines = 'InterventionLines';
+	protected $parentClassNameForLines = 'BOMLine';
+	protected $parentLabelForLines = 'BomLines';
 
 	// Dolibarr field => Front field for lines
 	protected $listOfPublishedFieldsForLines = [];
@@ -71,10 +70,7 @@ class dmIntervention extends dmBase
 	 */
 	public function __construct()
 	{
-		$this->listOfPublishedFieldsForLines = $this->getInterventionLinesMapping();
+		$this->listOfPublishedFieldsForLines = $this->getBomLinesMapping();
 		$this->boot();
 	}
 }
-
-// Backward compatibility alias for Dolibarr internal FK resolution
-class_alias('SmartAuth\DolibarrMapping\dmIntervention', 'SmartAuth\DolibarrMapping\dmFichinter');

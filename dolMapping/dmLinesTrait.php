@@ -146,4 +146,191 @@ trait dmLinesTrait
 			'product_tobatch'       => 'product_batch_enabled',
 		]);
 	}
+
+	/**
+	 * Additional fields specific to supplier invoice lines (FactureFournisseur)
+	 *
+	 * @return array
+	 */
+	protected function getSupplierInvoiceLinesMapping(): array
+	{
+		return array_merge($this->getCommonLinesMapping(), [
+			'fk_facture_fourn'      => 'supplier_invoice_id',
+			'fk_code_ventilation'   => 'accounting_code_id',
+			'ref'                   => 'ref',
+		]);
+	}
+
+	/**
+	 * Additional fields specific to supplier order lines (CommandeFournisseur)
+	 *
+	 * @return array
+	 */
+	protected function getSupplierOrderLinesMapping(): array
+	{
+		return array_merge($this->getCommonLinesMapping(), [
+			'fk_commande'           => 'supplier_order_id',
+			'ref'                   => 'ref',
+		]);
+	}
+
+	/**
+	 * Additional fields specific to supplier proposal lines (SupplierProposal)
+	 *
+	 * @return array
+	 */
+	protected function getSupplierProposalLinesMapping(): array
+	{
+		return array_merge($this->getCommonLinesMapping(), [
+			'fk_supplier_proposal'  => 'supplier_proposal_id',
+		]);
+	}
+
+	/**
+	 * Additional fields specific to shipment lines (Expedition)
+	 *
+	 * @return array
+	 */
+	protected function getShipmentLinesMapping(): array
+	{
+		return [
+			'rowid'                 => 'id',
+			'fk_expedition'         => 'shipment_id',
+			'fk_origin'             => 'origin_type',
+			'fk_origin_line'        => 'origin_line_id',
+			'fk_product'            => 'product',
+			'qty'                   => 'quantity',
+			'qty_shipped'           => 'quantity_shipped',
+			'entrepot_id'           => 'warehouse',
+			'rang'                  => 'position',
+		];
+	}
+
+	/**
+	 * Additional fields specific to reception lines (Reception)
+	 *
+	 * @return array
+	 */
+	protected function getReceptionLinesMapping(): array
+	{
+		return [
+			'rowid'                 => 'id',
+			'fk_reception'          => 'reception_id',
+			'fk_commande'           => 'supplier_order_id',
+			'fk_product'            => 'product',
+			'qty'                   => 'quantity',
+			'entrepot_id'           => 'warehouse',
+			'rang'                  => 'position',
+			'comment'               => 'comment',
+		];
+	}
+
+	/**
+	 * Additional fields specific to expense report lines (ExpenseReport)
+	 *
+	 * @return array
+	 */
+	protected function getExpenseReportLinesMapping(): array
+	{
+		return [
+			'rowid'                 => 'id',
+			'fk_expensereport'      => 'expense_report_id',
+			'fk_c_type_fees'        => 'fee_type',
+			'fk_c_exp_tax_cat'      => 'expense_tax_category',
+			'fk_projet'             => 'project',
+			'date'                  => 'date',
+			'comments'              => 'comments',
+			'qty'                   => 'quantity',
+			'value_unit'            => 'unit_value',
+			'rang'                  => 'position',
+			'vatrate'               => 'vat_rate',
+			'tva_tx'                => 'vat_rate_real',
+			'total_ht'              => 'total_excl_tax',
+			'total_tva'             => 'total_vat',
+			'total_ttc'             => 'total_incl_tax',
+			'total_localtax1'       => 'total_local_tax1',
+			'total_localtax2'       => 'total_local_tax2',
+			'fk_multicurrency'      => 'multicurrency_id',
+			'multicurrency_code'    => 'multicurrency_code',
+			'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
+			'multicurrency_total_tva' => 'multicurrency_total_vat',
+			'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
+		];
+	}
+
+	/**
+	 * Additional fields specific to contract lines (Contrat)
+	 *
+	 * @return array
+	 */
+	protected function getContractLinesMapping(): array
+	{
+		return array_merge($this->getCommonLinesMapping(), [
+			'fk_contrat'            => 'contract_id',
+			'date_ouverture_prevue' => 'date_start_planned',
+			'date_ouverture'        => 'date_start_real',
+			'date_fin_validite'     => 'date_end_planned',
+			'date_cloture'          => 'date_end_real',
+			'statut'                => 'status',
+		]);
+	}
+
+	/**
+	 * Additional fields specific to intervention lines (Fichinter)
+	 *
+	 * @return array
+	 */
+	protected function getInterventionLinesMapping(): array
+	{
+		return [
+			'rowid'                 => 'id',
+			'fk_fichinter'          => 'intervention_id',
+			'fk_product'            => 'product',
+			'desc'                  => 'description',
+			'date'                  => 'date',
+			'duree'                 => 'duration',
+			'rang'                  => 'position',
+		];
+	}
+
+	/**
+	 * Additional fields specific to BOM lines (Bill of Materials)
+	 *
+	 * @return array
+	 */
+	protected function getBomLinesMapping(): array
+	{
+		return [
+			'rowid'                 => 'id',
+			'fk_bom'                => 'bom_id',
+			'fk_product'            => 'product',
+			'fk_bom_child'          => 'child_bom',
+			'description'           => 'description',
+			'qty'                   => 'quantity',
+			'qty_frozen'            => 'quantity_frozen',
+			'disable_stock_change'  => 'disable_stock_change',
+			'efficiency'            => 'efficiency',
+			'position'              => 'position',
+		];
+	}
+
+	/**
+	 * Additional fields specific to MO lines (Manufacturing Order)
+	 *
+	 * @return array
+	 */
+	protected function getMoLinesMapping(): array
+	{
+		return [
+			'rowid'                 => 'id',
+			'fk_mo'                 => 'mo_id',
+			'fk_product'            => 'product',
+			'fk_warehouse'          => 'warehouse',
+			'origin_id'             => 'origin_id',
+			'origin_type'           => 'origin_type',
+			'qty'                   => 'quantity',
+			'position'              => 'position',
+			'role'                  => 'role',
+		];
+	}
 }

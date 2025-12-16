@@ -29,6 +29,7 @@ require_once DOL_DOCUMENT_ROOT . '/contrat/class/contrat.class.php';
 class dmContract extends dmBase
 {
 	use dmTrait;
+	use dmLinesTrait;
 
 	protected $type = "object";
 
@@ -40,12 +41,24 @@ class dmContract extends dmBase
 		'ref_customer'      => 'customer_ref',
 		'ref_supplier'      => 'supplier_ref',
 		'datec'             => 'created_at',
+		'tms'               => 'updated_at',
 		'date_contrat'      => 'date_contract',
 		'fk_soc'            => 'thirdparty',
 		'fk_projet'         => 'project',
+		'fk_user_author'    => 'created_by',
+		'fk_commercial_signature' => 'commercial_signature',
+		'fk_commercial_suivi' => 'commercial_followup',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
+		'statut'            => 'status',
 	];
+
+	// Configuration for lines support
+	protected $parentClassNameForLines = 'ContratLigne';
+	protected $parentLabelForLines = 'ContractLines';
+
+	// Dolibarr field => Front field for lines
+	protected $listOfPublishedFieldsForLines = [];
 
 	/**
 	 * object constructor
@@ -54,6 +67,7 @@ class dmContract extends dmBase
 	 */
 	public function __construct()
 	{
+		$this->listOfPublishedFieldsForLines = $this->getContractLinesMapping();
 		$this->boot();
 	}
 }

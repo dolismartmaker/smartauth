@@ -20,16 +20,14 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/fichinter/class/fichinter.class.php';
+require_once DOL_DOCUMENT_ROOT . '/ticket/class/ticket.class.php';
 
 /**
- * Mapping for Dolibarr Fichinter -> API Intervention
- * Alias: dmFichinter (for backward compatibility with Dolibarr internal calls)
+ * Mapping for Dolibarr Ticket -> API Ticket
  */
-class dmIntervention extends dmBase
+class dmTicket extends dmBase
 {
 	use dmTrait;
-	use dmLinesTrait;
 
 	protected $type = "object";
 
@@ -38,31 +36,33 @@ class dmIntervention extends dmBase
 	protected $listOfPublishedFields = [
 		'rowid'             => 'id',
 		'ref'               => 'ref',
-		'ref_client'        => 'customer_ref',
+		'track_id'          => 'track_id',
+		'subject'           => 'subject',
+		'message'           => 'message',
 		'datec'             => 'created_at',
 		'tms'               => 'updated_at',
-		'datei'             => 'date_intervention',
-		'dateo'             => 'date_start',
-		'datee'             => 'date_end',
+		'date_read'         => 'read_at',
+		'date_close'        => 'closed_at',
+		'date_last_msg_sent' => 'last_message_at',
 		'fk_soc'            => 'thirdparty',
-		'fk_projet'         => 'project',
-		'fk_contrat'        => 'contract',
-		'fk_user_author'    => 'created_by',
-		'fk_user_modif'     => 'updated_by',
-		'fk_user_valid'     => 'validated_by',
-		'description'       => 'description',
-		'duree'             => 'duration',
+		'fk_project'        => 'project',
+		'fk_user_create'    => 'created_by',
+		'fk_user_assign'    => 'assigned_to',
+		'origin_email'      => 'origin_email',
+		'email_from'        => 'email_from',
+		'type_code'         => 'type_code',
+		'type_label'        => 'type_label',
+		'category_code'     => 'category_code',
+		'category_label'    => 'category_label',
+		'severity_code'     => 'severity_code',
+		'severity_label'    => 'severity_label',
+		'resolution'        => 'resolution',
+		'progress'          => 'progress',
+		'timing'            => 'timing',
+		'status'            => 'status',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
-		'statut'            => 'status',
 	];
-
-	// Configuration for lines support
-	protected $parentClassNameForLines = 'FichinterLigne';
-	protected $parentLabelForLines = 'InterventionLines';
-
-	// Dolibarr field => Front field for lines
-	protected $listOfPublishedFieldsForLines = [];
 
 	/**
 	 * object constructor
@@ -71,10 +71,6 @@ class dmIntervention extends dmBase
 	 */
 	public function __construct()
 	{
-		$this->listOfPublishedFieldsForLines = $this->getInterventionLinesMapping();
 		$this->boot();
 	}
 }
-
-// Backward compatibility alias for Dolibarr internal FK resolution
-class_alias('SmartAuth\DolibarrMapping\dmIntervention', 'SmartAuth\DolibarrMapping\dmFichinter');

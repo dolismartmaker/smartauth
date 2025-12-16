@@ -20,33 +20,27 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php';
-
-class dmContact extends dmBase
+/**
+ * Mapping for Dolibarr c_actioncomm dictionary -> API ActionType (Agenda event types)
+ * Alias: dmCactioncomm (for backward compatibility)
+ */
+class dmCactiontype extends dmBase
 {
 	use dmTrait;
 
-	protected $type = "object";
+	protected $type = "dictionary";
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid' 			=> 'id',
-		'civility' 			=> 'civility',
-		'lastname' 			=> 'lastname',
-		'firstname' 		=> 'firstname',
-		'address' 			=> 'address',
-		'zip' 				=> 'zip',
-		'town' 				=> 'city',
-		'fk_departement' 	=> 'state',
-		'fk_pays' 			=> 'country',
-		'phone' 			=> 'phone',
-		'phone_mobile' 		=> 'mobile',
-		'email' 			=> 'email',
-		'note_public' 		=> 'public_note',
-		'note_private' 		=> 'private_note',
-		'fk_soc'            => 'thirdparty',
-		'fk_c_type_contact' => 'contact_type',
+		'id'                => 'id',
+		'code'              => 'code',
+		'type'              => 'type',
+		'libelle'           => 'label',
+		'active'            => 'active',
+		'color'             => 'color',
+		'picto'             => 'icon',
+		'position'          => 'position',
 	];
 
 	/**
@@ -59,3 +53,6 @@ class dmContact extends dmBase
 		$this->boot();
 	}
 }
+
+// Backward compatibility alias
+class_alias('SmartAuth\DolibarrMapping\dmCactiontype', 'SmartAuth\DolibarrMapping\dmCactioncomm');

@@ -20,9 +20,12 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php';
+require_once DOL_DOCUMENT_ROOT . '/multicurrency/class/multicurrency.class.php';
 
-class dmContact extends dmBase
+/**
+ * Mapping for Dolibarr MultiCurrency -> API Multicurrency
+ */
+class dmMulticurrency extends dmBase
 {
 	use dmTrait;
 
@@ -31,22 +34,12 @@ class dmContact extends dmBase
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid' 			=> 'id',
-		'civility' 			=> 'civility',
-		'lastname' 			=> 'lastname',
-		'firstname' 		=> 'firstname',
-		'address' 			=> 'address',
-		'zip' 				=> 'zip',
-		'town' 				=> 'city',
-		'fk_departement' 	=> 'state',
-		'fk_pays' 			=> 'country',
-		'phone' 			=> 'phone',
-		'phone_mobile' 		=> 'mobile',
-		'email' 			=> 'email',
-		'note_public' 		=> 'public_note',
-		'note_private' 		=> 'private_note',
-		'fk_soc'            => 'thirdparty',
-		'fk_c_type_contact' => 'contact_type',
+		'rowid'             => 'id',
+		'code'              => 'code',
+		'name'              => 'name',
+		'rate'              => 'rate',
+		'date_create'       => 'created_at',
+		'fk_user'           => 'created_by',
 	];
 
 	/**

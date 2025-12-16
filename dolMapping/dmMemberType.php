@@ -20,16 +20,15 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/fichinter/class/fichinter.class.php';
+require_once DOL_DOCUMENT_ROOT . '/adherents/class/adherent_type.class.php';
 
 /**
- * Mapping for Dolibarr Fichinter -> API Intervention
- * Alias: dmFichinter (for backward compatibility with Dolibarr internal calls)
+ * Mapping for Dolibarr AdherentType -> API MemberType
+ * Alias: dmAdherentType (for backward compatibility with Dolibarr internal calls)
  */
-class dmIntervention extends dmBase
+class dmMemberType extends dmBase
 {
 	use dmTrait;
-	use dmLinesTrait;
 
 	protected $type = "object";
 
@@ -37,32 +36,24 @@ class dmIntervention extends dmBase
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
 		'rowid'             => 'id',
-		'ref'               => 'ref',
-		'ref_client'        => 'customer_ref',
-		'datec'             => 'created_at',
-		'tms'               => 'updated_at',
-		'datei'             => 'date_intervention',
-		'dateo'             => 'date_start',
-		'datee'             => 'date_end',
-		'fk_soc'            => 'thirdparty',
-		'fk_projet'         => 'project',
-		'fk_contrat'        => 'contract',
-		'fk_user_author'    => 'created_by',
-		'fk_user_modif'     => 'updated_by',
-		'fk_user_valid'     => 'validated_by',
+		'label'             => 'label',
 		'description'       => 'description',
-		'duree'             => 'duration',
+		'morphy'            => 'nature',
+		'duration_value'    => 'duration_value',
+		'duration_unit'     => 'duration_unit',
+		'subscription'      => 'subscription_required',
+		'amount'            => 'amount',
+		'caneditamount'     => 'can_edit_amount',
+		'vote'              => 'can_vote',
 		'note_public'       => 'public_note',
-		'note_private'      => 'private_note',
-		'statut'            => 'status',
+		'note'              => 'private_note',
+		'mail_valid'        => 'mail_validation_template',
+		'mail_subscription' => 'mail_subscription_template',
+		'mail_resiliate'    => 'mail_resiliate_template',
+		'mail_exclude'      => 'mail_exclude_template',
+		'email'             => 'email',
+		'status'            => 'status',
 	];
-
-	// Configuration for lines support
-	protected $parentClassNameForLines = 'FichinterLigne';
-	protected $parentLabelForLines = 'InterventionLines';
-
-	// Dolibarr field => Front field for lines
-	protected $listOfPublishedFieldsForLines = [];
 
 	/**
 	 * object constructor
@@ -71,10 +62,9 @@ class dmIntervention extends dmBase
 	 */
 	public function __construct()
 	{
-		$this->listOfPublishedFieldsForLines = $this->getInterventionLinesMapping();
 		$this->boot();
 	}
 }
 
 // Backward compatibility alias for Dolibarr internal FK resolution
-class_alias('SmartAuth\DolibarrMapping\dmIntervention', 'SmartAuth\DolibarrMapping\dmFichinter');
+class_alias('SmartAuth\DolibarrMapping\dmMemberType', 'SmartAuth\DolibarrMapping\dmAdherentType');

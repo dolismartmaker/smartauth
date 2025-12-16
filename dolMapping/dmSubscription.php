@@ -20,9 +20,12 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php';
+require_once DOL_DOCUMENT_ROOT . '/adherents/class/subscription.class.php';
 
-class dmContact extends dmBase
+/**
+ * Mapping for Dolibarr Subscription -> API Subscription (Member subscription)
+ */
+class dmSubscription extends dmBase
 {
 	use dmTrait;
 
@@ -31,22 +34,16 @@ class dmContact extends dmBase
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid' 			=> 'id',
-		'civility' 			=> 'civility',
-		'lastname' 			=> 'lastname',
-		'firstname' 		=> 'firstname',
-		'address' 			=> 'address',
-		'zip' 				=> 'zip',
-		'town' 				=> 'city',
-		'fk_departement' 	=> 'state',
-		'fk_pays' 			=> 'country',
-		'phone' 			=> 'phone',
-		'phone_mobile' 		=> 'mobile',
-		'email' 			=> 'email',
-		'note_public' 		=> 'public_note',
-		'note_private' 		=> 'private_note',
-		'fk_soc'            => 'thirdparty',
-		'fk_c_type_contact' => 'contact_type',
+		'rowid'             => 'id',
+		'fk_adherent'       => 'member',
+		'fk_type'           => 'member_type',
+		'datec'             => 'created_at',
+		'datem'             => 'updated_at',
+		'dateh'             => 'date_start',
+		'datef'             => 'date_end',
+		'amount'            => 'amount',
+		'fk_bank'           => 'bank_line',
+		'note'              => 'note',
 	];
 
 	/**
