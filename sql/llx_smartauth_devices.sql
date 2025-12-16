@@ -20,7 +20,7 @@ CREATE TABLE llx_smartauth_devices(
 	ref varchar(128) DEFAULT '(PROV)' NOT NULL,
 	label varchar(255),
 	description text,
-	uuid varchar(40),
+	uuid varchar(64),
 	date_creation datetime NOT NULL,
 	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 	fk_user_creat integer NOT NULL,
