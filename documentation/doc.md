@@ -5,31 +5,149 @@ Here is all the documentation for SmartAuth API
 
 # Introduction
 
-<h1>Introduction</h1>
+<h1>SmartAuth API</h1>
+<p>SmartAuth is an authentication module for Dolibarr ERP/CRM that provides JWT-based authentication with refresh token support.</p>
+<h2>Authentication</h2>
+<p>Most API endpoints require authentication via JWT Bearer token.</p>
+<h3>How to authenticate</h3>
+<ol>
+<li>Call <code>POST /login</code> with your credentials to obtain an access token and refresh token</li>
+<li>Include the access token in subsequent requests via the <code>Authorization</code> header:<pre><code>Authorization: Bearer <token_id>|<jwt>
+</code></pre>
+</li>
+<li>When the access token expires, use <code>GET /refresh</code> with your refresh token to obtain new tokens</li>
+</ol>
+<h3>Token Types</h3>
+<ul>
+<li><strong>Access Token</strong>: Short-lived token for API requests</li>
+<li><strong>Refresh Token</strong>: Long-lived token used to obtain new access tokens</li>
+</ul>
+<h3>Required Headers</h3>
+<table>
+<thead>
+<tr>
+<th>Header</th>
+<th>Description</th>
+<th>Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Authorization</code></td>
+<td>Bearer token for authenticated routes</td>
+<td>Yes (protected routes)</td>
+</tr>
+<tr>
+<td><code>X-DeviceId</code></td>
+<td>Unique device identifier (UUID or SHA256 hash)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>Content-Type</code></td>
+<td>Must be <code>application/json</code> for POST/PUT requests</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<h2>Rate Limiting</h2>
+<p>The API implements rate limiting to protect against brute force attacks:</p>
+<ul>
+<li><strong>IP-based</strong>: 10 attempts per 5 minutes (configurable)</li>
+<li><strong>Username-based</strong>: 5 attempts per 15 minutes (configurable)</li>
+</ul>
+<p>When rate limited, the API returns HTTP 429 with a <code>retry_after</code> value.</p>
+<h2>Error Responses</h2>
+<p>All errors are returned as JSON with the following structure:</p>
+<pre><code class="language-json">{
+    "error": "Error message description"
+}
+</code></pre>
+<p>Common HTTP status codes:</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>200</td>
+<td>Success</td>
+</tr>
+<tr>
+<td>400</td>
+<td>Bad request</td>
+</tr>
+<tr>
+<td>401</td>
+<td>Unauthorized (invalid or expired token)</td>
+</tr>
+<tr>
+<td>403</td>
+<td>Forbidden (insufficient permissions)</td>
+</tr>
+<tr>
+<td>429</td>
+<td>Too many requests (rate limited)</td>
+</tr>
+<tr>
+<td>500</td>
+<td>Internal server error</td>
+</tr>
+</tbody>
+</table>
+<h2>Multi-Entity Support</h2>
+<p>If your Dolibarr installation uses the MultiCompany module, you can:</p>
+<ol>
+<li>Call <code>GET /index</code> to retrieve the list of available entities</li>
+<li>Specify the <code>entity</code> parameter when logging in</li>
+</ol>
+<hr>
 <p>To generate this documentation:</p>
-<pre><code class="language-bash">make apidoc
+<pre><code class="language-bash">apidoc -i api/ -o docs/api/
 </code></pre>
 
 
 # Table of contents
 
 - [Auth](#Auth)
-  - [List of dolibarr entities](#List-of-dolibarr-entities)
+  - [Check token validity](#Check-token-validity)
+  - [List available entities](#List-available-entities)
   - [Login](#Login)
   - [Logout](#Logout)
+  - [Refresh tokens](#Refresh-tokens)
+- [Device](#Device)
+  - [Manage device](#Manage-device)
 
 ___
 
 
 # <a name='Auth'></a> Auth
 
-## <a name='List-of-dolibarr-entities'></a> List of dolibarr entities
+## <a name='Check-token-validity'></a> Check token validity
 [Back to top](#top)
 
-<p>Get the list of dolibarr entities before login then you can make a login request on the right dolibarr entity if your dolibarr use multicompany module</p>
+<p>Check if your token is still valid. Redirects to refresh endpoint.</p>
 
 ```
-GET /login
+GET /ping
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| Authorization | `String` | <p>Bearer token</p> |
+| X-DeviceId | `String` | <p>Unique device identifier</p> |
+
+## <a name='List-available-entities'></a> List available entities
+[Back to top](#top)
+
+<p>Get the list of available Dolibarr entities. Use this endpoint before login if your Dolibarr uses the MultiCompany module. This allows the user to select the correct entity before authentication.</p>
+
+```
+GET /index
 ```
 ### Success response
 
@@ -37,33 +155,9 @@ GET /login
 
 | Name     | Type       | Description                           |
 |----------|------------|---------------------------------------|
-| entities | `Array` | <p>array of dolibarr available entities</p> |
-
-## <a name='Login'></a> Login
-[Back to top](#top)
-
-<p>Try to log into dolibarr with login / password and in case of success generate a token for that app / session</p>
-
-```
-POST /login
-```
-
-### Request Body
-
-| Name     | Type       | Description                           |
-|----------|------------|---------------------------------------|
-| email | `String` | <p>Mandatory dolibarr user name (email)</p> |
-| password | `String` | <p>Mandatory user password</p> |
-| entity | `Number` | <p>Mandatory dolibarr entity</p> |
-### Success response
-
-#### Success response - `Success 200`
-
-| Name     | Type       | Description                           |
-|----------|------------|---------------------------------------|
-| user | `String` | <p>User login</p> |
-| userid | `Number` | <p>User ID</p> |
-| token | `String` | <p>Session JWT to use for next requests as Bearer Auth Token (JWT)</p> |
+| entities | `Object[]` | <p>List of available entities</p> |
+| entities.id | `Number` | <p>Entity ID</p> |
+| entities.label | `String` | <p>Entity name</p> |
 
 ### Success response example
 
@@ -72,20 +166,247 @@ POST /login
 ```json
 HTTP/1.1 200 OK
 {
-    "data": {
-        "user": "eric@cap-rel.fr",
-        "userid": "3",
-        "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUz88NiJ9.eyJsb2dpbiI622RsYyIsImVu88l0eSI6MH0._XWcHLf999kMqkP65dgXcbkqT522W9zbdUiIA3BU0pI"
-    }
- }
+    "entities": [
+        {"id": 1, "label": "Main Company"},
+        {"id": 2, "label": "Branch Office"}
+    ]
+}
+```
+
+## <a name='Login'></a> Login
+[Back to top](#top)
+
+<p>Authenticate user with email/password and obtain JWT tokens. On success, returns both an access token and a refresh token. Rate limiting is applied per IP and per username.</p>
+
+```
+POST /login
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| X-DeviceId | `String` | <p>Unique device identifier (UUID or SHA256 hash)</p> |
+| Content-Type | `String` | <p>Must be application/json</p> |
+
+### Request Body
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| email | `String` | <p>User email or login</p> |
+| password | `String` | <p>User password</p> |
+| entity | `Number` | **optional** <p>Dolibarr entity ID (for MultiCompany)</p>_Default value: 1_<br> |
+| rememberMe | `Number` | **optional** <p>Remember me flag</p>_Default value: 0_<br> |
+### Success response
+
+#### Success response - `Success 200`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| user | `String` | <p>User email or login</p> |
+| userid | `Number` | <p>User ID</p> |
+| entity | `Number` | <p>Entity ID</p> |
+| token | `String` | <p>Access token (legacy, same as access_token)</p> |
+| access_token | `String` | <p>JWT access token</p> |
+| refresh_token | `String` | <p>JWT refresh token</p> |
+| expires_in | `Number` | <p>Access token lifetime in seconds</p> |
+| token_type | `String` | <p>Token type (Bearer)</p> |
+| devices_choice | `Object[]` | **optional**<p>List of known devices for this user (if device is new)</p> |
+| rememberMe | `Number` | <p>Remember me flag</p> |
+
+### Success response example
+
+#### Success response example - `Success-Response:`
+
+```json
+HTTP/1.1 200 OK
+{
+    "user": "user@example.com",
+    "userid": 3,
+    "entity": 1,
+    "token": "123|eyJ0eXAiOiJKV1Q...",
+    "access_token": "123|eyJ0eXAiOiJKV1Q...",
+    "refresh_token": "124|eyJ0eXAiOiJKV1Q...",
+    "expires_in": 3600,
+    "token_type": "Bearer",
+    "devices_choice": null,
+    "rememberMe": 0
+}
+```
+
+### Error response
+
+#### Error response - `401`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| AccessDenied |  | <p>Invalid credentials</p> |
+
+#### Error response - `429`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| TooManyRequests |  | <p>Rate limit exceeded</p> |
+
+### Error response example
+
+#### Error response example - `Rate-Limit-Response:`
+
+```json
+HTTP/1.1 429 Too Many Requests
+{
+    "error": "Too many attempts. Please try again later.",
+    "retry_after": 180
+}
 ```
 
 ## <a name='Logout'></a> Logout
 [Back to top](#top)
 
-<p>Logout and close session</p>
+<p>Logout the user and revoke all tokens in the current token family. This invalidates both access and refresh tokens.</p>
 
 ```
 POST /logout
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| Authorization | `String` | <p>Bearer access_token</p> |
+| X-DeviceId | `String` | <p>Unique device identifier</p> |
+### Success response
+
+#### Success response - `Success 200`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| user | `String` | <p>Empty string (logged out)</p> |
+| token | `String` | <p>Empty string (revoked)</p> |
+
+### Success response example
+
+#### Success response example - `Success-Response:`
+
+```json
+HTTP/1.1 200 OK
+{
+    "user": "",
+    "token": ""
+}
+```
+
+## <a name='Refresh-tokens'></a> Refresh tokens
+[Back to top](#top)
+
+<p>Use the refresh token to obtain a new access token and refresh token pair. The current refresh token is invalidated after use (token rotation).</p>
+
+```
+GET /refresh
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| Authorization | `String` | <p>Bearer refresh_token (format: token_id|jwt)</p> |
+| X-DeviceId | `String` | <p>Unique device identifier</p> |
+### Success response
+
+#### Success response - `Success 200`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| access_token | `String` | <p>New JWT access token</p> |
+| refresh_token | `String` | <p>New JWT refresh token</p> |
+| expires_in | `Number` | <p>Access token lifetime in seconds</p> |
+| token_type | `String` | <p>Token type (Bearer)</p> |
+
+### Success response example
+
+#### Success response example - `Success-Response:`
+
+```json
+HTTP/1.1 200 OK
+{
+    "access_token": "123|eyJ0eXAiOiJKV1Q...",
+    "refresh_token": "124|eyJ0eXAiOiJKV1Q...",
+    "expires_in": 3600,
+    "token_type": "Bearer"
+}
+```
+
+### Error response
+
+#### Error response - `401`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| RefreshTokenRequired |  | <p>Refresh token is missing</p> |
+| InvalidTokenFormat |  | <p>Token format is invalid</p> |
+| InvalidTokenPayload |  | <p>Token payload is invalid</p> |
+| SecurityViolation |  | <p>Token replay attack detected, all sessions revoked</p> |
+| MaxRefreshExceeded |  | <p>Maximum refresh limit reached, login required</p> |
+
+# <a name='Device'></a> Device
+
+## <a name='Manage-device'></a> Manage device
+[Back to top](#top)
+
+<p>Manage device association for the authenticated user. Two use cases:</p> <ol> <li>Same UUID: Update the device name/label</li> <li>Different UUID: Switch to an existing device (generates new tokens)</li> </ol>
+
+```
+POST /device
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| Authorization | `String` | <p>Bearer access_token</p> |
+| X-DeviceId | `String` | <p>Current device UUID</p> |
+
+### Request Body
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| uuid | `String` | <p>Device UUID to associate</p> |
+| label | `String` | **optional** <p>Device name/label (for naming the device)</p> |
+### Success response
+
+#### Success response - `Success 200`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| message | `String` | **optional**<p>Status message</p> |
+| token | `String` | **optional**<p>New access token (if device switched)</p> |
+| access_token | `String` | **optional**<p>New access token (if device switched)</p> |
+| refresh_token | `String` | **optional**<p>New refresh token (if device switched)</p> |
+| expires_in | `Number` | **optional**<p>Token lifetime in seconds (if device switched)</p> |
+| token_type | `String` | **optional**<p>Token type (if device switched)</p> |
+
+### Success response example
+
+#### Success response example - `Success-Response (same device, name updated):`
+
+```json
+HTTP/1.1 200 OK
+{
+    "message": "update device name : success"
+}
+```
+
+#### Success response example - `Success-Response (device switched):`
+
+```json
+HTTP/1.1 200 OK
+{
+    "token": "125|eyJ0eXAiOiJKV1Q...",
+    "access_token": "125|eyJ0eXAiOiJKV1Q...",
+    "refresh_token": "126|eyJ0eXAiOiJKV1Q...",
+    "expires_in": 3600,
+    "token_type": "Bearer",
+    "message": "please use this new token"
+}
 ```
 
