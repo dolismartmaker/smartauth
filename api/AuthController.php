@@ -1262,7 +1262,7 @@ class AuthController
 		}
 
 		if ($device_uuid != '') {
-			$deviceid = $this->getDeviceIDFromUUID($device_uuid);
+			$deviceid = self::getDeviceIDFromUUID($device_uuid);
 		}
 
 		if ($deviceid <= 0) {
