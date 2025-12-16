@@ -316,9 +316,11 @@ class RouteController
 			return [$user, $entity, $token_id, $buyer];
 		}
 
+		$ac = new AuthController();
+
 		// Check JWT token
 		try {
-			$decoded = AuthController::Check();
+			$decoded = $ac->Check();
 		} catch (Exception $e) {
 			dol_syslog("Debug smartauth  Auth check failed: " . $e->getMessage(), LOG_WARNING);
 			self::insertLogs(null, 401, 'Authentication failed', null);
@@ -489,7 +491,8 @@ class RouteController
 
 		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']);
 
-		$deviceid = AuthController::getDeviceIDFromUUID($device_uuid);
+		$ac = new AuthController();
+		$deviceid = $ac->getDeviceIDFromUUID($device_uuid);
 		if (empty($deviceid) || $deviceid <= 0) {
 			$deviceid = '-1';
 		}
