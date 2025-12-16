@@ -137,9 +137,9 @@ class AuthController
 			return [['error' => 'Maximum refresh limit reached. Please login again.'], 401];
 		}
 
-		if (empty($family_id)) {
-			$family_id = $this->_createTokenFamily($decoded->user_id);
-		}
+		// if (empty($family_id)) {
+		// 	$family_id = $this->_createTokenFamily($decoded->user_id);
+		// }
 
 		// === TOKEN ROTATION ===
 		// Invalidate current refresh token (one-time use)
@@ -323,7 +323,7 @@ class AuthController
 		// Generate token for user
 		$result = $tmpuser->call_trigger('USER_LOGIN', $tmpuser);
 
-		$rememberme  = (int) $payload['rememberMe']  ?? '';
+		$rememberme  = (int) $payload['rememberMe']  ?? 0;
 
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id); // full debug . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
@@ -490,7 +490,7 @@ class AuthController
 
 		$decoded = self::_decodeJWT($token, SmartTokenConfig::TYPE_ACCESS);
 
-		dol_syslog("smartauth : decoded token is $token :: jwt is " . json_encode($decoded));
+		// dol_syslog("smartauth : decoded token is $token :: jwt is " . json_encode($decoded));
 
 		// Verify token contains user identification
 		// $decoded->login == user auth
@@ -1076,7 +1076,7 @@ class AuthController
 
 		$sql = "SELECT label FROM " . MAIN_DB_PREFIX . "smartauth_devices";
 		if (null !== $id) {
-			$sql .= " WHERE id='" . (int) $id . "'";
+			$sql .= " WHERE rowid='" . (int) $id . "'";
 		} elseif (null !== $uuid) {
 			$sql .= " WHERE uuid='" . $db->escape($uuid) . "'";
 		} else {
@@ -1113,8 +1113,8 @@ class AuthController
 		$sql .= " AND entity IN (" . getEntity('user') . ")";
 		if ($current_uuid != "") {
 			$sql .= " OR ( uuid='" . $db->escape($current_uuid) . "' AND label != '')";
-			$sql .= " GROUP BY uuid";
 		}
+		$sql .= " GROUP BY uuid,label";
 		$resql = $db->query($sql);
 		if ($resql) {
 			while ($obj = $db->fetch_object($resql)) {
@@ -1159,7 +1159,7 @@ class AuthController
 		if ($deviceid <= 0) {
 			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
 			$sql .= " (uuid, fk_user_creat, date_creation, status)";
-			$sql .= " VALUES ('" . substr($db->escape($device_uuid), 0, 40) . "', ";
+			$sql .= " VALUES ('" . substr($db->escape($device_uuid), 0, 64) . "', ";
 			$sql .= (int) $user_id . ", ";
 			$sql .= "'" . $db->idate(time()) . "', " . self::STATUS_DRAFT . ")";
 
@@ -1263,7 +1263,7 @@ class AuthController
 			json_reply('Invalid token, please login', 401);
 		}
 
-		dol_syslog("smartauth : _decodeJWT is " . json_encode($decoded));
+		// dol_syslog("smartauth : _decodeJWT is " . json_encode($decoded));
 		return $decoded;
 	}
 }

@@ -24,7 +24,7 @@
  */
 
 // Put here all includes required by your class file
-require_once DOL_DOCUMENT_ROOT.'/core/class/commonobject.class.php';
+require_once DOL_DOCUMENT_ROOT . '/core/class/commonobject.class.php';
 require_once 'smartauthdevices.class.php';
 //require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
 //require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
@@ -122,24 +122,24 @@ class SmartAuth extends CommonObject
 	/**
 	 * @var array  Array with all fields and their property. Do not use it as a static var. It may be modified by constructor.
 	 */
-	public $fields=array(
-		'rowid' => array('type'=>'integer', 'label'=>'TechnicalID', 'enabled'=>'1', 'position'=>10, 'notnull'=>1, 'visible'=>-1,'showoncombobox' => 1),
-		'appuid' => array('type'=>'integer', 'label'=>'smartAuthAppuid', 'enabled'=>'1', 'position'=>15, 'notnull'=>0, 'visible'=>1,),
-		'salt' => array('type'=>'varchar(32)', 'label'=>'smartAuthSalt', 'enabled'=>'1', 'position'=>20, 'notnull'=>0, 'visible'=>-1,),
-		'date_creation' => array('type'=>'datetime', 'label'=>'Datecreation', 'enabled'=>'1', 'position'=>25, 'notnull'=>1, 'visible'=>1,),
-		'date_lastused' => array('type'=>'datetime', 'label'=>'Datelastused', 'enabled'=>'1', 'position'=>30, 'notnull'=>0, 'visible'=>1,),
-		'ip' => array('type'=>'varchar(50)', 'label'=>'smartAuthLastIP', 'enabled'=>'1', 'position'=>35, 'notnull'=>0, 'visible'=>1, 'default'=>''),
-		'refresh_count' => array('type'=>'integer', 'label'=>'smartAuthRefreshCount', 'enabled'=>'1', 'position'=>36, 'notnull'=>0, 'visible'=>1,),
-		'date_eol' => array('type'=>'datetime', 'label'=>'Dateeol', 'enabled'=>'1', 'position'=>38, 'notnull'=>0, 'visible'=>1,),
-		'tms' => array('type'=>'timestamp', 'label'=>'DateModification', 'enabled'=>'1', 'position'=>40, 'notnull'=>1, 'visible'=>-1,),
-		'fk_user_creat' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserAuthor', 'enabled'=>'$user->admin', 'position'=>45, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
-		'fk_user_modif' => array('type'=>'integer:User:user/class/user.class.php', 'label'=>'UserModif', 'enabled'=>'$user->admin', 'position'=>50, 'notnull'=>-1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
-		'fk_device_id' => array('type'=>'integer:SmartAuthDevices:smartauth/class/smartauthdevices.class.php', 'label'=>'device', 'enabled'=>'1', 'position'=>55, 'notnull'=>-1, 'visible'=>1, 'index'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150','noteditable'=>'1',),
-		'fk_authid' => array('type'=>'integer', 'label'=>'AuthElementID', 'enabled'=>'1', 'position'=>60, 'notnull'=>1, 'visible'=>1, 'css'=>'maxwidth500 widthcentpercentminusxx', 'csslist'=>'tdoverflowmax150',),
-		'auth_element' => array('type'=>'varchar(128)', 'label'=>'AuthElementSource', 'enabled'=>'1', 'position'=>65, 'notnull'=>1, 'visible'=>1,),
-		'parent_token_id' => array('type'=>'integer', 'label'=>'smartAuthParentTokenId', 'enabled'=>'1', 'position'=>70, 'notnull'=>0, 'visible'=>1,),
-		'token_type' => array('type'=>'varchar(20)', 'label'=>'smartAuthTokenType', 'enabled'=>'1', 'position'=>75, 'notnull'=>0, 'visible'=>1,),
-		'status' => array('type'=>'integer', 'label'=>'Status', 'enabled'=>1, 'visible'=>2, 'position'=>1000, 'notnull'=>1, 'default'=>0, 'index'=>1, 'arrayofkeyval'=>array(1=>'Enabled', 9=>'Disabled')),
+	public $fields = array(
+		'rowid' => array('type' => 'integer', 'label' => 'TechnicalID', 'enabled' => '1', 'position' => 10, 'notnull' => 1, 'visible' => -1, 'showoncombobox' => 1),
+		'appuid' => array('type' => 'integer', 'label' => 'smartAuthAppuid', 'enabled' => '1', 'position' => 15, 'notnull' => 0, 'visible' => 1,),
+		'salt' => array('type' => 'varchar(32)', 'label' => 'smartAuthSalt', 'enabled' => '1', 'position' => 20, 'notnull' => 0, 'visible' => -1,),
+		'date_creation' => array('type' => 'datetime', 'label' => 'Datecreation', 'enabled' => '1', 'position' => 25, 'notnull' => 1, 'visible' => 1,),
+		'date_lastused' => array('type' => 'datetime', 'label' => 'Datelastused', 'enabled' => '1', 'position' => 30, 'notnull' => 0, 'visible' => 1,),
+		'ip' => array('type' => 'varchar(50)', 'label' => 'smartAuthLastIP', 'enabled' => '1', 'position' => 35, 'notnull' => 0, 'visible' => 1, 'default' => ''),
+		'refresh_count' => array('type' => 'integer', 'label' => 'smartAuthRefreshCount', 'enabled' => '1', 'position' => 36, 'notnull' => 0, 'visible' => 1,),
+		'date_eol' => array('type' => 'datetime', 'label' => 'Dateeol', 'enabled' => '1', 'position' => 38, 'notnull' => 0, 'visible' => 1,),
+		'tms' => array('type' => 'timestamp', 'label' => 'DateModification', 'enabled' => '1', 'position' => 40, 'notnull' => 1, 'visible' => -1,),
+		'fk_user_creat' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserAuthor', 'enabled' => '$user->admin', 'position' => 45, 'notnull' => 1, 'visible' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150',),
+		'fk_user_modif' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserModif', 'enabled' => '$user->admin', 'position' => 50, 'notnull' => -1, 'visible' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150',),
+		'fk_device_id' => array('type' => 'integer:SmartAuthDevices:smartauth/class/smartauthdevices.class.php', 'label' => 'device', 'enabled' => '1', 'position' => 55, 'notnull' => -1, 'visible' => 1, 'index' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150', 'noteditable' => '1',),
+		'fk_authid' => array('type' => 'integer', 'label' => 'AuthElementID', 'enabled' => '1', 'position' => 60, 'notnull' => 1, 'visible' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150',),
+		'auth_element' => array('type' => 'varchar(128)', 'label' => 'AuthElementSource', 'enabled' => '1', 'position' => 65, 'notnull' => 1, 'visible' => 1,),
+		'parent_token_id' => array('type' => 'integer', 'label' => 'smartAuthParentTokenId', 'enabled' => '1', 'position' => 70, 'notnull' => 0, 'visible' => 1,),
+		'token_type' => array('type' => 'varchar(20)', 'label' => 'smartAuthTokenType', 'enabled' => '1', 'position' => 75, 'notnull' => 0, 'visible' => 1,),
+		'status' => array('type' => 'integer', 'label' => 'Status', 'enabled' => 1, 'visible' => 2, 'position' => 1000, 'notnull' => 1, 'default' => 0, 'index' => 1, 'arrayofkeyval' => array(1 => 'Enabled', 9 => 'Disabled')),
 	);
 	public $rowid;
 	public $appuid;
@@ -153,7 +153,7 @@ class SmartAuth extends CommonObject
 	public $fk_user_modif;
 	public $fk_device_id;
 	public $fk_authid; //id of auth element, it depends on auth_element value (user/societe_account)
-	public $auth_element;//user or societe_account for the moment
+	public $auth_element; //user or societe_account for the moment
 	public $parent_token_id;
 	public $ip;
 	public $token_type;
@@ -295,10 +295,10 @@ class SmartAuth extends CommonObject
 
 		// Clear fields
 		if (property_exists($object, 'ref')) {
-			$object->ref = empty($this->fields['ref']['default']) ? "Copy_Of_".$object->ref : $this->fields['ref']['default'];
+			$object->ref = empty($this->fields['ref']['default']) ? "Copy_Of_" . $object->ref : $this->fields['ref']['default'];
 		}
 		if (property_exists($object, 'label')) {
-			$object->label = empty($this->fields['label']['default']) ? $langs->trans("CopyOf")." ".$object->label : $this->fields['label']['default'];
+			$object->label = empty($this->fields['label']['default']) ? $langs->trans("CopyOf") . " " . $object->label : $this->fields['label']['default'];
 		}
 		if (property_exists($object, 'status')) {
 			$object->status = self::STATUS_DRAFT;
@@ -408,9 +408,9 @@ class SmartAuth extends CommonObject
 
 		$sql = "SELECT ";
 		$sql .= $this->getFieldList('t');
-		$sql .= " FROM ".$this->db->prefix().$this->table_element." as t";
+		$sql .= " FROM " . $this->db->prefix() . $this->table_element . " as t";
 		if (isset($this->ismultientitymanaged) && $this->ismultientitymanaged == 1) {
-			$sql .= " WHERE t.entity IN (".getEntity($this->element).")";
+			$sql .= " WHERE t.entity IN (" . getEntity($this->element) . ")";
 		} else {
 			$sql .= " WHERE 1 = 1";
 		}
@@ -419,20 +419,20 @@ class SmartAuth extends CommonObject
 		if (count($filter) > 0) {
 			foreach ($filter as $key => $value) {
 				if ($key == 't.rowid') {
-					$sqlwhere[] = $key." = ".((int) $value);
+					$sqlwhere[] = $key . " = " . ((int) $value);
 				} elseif (in_array($this->fields[$key]['type'], array('date', 'datetime', 'timestamp'))) {
-					$sqlwhere[] = $key." = '".$this->db->idate($value)."'";
+					$sqlwhere[] = $key . " = '" . $this->db->idate($value) . "'";
 				} elseif ($key == 'customsql') {
 					$sqlwhere[] = $value;
 				} elseif (strpos($value, '%') === false) {
-					$sqlwhere[] = $key." IN (".$this->db->sanitize($this->db->escape($value)).")";
+					$sqlwhere[] = $key . " IN (" . $this->db->sanitize($this->db->escape($value)) . ")";
 				} else {
-					$sqlwhere[] = $key." LIKE '%".$this->db->escapeforlike($this->db->escape($value))."%'";
+					$sqlwhere[] = $key . " LIKE '%" . $this->db->escapeforlike($this->db->escape($value)) . "%'";
 				}
 			}
 		}
 		if (count($sqlwhere) > 0) {
-			$sql .= " AND (".implode(" ".$filtermode." ", $sqlwhere).")";
+			$sql .= " AND (" . implode(" " . $filtermode . " ", $sqlwhere) . ")";
 		}
 
 		if (!empty($sortfield)) {
@@ -460,8 +460,8 @@ class SmartAuth extends CommonObject
 
 			return $records;
 		} else {
-			$this->errors[] = 'Error '.$this->db->lasterror();
-			dol_syslog(__METHOD__.' '.join(',', $this->errors), LOG_ERR);
+			$this->errors[] = 'Error ' . $this->db->lasterror();
+			dol_syslog(__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
 
 			return -1;
 		}
@@ -522,13 +522,13 @@ class SmartAuth extends CommonObject
 	{
 		global $conf, $langs;
 
-		require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
+		require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
 
 		$error = 0;
 
 		// Protection
 		if ($this->status == self::STATUS_VALIDATED) {
-			dol_syslog(get_class($this)."::validate action abandonned: already validated", LOG_WARNING);
+			dol_syslog(get_class($this) . "::validate action abandonned: already validated", LOG_WARNING);
 			return 0;
 		}
 
@@ -554,18 +554,18 @@ class SmartAuth extends CommonObject
 
 		if (!empty($num)) {
 			// Validate
-			$sql = "UPDATE ".MAIN_DB_PREFIX.$this->table_element;
-			$sql .= " SET ref = '".$this->db->escape($num)."',";
-			$sql .= " status = ".self::STATUS_VALIDATED;
+			$sql = "UPDATE " . MAIN_DB_PREFIX . $this->table_element;
+			$sql .= " SET ref = '" . $this->db->escape($num) . "',";
+			$sql .= " status = " . self::STATUS_VALIDATED;
 			if (!empty($this->fields['date_validation'])) {
-				$sql .= ", date_validation = '".$this->db->idate($now)."'";
+				$sql .= ", date_validation = '" . $this->db->idate($now) . "'";
 			}
 			if (!empty($this->fields['fk_user_valid'])) {
-				$sql .= ", fk_user_valid = ".((int) $user->id);
+				$sql .= ", fk_user_valid = " . ((int) $user->id);
 			}
-			$sql .= " WHERE rowid = ".((int) $this->id);
+			$sql .= " WHERE rowid = " . ((int) $this->id);
 
-			dol_syslog(get_class($this)."::validate()", LOG_DEBUG);
+			dol_syslog(get_class($this) . "::validate()", LOG_DEBUG);
 			$resql = $this->db->query($sql);
 			if (!$resql) {
 				dol_print_error($this->db);
@@ -589,15 +589,15 @@ class SmartAuth extends CommonObject
 			// Rename directory if dir was a temporary ref
 			if (preg_match('/^[\(]?PROV/i', $this->ref)) {
 				// Now we rename also files into index
-				$sql = 'UPDATE '.MAIN_DB_PREFIX."ecm_files set filename = CONCAT('".$this->db->escape($this->newref)."', SUBSTR(filename, ".(strlen($this->ref) + 1).")), filepath = 'auth/".$this->db->escape($this->newref)."'";
-				$sql .= " WHERE filename LIKE '".$this->db->escape($this->ref)."%' AND filepath = 'auth/".$this->db->escape($this->ref)."' and entity = ".$conf->entity;
+				$sql = 'UPDATE ' . MAIN_DB_PREFIX . "ecm_files set filename = CONCAT('" . $this->db->escape($this->newref) . "', SUBSTR(filename, " . (strlen($this->ref) + 1) . ")), filepath = 'auth/" . $this->db->escape($this->newref) . "'";
+				$sql .= " WHERE filename LIKE '" . $this->db->escape($this->ref) . "%' AND filepath = 'auth/" . $this->db->escape($this->ref) . "' and entity = " . $conf->entity;
 				$resql = $this->db->query($sql);
 				if (!$resql) {
 					$error++;
 					$this->error = $this->db->lasterror();
 				}
-				$sql = 'UPDATE '.MAIN_DB_PREFIX."ecm_files set filepath = 'auth/".$this->db->escape($this->newref)."'";
-				$sql .= " WHERE filepath = 'auth/".$this->db->escape($this->ref)."' and entity = ".$conf->entity;
+				$sql = 'UPDATE ' . MAIN_DB_PREFIX . "ecm_files set filepath = 'auth/" . $this->db->escape($this->newref) . "'";
+				$sql .= " WHERE filepath = 'auth/" . $this->db->escape($this->ref) . "' and entity = " . $conf->entity;
 				$resql = $this->db->query($sql);
 				if (!$resql) {
 					$error++;
@@ -607,20 +607,20 @@ class SmartAuth extends CommonObject
 				// We rename directory ($this->ref = old ref, $num = new ref) in order not to lose the attachments
 				$oldref = dol_sanitizeFileName($this->ref);
 				$newref = dol_sanitizeFileName($num);
-				$dirsource = $conf->smartauth->dir_output.'/auth/'.$oldref;
-				$dirdest = $conf->smartauth->dir_output.'/auth/'.$newref;
+				$dirsource = $conf->smartauth->dir_output . '/auth/' . $oldref;
+				$dirdest = $conf->smartauth->dir_output . '/auth/' . $newref;
 				if (!$error && file_exists($dirsource)) {
-					dol_syslog(get_class($this)."::validate() rename dir ".$dirsource." into ".$dirdest);
+					dol_syslog(get_class($this) . "::validate() rename dir " . $dirsource . " into " . $dirdest);
 
 					if (@rename($dirsource, $dirdest)) {
 						dol_syslog("Rename ok");
 						// Rename docs starting with $oldref with $newref
-						$listoffiles = dol_dir_list($conf->smartauth->dir_output.'/auth/'.$newref, 'files', 1, '^'.preg_quote($oldref, '/'));
+						$listoffiles = dol_dir_list($conf->smartauth->dir_output . '/auth/' . $newref, 'files', 1, '^' . preg_quote($oldref, '/'));
 						foreach ($listoffiles as $fileentry) {
 							$dirsource = $fileentry['name'];
-							$dirdest = preg_replace('/^'.preg_quote($oldref, '/').'/', $newref, $dirsource);
-							$dirsource = $fileentry['path'].'/'.$dirsource;
-							$dirdest = $fileentry['path'].'/'.$dirdest;
+							$dirdest = preg_replace('/^' . preg_quote($oldref, '/') . '/', $newref, $dirsource);
+							$dirsource = $fileentry['path'] . '/' . $dirsource;
+							$dirdest = $fileentry['path'] . '/' . $dirdest;
 							@rename($dirsource, $dirdest);
 						}
 					}
@@ -732,11 +732,11 @@ class SmartAuth extends CommonObject
 		if (getDolGlobalInt('MAIN_OPTIMIZEFORTEXTBROWSER')) {
 			return ['optimize' => $langs->trans("ShowAuth")];
 		}
-		$datas['picto'] = img_picto('', $this->picto).' <u>'.$langs->trans("Auth").'</u>';
+		$datas['picto'] = img_picto('', $this->picto) . ' <u>' . $langs->trans("Auth") . '</u>';
 		if (isset($this->status)) {
-			$datas['picto'] .= ' '.$this->getLibStatut(5);
+			$datas['picto'] .= ' ' . $this->getLibStatut(5);
 		}
-		$datas['ref'] .= '<br><b>'.$langs->trans('Ref').':</b> '.$this->ref;
+		$datas['ref'] .= '<br><b>' . $langs->trans('Ref') . ':</b> ' . $this->ref;
 
 		return $datas;
 	}
@@ -762,20 +762,20 @@ class SmartAuth extends CommonObject
 		$result = '';
 		$params = [
 			'id' => $this->id,
-			'objecttype' => $this->element.($this->module ? '@'.$this->module : ''),
+			'objecttype' => $this->element . ($this->module ? '@' . $this->module : ''),
 			'option' => $option,
 		];
 		$classfortooltip = 'classfortooltip';
 		$dataparams = '';
 		if (getDolGlobalInt('MAIN_ENABLE_AJAX_TOOLTIP')) {
 			$classfortooltip = 'classforajaxtooltip';
-			$dataparams = ' data-params="'.dol_escape_htmltag(json_encode($params)).'"';
+			$dataparams = ' data-params="' . dol_escape_htmltag(json_encode($params)) . '"';
 			$label = '';
 		} else {
 			$label = implode($this->getTooltipContentArray($params));
 		}
 
-		$url = dol_buildpath('/smartauth/auth_card.php', 1).'?id='.$this->id;
+		$url = dol_buildpath('/smartauth/auth_card.php', 1) . '?id=' . $this->id;
 
 		if ($option !== 'nolink') {
 			// Add param to save lastsearch_values or not
@@ -792,20 +792,20 @@ class SmartAuth extends CommonObject
 		if (empty($notooltip)) {
 			if (getDolGlobalInt('MAIN_OPTIMIZEFORTEXTBROWSER')) {
 				$label = $langs->trans("ShowAuth");
-				$linkclose .= ' alt="'.dol_escape_htmltag($label, 1).'"';
+				$linkclose .= ' alt="' . dol_escape_htmltag($label, 1) . '"';
 			}
-			$linkclose .= ($label ? ' title="'.dol_escape_htmltag($label, 1).'"' : ' title="tocomplete"');
-			$linkclose .= $dataparams.' class="'.$classfortooltip.($morecss ? ' '.$morecss : '').'"';
+			$linkclose .= ($label ? ' title="' . dol_escape_htmltag($label, 1) . '"' : ' title="tocomplete"');
+			$linkclose .= $dataparams . ' class="' . $classfortooltip . ($morecss ? ' ' . $morecss : '') . '"';
 		} else {
-			$linkclose = ($morecss ? ' class="'.$morecss.'"' : '');
+			$linkclose = ($morecss ? ' class="' . $morecss . '"' : '');
 		}
 
 		if ($option == 'nolink' || empty($url)) {
 			$linkstart = '<span';
 		} else {
-			$linkstart = '<a href="'.$url.'"';
+			$linkstart = '<a href="' . $url . '"';
 		}
-		$linkstart .= $linkclose.'>';
+		$linkstart .= $linkclose . '>';
 		if ($option == 'nolink' || empty($url)) {
 			$linkend = '</span>';
 		} else {
@@ -820,25 +820,25 @@ class SmartAuth extends CommonObject
 			}
 		} else {
 			if ($withpicto) {
-				require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
+				require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
 
 				list($class, $module) = explode('@', $this->picto);
-				$upload_dir = $conf->$module->multidir_output[$conf->entity]."/$class/".dol_sanitizeFileName($this->ref);
+				$upload_dir = $conf->$module->multidir_output[$conf->entity] . "/$class/" . dol_sanitizeFileName($this->ref);
 				$filearray = dol_dir_list($upload_dir, "files");
 				$filename = $filearray[0]['name'];
 				if (!empty($filename)) {
 					$pospoint = strpos($filearray[0]['name'], '.');
 
-					$pathtophoto = $class.'/'.$this->ref.'/thumbs/'.substr($filename, 0, $pospoint).'_mini'.substr($filename, $pospoint);
-					if (!getDolGlobalString(strtoupper($module.'_'.$class).'_FORMATLISTPHOTOSASUSERS')) {
-						$result .= '<div class="floatleft inline-block valignmiddle divphotoref"><div class="photoref"><img class="photo'.$module.'" alt="No photo" border="0" src="'.DOL_URL_ROOT.'/viewimage.php?modulepart='.$module.'&entity='.$conf->entity.'&file='.urlencode($pathtophoto).'"></div></div>';
+					$pathtophoto = $class . '/' . $this->ref . '/thumbs/' . substr($filename, 0, $pospoint) . '_mini' . substr($filename, $pospoint);
+					if (!getDolGlobalString(strtoupper($module . '_' . $class) . '_FORMATLISTPHOTOSASUSERS')) {
+						$result .= '<div class="floatleft inline-block valignmiddle divphotoref"><div class="photoref"><img class="photo' . $module . '" alt="No photo" border="0" src="' . DOL_URL_ROOT . '/viewimage.php?modulepart=' . $module . '&entity=' . $conf->entity . '&file=' . urlencode($pathtophoto) . '"></div></div>';
 					} else {
-						$result .= '<div class="floatleft inline-block valignmiddle divphotoref"><img class="photouserphoto userphoto" alt="No photo" border="0" src="'.DOL_URL_ROOT.'/viewimage.php?modulepart='.$module.'&entity='.$conf->entity.'&file='.urlencode($pathtophoto).'"></div>';
+						$result .= '<div class="floatleft inline-block valignmiddle divphotoref"><img class="photouserphoto userphoto" alt="No photo" border="0" src="' . DOL_URL_ROOT . '/viewimage.php?modulepart=' . $module . '&entity=' . $conf->entity . '&file=' . urlencode($pathtophoto) . '"></div>';
 					}
 
 					$result .= '</div>';
 				} else {
-					$result .= img_object(($notooltip ? '' : $label), ($this->picto ? $this->picto : 'generic'), ($notooltip ? (($withpicto != 2) ? 'class="paddingright"' : '') : 'class="'.(($withpicto != 2) ? 'paddingright ' : '').'"'), 0, 0, $notooltip ? 0 : 1);
+					$result .= img_object(($notooltip ? '' : $label), ($this->picto ? $this->picto : 'generic'), ($notooltip ? (($withpicto != 2) ? 'class="paddingright"' : '') : 'class="' . (($withpicto != 2) ? 'paddingright ' : '') . '"'), 0, 0, $notooltip ? 0 : 1);
 				}
 			}
 		}
@@ -851,7 +851,7 @@ class SmartAuth extends CommonObject
 		//if ($withpicto != 2) $result.=(($addlabel && $this->label) ? $sep . dol_trunc($this->label, ($addlabel > 1 ? $addlabel : 0)) : '');
 
 		global $action, $hookmanager;
-		$hookmanager->initHooks(array($this->element.'dao'));
+		$hookmanager->initHooks(array($this->element . 'dao'));
 		$parameters = array('id' => $this->id, 'getnomurl' => &$result);
 		$reshook = $hookmanager->executeHooks('getNomUrl', $parameters, $this, $action); // Note that $action and $object may have been modified by some hooks
 		if ($reshook > 0) {
@@ -882,22 +882,22 @@ class SmartAuth extends CommonObject
 		$return .= img_picto('', $this->picto);
 		$return .= '</span>';
 		$return .= '<div class="info-box-content">';
-		$return .= '<span class="info-box-ref inline-block tdoverflowmax150 valignmiddle">'.(method_exists($this, 'getNomUrl') ? $this->getNomUrl() : $this->ref).'</span>';
+		$return .= '<span class="info-box-ref inline-block tdoverflowmax150 valignmiddle">' . (method_exists($this, 'getNomUrl') ? $this->getNomUrl() : $this->ref) . '</span>';
 		if ($selected >= 0) {
-			$return .= '<input id="cb'.$this->id.'" class="flat checkforselect fright" type="checkbox" name="toselect[]" value="'.$this->id.'"'.($selected ? ' checked="checked"' : '').'>';
+			$return .= '<input id="cb' . $this->id . '" class="flat checkforselect fright" type="checkbox" name="toselect[]" value="' . $this->id . '"' . ($selected ? ' checked="checked"' : '') . '>';
 		}
 		if (property_exists($this, 'label')) {
-			$return .= ' <div class="inline-block opacitymedium valignmiddle tdoverflowmax100">'.$this->label.'</div>';
+			$return .= ' <div class="inline-block opacitymedium valignmiddle tdoverflowmax100">' . $this->label . '</div>';
 		}
 		if (property_exists($this, 'thirdparty') && is_object($this->thirdparty)) {
-			$return .= '<br><div class="info-box-ref tdoverflowmax150">'.$this->thirdparty->getNomUrl(1).'</div>';
+			$return .= '<br><div class="info-box-ref tdoverflowmax150">' . $this->thirdparty->getNomUrl(1) . '</div>';
 		}
 		if (property_exists($this, 'amount')) {
 			$return .= '<br>';
-			$return .= '<span class="info-box-label amount">'.price($this->amount, 0, $langs, 1, -1, -1, $conf->currency).'</span>';
+			$return .= '<span class="info-box-label amount">' . price($this->amount, 0, $langs, 1, -1, -1, $conf->currency) . '</span>';
 		}
 		if (method_exists($this, 'getLibStatut')) {
-			$return .= '<br><div class="info-box-status margintoponly">'.$this->getLibStatut(3).'</div>';
+			$return .= '<br><div class="info-box-status margintoponly">' . $this->getLibStatut(3) . '</div>';
 		}
 		$return .= '</div>';
 		$return .= '</div>';
@@ -938,7 +938,7 @@ class SmartAuth extends CommonObject
 	 */
 	public function LibStatut($status, $mode = 0)
 	{
-        // phpcs:enable
+		// phpcs:enable
 		if (empty($this->labelStatus) || empty($this->labelStatusShort)) {
 			global $langs;
 			//$langs->load("smartauth@smartauth");
@@ -952,7 +952,7 @@ class SmartAuth extends CommonObject
 			$this->labelStatusShort[self::STATUS_DISABLED] = $langs->transnoentitiesnoconv('Disabled');
 		}
 
-		$statusType = 'status'.$status;
+		$statusType = 'status' . $status;
 		//if ($status == self::STATUS_VALIDATED) $statusType = 'status1';
 		if ($status == self::STATUS_CANCELED) {
 			$statusType = 'status6';
@@ -976,8 +976,8 @@ class SmartAuth extends CommonObject
 		$sql = "SELECT rowid,";
 		$sql .= " date_creation as datec, tms as datem,";
 		$sql .= " fk_user_creat, fk_user_modif";
-		$sql .= " FROM ".MAIN_DB_PREFIX.$this->table_element." as t";
-		$sql .= " WHERE t.rowid = ".((int) $id);
+		$sql .= " FROM " . MAIN_DB_PREFIX . $this->table_element . " as t";
+		$sql .= " WHERE t.rowid = " . ((int) $id);
 
 		$result = $this->db->query($sql);
 		if ($result) {
@@ -1029,7 +1029,7 @@ class SmartAuth extends CommonObject
 		$this->lines = array();
 
 		$objectline = new SmartAuthLine($this->db);
-		$result = $objectline->fetchAll('ASC', 'position', 0, 0, array('customsql'=>'fk_auth = '.((int) $this->id)));
+		$result = $objectline->fetchAll('ASC', 'position', 0, 0, array('customsql' => 'fk_auth = ' . ((int) $this->id)));
 
 		if (is_numeric($result)) {
 			$this->setErrorsFromObject($objectline);
@@ -1057,20 +1057,20 @@ class SmartAuth extends CommonObject
 		if (getDolGlobalString('SMARTAUTH_MYOBJECT_ADDON')) {
 			$mybool = false;
 
-			$file = getDolGlobalString('SMARTAUTH_MYOBJECT_ADDON').".php";
+			$file = getDolGlobalString('SMARTAUTH_MYOBJECT_ADDON') . ".php";
 			$classname = getDolGlobalString('SMARTAUTH_MYOBJECT_ADDON');
 
 			// Include file with class
 			$dirmodels = array_merge(array('/'), (array) $conf->modules_parts['models']);
 			foreach ($dirmodels as $reldir) {
-				$dir = dol_buildpath($reldir."core/modules/smartauth/");
+				$dir = dol_buildpath($reldir . "core/modules/smartauth/");
 
 				// Load file with numbering class (if found)
-				$mybool |= @include_once $dir.$file;
+				$mybool |= @include_once $dir . $file;
 			}
 
 			if ($mybool === false) {
-				dol_print_error('', "Failed to include file ".$file);
+				dol_print_error('', "Failed to include file " . $file);
 				return '';
 			}
 
@@ -1086,7 +1086,7 @@ class SmartAuth extends CommonObject
 					return "";
 				}
 			} else {
-				print $langs->trans("Error")." ".$langs->trans("ClassNotFound").' '.$classname;
+				print $langs->trans("Error") . " " . $langs->trans("ClassNotFound") . ' ' . $classname;
 				return "";
 			}
 		} else {
@@ -1159,17 +1159,27 @@ class SmartAuth extends CommonObject
 
 		//note : do not delete old keys -- used by logs !
 		$max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
-		if($max > 0) {
+		if ($max > 0) {
 			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth SET status='" . self::STATUS_CANCELED . "', token='outdated' WHERE date_eol < '" . $this->db->idate($now) . "'";
 			$resql = $this->db->query($sql);
+			if ($resql) {
+				dol_syslog("SmartAuth::doScheduledJob Update status success");
+			} else {
+				dol_syslog("SmartAuth::doScheduledJob Update status error", LOG_ERR);
+			}
 		}
 
 		//cleanup old logs
-		if(getDolGlobalString('SMARTAUTH_CLEAN_LOGS')) {
+		if (getDolGlobalString('SMARTAUTH_CLEAN_LOGS')) {
 			$max = (int) getDolGlobalString('SMARTAUTH_LAST_LOGS');
-			if($max > 0) {
-				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_logs WHERE tms < '" . (time() - ($max * 24 * 3600)) . "'";
+			if ($max > 0) {
+				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_logs WHERE tms < '" . $this->db->idate(time() - ($max * 24 * 3600)) . "'";
 				$resql = $this->db->query($sql);
+				if ($resql) {
+					dol_syslog("SmartAuth::doScheduledJob Update status success");
+				} else {
+					dol_syslog("SmartAuth::doScheduledJob Update status error", LOG_ERR);
+				}
 			}
 		}
 
@@ -1216,11 +1226,9 @@ class SmartAuth extends CommonObject
 	{
 		return $this->setStatusCommon($user, self::STATUS_DISABLED, $notrigger, 'SMARTAUTH_KEY_DISABLED');
 	}
-
-
 }
 
-require_once DOL_DOCUMENT_ROOT.'/core/class/commonobjectline.class.php';
+require_once DOL_DOCUMENT_ROOT . '/core/class/commonobjectline.class.php';
 
 /**
  * Class SmartAuthLine. You can also remove this and generate a CRUD class for lines objects.
