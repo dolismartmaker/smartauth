@@ -20,11 +20,16 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php';
+require_once DOL_DOCUMENT_ROOT . '/commande/class/commande.class.php';
 
-class dmFacture extends dmBase
+/**
+ * Mapping for Dolibarr Commande -> API Order
+ * Alias: dmCommande (for backward compatibility with Dolibarr internal calls)
+ */
+class dmOrder extends dmBase
 {
 	use dmTrait;
+	use dmLinesTrait;
 
 	protected $type = "object";
 
@@ -35,20 +40,44 @@ class dmFacture extends dmBase
 		'ref'               => 'ref',
 		'ref_customer'      => 'customer_ref',
 		'datec'             => 'created_at',
-		'date'              => 'date_invoice',
+		'tms'               => 'updated_at',
+		'date'              => 'date_order',
 		'date_valid'        => 'validated_at',
-		'delivery_date'     => 'date_delivery',
-		'fk_soc'            => 'customer',
+		'date_livraison'    => 'date_delivery',
+		'fk_soc'            => 'thirdparty',
 		'fk_projet'         => 'project',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
+		'fk_user_modif'     => 'updated_by',
+		'fk_cond_reglement' => 'payment_terms',
+		'fk_mode_reglement' => 'payment_method',
+		'fk_availability'   => 'availability',
+		'fk_shipping_method' => 'shipping_method',
+		'fk_input_reason'   => 'source_reason',
 		'total_ht'          => 'total_excl_tax',
 		'total_tva'         => 'total_vat',
+		'total_localtax1'   => 'total_local_tax1',
+		'total_localtax2'   => 'total_local_tax2',
 		'total_ttc'         => 'total_incl_tax',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
 		'statut'            => 'status',
+		'billed'            => 'is_billed',
+		'fk_multicurrency'  => 'multicurrency_id',
+		'multicurrency_code' => 'multicurrency_code',
+		'multicurrency_tx'  => 'multicurrency_rate',
+		'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
+		'multicurrency_total_tva' => 'multicurrency_total_vat',
+		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
 	];
+
+	// Configuration for lines support
+	protected $parentClassNameForLines = 'OrderLine';
+	protected $parentLabelForLines = 'OrderLines';
+
+	// Dolibarr field => Front field for lines
+	// See documentation/api-naming-convention.md
+	protected $listOfPublishedFieldsForLines = [];
 
 	/**
 	 * object constructor
@@ -57,6 +86,10 @@ class dmFacture extends dmBase
 	 */
 	public function __construct()
 	{
+		$this->listOfPublishedFieldsForLines = $this->getOrderLinesMapping();
 		$this->boot();
 	}
 }
+
+// Backward compatibility alias for Dolibarr internal FK resolution
+class_alias('SmartAuth\DolibarrMapping\dmOrder', 'SmartAuth\DolibarrMapping\dmCommande');

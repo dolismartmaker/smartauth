@@ -22,7 +22,11 @@ namespace SmartAuth\DolibarrMapping;
 
 require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
 
-class dmSociete extends dmBase
+/**
+ * Mapping for Dolibarr Societe -> API Thirdparty
+ * Alias: dmSociete (for backward compatibility with Dolibarr internal calls)
+ */
+class dmThirdparty extends dmBase
 {
 	use dmTrait;
 
@@ -31,22 +35,20 @@ class dmSociete extends dmBase
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid' 			=> 'id',
-		'nom' 				=> 'name',
-		'address' 			=> 'address',
-		'zip' 				=> 'zip',
-		'town' 				=> 'city',
-		'fk_departement' 	=> 'state',
-		'fk_pays' 			=> 'country',
-		'phone' 			=> 'phone',
-		'url' 				=> 'website',
-		'email' 			=> 'email',
-		'note_public' 		=> 'public_note',
-		'note_private' 		=> 'private_note',
-		'logo' 				=> 'logo'
+		'rowid'             => 'id',
+		'nom'               => 'name',
+		'address'           => 'address',
+		'zip'               => 'zip',
+		'town'              => 'city',
+		'fk_departement'    => 'state',
+		'fk_pays'           => 'country',
+		'phone'             => 'phone',
+		'url'               => 'website',
+		'email'             => 'email',
+		'note_public'       => 'public_note',
+		'note_private'      => 'private_note',
+		'logo'              => 'logo'
 	];
-
-	//		'fk_pays' =>array('type'=>'integer:Ccountry:core/class/ccountry.class.php', 'label'=>'Country', 'enabled'=>1, 'visible'=>-1, 'position'=>95),
 
 	/**
 	 * object constructor
@@ -98,3 +100,6 @@ class dmSociete extends dmBase
 		return str_replace(['.jpg', '.jpeg', '.png'], ['_mini.jpg','_mini.jpg','_mini.png'], $logoFileName);
 	}
 }
+
+// Backward compatibility alias for Dolibarr internal FK resolution
+class_alias('SmartAuth\DolibarrMapping\dmThirdparty', 'SmartAuth\DolibarrMapping\dmSociete');

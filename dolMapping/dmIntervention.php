@@ -20,9 +20,13 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/contrat/class/contrat.class.php';
+require_once DOL_DOCUMENT_ROOT . '/fichinter/class/fichinter.class.php';
 
-class dmContrat extends dmBase
+/**
+ * Mapping for Dolibarr Fichinter -> API Intervention
+ * Alias: dmFichinter (for backward compatibility with Dolibarr internal calls)
+ */
+class dmIntervention extends dmBase
 {
 	use dmTrait;
 
@@ -33,15 +37,17 @@ class dmContrat extends dmBase
 	protected $listOfPublishedFields = [
 		'rowid'             => 'id',
 		'ref'               => 'ref',
-		'ref_customer'      => 'customer_ref',
-		'ref_supplier'      => 'supplier_ref',
+		'ref_client'        => 'customer_ref',
 		'datec'             => 'created_at',
-		'date_contrat'      => 'date_contract',
-		'fk_soc'            => 'customer',
+		'datei'             => 'date_intervention',
+		'fk_soc'            => 'thirdparty',
 		'fk_projet'         => 'project',
+		'fk_contrat'        => 'contract',
+		'description'       => 'description',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
 	];
+
 
 	/**
 	 * object constructor
@@ -53,3 +59,6 @@ class dmContrat extends dmBase
 		$this->boot();
 	}
 }
+
+// Backward compatibility alias for Dolibarr internal FK resolution
+class_alias('SmartAuth\DolibarrMapping\dmIntervention', 'SmartAuth\DolibarrMapping\dmFichinter');

@@ -20,9 +20,13 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-require_once DOL_DOCUMENT_ROOT . '/commande/class/commande.class.php';
+require_once DOL_DOCUMENT_ROOT . '/contrat/class/contrat.class.php';
 
-class dmCommande extends dmBase
+/**
+ * Mapping for Dolibarr Contrat -> API Contract
+ * Alias: dmContrat (for backward compatibility with Dolibarr internal calls)
+ */
+class dmContract extends dmBase
 {
 	use dmTrait;
 
@@ -34,18 +38,13 @@ class dmCommande extends dmBase
 		'rowid'             => 'id',
 		'ref'               => 'ref',
 		'ref_customer'      => 'customer_ref',
+		'ref_supplier'      => 'supplier_ref',
 		'datec'             => 'created_at',
-		'date'              => 'date_order',
-		'date_valid'        => 'validated_at',
-		'date_livraison'    => 'date_delivery',
-		'fk_soc'            => 'customer',
+		'date_contrat'      => 'date_contract',
+		'fk_soc'            => 'thirdparty',
 		'fk_projet'         => 'project',
-		'total_ht'          => 'total_excl_tax',
-		'total_tva'         => 'total_vat',
-		'total_ttc'         => 'total_incl_tax',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
-		'statut'            => 'status',
 	];
 
 	/**
@@ -58,3 +57,6 @@ class dmCommande extends dmBase
 		$this->boot();
 	}
 }
+
+// Backward compatibility alias for Dolibarr internal FK resolution
+class_alias('SmartAuth\DolibarrMapping\dmContract', 'SmartAuth\DolibarrMapping\dmContrat');

@@ -22,9 +22,14 @@ namespace SmartAuth\DolibarrMapping;
 
 require_once DOL_DOCUMENT_ROOT . '/comm/propal/class/propal.class.php';
 
-class dmPropal extends dmBase
+/**
+ * Mapping for Dolibarr Propal -> API Proposal
+ * Alias: dmPropal (for backward compatibility with Dolibarr internal calls)
+ */
+class dmProposal extends dmBase
 {
 	use dmTrait;
+	use dmLinesTrait;
 
 	protected $type = "object";
 
@@ -35,19 +40,46 @@ class dmPropal extends dmBase
 		'ref'               => 'ref',
 		'ref_client'        => 'customer_ref',
 		'datec'             => 'created_at',
+		'tms'               => 'updated_at',
 		'date'              => 'date_proposal',
 		'date_valid'        => 'validated_at',
+		'date_signature'    => 'signed_at',
 		'fin_validite'      => 'date_expiry',
 		'delivery_date'     => 'date_delivery',
-		'fk_soc'            => 'customer',
+		'fk_soc'            => 'thirdparty',
 		'fk_projet'         => 'project',
+		'fk_user_author'    => 'created_by',
+		'fk_user_valid'     => 'validated_by',
+		'fk_user_modif'     => 'updated_by',
+		'user_signature'    => 'signed_by',
+		'fk_cond_reglement' => 'payment_terms',
+		'fk_mode_reglement' => 'payment_method',
+		'fk_availability'   => 'availability',
+		'fk_shipping_method' => 'shipping_method',
+		'fk_input_reason'   => 'source_reason',
 		'total_ht'          => 'total_excl_tax',
 		'total_tva'         => 'total_vat',
+		'total_localtax1'   => 'total_local_tax1',
+		'total_localtax2'   => 'total_local_tax2',
 		'total_ttc'         => 'total_incl_tax',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
 		'statut'            => 'status',
+		'fk_multicurrency'  => 'multicurrency_id',
+		'multicurrency_code' => 'multicurrency_code',
+		'multicurrency_tx'  => 'multicurrency_rate',
+		'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
+		'multicurrency_total_tva' => 'multicurrency_total_vat',
+		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
 	];
+
+	// Configuration for lines support
+	protected $parentClassNameForLines = 'PropaleLigne';
+	protected $parentLabelForLines = 'ProposalLines';
+
+	// Dolibarr field => Front field for lines
+	// See documentation/api-naming-convention.md
+	protected $listOfPublishedFieldsForLines = [];
 
 	/**
 	 * object constructor
@@ -56,6 +88,10 @@ class dmPropal extends dmBase
 	 */
 	public function __construct()
 	{
+		$this->listOfPublishedFieldsForLines = $this->getProposalLinesMapping();
 		$this->boot();
 	}
 }
+
+// Backward compatibility alias for Dolibarr internal FK resolution
+class_alias('SmartAuth\DolibarrMapping\dmProposal', 'SmartAuth\DolibarrMapping\dmPropal');

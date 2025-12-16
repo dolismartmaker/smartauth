@@ -22,7 +22,11 @@ namespace SmartAuth\DolibarrMapping;
 
 require_once DOL_DOCUMENT_ROOT . '/comm/action/class/actioncomm.class.php';
 
-class dmActioncomm extends dmBase
+/**
+ * Mapping for Dolibarr ActionComm -> API AgendaEvent
+ * Alias: dmActioncomm (for backward compatibility with Dolibarr internal calls)
+ */
+class dmAgendaEvent extends dmBase
 {
 	use dmTrait;
 
@@ -40,7 +44,7 @@ class dmActioncomm extends dmBase
 		'datep'             => 'date_start',
 		'datef'             => 'date_end',
 		'duree'             => 'duration',
-		'fk_soc'            => 'customer',
+		'fk_soc'            => 'thirdparty',
 		'fk_contact'        => 'contact',
 		'fk_projet'         => 'project',
 		'fk_user_author'    => 'created_by',
@@ -62,3 +66,6 @@ class dmActioncomm extends dmBase
 		$this->boot();
 	}
 }
+
+// Backward compatibility alias for Dolibarr internal FK resolution
+class_alias('SmartAuth\DolibarrMapping\dmAgendaEvent', 'SmartAuth\DolibarrMapping\dmActionComm');
