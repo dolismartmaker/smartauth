@@ -20,27 +20,29 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
+
 class dmSociete extends dmBase
 {
 	use dmTrait;
 
 	protected $type = "object";
 
-	//corresponding fields left dolibarr right front app
+	// Dolibarr field => Front field
+	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid' 			=> 'rowid',
+		'rowid' 			=> 'id',
 		'nom' 				=> 'name',
 		'address' 			=> 'address',
 		'zip' 				=> 'zip',
 		'town' 				=> 'city',
-		'fk_departement' 	=> 'departement',
+		'fk_departement' 	=> 'state',
 		'fk_pays' 			=> 'country',
 		'phone' 			=> 'phone',
-		// 'phone_mobile' 		=> 'phone_mobile',
-		'url' 				=> 'url',
+		'url' 				=> 'website',
 		'email' 			=> 'email',
-		'note_public' 		=> 'note_public',
-		'note_private' 		=> 'note_private',
+		'note_public' 		=> 'public_note',
+		'note_private' 		=> 'private_note',
 		'logo' 				=> 'logo'
 	];
 

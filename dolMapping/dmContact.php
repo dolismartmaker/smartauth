@@ -20,7 +20,6 @@
 
 namespace SmartAuth\DolibarrMapping;
 
-
 require_once DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php';
 
 class dmContact extends dmBase
@@ -29,24 +28,25 @@ class dmContact extends dmBase
 
 	protected $type = "object";
 
-	//corresponding fields left dolibarr right front app
+	// Dolibarr field => Front field
+	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid' 			=> 'rowid',
+		'rowid' 			=> 'id',
 		'civility' 			=> 'civility',
 		'lastname' 			=> 'lastname',
 		'firstname' 		=> 'firstname',
 		'address' 			=> 'address',
 		'zip' 				=> 'zip',
 		'town' 				=> 'city',
-		'fk_departement' 	=> 'departement',
+		'fk_departement' 	=> 'state',
 		'fk_pays' 			=> 'country',
 		'phone' 			=> 'phone',
-		'phone_mobile' 		=> 'phone_mobile',
+		'phone_mobile' 		=> 'mobile',
 		'email' 			=> 'email',
-		'note_public' 		=> 'note_public',
-		'note_private' 		=> 'note_private',
+		'note_public' 		=> 'public_note',
+		'note_private' 		=> 'private_note',
 		'fk_soc'            => 'customer',
-		'fk_c_type_contact' => 'type_contact',
+		'fk_c_type_contact' => 'contact_type',
 	];
 
 	/**

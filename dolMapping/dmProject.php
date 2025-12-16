@@ -20,24 +20,28 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+require_once DOL_DOCUMENT_ROOT . '/projet/class/project.class.php';
+
 class dmProject extends dmBase
 {
 	use dmTrait;
 
 	protected $type = "object";
 
-	//corresponding fields left dolibarr right front app
+	// Dolibarr field => Front field
+	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid' 		=> 'rowid',
-		'ref' 			=> 'ref',
-		'title' 		=> 'title',
-		'dateo'			=> 'date_open',
-		'datee'			=> 'date_end',
-		'description'	=> 'description',
+		'rowid'             => 'id',
+		'ref'               => 'ref',
+		'title'             => 'title',
+		'datec'             => 'created_at',
+		'dateo'             => 'date_start',
+		'datee'             => 'date_end',
+		'fk_soc'            => 'customer',
+		'description'       => 'description',
+		'note_public'       => 'public_note',
+		'note_private'      => 'private_note',
 	];
-
-
-	//		'fk_pays' =>array('type'=>'integer:Ccountry:core/class/ccountry.class.php', 'label'=>'Country', 'enabled'=>1, 'visible'=>-1, 'position'=>95),
 
 	/**
 	 * object constructor

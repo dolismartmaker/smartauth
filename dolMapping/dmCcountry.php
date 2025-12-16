@@ -29,11 +29,12 @@ class dmCcountry extends dmBase
 
 	protected $type = "dict";
 
-	//corresponding fields left dolibarr right front app
+	// Dolibarr field => Front field
+	// See documentation/api-naming-convention.md
+	// Dictionaries expose code + label for use in forms and display
 	protected $listOfPublishedFields = [
-		// 'rowid' 			=> 'rowid',
-		// 'code' 			    => 'code',
-		'label' 			=> 'label'
+		'code'              => 'code',
+		'label'             => 'label',
 	];
 
 	/**

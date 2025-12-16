@@ -20,25 +20,29 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+require_once DOL_DOCUMENT_ROOT . '/fichinter/class/fichinter.class.php';
+
 class dmFichinter extends dmBase
 {
 	use dmTrait;
 
 	protected $type = "object";
 
-	//corresponding fields left dolibarr right front app
+	// Dolibarr field => Front field
+	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid' 			=> 'rowid',
-		'ref' 				=> 'ref',
-		'ref_client' 		=> 'ref_client',
-		'datei' 			=> 'datei',
-		'description' 		=> 'description',
-		'note_public' 		=> 'note_public',
-		'note_private' 		=> 'note_private'
+		'rowid'             => 'id',
+		'ref'               => 'ref',
+		'ref_client'        => 'customer_ref',
+		'datec'             => 'created_at',
+		'datei'             => 'date_intervention',
+		'fk_soc'            => 'customer',
+		'fk_projet'         => 'project',
+		'fk_contrat'        => 'contract',
+		'description'       => 'description',
+		'note_public'       => 'public_note',
+		'note_private'      => 'private_note',
 	];
-
-
-	//		'fk_pays' =>array('type'=>'integer:Ccountry:core/class/ccountry.class.php', 'label'=>'Country', 'enabled'=>1, 'visible'=>-1, 'position'=>95),
 
 
 	/**
