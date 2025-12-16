@@ -20,36 +20,36 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+require_once DOL_DOCUMENT_ROOT . '/contrat/class/contrat.class.php';
+
 class dmContrat extends dmBase
 {
-    use dmTrait;
+	use dmTrait;
 
-    protected $type = "object";
+	protected $type = "object";
 
-    //corresponding fields left dolibarr right front app
-    protected $listOfPublishedFields = [
-        'rowid'             => 'rowid',
-        'ref'               => 'ref',
-        'ref_customer'      => 'ref_customer',
-        'ref_supplier'      => 'ref_supplier',
-        'date_c'            => 'date_c',
-        'date_contrat'      => 'date_contrat',
-        'fk_soc'            => 'fk_soc',
-        'fk_projet'         => 'fk_projet',
-        'note_public'       => 'note_public',
-        'note_private'      => 'note_private',
-    ];
+	// Dolibarr field => Front field
+	// See documentation/api-naming-convention.md
+	protected $listOfPublishedFields = [
+		'rowid'             => 'id',
+		'ref'               => 'ref',
+		'ref_customer'      => 'customer_ref',
+		'ref_supplier'      => 'supplier_ref',
+		'datec'             => 'created_at',
+		'date_contrat'      => 'date_contract',
+		'fk_soc'            => 'customer',
+		'fk_projet'         => 'project',
+		'note_public'       => 'public_note',
+		'note_private'      => 'private_note',
+	];
 
-
-    //		'fk_pays' =>array('type'=>'integer:Ccountry:core/class/ccountry.class.php', 'label'=>'Country', 'enabled'=>1, 'visible'=>-1, 'position'=>95),
-
-    /**
-     * object constructor
-     *
-     * @return  [type]  [return description]
-     */
-    public function __construct()
-    {
-        $this->boot();
-    }
+	/**
+	 * object constructor
+	 *
+	 * @return  [type]  [return description]
+	 */
+	public function __construct()
+	{
+		$this->boot();
+	}
 }
