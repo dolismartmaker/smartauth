@@ -1,5 +1,25 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 1.0.14 -- 20251216
+
+new mapping for near than all dolibarr objects
+change naming to be as close as possible to dolibarr main api
+new documentation
+add an api naming convention document (rules)
+update existing objects to apply that convention
+
+## 1.0.12 -- 20251203
+
+get real ip in case of proxy
+better refresh token
+add gps data on llx_ecm_files
+add device_id entry
+disable mass actions
+use cache on get device id
+add new route for devices
+better next num ref for dolibarr object ref
+fix refresh token process
+
 ## 1.0.10 -- 20251113
 
 Auto-Install GeoIP database
