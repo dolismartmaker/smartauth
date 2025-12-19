@@ -549,7 +549,7 @@ class AuthController
 				];
 			}
 		} else {
-			dol_syslog('smartauth::AuthController : device user choice an existing device ' . $new_uuid, LOG_DEBUG);
+			dol_syslog("smartauth::AuthController : device user choice an existing device current_uuid=$current_uuid and new_uuid=$new_uuid", LOG_DEBUG);
 			//user choosed an other key ... need to delete current key and make a new one
 			$user = $payload['user'];
 
@@ -1035,6 +1035,7 @@ class AuthController
 		}
 
 		$token_id = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
+		dol_syslog("_generateToken id=$token_id");
 
 		// Build JWT payload
 		$payload = [

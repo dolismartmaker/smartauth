@@ -108,7 +108,7 @@ trait dmTrait
 				$obj->$appside = $this->_dolmapping->propertiesFilter($doliBaseClass->fields[$doliside], $doliside, $appside, $this->parentFieldsOverride);
 				$reorder[$obj->$appside['position']] = $appside;
 			}
-			//TODO
+			//TODO ?
 			//foreign key like fk_pays : without integer:class:data ?
 			// if (substr($doliside, 0, 3) == "fk_") {
 			// 	$obj->$appside['label'] = 'special';
@@ -188,7 +188,7 @@ trait dmTrait
 	 *
 	 * @param   [type]  $obj  [$obj description]
 	 *
-	 * @return  [type]        [return description]
+	 * @return  stdClass       object
 	 */
 	public function exportMappedData($obj)
 	{
