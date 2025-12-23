@@ -32,9 +32,10 @@ cache:
     - php-82
   stage: test
   before_script:
+    - make cleandevsqlite
     - composer install --prefer-dist --no-progress --no-interaction
   after_script:
-    - git checkout -- vendor/cap-rel/dolibarr-integration-sqlite/
+    - make cleandevsqlite
   artifacts:
     when: always
     reports:
@@ -47,9 +48,10 @@ test:unit:php82:
     - php-82
   <<: *phpunit_template
   script:
+    - make cleandevsqlite
     - php vendor/bin/phpunit --testsuite unit --colors=never --log-junit .phpunit.cache/test-results.xml
   after_script:
-    - git checkout -- vendor/cap-rel/dolibarr-integration-sqlite/
+    - make cleandevsqlite
 
 # Integration tests with real Dolibarr (PHP 8.2+ required)
 test:integration-dolibarr:php82:
@@ -58,10 +60,11 @@ test:integration-dolibarr:php82:
   <<: *phpunit_template
   before_script:
     - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
+    - make cleandevsqlite
   script:
     - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --colors=never --log-junit .phpunit.cache/test-results.xml
   after_script:
-    - git checkout -- vendor/cap-rel/dolibarr-integration-sqlite/
+    - make cleandevsqlite
   allow_failure: true
 
 # Code coverage with real Dolibarr (only on default branch and MRs)
@@ -73,9 +76,10 @@ test:coverage:
   before_script:
     - php -m | grep pcov
     - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
+    - make cleandevsqlite
     - mkdir -p .phpunit.cache
   after_script:
-    - git checkout -- vendor/cap-rel/dolibarr-integration-sqlite/
+    - make cleandevsqlite
   script:
     - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
     - COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' .phpunit.cache/coverage-output.txt | head -1 || echo "0")

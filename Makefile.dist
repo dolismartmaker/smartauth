@@ -51,3 +51,5 @@ stubs: api/*.php dolMapping/*.php
 	cp -a stubs/* /home/erics/dev/caprel-stubs/${MODULE}
 	echo "stubs copied to /home/erics/dev/caprel-stubs/ please commit that repo !"
 
+cleandevsqlite:
+	if [ -d vendor/cap-rel/dolibarr-integration-sqlite/ ]; then cd vendor/cap-rel/dolibarr-integration-sqlite/ && git reset --hard; fi
