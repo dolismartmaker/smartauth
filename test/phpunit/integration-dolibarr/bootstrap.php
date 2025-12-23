@@ -56,6 +56,11 @@ error_reporting(E_ALL & ~E_WARNING & ~E_DEPRECATED);
 // We need to capture the global variables it creates
 // PHPUnit's FileLoader loads bootstrap in a scope where globals are not automatically propagated
 global $conf, $db, $user, $langs, $hookmanager, $mysoc;
+
+// First load filefunc.inc.php to define DOL_DOCUMENT_ROOT
+require_once $dolibarrPath . '/filefunc.inc.php';
+
+// Then load master.inc.php
 require_once DOL_DOCUMENT_ROOT . '/master.inc.php';
 
 error_reporting(E_ALL);

@@ -32,6 +32,15 @@ abstract class DolibarrRealTestCase extends TestCase
 
         $this->db = $db;
         $this->conf = $conf;
+
+        // Ensure user is properly loaded
+        if ($user === null || !is_object($user) || empty($user->id)) {
+            // Try to reload user if not initialized
+            require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+            $user = new User($db);
+            $user->fetch(1);
+        }
+
         $this->testUser = $user;
 
         // Clean SmartAuth tables before each test
