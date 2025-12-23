@@ -7,14 +7,69 @@ variables:
   DOLIBARR_VERSION_PHP80: "18"
   DOLIBARR_VERSION_PHP81: "18 19 20"
   DOLIBARR_VERSION_PHP82: "18 19 20 21"
+  COMPOSER_HOME: "$CI_PROJECT_DIR/.composer"
 
 stages:
   - prepare-php
   - prepare-dolibarr
   - phpstan
+  - test
+  - quality
 
 cache:
   paths:
     - .tmp/
     - vendor/
+    - .composer/
+
+# =============================================================================
+# PHPUnit Tests
+# =============================================================================
+
+# Template for PHPUnit jobs
+.phpunit_template: &phpunit_template
+  stage: test
+  before_script:
+    - composer install --prefer-dist --no-progress --no-interaction
+  artifacts:
+    when: always
+    reports:
+      junit: .phpunit.cache/test-results.xml
+    expire_in: 1 week
+
+# Unit tests on PHP 8.1
+test:unit:php82:
+  <<: *phpunit_template
+  script:
+    - php vendor/bin/phpunit --testsuite unit --colors=never --log-junit .phpunit.cache/test-results.xml
+
+# Code coverage (only on default branch and MRs)
+test:coverage:
+  <<: *phpunit_template
+  image: php:8.2-cli
+  stage: quality
+  before_script:
+    - pecl install pcov && docker-php-ext-enable pcov
+    - composer install --prefer-dist --no-progress --no-interaction
+  script:
+    - php vendor/bin/phpunit --testsuite unit --coverage-text --coverage-cobertura=coverage.xml
+  coverage: '/^\s*Lines:\s*\d+.\d+\%/'
+  artifacts:
+    reports:
+      junit: .phpunit.cache/test-results.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# PHP syntax check
+test:lint:
+  stage: test
+  image: php:8.2-cli
+  script:
+    - find api/ class/ dolMapping/ -name "*.php" -exec php -l {} \;
+  allow_failure: false
 
