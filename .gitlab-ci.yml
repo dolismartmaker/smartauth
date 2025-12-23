@@ -51,17 +51,20 @@ test:coverage:
   before_script:
     - php -m | grep pcov
     - composer install --prefer-dist --no-progress --no-interaction
+    - mkdir -p .phpunit.cache
   script:
-    - php vendor/bin/phpunit --testsuite unit --coverage-text --coverage-cobertura=coverage.xml | tee coverage-output.txt
-    - COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' coverage-output.txt | head -1)
+    - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit --testsuite unit --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
+    - COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' .phpunit.cache/coverage-output.txt | head -1 || echo "0")
     - echo "Total | ${COVERAGE}%"
   coverage: '/Total \| (\d+\.?\d*)%/'
   artifacts:
+    paths:
+      - .phpunit.cache/
     reports:
       junit: .phpunit.cache/test-results.xml
       coverage_report:
         coverage_format: cobertura
-        path: coverage.xml
+        path: .phpunit.cache/coverage.xml
     expire_in: 1 week
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
