@@ -11,27 +11,24 @@
         "cap-rel/dolibarr-integration-sqlite": "For integration tests with real Dolibarr (requires PHP 8.2+)"
     },
     "autoload": {
-        "files": [
-            "test/phpunit/dolibarr-autoload-init.php"
-        ],
         "psr-4": {
             "SmartAuth\\Api\\": "api/",
             "SmartAuth\\DolibarrMapping\\": "dolMapping/"
         },
-        "classmap": [
-            "class/"
-        ]
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "SmartAuth\\Tests\\": "test/phpunit/"
+        "autoload-dev": {
+            "files": [
+                "test/phpunit/dolibarr-autoload-init.php"
+            ],
+            "psr-4": {
+                "SmartAuth\\Tests\\": "test/phpunit/"
+            }
+        },
+        "scripts": {
+            "test": "phpunit",
+            "test:unit": "phpunit --testsuite unit",
+            "test:integration": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration.xml",
+            "test:integration-dolibarr": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration-dolibarr.xml",
+            "test:coverage": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit"
         }
-    },
-    "scripts": {
-        "test": "phpunit",
-        "test:unit": "phpunit --testsuite unit",
-        "test:integration": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration.xml",
-        "test:integration-dolibarr": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration-dolibarr.xml",
-        "test:coverage": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit"
     }
 }
