@@ -170,10 +170,10 @@ class SmartAuthDevices extends \CommonObject
 	//  */
 	// protected $childtablesoncascade = array('smartauth_smartauthdevicesdet');
 
-	// /**
-	//  * @var SmartAuthDevicesLine[]     Array of subtable lines
-	//  */
-	// public $lines = array();
+	/**
+	 * @var SmartAuthDevicesLine[]     Array of subtable lines
+	 */
+	public $lines = array();
 
 
 

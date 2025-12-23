@@ -191,10 +191,10 @@ class SmartAuth extends CommonObject
 	//  */
 	// protected $childtablesoncascade = array('smartauth_authdet');
 
-	// /**
-	//  * @var AuthLine[]     Array of subtable lines
-	//  */
-	// public $lines = array();
+	/**
+	 * @var SmartAuthLine[]     Array of subtable lines
+	 */
+	public $lines = array();
 
 
 
