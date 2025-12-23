@@ -27,6 +27,7 @@ class dmHelper
 
 	//dolibarr < - > application mapping for main attributes
 	private $_mappingAttributes = [
+		'name' 				=> 'name',
 		'type' 				=> 'type',
 		'label' 			=> 'label',
 		'placeholder' 		=> 'placeholder',
@@ -121,10 +122,25 @@ class dmHelper
 	 */
 	private function _customFilterAttributeTypeSellist($str)
 	{
+		dol_syslog("propertiesFilter TODO > _customFilterAttributeTypeSellist call with $str");
 		return [
 			'type' => 'sellist',
 			'todo' => 'todo'
 		];
+	}
+
+
+	/**
+	 * Filter attribute type list of selection
+	 *
+	 * @param   [type]  $str  [$str description]
+	 *
+	 * @return  [type]        [return description]
+	 */
+	private function _customFilterAttributeOptions($arr)
+	{
+		dol_syslog("propertiesFilter > _customFilterAttributeOptions call with " . json_encode($arr));
+		return $arr;
 	}
 
 	/**
@@ -219,7 +235,7 @@ class dmHelper
 	 *
 	 * @return  [type]        [return description]
 	 */
-	private function _customFilterAttributeVisible($val)
+	public function _customFilterAttributeVisible($val)
 	{
 		//dolibarr values -> smart* values
 		$dolmap = [
@@ -241,7 +257,7 @@ class dmHelper
 	 *
 	 * @return  [type]        [return description]
 	 */
-	private function _customFilterAttributeContacts($val)
+	public function _customFilterAttributeContacts($val)
 	{
 		dol_syslog(("dmHelper : call for _customFilterAttributeContacts ..."));
 	}
@@ -260,12 +276,12 @@ class dmHelper
 	{
 		global $langs;
 
-		$localDebug = false;
+		$localDebug = true;
 
 		//TODO load langs for myself current object -- objective is to remove hardcoded samartinterventions
 		$langs->loadLangs(array('companies'));
 
-		if($localDebug) dol_syslog("call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
+		if ($localDebug) dol_syslog("call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
 		// if($localDebug) dol_syslog("call propertiesFilter on $dolikey / $frontkey for parentOverride " . json_encode($parentOverride));
 		$ret = [];
 		$type = $label = '';
@@ -278,30 +294,30 @@ class dmHelper
 
 		if (is_array($input)) {
 			foreach ($input as $key => $val) {
-				if($localDebug) dol_syslog("       propertiesFilter apply on $key -> $val");
+				if ($localDebug) dol_syslog("       propertiesFilter apply on $key -> $val");
 				if (!in_array($key, array_keys($this->_mappingAttributes))) {
-					if($localDebug) dol_syslog("       propertiesFilter not in array, continue");
+					if ($localDebug) dol_syslog("       propertiesFilter not in array, continue");
 					continue;
 				}
 				//use in priority settings from parentFieldsOverride
 				if ($useParentOverride && in_array($key, array_keys($parentOverride[$dolikey]))) {
-					if($localDebug) dol_syslog("       propertiesFilter use parent override and key in parent override then parentOverride value to use is " . $parentOverride[$dolikey][$key] . ", instead of dolibarr default value = $val");
+					if ($localDebug) dol_syslog("       propertiesFilter use parent override and key in parent override then parentOverride value to use is " . $parentOverride[$dolikey][$key] . ", instead of dolibarr default value = $val");
 					$val = $parentOverride[$dolikey][$key];
 				}
 				if ($key == "label") {
 					$ret[$key] = $langs->transnoentities($val);
-					if($localDebug) dol_syslog("       propertiesFilter on label, translated it to " . $ret[$key]);
+					if ($localDebug) dol_syslog("       propertiesFilter on label, translated it to " . $ret[$key]);
 					continue;
 				}
 				if ($key == "help") {
 					$ret[$key] = $langs->transnoentities($val);
-					if($localDebug) dol_syslog("       propertiesFilter on help, translated it to " . $ret[$key]);
+					if ($localDebug) dol_syslog("       propertiesFilter on help, translated it to " . $ret[$key]);
 					continue;
 				}
 				//try to call a private function like _customFilterAttributeXXXXXXX (XXXX last part is dynamic)
 				$specialFilter = "_customFilterAttribute" . ucfirst($key);
 				if (is_callable([$this, $specialFilter])) {
-					if($localDebug) dol_syslog("       propertiesFilter specialFilter is callable ...");
+					if ($localDebug) dol_syslog("       propertiesFilter specialFilter is callable ...");
 					$r = call_user_func([$this, $specialFilter], $val);
 					// if($localDebug) dol_syslog("call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));
 					// if($localDebug) dol_syslog("add _listOfForeignKeys $dolikey || $val");
@@ -313,7 +329,7 @@ class dmHelper
 						$ret[$k] = $v;
 					}
 				} else {
-					if($localDebug) dol_syslog("       propertiesFilter at least use front key name ...");
+					if ($localDebug) dol_syslog("       propertiesFilter at least use front key name ...");
 					//use front key name from correspondance table mapping
 					$frontkey = $this->_mappingAttributes[$key];
 					$ret[$frontkey] = $val;
@@ -357,14 +373,20 @@ class dmHelper
 	public function extrafieldsFilter($objectElement, $dolikey, $frontkey, $extrafields)
 	{
 		global $langs;
-		dol_syslog("dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey");
+		dol_syslog("dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey, extrafields=" . json_encode($extrafields));
 		//TODO mapping + RO/RW
 		$ret = [];
 
-
 		foreach ($this->_mappingExtrafieldsAttributes as $dolattr => $appattr) {
 			$val = $extrafields->attributes[$objectElement][$dolattr][str_replace('options_', '', $dolikey)];
-			if (in_array($dolattr, ["label","help"]) && is_string($val)) {
+			dol_syslog("  dmHelper dolikey=$dolikey, generic dolattr=$dolattr, appattr=$appattr");
+			dol_syslog("  dmHelper dolikey=$dolikey, generic extrafieldsFilter search in extrafields->attributes[" . $objectElement . "][" . $dolattr . "][" . $dolikey . "]");
+			dol_syslog("  dmHelper dolikey=$dolikey, generic extrafieldsFilter val=$val");
+			dol_syslog("  dmHelper dolikey=$dolikey, generic : " . json_encode($extrafields->attributes[$objectElement][$dolattr]));
+			// if(empty($val)) {
+			// 	continue;
+			// }
+			if (in_array($dolattr, ["label", "help"]) && is_string($val)) {
 				// print "<p> pour $objectElement  / $dolikey :: $dolattr :: $appattr == " . json_encode($val) . "</p>";
 				$ret[$appattr] = $langs->transnoentities($val);
 				continue;
@@ -383,15 +405,17 @@ class dmHelper
 			}
 
 			//try to call a private function like _customFilterAttributeXXXXXXX (XXXX last part is dynamic)
-			// $specialFilter = "_customFilterAttribute" . $dolattr;
-			// if (is_callable([$this, $specialFilter])) {
-			// 	$r = call_user_func([$this, $specialFilter], $val);
-			// 	foreach ($r as $k => $v) {
-			// 		$ret[$k] = $v;
-			// 	}
-			// } else {
+			$specialFilter = "_customFilterAttribute" . ucfirst($dolattr);
+			dol_syslog("  dmHelper dolikey=$dolikey generic extrafieldsFilter will call $specialFilter and val=$val");
+
+			if (is_callable([$this, $specialFilter])) {
+				$r = call_user_func([$this, $specialFilter], $val);
+				foreach ($r as $k => $v) {
+					$ret[$k] = $v;
+				}
+			} else {
+			}
 			$ret[$appattr] = $val;
-			// }
 		}
 
 		//new type(not yet available into dolibarr core)
@@ -446,7 +470,8 @@ class dmHelper
 	 *
 	 * @return  [type]              [return description]
 	 */
-	public function setGlobalMaxImageSize($maxWidth, $maxHeight = -1, $quality = 90) {
+	public function setGlobalMaxImageSize($maxWidth, $maxHeight = -1, $quality = 90)
+	{
 		global $conf;
 		$conf->cache['smartmakers']['photo']['maxWidth']  = (int) $maxWidth;
 		$conf->cache['smartmakers']['photo']['maxHeight'] = (int) $maxHeight;
