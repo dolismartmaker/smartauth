@@ -23,6 +23,32 @@ abstract class DolibarrRealTestCase extends TestCase
     /** @var object */
     protected $conf;
 
+    /** @var string Path to SQLite vendor directory for cleanup */
+    private static $sqliteVendorPath;
+
+    /**
+     * Reset SQLite vendor files after all tests complete
+     * This prevents "uncommitted changes" errors in CI
+     */
+    public static function tearDownAfterClass(): void
+    {
+        parent::tearDownAfterClass();
+
+        // Find vendor path relative to this file
+        $vendorPath = dirname(__DIR__, 3) . '/vendor/cap-rel/dolibarr-integration-sqlite';
+
+        if (is_dir($vendorPath)) {
+            // Use git to restore the SQLite database files
+            $currentDir = getcwd();
+            chdir(dirname(__DIR__, 3)); // Go to project root
+
+            // Restore only the database files that were modified
+            exec('git checkout -- vendor/cap-rel/dolibarr-integration-sqlite/ 2>/dev/null');
+
+            chdir($currentDir);
+        }
+    }
+
     /**
      * Set up before each test
      */
