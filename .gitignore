@@ -23,3 +23,4 @@
 /mobile/dist
 /mobile/node_modules/
 .vscode
+.phpunit.cache
