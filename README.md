@@ -1,5 +1,8 @@
 # SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+[![pipeline status](https://inligit.fr/cap-rel/dolibarr/plugin-smartauth/badges/master/pipeline.svg)](https://inligit.fr/cap-rel/dolibarr/plugin-smartauth/-/commits/master)
+[![coverage report](https://inligit.fr/cap-rel/dolibarr/plugin-smartauth/badges/master/coverage.svg)](https://inligit.fr/cap-rel/dolibarr/plugin-smartauth/-/commits/master)
+
 ## Features
 
 Another way of life for API stack. That module make it possible to have more than one API key for each user : each API key could be linked to an app (a dolibarr module) then all requests will become "chrooted" to that module and confined into that part.
