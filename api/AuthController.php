@@ -931,19 +931,17 @@ class AuthController
 	{
 		global $db;
 
-		$family_id = bin2hex(random_bytes(32));
-
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_token_family";
-		$sql .= " (family_id, fk_user, created_at, last_refresh_at)";
-		$sql .= " VALUES ('" . $db->escape($family_id) . "', ";
+		$sql .= " (fk_user, created_at, last_refresh_at)";
+		$sql .= " VALUES ( ";
 		$sql .= (int) $user_id . ", ";
 		$sql .= time() . ", " . time() . ")";
 
 		$db->query($sql);
 
-		$family_id = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_token_family");
+		$family_rowid = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_token_family");
 
-		return $family_id;
+		return $family_rowid;
 	}
 
 	/**
@@ -954,7 +952,7 @@ class AuthController
 	 * @param   Int  	$user_id     user creator id
 	 * @param   String  $login       login to use for that token
 	 * @param   Int  	$entity      dolibarr entity
-	 * @param   String  $family_id   token family
+	 * @param   Int     $family_id   token family
 	 * @param   Int 	$device_id   device id (foreign key)
 	 * @param   String 	$device_uuid device uuid (in case of previous is null and we don't want to use http header value)
 	 *
