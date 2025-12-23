@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="test/phpunit/bootstrap.php"
+         colors="true"
+         verbose="true"
+         stopOnFailure="false"
+         cacheResultFile=".phpunit.cache/test-results">
+
+    <testsuites>
+        <testsuite name="unit">
+            <directory>test/phpunit/unit</directory>
+        </testsuite>
+        <testsuite name="integration">
+            <directory>test/phpunit/integration</directory>
+        </testsuite>
+        <!-- Selenium tests excluded: requires selenium server + browser driver -->
+        <!-- <testsuite name="functional">
+            <directory>test/phpunit/functionnal</directory>
+        </testsuite> -->
+    </testsuites>
+
+    <coverage>
+        <include>
+            <directory suffix=".php">api</directory>
+            <directory suffix=".php">class</directory>
+            <directory suffix=".php">dolMapping</directory>
+        </include>
+        <exclude>
+            <directory>vendor</directory>
+            <directory>test</directory>
+        </exclude>
+        <report>
+            <html outputDirectory=".phpunit.cache/coverage-html"/>
+            <text outputFile="php://stdout"/>
+        </report>
+    </coverage>
+
+    <php>
+        <ini name="error_reporting" value="E_ALL"/>
+        <ini name="display_errors" value="true"/>
+        <ini name="display_startup_errors" value="true"/>
+    </php>
+</phpunit>
