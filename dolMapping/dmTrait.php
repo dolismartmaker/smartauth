@@ -105,8 +105,19 @@ trait dmTrait
 			}
 			if (isset($this->_dolmapping) && !empty($this->_dolmapping)) {
 				// dol_syslog(get_class($this) . " _objectDesc : call propertiesFilter ...");
-				$obj->$appside = $this->_dolmapping->propertiesFilter($doliBaseClass->fields[$doliside], $doliside, $appside, $this->parentFieldsOverride);
+
+				// Get field definition from $fields array or generate from property
+				$fieldDef = $this->_getFieldDefinition($doliBaseClass, $doliside);
+				if ($fieldDef === null) {
+					// Field not found in $fields and not a property, skip it
+					dol_syslog(get_class($this) . " _objectDesc : field '$doliside' not found in " . get_class($doliBaseClass), LOG_WARNING);
+					continue;
+				}
+
+				$obj->$appside = $this->_dolmapping->propertiesFilter($fieldDef, $doliside, $appside, $this->parentFieldsOverride);
+				if (isset($obj->$appside['position'])) {
 				$reorder[$obj->$appside['position']] = $appside;
+				}
 			}
 			//TODO ?
 			//foreign key like fk_pays : without integer:class:data ?
@@ -181,6 +192,71 @@ trait dmTrait
 	public function objectType()
 	{
 		return $this->type;
+	}
+
+	/**
+	 * Get field definition from Dolibarr $fields array or generate one from object property
+	 *
+	 * Some Dolibarr classes don't declare all their fields in the $fields array,
+	 * but the fields exist as object properties. This method handles both cases.
+	 *
+	 * @param   object  $doliObject  Dolibarr object instance
+	 * @param   string  $fieldName   Field name to look up
+	 *
+	 * @return  array|null  Field definition array or null if field doesn't exist
+	 */
+	private function _getFieldDefinition($doliObject, $fieldName)
+	{
+		// First check if field exists in $fields array (preferred)
+		if (isset($doliObject->fields[$fieldName])) {
+			return $doliObject->fields[$fieldName];
+		}
+
+		// Fallback: check if property exists on the object
+		if (!property_exists($doliObject, $fieldName)) {
+			return null;
+		}
+
+		// Generate a default field definition based on property type/value
+		$value = $doliObject->$fieldName ?? null;
+		$fieldDef = [
+			'type' => 'varchar(255)',
+			'label' => ucfirst(str_replace('_', ' ', $fieldName)),
+			'enabled' => 1,
+			'visible' => 1,
+			'position' => 500, // Default position for unmapped fields
+			'notnull' => 0,
+		];
+
+		// Try to detect field type from value or field name patterns
+		if ($value !== null) {
+			if (is_int($value)) {
+				$fieldDef['type'] = 'integer';
+			} elseif (is_float($value)) {
+				$fieldDef['type'] = 'double(24,8)';
+			} elseif (is_bool($value)) {
+				$fieldDef['type'] = 'integer';
+			}
+		}
+
+		// Detect type from field name patterns
+		if (preg_match('/^(fk_|rowid$|id$)/', $fieldName)) {
+			$fieldDef['type'] = 'integer';
+		} elseif (preg_match('/^date|_date$|datec|datem|tms/', $fieldName)) {
+			$fieldDef['type'] = 'datetime';
+		} elseif (preg_match('/^(price|amount|total|qty|quantity|weight|volume)/', $fieldName)) {
+			$fieldDef['type'] = 'double(24,8)';
+		} elseif (preg_match('/^(note|description|comment)/', $fieldName)) {
+			$fieldDef['type'] = 'text';
+		} elseif (preg_match('/^(email)$/', $fieldName)) {
+			$fieldDef['type'] = 'email';
+		} elseif (preg_match('/^(phone|fax)/', $fieldName)) {
+			$fieldDef['type'] = 'phone';
+		} elseif (preg_match('/^(url|website)/', $fieldName)) {
+			$fieldDef['type'] = 'url';
+		}
+
+		return $fieldDef;
 	}
 
 	/**
