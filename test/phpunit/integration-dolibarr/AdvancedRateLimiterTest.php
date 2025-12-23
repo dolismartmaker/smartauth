@@ -126,35 +126,52 @@ class AdvancedRateLimiterTest extends DolibarrRealTestCase
      * Test checkLimitProgressive stops counting at success
      *
      * The method counts failures from most recent to oldest and stops at first success.
-     * Since all attempts happen at same time (same second), the order might be by rowid.
+     * This test verifies that a success interrupts the failure counting.
      */
     public function testCheckLimitProgressiveStopsAtSuccess(): void
     {
         $identifier = 'test-ip-success-' . uniqid();
 
-        // Record some failures, then a success, then more failures
-        // Due to same-second timing, we check that it stops counting somewhere
-        for ($i = 0; $i < 3; $i++) {
+        // Record 4 failures (would trigger 30s delay if no success interrupts)
+        for ($i = 0; $i < 4; $i++) {
             $this->rateLimiter->recordAttempt($identifier, 'login', false);
         }
+
+        // Without success, 4 failures would cause a 30s delay
+        $resultBefore = $this->rateLimiter->checkLimitProgressive($identifier, 'login');
+        $this->assertFalse($resultBefore['allowed'], '4 failures should trigger delay');
+
+        // Now reset and test with success in the middle
+        $this->rateLimiter->reset($identifier, 'login');
+
+        // Record only 2 failures, then success, then 2 more failures
+        // Total 4 failures but success should split them
+        for ($i = 0; $i < 2; $i++) {
+            $this->rateLimiter->recordAttempt($identifier, 'login', false);
+        }
+
+        // Wait a tiny bit to ensure different timestamp
+        usleep(1100000); // 1.1 second to get different timestamp
 
         // Record a success
         $this->rateLimiter->recordAttempt($identifier, 'login', true);
 
-        // Record more failures after success
+        // Wait again
+        usleep(1100000);
+
+        // Record 2 more failures
         for ($i = 0; $i < 2; $i++) {
             $this->rateLimiter->recordAttempt($identifier, 'login', false);
         }
 
         $result = $this->rateLimiter->checkLimitProgressive($identifier, 'login');
 
-        // The method counts from most recent (ORDER BY attempt_time DESC)
-        // Since all attempts are at same time, behavior depends on insertion order
-        // We just verify the result is reasonable (less than total failures)
-        $this->assertTrue($result['allowed']);
+        // With proper timestamps, ORDER BY attempt_time DESC should give us:
+        // 2 recent failures, then success (stops counting)
+        // Only 2 failures counted = no delay
+        $this->assertTrue($result['allowed'], 'Should be allowed - success interrupts failure counting');
         $this->assertNull($result['retry_after']);
-        // Should count fewer than 5 (total failures) due to success interrupting count
-        $this->assertLessThanOrEqual(5, $result['failures']);
+        $this->assertEquals(2, $result['failures'], 'Should only count failures after the success');
     }
 
     /**
