@@ -139,8 +139,15 @@ class dmHelper
 	 */
 	private function _customFilterAttributeOptions($arr)
 	{
-		dol_syslog("propertiesFilter > _customFilterAttributeOptions call with " . json_encode($arr));
-		return $arr;
+		$ret = [];
+		foreach($arr as $k => $v) {
+			$ret[] = [
+				'label'	=> $v,
+				'value' => $k
+			];
+		}
+		dol_syslog("propertiesFilter > _customFilterAttributeOptions return " . json_encode($ret));
+		return $ret;
 	}
 
 	/**
@@ -410,12 +417,9 @@ class dmHelper
 
 			if (is_callable([$this, $specialFilter])) {
 				$r = call_user_func([$this, $specialFilter], $val);
-				foreach ($r as $k => $v) {
-					$ret[$k] = $v;
-				}
+				$ret[$appattr] = $r;
 			} else {
 			}
-			$ret[$appattr] = $val;
 		}
 
 		//new type(not yet available into dolibarr core)
