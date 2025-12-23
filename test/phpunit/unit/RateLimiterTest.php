@@ -21,12 +21,27 @@ class RateLimiterTest extends TestCase
     }
 
     /**
+     * Helper to set up mock for checkLimit calls
+     * Note: checkLimit has 1% chance to call cleanOldEntries (DELETE query) before
+     * the main SELECT query. The DELETE doesn't use fetch_object, so we only need
+     * to ensure enough query results are available.
+     */
+    private function setupCheckLimitMock(array $data): void
+    {
+        // Queue multiple identical results to handle potential cleanOldEntries call
+        // The DELETE query returns true but doesn't consume fetchData
+        // The SELECT query needs the actual data
+        $this->db->setQueryResult(true, $data);
+        $this->db->setQueryResult(true, $data); // Backup if cleanup runs
+    }
+
+    /**
      * Test that a request is allowed when under the limit
      */
     public function testCheckLimitAllowsRequestUnderLimit(): void
     {
         // Simulate 3 attempts in window (under default limit of 5)
-        $this->db->setQueryResult(true, [
+        $this->setupCheckLimitMock([
             ['attempt_count' => 3, 'last_attempt' => time() - 60]
         ]);
 
@@ -45,7 +60,7 @@ class RateLimiterTest extends TestCase
         $windowSeconds = 300;
 
         // Simulate 5 attempts (at limit)
-        $this->db->setQueryResult(true, [
+        $this->setupCheckLimitMock([
             ['attempt_count' => 5, 'last_attempt' => $lastAttempt]
         ]);
 
@@ -64,7 +79,7 @@ class RateLimiterTest extends TestCase
     public function testCheckLimitBlocksRequestOverLimit(): void
     {
         // Simulate 10 attempts (over limit)
-        $this->db->setQueryResult(true, [
+        $this->setupCheckLimitMock([
             ['attempt_count' => 10, 'last_attempt' => time() - 30]
         ]);
 
@@ -79,7 +94,7 @@ class RateLimiterTest extends TestCase
     public function testCheckLimitAllowsFirstRequest(): void
     {
         // No previous attempts
-        $this->db->setQueryResult(true, [
+        $this->setupCheckLimitMock([
             ['attempt_count' => 0, 'last_attempt' => 0]
         ]);
 
@@ -94,7 +109,8 @@ class RateLimiterTest extends TestCase
      */
     public function testCheckLimitFailsOpenOnDatabaseError(): void
     {
-        // Simulate database failure
+        // Simulate database failure - queue failures for both potential cleanup and main query
+        $this->db->setQueryResult(false);
         $this->db->setQueryResult(false);
 
         $result = $this->rateLimiter->checkLimit('192.168.1.1', 'login_ip', 5, 300);
@@ -164,7 +180,7 @@ class RateLimiterTest extends TestCase
      */
     public function testIdentifiersAreEscaped(): void
     {
-        $this->db->setQueryResult(true, [
+        $this->setupCheckLimitMock([
             ['attempt_count' => 0, 'last_attempt' => 0]
         ]);
 
@@ -181,7 +197,7 @@ class RateLimiterTest extends TestCase
      */
     public function testDifferentActionsTrackedSeparately(): void
     {
-        $this->db->setQueryResult(true, [
+        $this->setupCheckLimitMock([
             ['attempt_count' => 0, 'last_attempt' => 0]
         ]);
 
@@ -189,7 +205,7 @@ class RateLimiterTest extends TestCase
         $query1 = $this->db->getLastQuery();
 
         $this->db->clearQueries();
-        $this->db->setQueryResult(true, [
+        $this->setupCheckLimitMock([
             ['attempt_count' => 0, 'last_attempt' => 0]
         ]);
 
@@ -209,7 +225,7 @@ class RateLimiterTest extends TestCase
         // Last attempt was exactly at window boundary
         $lastAttempt = time() - $windowSeconds;
 
-        $this->db->setQueryResult(true, [
+        $this->setupCheckLimitMock([
             ['attempt_count' => 5, 'last_attempt' => $lastAttempt]
         ]);
 
