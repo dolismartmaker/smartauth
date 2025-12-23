@@ -28,6 +28,8 @@ cache:
 
 # Template for PHPUnit jobs
 .phpunit_template: &phpunit_template
+  needs:
+    - php-82
   stage: test
   before_script:
     - composer install --prefer-dist --no-progress --no-interaction
@@ -39,12 +41,16 @@ cache:
 
 # Unit tests on PHP 8.2
 test:unit:php82:
+  needs:
+    - php-82
   <<: *phpunit_template
   script:
     - php vendor/bin/phpunit --testsuite unit --colors=never --log-junit .phpunit.cache/test-results.xml
 
 # Integration tests with real Dolibarr (PHP 8.2+ required)
 test:integration-dolibarr:php82:
+  needs:
+    - php-82
   <<: *phpunit_template
   before_script:
     - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
@@ -54,6 +60,8 @@ test:integration-dolibarr:php82:
 
 # Code coverage (only on default branch and MRs)
 test:coverage:
+  needs:
+    - php-82
   <<: *phpunit_template
   stage: quality
   before_script:
@@ -80,8 +88,9 @@ test:coverage:
 
 # PHP syntax check
 test:lint:
+  needs:
+    - php-82
   stage: test
-  image: php:8.2-cli
   script:
     - find api/ class/ dolMapping/ -name "*.php" -exec php -l {} \;
   allow_failure: false
