@@ -15,20 +15,23 @@
             "SmartAuth\\Api\\": "api/",
             "SmartAuth\\DolibarrMapping\\": "dolMapping/"
         },
-        "autoload-dev": {
-            "files": [
-                "test/phpunit/dolibarr-autoload-init.php"
-            ],
-            "psr-4": {
-                "SmartAuth\\Tests\\": "test/phpunit/"
-            }
-        },
-        "scripts": {
-            "test": "phpunit",
-            "test:unit": "phpunit --testsuite unit",
-            "test:integration": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration.xml",
-            "test:integration-dolibarr": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration-dolibarr.xml",
-            "test:coverage": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit"
+        "classmap": [
+            "class/"
+        ]
+    },
+    "autoload-dev": {
+        "files": [
+            "test/phpunit/dolibarr-autoload-init.php"
+        ],
+        "psr-4": {
+            "SmartAuth\\Tests\\": "test/phpunit/"
         }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:unit": "phpunit --testsuite unit",
+        "test:integration": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration.xml",
+        "test:integration-dolibarr": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration-dolibarr.xml",
+        "test:coverage": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit"
     }
 }
