@@ -5,7 +5,7 @@
          colors="true"
          verbose="true"
          stopOnFailure="false"
-         cacheResultFile=".phpunit.cache/test-results">
+         cacheResultFile=".phpunit.cache/test-results.xml">
 
     <testsuites>
         <testsuite name="unit">
