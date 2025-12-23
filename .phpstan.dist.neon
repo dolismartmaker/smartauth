@@ -57,6 +57,9 @@ parameters:
 		- '#Function dol#'
 		- '#class uptosignCore not found#'
 		- '#htmlPrintOnlinePaymentFooter#'
+		# CommonObject inherited properties/methods - PHPStan doesn't resolve inheritance from stubs correctly
+		- '#Access to an undefined property (SmartAuth|SmartAuthDevices|SmartLogs)::\$(newref|oldref|user_creation_id|user_modification_id|user_validation_id|labelStatus|labelStatusShort|output)#'
+		- '#Call to an undefined method (SmartAuth|SmartAuthDevices|SmartLogs)::commonGenerateDocument\(\)#'
 	internalErrorsCountLimit: 50
 	cache:
 	    nodesByFileCountMax: 512
