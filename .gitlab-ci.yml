@@ -49,7 +49,8 @@ test:coverage:
   image: php:8.2-cli
   stage: quality
   before_script:
-    - pecl install pcov && docker-php-ext-enable pcov
+    - pecl install pcov
+    - php -m | grep pcov
     - composer install --prefer-dist --no-progress --no-interaction
   script:
     - php vendor/bin/phpunit --testsuite unit --coverage-text --coverage-cobertura=coverage.xml | tee coverage-output.txt
