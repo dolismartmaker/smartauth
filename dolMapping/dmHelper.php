@@ -145,7 +145,7 @@ class dmHelper
 
 		$ret = [];
 		foreach($arr as $k => $v) {
-			$ret[] = [
+			$ret['options'][] = [
 				'label'	=> $v,
 				'value' => $k
 			];
@@ -425,7 +425,10 @@ class dmHelper
 
 			if (is_callable([$this, $specialFilter])) {
 				$r = call_user_func([$this, $specialFilter], $val);
-				$ret[$appattr] = $r;
+				foreach ($r as $k => $v) {
+					$ret[$k] = $v;
+				}
+				// $ret[$appattr] = $r;
 			} else {
 			}
 		}
