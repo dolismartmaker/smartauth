@@ -122,7 +122,9 @@ class dmHelper
 	 */
 	private function _customFilterAttributeTypeSellist($str)
 	{
-		dol_syslog("propertiesFilter TODO > _customFilterAttributeTypeSellist call with $str");
+		$localDebug = false;
+
+		if($localDebug) dol_syslog("propertiesFilter TODO > _customFilterAttributeTypeSellist call with $str");
 		return [
 			'type' => 'sellist',
 			'todo' => 'todo'
@@ -139,6 +141,8 @@ class dmHelper
 	 */
 	private function _customFilterAttributeOptions($arr)
 	{
+		$localDebug = false;
+
 		$ret = [];
 		foreach($arr as $k => $v) {
 			$ret[] = [
@@ -146,7 +150,7 @@ class dmHelper
 				'value' => $k
 			];
 		}
-		dol_syslog("propertiesFilter > _customFilterAttributeOptions return " . json_encode($ret));
+		if($localDebug) dol_syslog("propertiesFilter > _customFilterAttributeOptions return " . json_encode($ret));
 		return $ret;
 	}
 
@@ -266,7 +270,9 @@ class dmHelper
 	 */
 	public function _customFilterAttributeContacts($val)
 	{
-		dol_syslog(("dmHelper : call for _customFilterAttributeContacts ..."));
+		$localDebug = false;
+
+		if($localDebug) dol_syslog(("dmHelper : call for _customFilterAttributeContacts ..."));
 	}
 
 	/**
@@ -283,7 +289,7 @@ class dmHelper
 	{
 		global $langs;
 
-		$localDebug = true;
+		$localDebug = false;
 
 		//TODO load langs for myself current object -- objective is to remove hardcoded samartinterventions
 		$langs->loadLangs(array('companies'));
@@ -380,16 +386,18 @@ class dmHelper
 	public function extrafieldsFilter($objectElement, $dolikey, $frontkey, $extrafields)
 	{
 		global $langs;
-		dol_syslog("dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey, extrafields=" . json_encode($extrafields));
+		$localDebug = false;
+
+		if($localDebug) dol_syslog("dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey, extrafields=" . json_encode($extrafields));
 		//TODO mapping + RO/RW
 		$ret = [];
 
 		foreach ($this->_mappingExtrafieldsAttributes as $dolattr => $appattr) {
 			$val = $extrafields->attributes[$objectElement][$dolattr][str_replace('options_', '', $dolikey)];
-			dol_syslog("  dmHelper dolikey=$dolikey, generic dolattr=$dolattr, appattr=$appattr");
-			dol_syslog("  dmHelper dolikey=$dolikey, generic extrafieldsFilter search in extrafields->attributes[" . $objectElement . "][" . $dolattr . "][" . $dolikey . "]");
-			dol_syslog("  dmHelper dolikey=$dolikey, generic extrafieldsFilter val=$val");
-			dol_syslog("  dmHelper dolikey=$dolikey, generic : " . json_encode($extrafields->attributes[$objectElement][$dolattr]));
+			if($localDebug) dol_syslog("  dmHelper dolikey=$dolikey, generic dolattr=$dolattr, appattr=$appattr");
+			if($localDebug) dol_syslog("  dmHelper dolikey=$dolikey, generic extrafieldsFilter search in extrafields->attributes[" . $objectElement . "][" . $dolattr . "][" . $dolikey . "]");
+			if($localDebug) dol_syslog("  dmHelper dolikey=$dolikey, generic extrafieldsFilter val=$val");
+			if($localDebug) dol_syslog("  dmHelper dolikey=$dolikey, generic : " . json_encode($extrafields->attributes[$objectElement][$dolattr]));
 			// if(empty($val)) {
 			// 	continue;
 			// }
@@ -413,7 +421,7 @@ class dmHelper
 
 			//try to call a private function like _customFilterAttributeXXXXXXX (XXXX last part is dynamic)
 			$specialFilter = "_customFilterAttribute" . ucfirst($dolattr);
-			dol_syslog("  dmHelper dolikey=$dolikey generic extrafieldsFilter will call $specialFilter and val=$val");
+			if($localDebug) dol_syslog("  dmHelper dolikey=$dolikey generic extrafieldsFilter will call $specialFilter and val=$val");
 
 			if (is_callable([$this, $specialFilter])) {
 				$r = call_user_func([$this, $specialFilter], $val);
@@ -427,7 +435,7 @@ class dmHelper
 		//then we convert it into application type like doc :
 		//https://inligit.fr/cap-rel/dolibarr/plugin-smartinterventions/-/wikis/home
 		foreach ($this->smartNewObjectsTypes as $dolside => $appside) {
-			dol_syslog("extrafieldsFilter special new object type");
+			if($localDebug) dol_syslog("extrafieldsFilter special new object type");
 			if (substr($dolikey, 0, strlen($dolside)) == $dolside) {
 				$ret['type'] = $appside;
 				$ret['visible'] = ["create", "update", "read"];

@@ -151,7 +151,7 @@ trait dmTrait
 
 			$doliBaseLineClass = new $this->parentClassNameForLines($this->_db);
 			foreach ($this->listOfPublishedFieldsForLines as $doliside => $appside) {
-				dol_syslog("call for _parentClassNameForLines 2 ... : " . json_encode($this->parentFieldsForLines[$doliside]));
+				// dol_syslog("call for _parentClassNameForLines 2 ... : " . json_encode($this->parentFieldsForLines[$doliside]));
 				if (substr($doliside, 0, 8) == "options_") {
 					continue;
 				}
@@ -194,10 +194,10 @@ trait dmTrait
 	{
 		$this->_dolmapclassname = preg_replace('/.*DolibarrMapping/', '', get_class($obj));
 
-		// dol_syslog(" #################### exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
-		// dol_syslog(" ############### " . json_encode($obj));
-		// dol_syslog(" ########### " . json_encode($this->listOfPublishedFields));
-		// dol_syslog(" ########### " . json_encode($this->listOfPublishedFields));
+		// dol_syslog(" ###############exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
+		// dol_syslog(" ##########" . json_encode($obj));
+		// dol_syslog(" ######" . json_encode($this->listOfPublishedFields));
+		// dol_syslog(" ######" . json_encode($this->listOfPublishedFields));
 
 		$mapped = new \stdClass;
 		foreach ($this->listOfPublishedFields as $doliside => $appside) {
@@ -222,7 +222,7 @@ trait dmTrait
 			if (!empty($obj->$doliside)) {
 				//try to apply a function as data filter for example for logo to base64 encoded logo (Societe / dmSociete)
 				$user_function = "fieldFilterValue" . ucfirst($doliside);
-				// dol_syslog("##### Call user function $user_function on object " . get_class($this));
+				// dol_syslog("Call user function $user_function on object " . get_class($this));
 				if (is_callable([$this, $user_function])) {
 					$mapped->$appside = call_user_func([$this, $user_function], $obj, $obj->$doliside);
 					continue;
@@ -234,7 +234,7 @@ trait dmTrait
 
 			//detect fk and push object into $mapped->$appside
 			if (in_array($doliside, array_keys($this->listOfForeignKeys))) {
-				// dol_syslog('########## _listOfForeignKeys = ' . json_encode($this->listOfForeignKeys));
+				// dol_syslog('#####_listOfForeignKeys = ' . json_encode($this->listOfForeignKeys));
 				$mapped->$appside = $this->exportData($doliside, $obj->$doliside);
 			}
 
@@ -274,7 +274,7 @@ trait dmTrait
 			// $mapped->rawlines = $obj->lines;
 		}
 
-		// dol_syslog("##### fieldFilterValueSmartPhoto mapped is " . json_encode($mapped));
+		// dol_syslog("fieldFilterValueSmartPhoto mapped is " . json_encode($mapped));
 		return $mapped;
 	}
 
@@ -317,7 +317,7 @@ trait dmTrait
 				if (strpos($param_list[0], 'class.php')) {
 					$classname = $InfoFieldList[0];
 					$classpath = $InfoFieldList[1];
-					dol_syslog("############ classname=$classname, classpath=$classpath");
+					// dol_syslog("#######classname=$classname, classpath=$classpath");
 					if (!empty($classpath)) {
 						$res = dol_include_once($classpath);
 						if ($res && $classname && class_exists($classname)) {
@@ -436,7 +436,7 @@ trait dmTrait
 						return $obj->{$labelFieldName};
 						$this->_db->free($resql);
 					} else {
-						dol_syslog('Error in request ' . $sql . ' ' . $this->_db->lasterror() . '. Check setup of extra parameters', LOG_ERR);
+						dol_syslog('Error in request ' . $sql . ' ' . $this->_db->lasterror() . '. Check setup of extra parameters', \LOG_ERR);
 					}
 				} else {
 					require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
@@ -471,12 +471,12 @@ trait dmTrait
 	public function exportData($name, $objectid)
 	{
 		global $conf, $langs;
-		//dol_syslog("############ Call exportData for $name / $objectid / " . $this->listOfForeignKeys[$name]);
-		// dol_syslog("############ Call exportData for $name / $objectid / " . getEntity('societe'));
+		//dol_syslog("#######Call exportData for $name / $objectid / " . $this->listOfForeignKeys[$name]);
+		// dol_syslog("#######Call exportData for $name / $objectid / " . getEntity('societe'));
 		$InfoFieldList = explode(":", $this->listOfForeignKeys[$name]);
 		$classname = $InfoFieldList[1];
 		$classpath = $InfoFieldList[2];
-		// dol_syslog("############ classname=$classname, classpath=$classpath");
+		// dol_syslog("#######classname=$classname, classpath=$classpath");
 		if (!empty($classpath)) {
 			$res = dol_include_once($classpath);
 			if ($res && $classname && class_exists($classname)) {
@@ -543,12 +543,12 @@ trait dmTrait
 	public function fieldFilterValueSmartPhoto($object, $doliside)
 	{
 		global $conf, $db;
-		// dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto for $doliside"); // . json_encode($object));
+		// dol_syslog("dmHelper : call for fieldFilterValueSmartPhoto for $doliside"); // . json_encode($object));
 		list($dir, $element) = $this->getStoragePath($object);
-		// dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto dir=$dir");
+		// dol_syslog("dmHelper : call for fieldFilterValueSmartPhoto dir=$dir");
 
 		$img = $dir . "/" . dol_sanitizeFileName($object->array_options[$doliside]);
-		// dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto img=$img");
+		// dol_syslog("dmHelper : call for fieldFilterValueSmartPhoto img=$img");
 
 		$ret = new \stdClass;
 		$ret->filename = basename($img);
@@ -575,10 +575,10 @@ trait dmTrait
 			$ret->gps = "";
 			$ret->src = "";
 		} else {
-			dol_syslog("##### dmHelper : file not found " . json_encode($ecm));
+			dol_syslog("dmHelper : file not found " . json_encode($ecm), \LOG_WARNING);
 		}
 
-		dol_syslog("##### dmHelper : call for fieldFilterValueSmartPhoto, return " . json_encode($ret));
+		// dol_syslog("dmHelper : call for fieldFilterValueSmartPhoto, return " . json_encode($ret));
 		return $ret;
 
 		//for example could be a base64 field

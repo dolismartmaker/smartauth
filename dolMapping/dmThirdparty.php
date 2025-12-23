@@ -59,7 +59,7 @@ class dmThirdparty extends dmBase
 	{
 		$this->boot();
 
-		dol_syslog("cacheDesc after is " . json_encode($this->_cacheDesc));
+		// dol_syslog("cacheDesc after is " . json_encode($this->_cacheDesc));
 	}
 
 
