@@ -52,8 +52,10 @@ test:coverage:
     - pecl install pcov && docker-php-ext-enable pcov
     - composer install --prefer-dist --no-progress --no-interaction
   script:
-    - php vendor/bin/phpunit --testsuite unit --coverage-text --coverage-cobertura=coverage.xml
-  coverage: '/^\s*Lines:\s*\d+.\d+\%/'
+    - php vendor/bin/phpunit --testsuite unit --coverage-text --coverage-cobertura=coverage.xml | tee coverage-output.txt
+    - COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' coverage-output.txt | head -1)
+    - echo "Total | ${COVERAGE}%"
+  coverage: '/Total \| (\d+\.?\d*)%/'
   artifacts:
     reports:
       junit: .phpunit.cache/test-results.xml
