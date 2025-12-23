@@ -29,6 +29,7 @@
         <exclude>
             <directory>vendor</directory>
             <directory>test</directory>
+            <file>api/tools.php</file>
         </exclude>
         <report>
             <html outputDirectory=".phpunit.cache/coverage-html"/>
