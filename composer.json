@@ -10,7 +10,10 @@
         "psr-4": {
             "SmartAuth\\Api\\": "api/",
             "SmartAuth\\DolibarrMapping\\": "dolMapping/"
-        }
+        },
+        "classmap": [
+            "class/"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
