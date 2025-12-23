@@ -24,3 +24,5 @@
 /mobile/node_modules/
 .vscode
 .phpunit.cache
+coverage.xml
+coverage-output.txt
