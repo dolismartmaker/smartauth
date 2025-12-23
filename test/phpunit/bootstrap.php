@@ -6,6 +6,11 @@
  * This file sets up the test environment without requiring a full Dolibarr installation.
  */
 
+// Start pcov collection early if available
+if (extension_loaded('pcov')) {
+    \pcov\start();
+}
+
 // Autoload composer dependencies
 require_once __DIR__ . '/../../vendor/autoload.php';
 

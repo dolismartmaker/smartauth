@@ -49,10 +49,14 @@ class MockDatabase
         $this->executedQueries[] = $sql;
         $this->fetchIndex = 0;
 
+        // If using queryResults (from setQueryResult), use that system
         if (!empty($this->queryResults)) {
             $result = array_shift($this->queryResults);
             $this->fetchData = $result['fetchData'];
             $this->numRows = $result['numRows'];
+            // Clear sequence results to avoid interference
+            $this->fetchResultSequence = [];
+            $this->fetchSequenceIndex = 0;
             if (!$result['success']) {
                 $this->lastError = 'Mock query failed';
                 return false;
