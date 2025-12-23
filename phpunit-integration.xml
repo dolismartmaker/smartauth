@@ -1,24 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="test/phpunit/bootstrap.php"
+         bootstrap="test/phpunit/integration/bootstrap.php"
          colors="true"
          verbose="true"
          stopOnFailure="false"
-         cacheResultFile=".phpunit.cache/test-results.xml">
+         cacheResultFile=".phpunit.cache/integration-test-results.xml">
 
     <testsuites>
-        <testsuite name="unit">
-            <directory>test/phpunit/unit</directory>
+        <testsuite name="integration">
+            <directory>test/phpunit/integration</directory>
         </testsuite>
-        <!-- Integration tests have their own config: phpunit-integration.xml -->
-        <!-- <testsuite name="integration">
-            <directory phpVersion="8.0" phpVersionOperator=">=">test/phpunit/integration</directory>
-        </testsuite> -->
-        <!-- Selenium tests excluded: requires selenium server + browser driver -->
-        <!-- <testsuite name="functional">
-            <directory>test/phpunit/functionnal</directory>
-        </testsuite> -->
     </testsuites>
 
     <coverage>
@@ -33,7 +25,7 @@
             <file>api/tools.php</file>
         </exclude>
         <report>
-            <html outputDirectory=".phpunit.cache/coverage-html"/>
+            <html outputDirectory=".phpunit.cache/coverage-integration-html"/>
             <text outputFile="php://stdout"/>
         </report>
     </coverage>
@@ -42,5 +34,7 @@
         <ini name="error_reporting" value="E_ALL"/>
         <ini name="display_errors" value="true"/>
         <ini name="display_startup_errors" value="true"/>
+        <ini name="pcov.enabled" value="1"/>
+        <ini name="pcov.directory" value="."/>
     </php>
 </phpunit>
