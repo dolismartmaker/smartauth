@@ -28,7 +28,7 @@ cache:
 
 # Template for PHPUnit jobs
 .phpunit_template: &phpunit_template
-  needs:
+  tags:
     - php-82
   stage: test
   before_script:
@@ -41,7 +41,7 @@ cache:
 
 # Unit tests on PHP 8.2
 test:unit:php82:
-  needs:
+  tags:
     - php-82
   <<: *phpunit_template
   script:
@@ -49,7 +49,7 @@ test:unit:php82:
 
 # Integration tests with real Dolibarr (PHP 8.2+ required)
 test:integration-dolibarr:php82:
-  needs:
+  tags:
     - php-82
   <<: *phpunit_template
   before_script:
@@ -60,7 +60,7 @@ test:integration-dolibarr:php82:
 
 # Code coverage (only on default branch and MRs)
 test:coverage:
-  needs:
+  tags:
     - php-82
   <<: *phpunit_template
   stage: quality
@@ -88,7 +88,7 @@ test:coverage:
 
 # PHP syntax check
 test:lint:
-  needs:
+  tags:
     - php-82
   stage: test
   script:
