@@ -15,6 +15,9 @@ class MockDatabase
     private array $fetchData = [];
     private int $fetchIndex = 0;
     private ?string $lastError = null;
+    private ?object $singleFetchResult = null;
+    private array $fetchResultSequence = [];
+    private int $fetchSequenceIndex = 0;
 
     /**
      * Set the result for the next query
@@ -61,18 +64,6 @@ class MockDatabase
         $this->fetchData = [];
         $this->numRows = 0;
         return true;
-    }
-
-    /**
-     * Fetch object from result
-     */
-    public function fetch_object($result = null): ?object
-    {
-        if ($this->fetchIndex < count($this->fetchData)) {
-            $data = $this->fetchData[$this->fetchIndex++];
-            return (object) $data;
-        }
-        return null;
     }
 
     /**
@@ -159,5 +150,76 @@ class MockDatabase
             }
         }
         return false;
+    }
+
+    /**
+     * Get executed queries (alias for getExecutedQueries)
+     */
+    public function getQueries(): array
+    {
+        return $this->executedQueries;
+    }
+
+    /**
+     * Set a single fetch result for all queries
+     */
+    public function setFetchResult(object $result): self
+    {
+        $this->singleFetchResult = $result;
+        return $this;
+    }
+
+    /**
+     * Set a sequence of fetch results (one per query)
+     */
+    public function setFetchResultSequence(array $results): self
+    {
+        $this->fetchResultSequence = $results;
+        $this->fetchSequenceIndex = 0;
+        return $this;
+    }
+
+    /**
+     * Fetch object from result - with support for single and sequence results
+     */
+    public function fetch_object($result = null): ?object
+    {
+        // Check for sequence results first
+        if (!empty($this->fetchResultSequence)) {
+            if ($this->fetchSequenceIndex < count($this->fetchResultSequence)) {
+                return $this->fetchResultSequence[$this->fetchSequenceIndex++];
+            }
+            return null;
+        }
+
+        // Check for single result
+        if ($this->singleFetchResult !== null) {
+            $result = $this->singleFetchResult;
+            $this->singleFetchResult = null; // Clear after use
+            return $result;
+        }
+
+        // Original behavior
+        if ($this->fetchIndex < count($this->fetchData)) {
+            $data = $this->fetchData[$this->fetchIndex++];
+            return (object) $data;
+        }
+        return null;
+    }
+
+    /**
+     * Get database table prefix
+     */
+    public function prefix(): string
+    {
+        return MAIN_DB_PREFIX;
+    }
+
+    /**
+     * Free result (no-op for mock)
+     */
+    public function free($result = null): void
+    {
+        // No-op
     }
 }
