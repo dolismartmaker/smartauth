@@ -32,6 +32,7 @@ cache:
     - php-82
   stage: test
   before_script:
+    - git reset --hard
     - composer install --prefer-dist --no-progress --no-interaction
   artifacts:
     when: always
@@ -45,6 +46,7 @@ test:unit:php82:
     - php-82
   <<: *phpunit_template
   script:
+    - git reset --hard
     - php vendor/bin/phpunit --testsuite unit --colors=never --log-junit .phpunit.cache/test-results.xml
 
 # Integration tests with real Dolibarr (PHP 8.2+ required)
@@ -53,6 +55,7 @@ test:integration-dolibarr:php82:
     - php-82
   <<: *phpunit_template
   before_script:
+    - git reset --hard
     - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
   script:
     - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --colors=never --log-junit .phpunit.cache/test-results.xml
@@ -66,6 +69,7 @@ test:coverage:
   stage: quality
   before_script:
     - php -m | grep pcov
+    - git reset --hard
     - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
     - mkdir -p .phpunit.cache
   script:
