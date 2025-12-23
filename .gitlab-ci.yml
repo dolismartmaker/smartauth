@@ -58,7 +58,7 @@ test:integration-dolibarr:php82:
     - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --colors=never --log-junit .phpunit.cache/test-results.xml
   allow_failure: true
 
-# Code coverage (only on default branch and MRs)
+# Code coverage with real Dolibarr (only on default branch and MRs)
 test:coverage:
   tags:
     - php-82
@@ -66,10 +66,10 @@ test:coverage:
   stage: quality
   before_script:
     - php -m | grep pcov
-    - composer install --prefer-dist --no-progress --no-interaction
+    - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
     - mkdir -p .phpunit.cache
   script:
-    - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit --testsuite unit --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
+    - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
     - COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' .phpunit.cache/coverage-output.txt | head -1 || echo "0")
     - echo "Total | ${COVERAGE}%"
   coverage: '/Total \| (\d+\.?\d*)%/'
