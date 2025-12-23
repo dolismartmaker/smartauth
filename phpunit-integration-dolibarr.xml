@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="test/phpunit/integration-dolibarr/bootstrap.php"
+         colors="true"
+         verbose="true"
+         stopOnFailure="false"
+         cacheResultFile=".phpunit.cache/integration-dolibarr-test-results.xml">
+
+    <testsuites>
+        <testsuite name="integration-dolibarr">
+            <directory>test/phpunit/integration-dolibarr</directory>
+        </testsuite>
+    </testsuites>
+
+    <coverage>
+        <include>
+            <directory suffix=".php">api</directory>
+            <directory suffix=".php">class</directory>
+            <directory suffix=".php">dolMapping</directory>
+        </include>
+        <exclude>
+            <directory>vendor</directory>
+            <directory>test</directory>
+            <file>api/tools.php</file>
+        </exclude>
+        <report>
+            <html outputDirectory=".phpunit.cache/coverage-integration-dolibarr-html"/>
+            <text outputFile="php://stdout"/>
+        </report>
+    </coverage>
+
+    <php>
+        <ini name="error_reporting" value="-1"/>
+        <ini name="display_errors" value="On"/>
+        <ini name="pcov.enabled" value="1"/>
+        <ini name="pcov.directory" value="."/>
+    </php>
+</phpunit>
