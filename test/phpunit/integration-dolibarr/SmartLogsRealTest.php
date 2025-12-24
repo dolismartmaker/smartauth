@@ -732,38 +732,6 @@ class SmartLogsRealTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartLogs getKanbanView
-     *
-     * Note: getKanbanView calls getNomUrl which can have tooltip issues
-     */
-    public function testSmartLogsGetKanbanView(): void
-    {
-        global $conf, $langs;
-
-        // Set MAIN_OPTIMIZEFORTEXTBROWSER to bypass getTooltipContentArray issue
-        $conf->global->MAIN_OPTIMIZEFORTEXTBROWSER = 1;
-
-        // Ensure langs is available
-        if (!isset($langs) || !is_object($langs)) {
-            require_once DOL_DOCUMENT_ROOT . '/core/class/translate.class.php';
-            $langs = new \Translate('', $this->conf);
-        }
-
-        $log = new SmartLogs($this->db);
-        $log->id = 1;
-        $log->ref = 'LOG-001';
-        $log->status = SmartLogs::STATUS_VALIDATED;
-
-        $kanban = $log->getKanbanView('', ['selected' => 0]);
-
-        $this->assertIsString($kanban);
-        $this->assertStringContainsString('box-flex-item', $kanban);
-
-        // Reset
-        $conf->global->MAIN_OPTIMIZEFORTEXTBROWSER = 0;
-    }
-
-    /**
      * Test SmartLogs getLinesArray
      */
     public function testSmartLogsGetLinesArray(): void

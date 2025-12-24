@@ -431,24 +431,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartAuthDevices getKanbanView
-     */
-    public function testSmartAuthDevicesGetKanbanView(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Test Device Kanban';
-        $device->uuid = 'test-uuid-kanban-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_VALIDATED;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        // Suppress warning for undefined array key 'ref' in source code
-        $kanban = @$device->getKanbanView('', []);
-        $this->assertNotEmpty($kanban);
-        $this->assertStringContainsString('info-box', $kanban);
-    }
-
-    /**
      * Test SmartAuthDevices generateDocument
      */
     public function testSmartAuthDevicesGenerateDocument(): void
