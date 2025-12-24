@@ -116,11 +116,12 @@ class SmartLogsClassTest extends DolibarrRealTestCase
         $logs->ip = '192.168.1.1';
         $logs->method = 'POST';
         $logs->http_status = 201;
-        $logs->create($this->testUser);
+        $id = $logs->create($this->testUser);
+        $this->assertGreaterThan(0, $id);
 
         // Fetch it
         $fetched = new SmartLogs($this->db);
-        $result = $fetched->fetch($logs->id);
+        $result = $fetched->fetch($id);
 
         $this->assertGreaterThan(0, $result);
         $this->assertEquals($logs->id, $fetched->id);
