@@ -37,15 +37,9 @@ abstract class DolibarrRealTestCase extends TestCase
         // Find vendor path relative to this file
         $vendorPath = dirname(__DIR__, 3) . '/vendor/cap-rel/dolibarr-integration-sqlite';
 
-        if (is_dir($vendorPath)) {
-            // Use git to restore the SQLite database files
-            $currentDir = getcwd();
-            chdir(dirname(__DIR__, 3)); // Go to project root
-
-            // Restore only the database files that were modified
-            exec('git checkout -- vendor/cap-rel/dolibarr-integration-sqlite/ 2>/dev/null');
-
-            chdir($currentDir);
+        if (is_dir($vendorPath . '/.git')) {
+            // The sqlite package has its own git repo, reset it directly
+            exec('cd ' . escapeshellarg($vendorPath) . ' && git reset --hard HEAD 2>/dev/null');
         }
     }
 

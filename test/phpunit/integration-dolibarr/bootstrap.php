@@ -6,6 +6,15 @@
  * Uses cap-rel/dolibarr-integration-sqlite package for a complete Dolibarr environment
  */
 
+// Reset SQLite database to clean state before running tests
+// This ensures tests start with a known state regardless of previous test runs
+$projectRoot = dirname(__DIR__, 3);
+$sqliteVendorPath = $projectRoot . '/vendor/cap-rel/dolibarr-integration-sqlite';
+if (is_dir($sqliteVendorPath . '/.git')) {
+    // The sqlite package has its own git repo, reset it directly
+    exec('cd ' . escapeshellarg($sqliteVendorPath) . ' && git reset --hard HEAD 2>/dev/null');
+}
+
 // Load composer autoload first - this triggers autoload-init.php which defines DOL_DOCUMENT_ROOT
 require_once __DIR__ . '/../../../vendor/autoload.php';
 
