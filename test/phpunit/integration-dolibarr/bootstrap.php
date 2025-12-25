@@ -139,7 +139,7 @@ function createSmartAuthTables($db)
         ip TEXT,
         status INTEGER DEFAULT 1,
         entity INTEGER DEFAULT 1,
-        tms TEXT
+        tms timestamp DEFAULT CURRENT_TIMESTAMP
     )";
 
     // SmartAuth devices table
@@ -156,7 +156,7 @@ function createSmartAuthTables($db)
         fk_user_modif INTEGER,
         status INTEGER DEFAULT 0,
         entity INTEGER DEFAULT 1,
-        tms TEXT
+        tms timestamp DEFAULT CURRENT_TIMESTAMP
     )";
 
     // Token family table
@@ -194,7 +194,7 @@ function createSmartAuthTables($db)
         user_agent TEXT,
         fk_device_id INTEGER,
         referer TEXT,
-        datec TEXT DEFAULT CURRENT_TIMESTAMP
+        tms TEXT DEFAULT CURRENT_TIMESTAMP
     )";
 
     foreach ($sqls as $sql) {
