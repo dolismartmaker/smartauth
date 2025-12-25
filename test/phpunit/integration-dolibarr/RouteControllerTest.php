@@ -614,12 +614,14 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
         $originalUri = $_SERVER['REQUEST_URI'] ?? null;
         $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         // Enable logging
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
         $_SERVER['REQUEST_METHOD'] = 'POST';
         $_SERVER['REQUEST_URI'] = '/api.php/test';
         $_SERVER['HTTP_X_DEVICEID'] = 'test-device-id';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         // Test various HTTP status codes
         $statusCodes = [200, 201, 400, 401, 403, 404, 500];
@@ -651,6 +653,11 @@ class RouteControllerTest extends DolibarrRealTestCase
             $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
         } else {
             unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
         }
     }
 
@@ -763,6 +770,12 @@ class RouteControllerTest extends DolibarrRealTestCase
 
         // Save original
         $originalValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        // Set required server variables
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-id';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         // Disable logging
         $conf->global->SMARTAUTH_COLLECT_LOGS = '0';
@@ -784,6 +797,16 @@ class RouteControllerTest extends DolibarrRealTestCase
         // Restore
         if ($originalValue) {
             $conf->global->SMARTAUTH_COLLECT_LOGS = $originalValue;
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
         }
     }
 
@@ -865,12 +888,14 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
         $originalUri = $_SERVER['REQUEST_URI'] ?? null;
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
 
         // Enable logging
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
         $_SERVER['REQUEST_METHOD'] = 'PUT';
         $_SERVER['REQUEST_URI'] = '/api.php/testentry';
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-id';
 
         // Create unique marker for this test
         $uniqueMarker = 'unique-test-' . uniqid();
@@ -901,6 +926,11 @@ class RouteControllerTest extends DolibarrRealTestCase
             $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
         } else {
             unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
         }
     }
 
