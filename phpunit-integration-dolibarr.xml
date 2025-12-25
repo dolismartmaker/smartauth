@@ -25,6 +25,53 @@
             <directory>vendor</directory>
             <directory>test</directory>
             <file>api/tools.php</file>
+            <!-- Exclude mapping configuration files (dm*) - these are simple config with no logic to test -->
+            <file>dolMapping/dmAgendaEvent.php</file>
+            <file>dolMapping/dmBom.php</file>
+            <file>dolMapping/dmCactiontype.php</file>
+            <file>dolMapping/dmCategory.php</file>
+            <file>dolMapping/dmCavailability.php</file>
+            <file>dolMapping/dmCcivility.php</file>
+            <file>dolMapping/dmCcountry.php</file>
+            <file>dolMapping/dmCincoterm.php</file>
+            <file>dolMapping/dmContact.php</file>
+            <file>dolMapping/dmContract.php</file>
+            <file>dolMapping/dmCpaymentterm.php</file>
+            <file>dolMapping/dmCpaymenttype.php</file>
+            <file>dolMapping/dmCprospectstatus.php</file>
+            <file>dolMapping/dmCshipmentmode.php</file>
+            <file>dolMapping/dmCstate.php</file>
+            <file>dolMapping/dmCstcomm.php</file>
+            <file>dolMapping/dmCticketcategory.php</file>
+            <file>dolMapping/dmCticketresolution.php</file>
+            <file>dolMapping/dmCticketseverity.php</file>
+            <file>dolMapping/dmCtickettype.php</file>
+            <file>dolMapping/dmCtypecontact.php</file>
+            <file>dolMapping/dmCtypent.php</file>
+            <file>dolMapping/dmCunits.php</file>
+            <file>dolMapping/dmDonation.php</file>
+            <file>dolMapping/dmExpenseReport.php</file>
+            <file>dolMapping/dmIntervention.php</file>
+            <file>dolMapping/dmInvoice.php</file>
+            <file>dolMapping/dmMember.php</file>
+            <file>dolMapping/dmMemberType.php</file>
+            <file>dolMapping/dmMo.php</file>
+            <file>dolMapping/dmMulticurrency.php</file>
+            <file>dolMapping/dmOrder.php</file>
+            <file>dolMapping/dmProduct.php</file>
+            <file>dolMapping/dmProject.php</file>
+            <file>dolMapping/dmProposal.php</file>
+            <file>dolMapping/dmReception.php</file>
+            <file>dolMapping/dmShipment.php</file>
+            <file>dolMapping/dmSubscription.php</file>
+            <file>dolMapping/dmSupplierInvoice.php</file>
+            <file>dolMapping/dmSupplierOrder.php</file>
+            <file>dolMapping/dmSupplierProposal.php</file>
+            <file>dolMapping/dmTask.php</file>
+            <file>dolMapping/dmThirdparty.php</file>
+            <file>dolMapping/dmTicket.php</file>
+            <file>dolMapping/dmUser.php</file>
+            <file>dolMapping/dmWarehouse.php</file>
         </exclude>
         <report>
             <html outputDirectory=".phpunit.cache/coverage-integration-dolibarr-html"/>
