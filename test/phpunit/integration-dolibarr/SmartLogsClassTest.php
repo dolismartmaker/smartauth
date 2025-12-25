@@ -476,4 +476,147 @@ class SmartLogsClassTest extends DolibarrRealTestCase
 
         $this->assertEquals(0, $result);
     }
+
+    /**
+     * Test validate method
+     */
+    public function testValidate(): void
+    {
+        // Create a log in draft status
+        $log = new SmartLogs($this->db);
+        $log->fk_key = 1;
+        $log->appuid = 'TEST123';
+        $log->entity = 1;
+        $log->dol_element = 'test';
+        $log->ip = '127.0.0.1';
+        $log->method = 'GET';
+        $log->http_status = 200;
+        $log->status = SmartLogs::STATUS_DRAFT;
+        $log->create($this->testUser);
+
+        // Validate the log
+        $result = $log->validate($this->testUser);
+
+        $this->assertGreaterThan(0, $result);
+        $this->assertEquals(SmartLogs::STATUS_VALIDATED, $log->status);
+
+        $this->assertDatabaseHas('smartauth_logs', [
+            'rowid' => $log->id,
+            'status' => SmartLogs::STATUS_VALIDATED
+        ]);
+    }
+
+    /**
+     * Test getNomUrl method
+     */
+    public function testGetNomUrl(): void
+    {
+        // Create a log
+        $log = new SmartLogs($this->db);
+        $log->fk_key = 1;
+        $log->appuid = 'TEST123';
+        $log->entity = 1;
+        $log->dol_element = 'test';
+        $log->ip = '127.0.0.1';
+        $log->method = 'GET';
+        $log->http_status = 200;
+        $log->status = SmartLogs::STATUS_VALIDATED;
+        $log->ref = 'LOG001';
+        $log->create($this->testUser);
+
+        // Get URL
+        $url = $log->getNomUrl();
+
+        $this->assertIsString($url);
+        $this->assertStringContainsString('LOG001', $url);
+    }
+
+    /**
+     * Test getNomUrl with different parameters
+     */
+    public function testGetNomUrlWithParameters(): void
+    {
+        $log = new SmartLogs($this->db);
+        $log->ref = 'LOG002';
+
+        // Test with picto
+        $url = $log->getNomUrl(1);
+        $this->assertIsString($url);
+
+        // Test without picto
+        $url = $log->getNomUrl(0);
+        $this->assertIsString($url);
+    }
+
+    /**
+     * Test getNextNumRef method
+     */
+    public function testGetNextNumRef(): void
+    {
+        $log = new SmartLogs($this->db);
+
+        $ref = $log->getNextNumRef();
+
+        $this->assertNotEmpty($ref);
+        $this->assertIsString($ref);
+        $this->assertStringStartsWith('LOG', $ref);
+    }
+
+    /**
+     * Test createFromClone method
+     */
+    public function testCreateFromClone(): void
+    {
+        // Create original log
+        $log = new SmartLogs($this->db);
+        $log->fk_key = 1;
+        $log->appuid = 'ORIGINAL123';
+        $log->entity = 1;
+        $log->dol_element = 'test';
+        $log->ip = '192.168.1.1';
+        $log->method = 'POST';
+        $log->http_status = 201;
+        $log->url_requested = '/api/test';
+        $log->status = SmartLogs::STATUS_VALIDATED;
+        $originalId = $log->create($this->testUser);
+
+        $this->assertGreaterThan(0, $originalId);
+
+        // Clone the log
+        $clonedLog = new SmartLogs($this->db);
+        $clonedId = $clonedLog->createFromClone($this->testUser, $originalId);
+
+        $this->assertGreaterThan(0, $clonedId);
+        $this->assertNotEquals($originalId, $clonedId);
+
+        // Verify clone has same data
+        $clonedLog->fetch($clonedId);
+        $this->assertEquals('ORIGINAL123', $clonedLog->appuid);
+        $this->assertEquals('/api/test', $clonedLog->url_requested);
+        $this->assertEquals('POST', $clonedLog->method);
+    }
+
+    /**
+     * Test deleteLine method
+     */
+    public function testDeleteLine(): void
+    {
+        // Create a log with lines
+        $log = new SmartLogs($this->db);
+        $log->fk_key = 1;
+        $log->appuid = 'TEST123';
+        $log->entity = 1;
+        $log->dol_element = 'test';
+        $log->ip = '127.0.0.1';
+        $log->method = 'GET';
+        $log->http_status = 200;
+        $log->status = SmartLogs::STATUS_DRAFT;
+        $log->create($this->testUser);
+
+        // Delete a line (even if it doesn't exist, should return success or error)
+        $result = $log->deleteLine($this->testUser, 999);
+
+        // deleteLine returns -1 on error or positive on success
+        $this->assertIsInt($result);
+    }
 }

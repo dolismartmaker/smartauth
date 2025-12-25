@@ -425,4 +425,330 @@ class SmartAuthClassTest extends DolibarrRealTestCase
             $this->assertDatabaseHas('smartauth_auth', ['rowid' => $id]);
         }
     }
+
+    /**
+     * Test SmartAuth validate method
+     */
+    public function testSmartAuthValidate(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->appuid = 1;
+        $auth->salt = bin2hex(random_bytes(16));
+        $auth->fk_user_creat = $this->testUser->id;
+        $auth->fk_authid = $this->testUser->id;
+        $auth->auth_element = 'user';
+        $auth->fk_device_id = $this->testDevice->id;
+        $auth->token_type = 'access';
+        $auth->status = SmartAuth::STATUS_DRAFT;
+        $auth->ip = '127.0.0.1';
+        $auth->entity = 1;
+        $auth->create($this->testUser);
+
+        // Validate the auth
+        $result = $auth->validate($this->testUser);
+
+        $this->assertGreaterThan(0, $result, "Validate should return positive value");
+        $this->assertEquals(SmartAuth::STATUS_VALIDATED, $auth->status);
+
+        $this->assertDatabaseHas('smartauth_auth', [
+            'rowid' => $auth->id,
+            'status' => SmartAuth::STATUS_VALIDATED
+        ]);
+    }
+
+    /**
+     * Test SmartAuth setDraft method
+     */
+    public function testSmartAuthSetDraft(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->appuid = 1;
+        $auth->salt = bin2hex(random_bytes(16));
+        $auth->fk_user_creat = $this->testUser->id;
+        $auth->fk_authid = $this->testUser->id;
+        $auth->auth_element = 'user';
+        $auth->fk_device_id = $this->testDevice->id;
+        $auth->token_type = 'access';
+        $auth->status = SmartAuth::STATUS_VALIDATED;
+        $auth->ip = '127.0.0.1';
+        $auth->entity = 1;
+        $auth->create($this->testUser);
+
+        // Set back to draft
+        $result = $auth->setDraft($this->testUser);
+
+        $this->assertGreaterThan(0, $result);
+        $this->assertEquals(SmartAuth::STATUS_DRAFT, $auth->status);
+    }
+
+    /**
+     * Test SmartAuth cancel method
+     */
+    public function testSmartAuthCancel(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->appuid = 1;
+        $auth->salt = bin2hex(random_bytes(16));
+        $auth->fk_user_creat = $this->testUser->id;
+        $auth->fk_authid = $this->testUser->id;
+        $auth->auth_element = 'user';
+        $auth->fk_device_id = $this->testDevice->id;
+        $auth->token_type = 'access';
+        $auth->status = SmartAuth::STATUS_VALIDATED;
+        $auth->ip = '127.0.0.1';
+        $auth->entity = 1;
+        $auth->create($this->testUser);
+
+        // Cancel the auth
+        $result = $auth->cancel($this->testUser);
+
+        $this->assertGreaterThan(0, $result);
+        $this->assertEquals(SmartAuth::STATUS_CANCELED, $auth->status);
+
+        $this->assertDatabaseHas('smartauth_auth', [
+            'rowid' => $auth->id,
+            'status' => SmartAuth::STATUS_CANCELED
+        ]);
+    }
+
+    /**
+     * Test SmartAuth reopen method
+     */
+    public function testSmartAuthReopen(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->appuid = 1;
+        $auth->salt = bin2hex(random_bytes(16));
+        $auth->fk_user_creat = $this->testUser->id;
+        $auth->fk_authid = $this->testUser->id;
+        $auth->auth_element = 'user';
+        $auth->fk_device_id = $this->testDevice->id;
+        $auth->token_type = 'access';
+        $auth->status = SmartAuth::STATUS_CANCELED;
+        $auth->ip = '127.0.0.1';
+        $auth->entity = 1;
+        $auth->create($this->testUser);
+
+        // Reopen the auth
+        $result = $auth->reopen($this->testUser);
+
+        $this->assertGreaterThan(0, $result);
+        $this->assertEquals(SmartAuth::STATUS_VALIDATED, $auth->status);
+    }
+
+    /**
+     * Test SmartAuth setDisabled method
+     */
+    public function testSmartAuthSetDisabled(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->appuid = 1;
+        $auth->salt = bin2hex(random_bytes(16));
+        $auth->fk_user_creat = $this->testUser->id;
+        $auth->fk_authid = $this->testUser->id;
+        $auth->auth_element = 'user';
+        $auth->fk_device_id = $this->testDevice->id;
+        $auth->token_type = 'access';
+        $auth->status = SmartAuth::STATUS_VALIDATED;
+        $auth->ip = '127.0.0.1';
+        $auth->entity = 1;
+        $auth->create($this->testUser);
+
+        // Disable the auth
+        $result = $auth->setDisabled($this->testUser);
+
+        $this->assertGreaterThan(0, $result);
+        $this->assertEquals(SmartAuth::STATUS_DISABLED, $auth->status);
+
+        $this->assertDatabaseHas('smartauth_auth', [
+            'rowid' => $auth->id,
+            'status' => SmartAuth::STATUS_DISABLED
+        ]);
+    }
+
+    /**
+     * Test SmartAuth getNomUrl method
+     */
+    public function testSmartAuthGetNomUrl(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->appuid = 1;
+        $auth->salt = bin2hex(random_bytes(16));
+        $auth->fk_user_creat = $this->testUser->id;
+        $auth->fk_authid = $this->testUser->id;
+        $auth->auth_element = 'user';
+        $auth->fk_device_id = $this->testDevice->id;
+        $auth->token_type = 'access';
+        $auth->status = SmartAuth::STATUS_VALIDATED;
+        $auth->ip = '127.0.0.1';
+        $auth->entity = 1;
+        $auth->ref = 'AUTH001';
+        $auth->create($this->testUser);
+
+        // Get URL
+        $url = $auth->getNomUrl();
+
+        $this->assertIsString($url);
+        $this->assertStringContainsString('AUTH001', $url);
+    }
+
+    /**
+     * Test SmartAuth getLabelStatus method
+     */
+    public function testSmartAuthGetLabelStatus(): void
+    {
+        $auth = new SmartAuth($this->db);
+
+        // Test different status modes
+        $auth->status = SmartAuth::STATUS_DRAFT;
+        $label = $auth->getLabelStatus(0);
+        $this->assertNotEmpty($label);
+
+        $auth->status = SmartAuth::STATUS_VALIDATED;
+        $label = $auth->getLabelStatus(0);
+        $this->assertNotEmpty($label);
+
+        $auth->status = SmartAuth::STATUS_CANCELED;
+        $label = $auth->getLabelStatus(0);
+        $this->assertNotEmpty($label);
+    }
+
+    /**
+     * Test SmartAuth getLibStatut method
+     */
+    public function testSmartAuthGetLibStatut(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->status = SmartAuth::STATUS_VALIDATED;
+
+        $result = $auth->getLibStatut(0);
+        $this->assertNotEmpty($result);
+
+        $result = $auth->getLibStatut(1);
+        $this->assertNotEmpty($result);
+    }
+
+    /**
+     * Test SmartAuth info method
+     */
+    public function testSmartAuthInfo(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->appuid = 1;
+        $auth->salt = bin2hex(random_bytes(16));
+        $auth->fk_user_creat = $this->testUser->id;
+        $auth->fk_authid = $this->testUser->id;
+        $auth->auth_element = 'user';
+        $auth->fk_device_id = $this->testDevice->id;
+        $auth->token_type = 'access';
+        $auth->status = SmartAuth::STATUS_VALIDATED;
+        $auth->ip = '127.0.0.1';
+        $auth->entity = 1;
+        $auth->create($this->testUser);
+
+        // Get info
+        $result = $auth->info($auth->id);
+
+        $this->assertGreaterThan(0, $result);
+        $this->assertIsObject($auth->user_creation);
+    }
+
+    /**
+     * Test SmartAuth initAsSpecimen method
+     */
+    public function testSmartAuthInitAsSpecimen(): void
+    {
+        $auth = new SmartAuth($this->db);
+
+        $result = $auth->initAsSpecimen();
+
+        $this->assertGreaterThan(0, $result);
+        $this->assertNotEmpty($auth->salt);
+        $this->assertEquals('user', $auth->auth_element);
+    }
+
+    /**
+     * Test SmartAuth getLinesArray method
+     */
+    public function testSmartAuthGetLinesArray(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->appuid = 1;
+        $auth->salt = bin2hex(random_bytes(16));
+        $auth->fk_user_creat = $this->testUser->id;
+        $auth->fk_authid = $this->testUser->id;
+        $auth->auth_element = 'user';
+        $auth->fk_device_id = $this->testDevice->id;
+        $auth->token_type = 'access';
+        $auth->status = SmartAuth::STATUS_VALIDATED;
+        $auth->ip = '127.0.0.1';
+        $auth->entity = 1;
+        $auth->create($this->testUser);
+
+        $lines = $auth->getLinesArray();
+
+        $this->assertIsArray($lines);
+    }
+
+    /**
+     * Test SmartAuth getNextNumRef method
+     */
+    public function testSmartAuthGetNextNumRef(): void
+    {
+        $auth = new SmartAuth($this->db);
+
+        $ref = $auth->getNextNumRef();
+
+        $this->assertNotEmpty($ref);
+        $this->assertIsString($ref);
+    }
+
+    /**
+     * Test SmartAuth getModuleName method
+     */
+    public function testSmartAuthGetModuleName(): void
+    {
+        $auth = new SmartAuth($this->db);
+
+        $moduleName = $auth->getModuleName(1);
+
+        $this->assertIsString($moduleName);
+    }
+
+    /**
+     * Test SmartAuth getAllModulesNames method
+     */
+    public function testSmartAuthGetAllModulesNames(): void
+    {
+        $auth = new SmartAuth($this->db);
+
+        $modules = $auth->getAllModulesNames();
+
+        $this->assertIsArray($modules);
+    }
+
+    /**
+     * Test SmartAuth doScheduledJob method
+     */
+    public function testSmartAuthDoScheduledJob(): void
+    {
+        $auth = new SmartAuth($this->db);
+
+        $result = $auth->doScheduledJob();
+
+        $this->assertIsInt($result);
+    }
+
+    /**
+     * Test SmartAuth getTooltipContentArray method
+     */
+    public function testSmartAuthGetTooltipContentArray(): void
+    {
+        $auth = new SmartAuth($this->db);
+        $auth->ref = 'AUTH001';
+
+        $tooltip = $auth->getTooltipContentArray([]);
+
+        $this->assertIsArray($tooltip);
+    }
 }
