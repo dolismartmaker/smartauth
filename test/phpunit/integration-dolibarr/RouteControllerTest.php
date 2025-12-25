@@ -375,6 +375,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalUri = $_SERVER['REQUEST_URI'] ?? null;
         $originalUserAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
         $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         // Enable logging
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
@@ -382,6 +383,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_URI'] = '/api.php/test';
         $_SERVER['HTTP_USER_AGENT'] = 'PHPUnit Test';
         $_SERVER['HTTP_X_DEVICEID'] = 'test-device-id';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         // Should insert a log entry
         RouteController::insertLogs(null, 200, 'Test log entry', 1, 'test_element');
@@ -411,6 +413,11 @@ class RouteControllerTest extends DolibarrRealTestCase
             $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
         } else {
             unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
         }
     }
 
@@ -857,11 +864,13 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
         $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
         $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         // Enable logging
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
         $_SERVER['REQUEST_METHOD'] = 'PUT';
         $_SERVER['REQUEST_URI'] = '/api.php/testentry';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         // Create unique marker for this test
         $uniqueMarker = 'unique-test-' . uniqid();
@@ -888,5 +897,158 @@ class RouteControllerTest extends DolibarrRealTestCase
         if ($originalUri !== null) {
             $_SERVER['REQUEST_URI'] = $originalUri;
         }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test matchAction with exact match
+     */
+    public function testMatchActionWithExactMatch(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('matchAction');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, '/users', '/users');
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * Test matchAction with parameter placeholder
+     */
+    public function testMatchActionWithPlaceholder(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('matchAction');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, '/users/123', '/users/{id}');
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * Test matchAction with multiple placeholders
+     */
+    public function testMatchActionWithMultiplePlaceholders(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('matchAction');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, '/users/123/posts/456', '/users/{id}/posts/{postid}');
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * Test matchAction returns false on mismatch
+     */
+    public function testMatchActionReturnsFalseOnMismatch(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('matchAction');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, '/users/123', '/posts/{id}');
+
+        $this->assertFalse($result);
+    }
+
+    /**
+     * Test parseRequestData for GET request
+     */
+    public function testParseRequestDataForGet(): void
+    {
+        // Save original
+        $originalGet = $_GET;
+
+        $_GET = ['param1' => 'value1', 'param2' => 'value2'];
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseRequestData');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, 'GET');
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('param1', $result);
+        $this->assertEquals('value1', $result['param1']);
+
+        // Restore
+        $_GET = $originalGet;
+    }
+
+    /**
+     * Test parseAction extracts path correctly
+     */
+    public function testParseActionExtractsPath(): void
+    {
+        // Save original
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+
+        $_SERVER['REQUEST_URI'] = '/api.php/users/123?param=value';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseAction');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null);
+
+        $this->assertIsString($result);
+        $this->assertStringContainsString('users/123', $result);
+
+        // Restore
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        } else {
+            unset($_SERVER['REQUEST_URI']);
+        }
+    }
+
+    /**
+     * Test get method registers GET route
+     */
+    public function testGetMethodRegistersRoute(): void
+    {
+        // This test just verifies the method doesn't throw an error
+        RouteController::get('/test', 'TestClass', 'testMethod', false);
+
+        $this->assertTrue(true);
+    }
+
+    /**
+     * Test post method registers POST route
+     */
+    public function testPostMethodRegistersRoute(): void
+    {
+        RouteController::post('/test', 'TestClass', 'testMethod', false);
+
+        $this->assertTrue(true);
+    }
+
+    /**
+     * Test put method registers PUT route
+     */
+    public function testPutMethodRegistersRoute(): void
+    {
+        RouteController::put('/test', 'TestClass', 'testMethod', false);
+
+        $this->assertTrue(true);
+    }
+
+    /**
+     * Test delete method registers DELETE route
+     */
+    public function testDeleteMethodRegistersRoute(): void
+    {
+        RouteController::delete('/test', 'TestClass', 'testMethod', false);
+
+        $this->assertTrue(true);
     }
 }

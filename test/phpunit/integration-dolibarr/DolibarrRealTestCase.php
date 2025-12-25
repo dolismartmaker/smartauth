@@ -157,7 +157,12 @@ abstract class DolibarrRealTestCase extends TestCase
         $sql .= " WHERE " . implode(' AND ', $where);
 
         $result = $this->db->query($sql);
+
+        $this->assertNotFalse($result, "SQL query failed: " . $this->db->lasterror() . " - Query: " . $sql);
+
         $obj = $this->db->fetch_object($result);
+
+        $this->assertNotNull($obj, "Failed to fetch result from query: " . $sql);
 
         $this->assertGreaterThan(
             0,

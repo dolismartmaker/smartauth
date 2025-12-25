@@ -5,6 +5,8 @@
          colors="true"
          verbose="true"
          stopOnFailure="false"
+         cacheResult="true"
+         executionOrder="defects"
          cacheResultFile=".phpunit.cache/test-results.xml">
 
     <testsuites>
@@ -42,5 +44,7 @@
         <ini name="error_reporting" value="E_ALL"/>
         <ini name="display_errors" value="true"/>
         <ini name="display_startup_errors" value="true"/>
+        <ini name="pcov.enabled" value="1"/>
+        <ini name="pcov.directory" value="."/>
     </php>
 </phpunit>

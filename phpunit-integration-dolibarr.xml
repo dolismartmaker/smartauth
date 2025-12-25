@@ -5,6 +5,8 @@
          colors="true"
          verbose="true"
          stopOnFailure="false"
+         cacheResult="true"
+         executionOrder="defects"
          cacheResultFile=".phpunit.cache/integration-dolibarr-test-results.xml">
 
     <testsuites>

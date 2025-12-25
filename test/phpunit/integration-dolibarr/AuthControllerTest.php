@@ -546,4 +546,231 @@ class AuthControllerTest extends DolibarrRealTestCase
         unset($_SERVER['HTTP_USER_AGENT']);
         unset($_SERVER['HTTP_X_DEVICEID']);
     }
+
+    /**
+     * Test _FetchUserWithRights with default user
+     */
+    public function testFetchUserWithRights(): void
+    {
+        global $conf;
+
+        // Set default user ID for SmartAuth
+        $conf->global->SMARTAUTH_DEFAULT_USER = 1;
+
+        $reflection = new \ReflectionClass($this->controller);
+        $method = $reflection->getMethod('_FetchUserWithRights');
+        $method->setAccessible(true);
+
+        $user = $method->invoke($this->controller, null);
+
+        $this->assertInstanceOf(\User::class, $user);
+        $this->assertEquals(1, $user->id);
+    }
+
+    /**
+     * Test _FetchUserWithRights with provided user
+     */
+    public function testFetchUserWithRightsWithProvidedUser(): void
+    {
+        global $db;
+
+        $user = new \User($db);
+        $user->fetch(1);
+
+        $reflection = new \ReflectionClass($this->controller);
+        $method = $reflection->getMethod('_FetchUserWithRights');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->controller, $user);
+
+        $this->assertInstanceOf(\User::class, $result);
+        $this->assertEquals($user->id, $result->id);
+    }
+
+    /**
+     * Test _findEntityForUser without multicompany
+     */
+    public function testFindEntityForUserWithoutMulticompany(): void
+    {
+        $reflection = new \ReflectionClass($this->controller);
+        $method = $reflection->getMethod('_findEntityForUser');
+        $method->setAccessible(true);
+
+        $entity = $method->invoke($this->controller, 'admin');
+
+        $this->assertEquals(0, $entity);
+    }
+
+    /**
+     * Test _getAuthorizationHeader returns null when no header
+     */
+    public function testGetAuthorizationHeaderReturnsNullWhenNotSet(): void
+    {
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+        unset($_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+
+        $reflection = new \ReflectionClass(AuthController::class);
+        $method = $reflection->getMethod('_getAuthorizationHeader');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null);
+
+        $this->assertNull($result);
+    }
+
+    /**
+     * Test _getAuthorizationHeader reads from HTTP_AUTHORIZATION
+     */
+    public function testGetAuthorizationHeaderFromHttpAuthorization(): void
+    {
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer test-token-123';
+
+        $reflection = new \ReflectionClass(AuthController::class);
+        $method = $reflection->getMethod('_getAuthorizationHeader');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null);
+
+        $this->assertEquals('Bearer test-token-123', $result);
+
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+    }
+
+    /**
+     * Test _getBearerToken extracts token correctly
+     */
+    public function testGetBearerTokenExtractsToken(): void
+    {
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer 123|abc-token-xyz';
+
+        $reflection = new \ReflectionClass(AuthController::class);
+        $method = $reflection->getMethod('_getBearerToken');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null);
+
+        $this->assertEquals('123|abc-token-xyz', $result);
+
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+    }
+
+    /**
+     * Test _getBearerToken returns null when no Bearer token
+     */
+    public function testGetBearerTokenReturnsNullWhenNoBearer(): void
+    {
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Basic dGVzdDp0ZXN0';
+
+        $reflection = new \ReflectionClass(AuthController::class);
+        $method = $reflection->getMethod('_getBearerToken');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null);
+
+        $this->assertNull($result);
+
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+    }
+
+    /**
+     * Test _generateTokenPair creates both access and refresh tokens
+     */
+    public function testGenerateTokenPairCreatesBothTokens(): void
+    {
+        global $db;
+
+        $user = new \User($db);
+        $user->fetch(1);
+
+        // Set required server variables
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+
+        $reflection = new \ReflectionClass($this->controller);
+        $createFamilyMethod = $reflection->getMethod('_createTokenFamily');
+        $createFamilyMethod->setAccessible(true);
+        $family_id = $createFamilyMethod->invoke($this->controller, $user->id);
+
+        $createDeviceMethod = $reflection->getMethod('_createDeviceIdIfNeeded');
+        $createDeviceMethod->setAccessible(true);
+        $device_id = $createDeviceMethod->invoke($this->controller, $user->id);
+
+        $method = $reflection->getMethod('_generateTokenPair');
+        $method->setAccessible(true);
+
+        $tokens = $method->invoke(
+            $this->controller,
+            'user',
+            $user->id,
+            $user->id,
+            $user->login,
+            1,
+            $family_id,
+            $device_id,
+            ''
+        );
+
+        $this->assertIsArray($tokens);
+        $this->assertArrayHasKey('access_token', $tokens);
+        $this->assertArrayHasKey('refresh_token', $tokens);
+        $this->assertStringContainsString('|', $tokens['access_token']);
+        $this->assertStringContainsString('|', $tokens['refresh_token']);
+
+        // Restore
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
+
+    /**
+     * Test _createDeviceIdIfNeeded creates device when needed
+     */
+    public function testCreateDeviceIdIfNeededCreatesDevice(): void
+    {
+        global $db;
+
+        $user = new \User($db);
+        $user->fetch(1);
+
+        $reflection = new \ReflectionClass($this->controller);
+        $method = $reflection->getMethod('_createDeviceIdIfNeeded');
+        $method->setAccessible(true);
+
+        $uuid = 'test-uuid-' . time();
+        $device_id = $method->invoke($this->controller, $user->id, $uuid);
+
+        $this->assertGreaterThan(0, $device_id);
+    }
+
+    /**
+     * Test _getAllDevicesForUser returns array
+     */
+    public function testGetAllDevicesForUserReturnsArray(): void
+    {
+        global $db;
+
+        $user = new \User($db);
+        $user->fetch(1);
+
+        // Set HTTP_X_DEVICEID to avoid undefined key error
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-uuid';
+
+        $reflection = new \ReflectionClass($this->controller);
+        $method = $reflection->getMethod('_getAllDevicesForUser');
+        $method->setAccessible(true);
+
+        $devices = $method->invoke($this->controller, $user->id);
+
+        $this->assertIsArray($devices);
+
+        // Restore
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
 }

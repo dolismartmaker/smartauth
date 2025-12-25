@@ -584,16 +584,20 @@ class SmartLogsClassTest extends DolibarrRealTestCase
 
         // Clone the log
         $clonedLog = new SmartLogs($this->db);
-        $clonedId = $clonedLog->createFromClone($this->testUser, $originalId);
+        $cloneResult = $clonedLog->createFromClone($this->testUser, $originalId);
 
+        // createFromClone returns the cloned object on success, -1 on error
+        $this->assertNotEquals(-1, $cloneResult, 'createFromClone should not return -1');
+        $this->assertInstanceOf(SmartLogs::class, $cloneResult);
+
+        $clonedId = $cloneResult->id;
         $this->assertGreaterThan(0, $clonedId);
         $this->assertNotEquals($originalId, $clonedId);
 
         // Verify clone has same data
-        $clonedLog->fetch($clonedId);
-        $this->assertEquals('ORIGINAL123', $clonedLog->appuid);
-        $this->assertEquals('/api/test', $clonedLog->url_requested);
-        $this->assertEquals('POST', $clonedLog->method);
+        $this->assertEquals('ORIGINAL123', $cloneResult->appuid);
+        $this->assertEquals('/api/test', $cloneResult->url_requested);
+        $this->assertEquals('POST', $cloneResult->method);
     }
 
     /**

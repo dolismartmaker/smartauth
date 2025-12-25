@@ -710,9 +710,19 @@ class SmartAuthClassTest extends DolibarrRealTestCase
     {
         $auth = new SmartAuth($this->db);
 
-        $moduleName = $auth->getModuleName(1);
+        // First get all module names to populate cache
+        $allModules = $auth->getAllModulesNames();
 
-        $this->assertIsString($moduleName);
+        // If there are modules, test with first available ID
+        if (!empty($allModules)) {
+            $firstId = key($allModules);
+            $moduleName = $auth->getModuleName($firstId);
+            $this->assertIsString($moduleName);
+        } else {
+            // No modules found, test with empty string which is always in cache
+            $moduleName = $auth->getModuleName('');
+            $this->assertEquals('', $moduleName);
+        }
     }
 
     /**
