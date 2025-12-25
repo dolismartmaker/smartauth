@@ -34,15 +34,15 @@ abstract class DolibarrRealTestCase extends TestCase
     {
         parent::tearDownAfterClass();
 
-        // Find vendor path relative to this file
-        $vendorPath = dirname(__DIR__, 3) . '/vendor/cap-rel/dolibarr-integration-sqlite';
-
-        if (is_dir($vendorPath . '/.git')) {
-            // The sqlite package has its own git repo, reset it directly
-            exec('cd ' . escapeshellarg($vendorPath) . ' && git reset --hard HEAD 2>/dev/null');
-        } elseif (is_file($vendorPath . '/documents/database_dolibarr.sdb_save')) {
-            copy($vendorPath . '/documents/database_dolibarr.sdb_save', $vendorPath . '/documents/database_dolibarr.sdb');
-        }
+        // do not reset after each class, only after / before all tests
+        // // Find vendor path relative to this file
+        // $vendorPath = dirname(__DIR__, 3) . '/vendor/cap-rel/dolibarr-integration-sqlite';
+        // if (is_dir($vendorPath . '/.git')) {
+        //     // The sqlite package has its own git repo, reset it directly
+        //     exec('cd ' . escapeshellarg($vendorPath) . ' && git reset --hard HEAD 2>/dev/null');
+        // } elseif (is_file($vendorPath . '/documents/database_dolibarr.sdb_save')) {
+        //     copy($vendorPath . '/documents/database_dolibarr.sdb_save', $vendorPath . '/documents/database_dolibarr.sdb');
+        // }
     }
 
     /**
