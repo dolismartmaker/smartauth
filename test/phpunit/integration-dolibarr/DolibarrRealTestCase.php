@@ -40,6 +40,8 @@ abstract class DolibarrRealTestCase extends TestCase
         if (is_dir($vendorPath . '/.git')) {
             // The sqlite package has its own git repo, reset it directly
             exec('cd ' . escapeshellarg($vendorPath) . ' && git reset --hard HEAD 2>/dev/null');
+        } elseif (is_file($vendorPath . '/documents/database_dolibarr.sdb_save')) {
+            copy($vendorPath . '/documents/database_dolibarr.sdb_save', $vendorPath . '/documents/database_dolibarr.sdb');
         }
     }
 

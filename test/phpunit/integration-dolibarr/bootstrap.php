@@ -13,6 +13,10 @@ $sqliteVendorPath = $projectRoot . '/vendor/cap-rel/dolibarr-integration-sqlite'
 if (is_dir($sqliteVendorPath . '/.git')) {
     // The sqlite package has its own git repo, reset it directly
     exec('cd ' . escapeshellarg($sqliteVendorPath) . ' && git reset --hard HEAD 2>/dev/null');
+} elseif (is_file($vendorPath . '/documents/database_dolibarr.sdb_save')) {
+    copy($vendorPath . '/documents/database_dolibarr.sdb_save', $vendorPath . '/documents/database_dolibarr.sdb');
+} elseif (is_file($vendorPath . '/documents/database_dolibarr.sdb')) {
+    copy($vendorPath . '/documents/database_dolibarr.sdb', $vendorPath . '/documents/database_dolibarr.sdb_save');
 }
 
 // Load composer autoload first - this triggers autoload-init.php which defines DOL_DOCUMENT_ROOT
@@ -24,7 +28,7 @@ $dolibarrPath = realpath(__DIR__ . '/../../../vendor/cap-rel/dolibarr-integratio
 if (!$dolibarrPath || !is_dir($dolibarrPath)) {
     throw new Exception(
         "dolibarr-integration-sqlite not found. Install with:\n" .
-        "composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev"
+            "composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev"
     );
 }
 
