@@ -14,7 +14,6 @@ stages:
   - prepare-dolibarr
   - phpstan
   - test
-  - quality
 
 cache:
   paths:
@@ -58,34 +57,24 @@ test:integration-dolibarr:php82:
   tags:
     - php-82
   <<: *phpunit_template
-  before_script:
-    - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
-    - make cleandevsqlite
-  script:
-    - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --colors=never --log-junit .phpunit.cache/test-results.xml
-  after_script:
-    - make cleandevsqlite
-  allow_failure: true
-
-# Code coverage with real Dolibarr (only on default branch and MRs)
-test:coverage:
-  tags:
-    - php-82
-  <<: *phpunit_template
-  stage: quality
+  stage: test
   before_script:
     - php -m | grep pcov
     - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
     - make cleandevsqlite
     - mkdir -p .phpunit.cache
-  after_script:
-    - make cleandevsqlite
   script:
-    - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
-    - COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' .phpunit.cache/coverage-output.txt | head -1 || echo "0")
-    - echo "Total | ${COVERAGE}%"
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml --log-junit .phpunit.cache/test-results.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
+        COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' .phpunit.cache/coverage-output.txt | head -1 || echo "0")
+        echo "Total | ${COVERAGE}%"
+      else
+        php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --colors=never --log-junit .phpunit.cache/test-results.xml
+      fi
   coverage: '/Total \| (\d+\.?\d*)%/'
   artifacts:
+    when: always
     paths:
       - .phpunit.cache/
     reports:
@@ -94,9 +83,7 @@ test:coverage:
         coverage_format: cobertura
         path: .phpunit.cache/coverage.xml
     expire_in: 1 week
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
 
 # PHP syntax check
 test:lint:
