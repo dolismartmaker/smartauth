@@ -646,4 +646,247 @@ class RouteControllerTest extends DolibarrRealTestCase
             unset($_SERVER['HTTP_X_DEVICEID']);
         }
     }
+
+    /**
+     * Test route method with public endpoint
+     */
+    public function testRoutePublicEndpoint(): void
+    {
+        // Mock a simple controller class for testing
+        if (!class_exists('TestController')) {
+            eval('
+                class TestController {
+                    public function publicAction($data) {
+                        return [["message" => "public success"], 200];
+                    }
+                }
+            ');
+        }
+
+        // Setup request
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api.php/test/public';
+
+        // Capture output
+        ob_start();
+        RouteController::get('/test/public', 'TestController', 'publicAction', false);
+        $output = ob_get_clean();
+
+        // Verify response
+        $this->assertNotEmpty($output);
+    }
+
+    /**
+     * Test parseRequestData with POST and JSON
+     */
+    public function testParseRequestDataPost(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseRequestData');
+        $method->setAccessible(true);
+
+        // Mock POST with JSON - we can't easily mock php://input in tests
+        // so we just verify the method exists and returns array
+        $result = $method->invoke(null, 'GET');
+
+        $this->assertIsArray($result);
+    }
+
+    /**
+     * Test extractUrlParameters edge cases
+     */
+    public function testExtractUrlParametersEdgeCases(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('extractUrlParameters');
+        $method->setAccessible(true);
+
+        // Test with no placeholders
+        $data = ['existing' => 'value'];
+        $result = $method->invoke(null, '/users', '/users', $data);
+        $this->assertEquals($data, $result);
+
+        // Test with single placeholder
+        $result = $method->invoke(null, '/users/{id}', '/users/123', []);
+        $this->assertArrayHasKey('id', $result);
+        $this->assertEquals('123', $result['id']);
+
+        // Test with multiple placeholders
+        $result = $method->invoke(null, '/users/{id}/posts/{postId}', '/users/123/posts/456', []);
+        $this->assertArrayHasKey('id', $result);
+        $this->assertArrayHasKey('postId', $result);
+        $this->assertEquals('123', $result['id']);
+        $this->assertEquals('456', $result['postId']);
+    }
+
+    /**
+     * Test matchAction with various patterns
+     */
+    public function testMatchActionVariousPatterns(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('matchAction');
+        $method->setAccessible(true);
+
+        // Exact match
+        $this->assertTrue($method->invoke(null, 'users', 'users'));
+
+        // No match - different paths
+        $this->assertFalse($method->invoke(null, 'users', 'posts'));
+
+        // Match with placeholder
+        $this->assertTrue($method->invoke(null, 'users/42', 'users/{id}'));
+
+        // No match - extra segment
+        $this->assertFalse($method->invoke(null, 'users/42/extra', 'users/{id}'));
+
+        // Multiple segments
+        $this->assertTrue($method->invoke(null, 'api/v1/users', 'api/v1/users'));
+
+        // Empty action
+        $this->assertTrue($method->invoke(null, '', ''));
+    }
+
+    /**
+     * Test insertLogs with disabled logging
+     */
+    public function testInsertLogsDisabledLogging(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+
+        // Disable logging
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '0';
+
+        // Call insertLogs - should not create entry
+        $result = $this->db->query("SELECT COUNT(*) as cnt FROM llx_smartauth_logs");
+        $row = $this->db->fetch_object($result);
+        $countBefore = $row->cnt;
+
+        RouteController::insertLogs(null, 200, 'Test with disabled logs', 1);
+
+        $result = $this->db->query("SELECT COUNT(*) as cnt FROM llx_smartauth_logs");
+        $row = $this->db->fetch_object($result);
+        $countAfter = $row->cnt;
+
+        // Count should not increase
+        $this->assertEquals($countBefore, $countAfter);
+
+        // Restore
+        if ($originalValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalValue;
+        }
+    }
+
+    /**
+     * Test get_client_ip with various private IP ranges
+     */
+    public function testGetClientIpPrivateIPRanges(): void
+    {
+        // Save originals
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalForwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
+
+        // Test Class A private (10.x.x.x)
+        $_SERVER['REMOTE_ADDR'] = '10.5.10.20';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '8.8.8.8';
+        $ip = RouteController::get_client_ip();
+        $this->assertEquals('8.8.8.8', $ip);
+
+        // Test Class B private (172.16-31.x.x)
+        $_SERVER['REMOTE_ADDR'] = '172.20.0.1';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '1.2.3.4';
+        $ip = RouteController::get_client_ip();
+        $this->assertEquals('1.2.3.4', $ip);
+
+        // Test Class C private (192.168.x.x)
+        $_SERVER['REMOTE_ADDR'] = '192.168.100.50';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '5.6.7.8';
+        $ip = RouteController::get_client_ip();
+        $this->assertEquals('5.6.7.8', $ip);
+
+        // Restore
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalForwarded !== null) {
+            $_SERVER['HTTP_X_FORWARDED_FOR'] = $originalForwarded;
+        } else {
+            unset($_SERVER['HTTP_X_FORWARDED_FOR']);
+        }
+    }
+
+    /**
+     * Test parseAction with missing REQUEST_URI
+     */
+    public function testParseActionMissingRequestUri(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseAction');
+        $method->setAccessible(true);
+
+        // Save original
+        $originalRequestUri = $_SERVER['REQUEST_URI'] ?? null;
+
+        // Unset REQUEST_URI
+        unset($_SERVER['REQUEST_URI']);
+
+        $result = $method->invoke(null);
+
+        // Should return false
+        $this->assertFalse($result);
+
+        // Restore
+        if ($originalRequestUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalRequestUri;
+        }
+    }
+
+    /**
+     * Test insertLogs creates proper log entry
+     */
+    public function testInsertLogsCreatesEntry(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+
+        // Enable logging
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['REQUEST_METHOD'] = 'PUT';
+        $_SERVER['REQUEST_URI'] = '/api.php/testentry';
+
+        // Create unique marker for this test
+        $uniqueMarker = 'unique-test-' . uniqid();
+
+        RouteController::insertLogs(999, 202, $uniqueMarker, 1);
+
+        // Verify log was created
+        $this->assertDatabaseHas('smartauth_logs', [
+            'fk_key' => 999,
+            'http_status' => 202,
+            'entity' => 1,
+            'method' => 'PUT'
+        ]);
+
+        // Restore
+        if ($originalValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+    }
 }

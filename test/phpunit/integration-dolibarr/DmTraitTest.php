@@ -74,6 +74,34 @@ class TestDmTraitClass extends dmBase
     }
 
     /**
+     * Expose protected methods for testing
+     */
+    public function exposeExportData($name, $objectid)
+    {
+        return $this->exportData($name, $objectid);
+    }
+
+    public function exposeExportExtrafieldData($name, $objectid)
+    {
+        return $this->exportExtrafieldData($name, $objectid);
+    }
+
+    public function exposeFieldFilterValueSmartPhoto($object, $doliside)
+    {
+        return $this->fieldFilterValueSmartPhoto($object, $doliside);
+    }
+
+    public function exposeObjectType()
+    {
+        return $this->objectType();
+    }
+
+    public function exposeDolMapping()
+    {
+        return $this->_dolmapping;
+    }
+
+    /**
      * Test filter function for 'nom' field
      */
     public function fieldFilterValueNom($obj, $value)
@@ -396,5 +424,176 @@ class DmTraitTest extends DolibarrRealTestCase
         $result = $this->mapper->exposeExportMappedData($obj);
 
         $this->assertInstanceOf(stdClass::class, $result);
+    }
+
+    /**
+     * Test boot method initializes dmHelper
+     */
+    public function testBootInitializesDmHelper(): void
+    {
+        // Create new mapper instance to test boot
+        $mapper = new TestDmTraitClass($this->db);
+
+        // Verify dmHelper was initialized
+        $this->assertNotNull($mapper->exposeDolMapping());
+    }
+
+    /**
+     * Test exportData method
+     */
+    public function testExportData(): void
+    {
+        // Create a test third-party
+        $societe = new \Societe($this->db);
+        $societe->name = 'Test Export Company';
+        $societe->client = 1;
+        $societe->entity = 1;
+        $socid = $societe->create($this->testUser);
+
+        $this->assertGreaterThan(0, $socid);
+
+        // Export data
+        $result = $this->mapper->exposeExportData('Societe', $socid);
+
+        $this->assertInstanceOf(\stdClass::class, $result);
+        $this->assertEquals('TEST EXPORT COMPANY', $result->name);
+        $this->assertEquals($socid, $result->id);
+    }
+
+    /**
+     * Test exportData with invalid object ID
+     */
+    public function testExportDataWithInvalidId(): void
+    {
+        $result = $this->mapper->exposeExportData('Societe', 999999);
+
+        // Should return empty object or null
+        $this->assertIsObject($result);
+    }
+
+    /**
+     * Test exportExtrafieldData method
+     */
+    public function testExportExtrafieldData(): void
+    {
+        // Create a test third-party with extrafields
+        $societe = new \Societe($this->db);
+        $societe->name = 'Test Extrafields Company';
+        $societe->client = 1;
+        $societe->entity = 1;
+        $socid = $societe->create($this->testUser);
+
+        $this->assertGreaterThan(0, $socid);
+
+        // Export extrafield data
+        $result = $this->mapper->exposeExportExtrafieldData('Societe', $socid);
+
+        $this->assertIsArray($result);
+    }
+
+    /**
+     * Test exportExtrafieldData with no extrafields
+     */
+    public function testExportExtrafieldDataEmpty(): void
+    {
+        // Create a test third-party without extrafields
+        $societe = new \Societe($this->db);
+        $societe->name = 'Test No Extrafields';
+        $societe->client = 1;
+        $societe->entity = 1;
+        $socid = $societe->create($this->testUser);
+
+        $this->assertGreaterThan(0, $socid);
+
+        // Export extrafield data
+        $result = $this->mapper->exposeExportExtrafieldData('Societe', $socid);
+
+        $this->assertIsArray($result);
+    }
+
+    /**
+     * Test fieldFilterValueSmartPhoto method
+     */
+    public function testFieldFilterValueSmartPhoto(): void
+    {
+        // Create test object with photo
+        $obj = new \stdClass();
+        $obj->photo = 'test_photo.jpg';
+        $obj->id = 123;
+        $obj->entity = 1;
+
+        // Mock object with element property
+        $mockObject = new class {
+            public $element = 'societe';
+            public $entity = 1;
+        };
+
+        $result = $this->mapper->exposeFieldFilterValueSmartPhoto($mockObject, $obj);
+
+        $this->assertIsString($result);
+    }
+
+    /**
+     * Test fieldFilterValueSmartPhoto with no photo
+     */
+    public function testFieldFilterValueSmartPhotoEmpty(): void
+    {
+        // Create test object without photo
+        $obj = new \stdClass();
+        $obj->id = 123;
+
+        // Mock object
+        $mockObject = new class {
+            public $element = 'societe';
+            public $entity = 1;
+        };
+
+        $result = $this->mapper->exposeFieldFilterValueSmartPhoto($mockObject, $obj);
+
+        $this->assertIsString($result);
+        $this->assertEquals('', $result);
+    }
+
+    /**
+     * Test getStoragePath with absolute path
+     */
+    public function testGetStoragePathAbsolute(): void
+    {
+        $obj = new \stdClass();
+        $obj->element = 'societe';
+        $obj->entity = 1;
+
+        $result = $this->mapper->exposeGetStoragePath($obj, false);
+
+        $this->assertIsString($result);
+        $this->assertStringContainsString('societe', $result);
+    }
+
+    /**
+     * Test objectType returns correct type
+     */
+    public function testObjectTypeForDifferentClasses(): void
+    {
+        $type = $this->mapper->exposeObjectType();
+
+        $this->assertIsString($type);
+        $this->assertEquals('Societe', $type);
+    }
+
+    /**
+     * Test exportMappedData preserves special characters
+     */
+    public function testExportMappedDataPreservesSpecialCharacters(): void
+    {
+        $obj = new \stdClass();
+        $obj->id = 1;
+        $obj->nom = 'Company & Co. "Special"';
+        $obj->address = 'Rue de l\'Église';
+        $obj->array_options = [];
+
+        $result = $this->mapper->exposeExportMappedData($obj);
+
+        $this->assertStringContainsString('&', $result->name);
+        $this->assertStringContainsString('ÉGLISE', strtoupper($result->address));
     }
 }

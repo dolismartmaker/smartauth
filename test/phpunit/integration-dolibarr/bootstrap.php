@@ -4,20 +4,70 @@
  * PHPUnit Bootstrap for SmartAuth Integration Tests with Real Dolibarr
  *
  * Uses cap-rel/dolibarr-integration-sqlite package for a complete Dolibarr environment
+ * Optimized with SQLite in RAM for faster test execution
  */
+
+// Determine RAM disk location (Linux: /dev/shm, macOS: /tmp)
+$ramDiskPath = is_dir('/dev/shm') ? '/dev/shm' : sys_get_temp_dir();
+$ramDbPath = $ramDiskPath . '/smartauth_test_' . getmypid() . '.sdb';
+
+// Store RAM DB path in global for cleanup
+$GLOBALS['SMARTAUTH_RAM_DB_PATH'] = $ramDbPath;
 
 // Reset SQLite database to clean state before running tests
 // This ensures tests start with a known state regardless of previous test runs
 $projectRoot = dirname(__DIR__, 3);
 $sqliteVendorPath = $projectRoot . '/vendor/cap-rel/dolibarr-integration-sqlite';
+$originalDbPath = $sqliteVendorPath . '/documents/database_dolibarr.sdb';
+$backupDbPath = $sqliteVendorPath . '/documents/database_dolibarr.sdb_save';
+
+// Prepare clean database
 if (is_dir($sqliteVendorPath . '/.git')) {
     // The sqlite package has its own git repo, reset it directly
     exec('cd ' . escapeshellarg($sqliteVendorPath) . ' && git reset --hard HEAD 2>/dev/null');
-} elseif (is_file($sqliteVendorPath . '/documents/database_dolibarr.sdb_save')) {
-    copy($sqliteVendorPath . '/documents/database_dolibarr.sdb_save', $sqliteVendorPath . '/documents/database_dolibarr.sdb');
-} elseif (is_file($sqliteVendorPath . '/documents/database_dolibarr.sdb')) {
-    copy($sqliteVendorPath . '/documents/database_dolibarr.sdb', $sqliteVendorPath . '/documents/database_dolibarr.sdb_save');
+} elseif (is_file($backupDbPath)) {
+    copy($backupDbPath, $originalDbPath);
+} elseif (is_file($originalDbPath)) {
+    copy($originalDbPath, $backupDbPath);
 }
+
+// Copy database to RAM disk for ultra-fast I/O
+if (is_file($originalDbPath)) {
+    // Backup original if it exists
+    if (file_exists($originalDbPath) && !file_exists($originalDbPath . '.backup')) {
+        copy($originalDbPath, $originalDbPath . '.backup');
+    }
+
+    // Copy to RAM
+    copy($originalDbPath, $ramDbPath);
+
+    // Replace original with symlink to RAM version
+    unlink($originalDbPath);
+    symlink($ramDbPath, $originalDbPath);
+
+    echo "🚀 Using SQLite in RAM: $ramDbPath\n";
+
+    // Register cleanup: restore original database
+    register_shutdown_function(function() use ($originalDbPath, $ramDbPath) {
+        if (is_link($originalDbPath)) {
+            unlink($originalDbPath);
+        }
+        if (file_exists($originalDbPath . '.backup')) {
+            copy($originalDbPath . '.backup', $originalDbPath);
+            unlink($originalDbPath . '.backup');
+        }
+    });
+} else {
+    throw new Exception("Original SQLite database not found at: $originalDbPath");
+}
+
+// Register shutdown function to cleanup RAM database
+register_shutdown_function(function() use ($ramDbPath) {
+    if (file_exists($ramDbPath)) {
+        unlink($ramDbPath);
+        echo "\n🧹 Cleaned up RAM database: $ramDbPath\n";
+    }
+});
 
 // Load composer autoload first - this triggers autoload-init.php which defines DOL_DOCUMENT_ROOT
 require_once __DIR__ . '/../../../vendor/autoload.php';
@@ -74,6 +124,7 @@ global $conf, $db, $user, $langs, $hookmanager, $mysoc;
 require_once $dolibarrPath . '/filefunc.inc.php';
 
 // Then load master.inc.php
+// Dolibarr will automatically use the symlinked database in RAM
 require_once DOL_DOCUMENT_ROOT . '/master.inc.php';
 
 error_reporting(E_ALL);
