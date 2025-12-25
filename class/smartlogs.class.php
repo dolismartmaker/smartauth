@@ -928,8 +928,8 @@ class SmartLogs extends CommonObject
 	public function info($id)
 	{
 		$sql = "SELECT rowid,";
-		$sql .= " tms as datec, tms as datem,";
-		$sql .= " fk_user_creat, fk_user_modif";
+		$sql .= " tms as datec, tms as datem";
+		// $sql .= " ,fk_user_creat, fk_user_modif";
 		$sql .= " FROM ".MAIN_DB_PREFIX.$this->table_element." as t";
 		$sql .= " WHERE t.rowid = ".((int) $id);
 
@@ -940,11 +940,11 @@ class SmartLogs extends CommonObject
 
 				$this->id = $obj->rowid;
 
-				$this->user_creation_id = $obj->fk_user_creat;
-				$this->user_modification_id = $obj->fk_user_modif;
-				if (!empty($obj->fk_user_valid)) {
-					$this->user_validation_id = $obj->fk_user_valid;
-				}
+				// $this->user_creation_id = $obj->fk_user_creat;
+				// $this->user_modification_id = $obj->fk_user_modif;
+				// if (!empty($obj->fk_user_valid)) {
+				// 	$this->user_validation_id = $obj->fk_user_valid;
+				// }
 				$this->date_creation     = $this->db->jdate($obj->datec);
 				$this->date_modification = empty($obj->datem) ? '' : $this->db->jdate($obj->datem);
 				if (!empty($obj->datev)) {
