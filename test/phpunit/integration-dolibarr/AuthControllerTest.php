@@ -1064,7 +1064,9 @@ class AuthControllerTest extends DolibarrRealTestCase
         // Now use refresh token
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $refreshToken;
 
+        ob_start();
         $refreshResult = $this->controller->refresh();
+        ob_end_clean();
 
         $this->assertIsArray($refreshResult);
         $this->assertEquals(200, $refreshResult[1]);
@@ -1106,7 +1108,9 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         // Use refresh token
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $oldRefreshToken;
+        ob_start();
         $this->controller->refresh();
+        ob_end_clean();
 
         // Verify old token is revoked
         $this->assertDatabaseHas('smartauth_auth', [
@@ -1170,7 +1174,9 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         // Refresh
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $refreshToken;
+        ob_start();
         $this->controller->refresh();
+        ob_end_clean();
 
         // Verify family refresh count increased
         $sql = "SELECT refresh_count FROM " . MAIN_DB_PREFIX . "smartauth_token_family";
@@ -1218,7 +1224,9 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $accessToken;
 
+        ob_start();
         $decoded = \SmartAuth\Api\AuthController::check();
+        ob_end_clean();
 
         $this->assertIsObject($decoded);
         $this->assertEquals($testUser->login, $decoded->login);
@@ -1268,7 +1276,9 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         sleep(1);
 
+        ob_start();
         \SmartAuth\Api\AuthController::check();
+        ob_end_clean();
 
         // Verify last used was updated
         $resql = $this->db->query($sql);
@@ -1314,7 +1324,9 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         // Get family_id from token
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $accessToken;
+        ob_start();
         $decoded = \SmartAuth\Api\AuthController::check();
+        ob_end_clean();
 
         $logoutPayload = [
             'user' => $testUser,
@@ -1322,7 +1334,9 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ];
 
+        ob_start();
         $result = $this->controller->logout($logoutPayload);
+        ob_end_clean();
 
         $this->assertEquals(200, $result[1]);
         $this->assertEquals('', $result[0]['user']);
@@ -1367,14 +1381,18 @@ class AuthControllerTest extends DolibarrRealTestCase
         $refreshToken = $loginResult[0]['refresh_token'];
 
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $accessToken;
+        ob_start();
         $decoded = \SmartAuth\Api\AuthController::check();
+        ob_end_clean();
 
         $logoutPayload = [
             'user' => $testUser,
             'family_id' => $decoded->family_id
         ];
 
+        ob_start();
         $this->controller->logout($logoutPayload);
+        ob_end_clean();
 
         // Verify all tokens in family are revoked
         $accessTokenId = explode('|', $accessToken)[0];
