@@ -1958,7 +1958,7 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         $logoutPayload = [
             'user' => $testUser,
-            'family_id' => $decoded->family_id
+            'family_id' => $decoded->family_id ?? null
         ];
         ob_start();
         $this->controller->logout($logoutPayload);
