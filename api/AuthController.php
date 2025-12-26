@@ -26,7 +26,6 @@ dol_include_once('/smartauth/class/smartauthdevices.class.php');
 
 use User;
 use Exception;
-use SmartAuth;
 use SmartAuthDevices;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
@@ -800,7 +799,7 @@ class AuthController
 				//exit ? force stop / exception
 				exit(1);
 			}
-		}
+		} 
 		$u->getrights();
 		return $u;
 	}
@@ -1044,7 +1043,6 @@ class AuthController
 			"token_type" => $token_type,
 			"family_id" => $family_id,
 			"device_id" => $device_id,
-			"refresh_count" => 0,
 			"exp" => time() + $lifetime // Expiration timestamp
 		];
 
@@ -1288,17 +1286,6 @@ class AuthController
 		return $deviceid;
 	}
 
-
-
-
-	/**
-	 * Decode and validate JWT token
-	 *
-	 * @param  string $token JWT token to decode
-	 * @param  string "access|refresh" : checktype see SmartTokenConfig::TYPE_ACCESS or TYPE_REFRESH
-	 * @return SmartAuth Decoded JWT payload on success, false on failure
-	 *
-	*/
 	private static function _decodeJWT($token, $checktype)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey, $conf;
@@ -1330,30 +1317,23 @@ class AuthController
 		$cache_key = 'token-' . $token_id;
 		if (!isset($conf->cache['smartmakers'][$cache_key])) {
 			// Load token data from database
-			$sa = new SmartAuth($db);
-			$res = $sa->fetch((int) $token_id);
-			// $sql = "SELECT rowid as token_id, salt, token_type, fk_authid, entity, date_eol, status, parent_token_id, refresh_count";
-			// $sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-			// $sql .= " WHERE rowid = " . (int) $token_id;
-			// $sql .= " AND status = " . self::STATUS_VALID;
-			// dol_syslog("smartauth : get token data from db " . $sql);
-			// $resql = $db->query($sql);
+			$sql = "SELECT rowid as token_id, salt, token_type, fk_authid, entity, date_eol, status, parent_token_id, refresh_count";
+			$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sql .= " WHERE rowid = " . (int) $token_id;
+			$sql .= " AND status = " . self::STATUS_VALID;
 
-			if ($res < 0) {
+			dol_syslog("smartauth : get token data from db " . $sql);
+			$resql = $db->query($sql);
+
+			if (!$resql || $db->num_rows($resql) == 0) {
 				dol_syslog("smartauth : Invalid or revoked token", LOG_WARNING);
 				json_reply('Invalid or revoked token', 401);
 			}
 
-			if($sa->status != SmartAuth::STATUS_VALIDATED){
-				dol_syslog("smartauth : Invalid status token", LOG_WARNING);
-				json_reply('Invalid or revoked token', 401);
-			}
-
-			// $token_data = $db->fetch_object($resql);
+			$token_data = $db->fetch_object($resql);
 
 			// Cache token data
-			// $conf->cache['smartmakers'][$cache_key] = $token_data;
-			$conf->cache['smartmakers'][$cache_key] = $sa;
+			$conf->cache['smartmakers'][$cache_key] = $token_data;
 		}
 
 		$token_data = $conf->cache['smartmakers'][$cache_key];
@@ -1377,13 +1357,6 @@ class AuthController
 			json_reply(['error' => 'Token expired. Please login again.'], 401);
 		}
 
-		// Verify refresh
-		// Check max refresh count
-		if ($token_data->refresh_count >= SmartTokenConfig::MAX_REFRESH_COUNT) {
-			dol_syslog("Max refresh count exceeded for token " . $token_data->token_id, LOG_WARNING);
-			json_reply(['error' => 'Invalid token type.'], 401);
-		}
-
 		// Verify JWT signature
 		$salt2 = self::_getSalt2();
 		$key = $token_data->salt . $salt2 . $smartAuthAppKey;
@@ -1399,6 +1372,6 @@ class AuthController
 		}
 
 		// dol_syslog("smartauth : _decodeJWT is " . json_encode($decoded));
-		return $token_data;
+		return $decoded;
 	}
 }
