@@ -588,7 +588,17 @@ class AuthController
 	 * - Token has not expired
 	 * - JWT signature is valid
 	 *
-	 * @return  SmartAuth correspondingdecoded token
+	 * @return object{
+	 *     login: string,
+	 *     token_id: int,
+	 *     user_id: int,
+	 *     entity: int,
+	 *     token_type: string,
+	 *     family_id: int,
+	 *     device_id: int,
+	 *     refresh_count: int,
+	 *     exp: int
+	 * }|null Decoded token payload object with user info, or null on failure (calls json_reply on error)
 	 */
 	public static function check()
 	{
@@ -600,6 +610,11 @@ class AuthController
 
 		$decoded = self::_decodeJWT($token, SmartTokenConfig::TYPE_ACCESS);
 
+		if (!is_object($decoded) || empty($decoded)) {
+			dol_syslog("smartauth : decoded token is null", LOG_ERR);
+			json_reply('Access denied (invalid token payload)', 401);
+		}
+
 		// dol_syslog("smartauth : decoded token is $token :: jwt is " . json_encode($decoded));
 
 		// Verify token contains user identification
@@ -609,7 +624,6 @@ class AuthController
 			dol_syslog("smartauth : login/socid not found in token", LOG_ERR);
 			json_reply('Access denied (invalid token payload)', 401);
 		}
-		$decoded->token_id = $token_id;
 
 		// * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)
 		// Update token last used timestamp and refresh expiry
@@ -627,39 +641,7 @@ class AuthController
 			json_reply('Access denied', 401);
 		}
 
-		// Check cache first for performance
-		$cache_key = 'token-' . $token_id;
-		if (!isset($conf->cache['smartmakers'][$cache_key])) {
-			// Load token data from database
-			$sa = new SmartAuth($db);
-			$res = $sa->fetch((int) $token_id);
-			// $sql = "SELECT rowid as token_id, salt, token_type, fk_authid, entity, date_eol, status, parent_token_id, refresh_count";
-			// $sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-			// $sql .= " WHERE rowid = " . (int) $token_id;
-			// $sql .= " AND status = " . self::STATUS_VALID;
-			// dol_syslog("smartauth : get token data from db " . $sql);
-			// $resql = $db->query($sql);
-
-			if ($res < 0) {
-				dol_syslog("smartauth : Invalid or revoked token", LOG_WARNING);
-				json_reply('Invalid or revoked token', 401);
-			}
-
-			if ($sa->status != SmartAuth::STATUS_VALIDATED) {
-				dol_syslog("smartauth : Invalid status token", LOG_WARNING);
-				json_reply('Invalid or revoked token', 401);
-			}
-
-			// $token_data = $db->fetch_object($resql);
-
-			// Cache token data
-			// $conf->cache['smartmakers'][$cache_key] = $token_data;
-			$conf->cache['smartmakers'][$cache_key] = $sa;
-		}
-
-		$token_data = $conf->cache['smartmakers'][$cache_key];
-
-		return $token_data;
+		return $decoded;
 	}
 
 
@@ -1443,6 +1425,7 @@ class AuthController
 		$salt2 = self::_getSalt2();
 		$key = $token_data->salt . $salt2 . $smartAuthAppKey;
 
+		$decoded = null;
 		try {
 			$decoded = JWT::decode($jwt, new Key($key, 'HS256'));
 		} catch (SignatureInvalidException $e) {
