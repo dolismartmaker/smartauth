@@ -588,7 +588,7 @@ class AuthController
 	 * - Token has not expired
 	 * - JWT signature is valid
 	 *
-	 * @return  StdObject  Decoded token payload
+	 * @return  SmartAuth correspondingdecoded token
 	 */
 	public static function check()
 	{
@@ -627,7 +627,39 @@ class AuthController
 			json_reply('Access denied', 401);
 		}
 
-		return $decoded;
+		// Check cache first for performance
+		$cache_key = 'token-' . $token_id;
+		if (!isset($conf->cache['smartmakers'][$cache_key])) {
+			// Load token data from database
+			$sa = new SmartAuth($db);
+			$res = $sa->fetch((int) $token_id);
+			// $sql = "SELECT rowid as token_id, salt, token_type, fk_authid, entity, date_eol, status, parent_token_id, refresh_count";
+			// $sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+			// $sql .= " WHERE rowid = " . (int) $token_id;
+			// $sql .= " AND status = " . self::STATUS_VALID;
+			// dol_syslog("smartauth : get token data from db " . $sql);
+			// $resql = $db->query($sql);
+
+			if ($res < 0) {
+				dol_syslog("smartauth : Invalid or revoked token", LOG_WARNING);
+				json_reply('Invalid or revoked token', 401);
+			}
+
+			if($sa->status != SmartAuth::STATUS_VALIDATED){
+				dol_syslog("smartauth : Invalid status token", LOG_WARNING);
+				json_reply('Invalid or revoked token', 401);
+			}
+
+			// $token_data = $db->fetch_object($resql);
+
+			// Cache token data
+			// $conf->cache['smartmakers'][$cache_key] = $token_data;
+			$conf->cache['smartmakers'][$cache_key] = $sa;
+		}
+
+		$token_data = $conf->cache['smartmakers'][$cache_key];
+
+		return $token_data;
 	}
 
 
@@ -997,7 +1029,23 @@ class AuthController
 	}
 
 	/**
-	 * Unified token generation (replaces _newUserKey)
+	 * Generate a JWT token and store it in the database
+	 *
+	 * Creates an authentication token (access or refresh) for a user/element,
+	 * stores it in the smartauth_auth table, and returns the formatted token string.
+	 *
+	 * @param string      $element      The element type being authenticated ('user', 'societe_account', etc.)
+	 * @param int         $element_id   The ID of the element (user ID, societe ID, etc.)
+	 * @param int         $user_id      The user ID associated with this token
+	 * @param string      $login        The login/username for the token payload
+	 * @param int         $entity       The entity ID (for multi-company support)
+	 * @param string      $token_type   The type of token ('access' or 'refresh')
+	 * @param int         $lifetime     Token lifetime in seconds
+	 * @param int         $family_id    The token family ID (parent token ID for token rotation)
+	 * @param int         $device_id    The device ID associated with this token
+	 * @param string|null $device_uuid  Optional device UUID for additional identification
+	 *
+	 * @return string|null The generated token in format "rowid|jwt_token", or null on failure
 	 */
 	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id,  $device_uuid = null)
 	{
@@ -1292,12 +1340,26 @@ class AuthController
 
 
 	/**
-	 * Decode and validate JWT token
+	 * Decode and validate a JWT token
 	 *
-	 * @param  string $token JWT token to decode
-	 * @param  string "access|refresh" : checktype see SmartTokenConfig::TYPE_ACCESS or TYPE_REFRESH
-	 * @return SmartAuth Decoded JWT payload on success, false on failure
+	 * Decodes the JWT token, validates its signature and expiration,
+	 * verifies it exists in the database with valid status, and updates
+	 * usage statistics (last used date, IP address, EOL).
 	 *
+	 * @param string $token     The JWT token to decode (format: "rowid|jwt_token")
+	 * @param string $checktype The expected token type to validate ('access' or 'refresh')
+	 *
+	 * @return object{
+	 *     login: string,
+	 *     token_id: int,
+	 *     user_id: int,
+	 *     entity: int,
+	 *     token_type: string,
+	 *     family_id: int,
+	 *     device_id: int,
+	 *     refresh_count: int,
+	 *     exp: int
+	 * }|null Decoded token payload object with user info, or null on failure (calls json_reply on error)
 	*/
 	private static function _decodeJWT($token, $checktype)
 	{
@@ -1330,30 +1392,23 @@ class AuthController
 		$cache_key = 'token-' . $token_id;
 		if (!isset($conf->cache['smartmakers'][$cache_key])) {
 			// Load token data from database
-			$sa = new SmartAuth($db);
-			$res = $sa->fetch((int) $token_id);
-			// $sql = "SELECT rowid as token_id, salt, token_type, fk_authid, entity, date_eol, status, parent_token_id, refresh_count";
-			// $sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-			// $sql .= " WHERE rowid = " . (int) $token_id;
-			// $sql .= " AND status = " . self::STATUS_VALID;
-			// dol_syslog("smartauth : get token data from db " . $sql);
-			// $resql = $db->query($sql);
+			$sql = "SELECT rowid as token_id, salt, token_type, fk_authid, entity, date_eol, status, parent_token_id, refresh_count";
+			$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sql .= " WHERE rowid = " . (int) $token_id;
+			$sql .= " AND status = " . self::STATUS_VALID;
 
-			if ($res < 0) {
+			dol_syslog("smartauth : get token data from db " . $sql);
+			$resql = $db->query($sql);
+
+			if (!$resql || $db->num_rows($resql) == 0) {
 				dol_syslog("smartauth : Invalid or revoked token", LOG_WARNING);
 				json_reply('Invalid or revoked token', 401);
 			}
 
-			if($sa->status != SmartAuth::STATUS_VALIDATED){
-				dol_syslog("smartauth : Invalid status token", LOG_WARNING);
-				json_reply('Invalid or revoked token', 401);
-			}
-
-			// $token_data = $db->fetch_object($resql);
+			$token_data = $db->fetch_object($resql);
 
 			// Cache token data
-			// $conf->cache['smartmakers'][$cache_key] = $token_data;
-			$conf->cache['smartmakers'][$cache_key] = $sa;
+			$conf->cache['smartmakers'][$cache_key] = $token_data;
 		}
 
 		$token_data = $conf->cache['smartmakers'][$cache_key];
@@ -1399,6 +1454,7 @@ class AuthController
 		}
 
 		// dol_syslog("smartauth : _decodeJWT is " . json_encode($decoded));
-		return $token_data;
+		$decoded->token_id = $token_id;
+		return $decoded;
 	}
 }
