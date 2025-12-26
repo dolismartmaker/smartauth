@@ -32,11 +32,18 @@ function json_reply($message, $code)
 		RouteController::insertLogs(null, $code, $message, null);
 	}
 
-	header('Content-Type: application/json; charset=utf-8');
-	http_response_code($code);
+	// Suppress header errors in test environment (headers may already be sent)
+	if (!headers_sent()) {
+		header('Content-Type: application/json; charset=utf-8');
+		http_response_code($code);
+	}
 
 	// header("HTTP/1.1 401 Unauthorized");
 	// header("HTTP/1.1 " . $code);
 	print json_encode($message, JSON_PRETTY_PRINT);
-	exit;
+
+	// Skip exit() in PHPUnit test environment to allow tests to continue
+	if (!defined('PHPUNIT_RUNNING') || !PHPUNIT_RUNNING) {
+		exit;
+	}
 }

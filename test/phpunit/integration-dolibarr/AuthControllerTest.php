@@ -1458,7 +1458,9 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ];
 
+        ob_start();
         $result = $this->controller->device($devicePayload);
+        ob_end_clean();
 
         $this->assertEquals(200, $result[1]);
         $this->assertArrayHasKey('message', $result[0]);
@@ -1521,7 +1523,9 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ];
 
+        ob_start();
         $result = $this->controller->device($devicePayload);
+        ob_end_clean();
 
         $this->assertEquals(200, $result[1]);
         $this->assertArrayHasKey('access_token', $result[0]);
@@ -1758,7 +1762,9 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ];
 
+        ob_start();
         $result = $this->controller->device($devicePayload);
+        ob_end_clean();
 
         $this->assertEquals(200, $result[1]);
 
@@ -1899,7 +1905,9 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         // Use the refresh token once (this revokes it)
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $refreshToken;
+        ob_start();
         $this->controller->refresh();
+        ob_end_clean();
 
         // Verify old refresh token is revoked
         $this->assertDatabaseHas('smartauth_auth', [
@@ -1944,13 +1952,17 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         // Logout from device 1 (revoke all tokens in that family)
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $token1;
+        ob_start();
         $decoded = \SmartAuth\Api\AuthController::check();
+        ob_end_clean();
 
         $logoutPayload = [
             'user' => $testUser,
             'family_id' => $decoded->family_id
         ];
+        ob_start();
         $this->controller->logout($logoutPayload);
+        ob_end_clean();
 
         // Verify tokens in family 1 are revoked
         $tokenId1 = explode('|', $token1)[0];
@@ -2336,7 +2348,9 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ];
 
+        ob_start();
         $result = $this->controller->device($devicePayload);
+        ob_end_clean();
 
         $this->assertEquals(200, $result[1]);
         $this->assertArrayHasKey('message', $result[0]);
@@ -2386,7 +2400,9 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ];
 
+        ob_start();
         $result = $this->controller->device($devicePayload);
+        ob_end_clean();
 
         $this->assertEquals(200, $result[1]);
         $this->assertArrayHasKey('message', $result[0]);
@@ -2682,7 +2698,9 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $accessToken;
 
+        ob_start();
         \SmartAuth\Api\AuthController::check();
+        ob_end_clean();
 
         // Verify IP was updated
         $sql = "SELECT ip FROM " . MAIN_DB_PREFIX . "smartauth_auth";
@@ -2734,7 +2752,9 @@ class AuthControllerTest extends DolibarrRealTestCase
         sleep(1);
 
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $accessToken;
+        ob_start();
         \SmartAuth\Api\AuthController::check();
+        ob_end_clean();
 
         // Verify EOL was updated
         $resql = $this->db->query($sql);
@@ -2827,7 +2847,9 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ];
 
+        ob_start();
         $result = $this->controller->device($devicePayload);
+        ob_end_clean();
 
         $this->assertEquals(200, $result[1]);
 
@@ -2943,7 +2965,9 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ];
 
+        ob_start();
         $result = $this->controller->device($devicePayload);
+        ob_end_clean();
 
         $this->assertEquals(200, $result[1]);
 

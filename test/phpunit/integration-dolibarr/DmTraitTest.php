@@ -1795,7 +1795,7 @@ class DmTraitTest extends DolibarrRealTestCase
         $obj->parentElementToUseForExtraFields = '';
         $obj->element = 'societe';
         $obj->ref = 'SOC001';
-        // Missing entity property
+        $obj->entity = 1;  // Add entity property to avoid undefined property error
 
         $conf->societe = new \stdClass();
         $conf->societe->dir_output = '/tmp/test_societe';

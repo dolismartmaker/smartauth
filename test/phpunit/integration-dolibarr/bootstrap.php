@@ -7,6 +7,12 @@
  * Optimized with SQLite in RAM for faster test execution
  */
 
+// Define constant to signal we're running in PHPUnit test environment
+// This allows json_reply() to skip exit() calls during tests
+if (!defined('PHPUNIT_RUNNING')) {
+    define('PHPUNIT_RUNNING', true);
+}
+
 // Determine RAM disk location (Linux: /dev/shm, macOS: /tmp)
 $ramDiskPath = is_dir('/dev/shm') ? '/dev/shm' : sys_get_temp_dir();
 $ramDbPath = $ramDiskPath . '/smartauth_test_' . getmypid() . '.sdb';
@@ -45,7 +51,7 @@ if (is_file($originalDbPath)) {
     unlink($originalDbPath);
     symlink($ramDbPath, $originalDbPath);
 
-    echo "🚀 Using SQLite in RAM: $ramDbPath\n";
+    fwrite(STDERR, "🚀 Using SQLite in RAM: $ramDbPath\n");
 
     // Register cleanup: restore original database
     register_shutdown_function(function() use ($originalDbPath, $ramDbPath) {
@@ -65,7 +71,7 @@ if (is_file($originalDbPath)) {
 register_shutdown_function(function() use ($ramDbPath) {
     if (file_exists($ramDbPath)) {
         unlink($ramDbPath);
-        echo "\n🧹 Cleaned up RAM database: $ramDbPath\n";
+        fwrite(STDERR, "\n🧹 Cleaned up RAM database: $ramDbPath\n");
     }
 });
 
