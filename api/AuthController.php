@@ -645,7 +645,7 @@ class AuthController
 				json_reply('Invalid or revoked token', 401);
 			}
 
-			if($sa->status != SmartAuth::STATUS_VALIDATED){
+			if ($sa->status != SmartAuth::STATUS_VALIDATED) {
 				dol_syslog("smartauth : Invalid status token", LOG_WARNING);
 				json_reply('Invalid or revoked token', 401);
 			}
@@ -1360,7 +1360,7 @@ class AuthController
 	 *     refresh_count: int,
 	 *     exp: int
 	 * }|null Decoded token payload object with user info, or null on failure (calls json_reply on error)
-	*/
+	 */
 	private static function _decodeJWT($token, $checktype)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey, $conf;
@@ -1453,8 +1453,10 @@ class AuthController
 			json_reply('Invalid token, please login', 401);
 		}
 
-		// dol_syslog("smartauth : _decodeJWT is " . json_encode($decoded));
-		$decoded->token_id = $token_id;
+		if (is_object($decoded)) {
+			// dol_syslog("smartauth : _decodeJWT is " . json_encode($decoded));
+			$decoded->token_id = $token_id;
+		}
 		return $decoded;
 	}
 }
