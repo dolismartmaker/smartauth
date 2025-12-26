@@ -116,7 +116,7 @@ trait dmTrait
 
 				$obj->$appside = $this->_dolmapping->propertiesFilter($fieldDef, $doliside, $appside, $this->parentFieldsOverride);
 				if (isset($obj->$appside['position'])) {
-				$reorder[$obj->$appside['position']] = $appside;
+					$reorder[$obj->$appside['position']] = $appside;
 				}
 			}
 			//TODO ?
@@ -570,7 +570,7 @@ trait dmTrait
 	/**
 	 * get storage path of a linked file
 	 *
-	 * @param   CommonObject $object dolibarr object
+	 * @param   \CommonObject $object dolibarr object
 	 * @param   bool $relativepath   if true return only the last part relative to DOL_DATA_ROOT
 	 * 								 if false, return full file path with /home/server/www/ part
 	 *
@@ -581,7 +581,10 @@ trait dmTrait
 		global $conf;
 
 		$dir = '';
-		$element = $elementpath = $object->parentElementToUseForExtraFields;
+		$element = $elementpath = null;
+		if (isset($object->parentElementToUseForExtraFields)) {
+			$element = $elementpath = $object->parentElementToUseForExtraFields;
+		}
 		if (empty($element)) {
 			$element = $elementpath = $object->element;
 		}
@@ -595,7 +598,10 @@ trait dmTrait
 			return null;
 		}
 
-		$dir = $conf->{$elementpath}->multidir_output[$object->entity];
+		$dir = null;
+		if (isset($conf->{$elementpath}->multidir_output[$object->entity])) {
+			$dir = $conf->{$elementpath}->multidir_output[$object->entity];
+		}
 		if (empty($dir)) {
 			$dir = $conf->{$elementpath}->dir_output;
 		}
