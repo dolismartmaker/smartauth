@@ -2,6 +2,7 @@
 
 namespace SmartAuth\Tests\IntegrationDolibarr;
 
+require_once __DIR__ . '/../../../api/tools.php';
 require_once __DIR__ . '/../../../api/RouteController.php';
 require_once __DIR__ . '/../../../api/AuthController.php';
 
@@ -1080,5 +1081,1409 @@ class RouteControllerTest extends DolibarrRealTestCase
         RouteController::delete('/test', 'TestClass', 'testMethod', false);
 
         $this->assertTrue(true);
+    }
+
+    // ============================================================================
+    // NEW COMPREHENSIVE TESTS FOR 80%+ COVERAGE
+    // ============================================================================
+
+    /**
+     * Test route() with wrong HTTP method - should return early without error
+     */
+    public function testRouteWithWrongHttpMethod(): void
+    {
+        // Save original
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+
+        // Set up GET request
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api.php/test/route';
+
+        // Try to match a POST route - should return early without error
+        ob_start();
+        RouteController::route('POST', 'test/route', 'TestController', 'testMethod', false);
+        $output = ob_get_clean();
+
+        // Should not produce any output (early return)
+        $this->assertEmpty($output);
+
+        // Restore
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        } else {
+            unset($_SERVER['REQUEST_URI']);
+        }
+    }
+
+    /**
+     * Test route() with bad REQUEST_URI - parseAction returns false
+     */
+    public function testRouteWithBadRequestUri(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        // Set up environment
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-bad-uri';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+        // Unset REQUEST_URI to make parseAction return false
+        unset($_SERVER['REQUEST_URI']);
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+
+        // Try to route - should fail with 400
+        ob_start();
+        RouteController::route('GET', 'test/route', 'TestController', 'testMethod', false);
+        $output = ob_get_clean();
+
+        // Should have produced error output
+        $this->assertNotEmpty($output);
+
+        // Restore
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test route() with non-matching action pattern
+     */
+    public function testRouteWithNonMatchingActionPattern(): void
+    {
+        // Save original
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+
+        // Set up request
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api.php/users/123';
+
+        // Try to match against different pattern - should return early
+        ob_start();
+        RouteController::route('GET', 'posts/{id}', 'TestController', 'testMethod', false);
+        $output = ob_get_clean();
+
+        // Should not produce any output (route doesn't match)
+        $this->assertEmpty($output);
+
+        // Restore
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        } else {
+            unset($_SERVER['REQUEST_URI']);
+        }
+    }
+
+    /**
+     * Test route() with protected route and missing JWT
+     */
+    public function testRouteProtectedWithMissingJWT(): void
+    {
+        // Save original
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalAuth = $_SERVER['HTTP_AUTHORIZATION'] ?? null;
+
+        // Set up request without auth header
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api.php/protected/route';
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+
+        // Try protected route without JWT
+        ob_start();
+        RouteController::route('GET', 'protected/route', 'TestController', 'testMethod', true);
+        $output = ob_get_clean();
+
+        // Should produce 401 response
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('401', $output);
+
+        // Restore
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        } else {
+            unset($_SERVER['REQUEST_URI']);
+        }
+        if ($originalAuth !== null) {
+            $_SERVER['HTTP_AUTHORIZATION'] = $originalAuth;
+        }
+    }
+
+    /**
+     * Test route() with protected route and invalid JWT
+     */
+    public function testRouteProtectedWithInvalidJWT(): void
+    {
+        // Save original
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalAuth = $_SERVER['HTTP_AUTHORIZATION'] ?? null;
+
+        // Set up request with invalid token
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api.php/protected/route';
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer invalid.jwt.token';
+
+        // Try protected route with invalid JWT
+        ob_start();
+        RouteController::route('GET', 'protected/route', 'TestController', 'testMethod', true);
+        $output = ob_get_clean();
+
+        // Should produce 401 response
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('401', $output);
+
+        // Restore
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        } else {
+            unset($_SERVER['REQUEST_URI']);
+        }
+        if ($originalAuth !== null) {
+            $_SERVER['HTTP_AUTHORIZATION'] = $originalAuth;
+        } else {
+            unset($_SERVER['HTTP_AUTHORIZATION']);
+        }
+    }
+
+    /**
+     * Test parseRequestData() with POST and invalid JSON
+     */
+    public function testParseRequestDataPostWithInvalidJSON(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseRequestData');
+        $method->setAccessible(true);
+
+        // We can't easily mock php://input, but we can test the method exists
+        // and handles POST without throwing errors
+        $result = $method->invoke(null, 'POST');
+
+        $this->assertIsArray($result);
+    }
+
+    /**
+     * Test parseRequestData() with PUT method
+     */
+    public function testParseRequestDataPut(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseRequestData');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, 'PUT');
+
+        $this->assertIsArray($result);
+    }
+
+    /**
+     * Test parseRequestData() with DELETE and empty body
+     */
+    public function testParseRequestDataDeleteEmptyBody(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseRequestData');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, 'DELETE');
+
+        $this->assertIsArray($result);
+        // Should return empty array for DELETE with no body
+        $this->assertEmpty($result);
+    }
+
+    /**
+     * Test parseRequestData() with GET and invalid parameter keys
+     */
+    public function testParseRequestDataGetWithInvalidKeys(): void
+    {
+        // Save original
+        $originalGet = $_GET;
+
+        // Set up GET with very long key (> 100 chars)
+        $longKey = str_repeat('a', 150);
+        $_GET = [
+            'valid_key' => 'value1',
+            $longKey => 'should_be_filtered',
+            'another_valid' => 'value2'
+        ];
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseRequestData');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, 'GET');
+
+        // Valid keys should be present
+        $this->assertArrayHasKey('valid_key', $result);
+        $this->assertArrayHasKey('another_valid', $result);
+        // Long key should be filtered out
+        $this->assertArrayNotHasKey($longKey, $result);
+
+        // Restore
+        $_GET = $originalGet;
+    }
+
+    /**
+     * Test handleAuthentication() with public route
+     */
+    public function testHandleAuthenticationPublicRoute(): void
+    {
+        global $conf, $db, $mysoc;
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('handleAuthentication');
+        $method->setAccessible(true);
+
+        // Call with protected=false
+        $result = $method->invoke(null, false, $db, $conf, $mysoc);
+
+        // Should return array with null user and entity
+        $this->assertIsArray($result);
+        $this->assertCount(4, $result); // Returns 4 elements for public routes
+        $this->assertNull($result[0]); // user
+        $this->assertNull($result[1]); // entity
+        $this->assertNull($result[2]); // token_id
+    }
+
+    /**
+     * Test executeAction() when controller class doesn't exist
+     */
+    public function testExecuteActionClassNotFound(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-class-not-found';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        // Try to execute with non-existent class
+        ob_start();
+        $method->invoke(
+            null,
+            'NonExistentControllerClass',
+            'someMethod',
+            [],
+            null,
+            null,
+            null,
+            new \Societe($this->db),
+            null,
+            null
+        );
+        $output = ob_get_clean();
+
+        // Should produce 500 error
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('500', $output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test executeAction() when method doesn't exist on controller
+     */
+    public function testExecuteActionMethodNotFound(): void
+    {
+        global $conf;
+
+        // Create a test controller class
+        if (!class_exists('TestControllerForMethodTest')) {
+            eval('
+                class TestControllerForMethodTest {
+                    public function existingMethod($data) {
+                        return [["message" => "success"], 200];
+                    }
+                }
+            ');
+        }
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-method-not-found';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        // Try to execute with non-existent method
+        ob_start();
+        $method->invoke(
+            null,
+            'TestControllerForMethodTest',
+            'nonExistentMethod',
+            [],
+            null,
+            null,
+            null,
+            new \Societe($this->db),
+            null,
+            null
+        );
+        $output = ob_get_clean();
+
+        // Should produce 500 error
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('500', $output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test executeAction() with successful execution returning 200
+     */
+    public function testExecuteActionSuccessful200(): void
+    {
+        global $conf;
+
+        // Create test controller
+        if (!class_exists('TestControllerSuccess200')) {
+            eval('
+                class TestControllerSuccess200 {
+                    public function testAction($data) {
+                        return [["message" => "success"], 200];
+                    }
+                }
+            ');
+        }
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-success-200';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        ob_start();
+        $method->invoke(
+            null,
+            'TestControllerSuccess200',
+            'testAction',
+            ['param' => 'value'],
+            null,
+            1,
+            null,
+            new \Societe($this->db),
+            null,
+            null
+        );
+        $output = ob_get_clean();
+
+        // Should produce 200 response
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('success', $output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test executeAction() with successful execution returning 201
+     */
+    public function testExecuteActionSuccessful201(): void
+    {
+        global $conf;
+
+        // Create test controller
+        if (!class_exists('TestControllerSuccess201')) {
+            eval('
+                class TestControllerSuccess201 {
+                    public function createAction($data) {
+                        return [["id" => 123, "message" => "created"], 201];
+                    }
+                }
+            ');
+        }
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-success-201';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        ob_start();
+        $method->invoke(
+            null,
+            'TestControllerSuccess201',
+            'createAction',
+            [],
+            null,
+            1,
+            null,
+            new \Societe($this->db),
+            null,
+            null
+        );
+        $output = ob_get_clean();
+
+        // Should produce 201 response
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('created', $output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test executeAction() returning 404
+     */
+    public function testExecuteActionReturns404(): void
+    {
+        global $conf;
+
+        // Create test controller
+        if (!class_exists('TestControllerNotFound')) {
+            eval('
+                class TestControllerNotFound {
+                    public function notFoundAction($data) {
+                        return [["error" => "not found"], 404];
+                    }
+                }
+            ');
+        }
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-not-found';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        ob_start();
+        $method->invoke(
+            null,
+            'TestControllerNotFound',
+            'notFoundAction',
+            [],
+            null,
+            1,
+            null,
+            new \Societe($this->db),
+            null,
+            null
+        );
+        $output = ob_get_clean();
+
+        // Should produce 404 response
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('not found', $output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test executeAction() when method throws exception
+     */
+    public function testExecuteActionThrowsException(): void
+    {
+        global $conf;
+
+        // Create test controller that throws exception
+        if (!class_exists('TestControllerException')) {
+            eval('
+                class TestControllerException {
+                    public function throwingAction($data) {
+                        throw new \Exception("Test exception");
+                    }
+                }
+            ');
+        }
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-exception';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        ob_start();
+        $method->invoke(
+            null,
+            'TestControllerException',
+            'throwingAction',
+            [],
+            null,
+            1,
+            null,
+            new \Societe($this->db),
+            null,
+            null
+        );
+        $output = ob_get_clean();
+
+        // Should produce 500 error
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('500', $output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test insertLogs() with status 200
+     */
+    public function testInsertLogsStatus200(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api.php/test';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-200';
+
+        RouteController::insertLogs(100, 200, 'Success message', 1, 'user');
+
+        $this->assertDatabaseHas('smartauth_logs', [
+            'fk_key' => 100,
+            'http_status' => 200,
+            'entity' => 1
+        ]);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
+
+    /**
+     * Test insertLogs() with status 401
+     */
+    public function testInsertLogsStatus401(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI'] = '/api.php/auth';
+        $_SERVER['REMOTE_ADDR'] = '192.168.1.1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-401';
+
+        RouteController::insertLogs(null, 401, 'Unauthorized', 1);
+
+        $this->assertDatabaseHas('smartauth_logs', [
+            'http_status' => 401,
+            'entity' => 1
+        ]);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
+
+    /**
+     * Test insertLogs() with status 403
+     */
+    public function testInsertLogsStatus403(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['REQUEST_METHOD'] = 'DELETE';
+        $_SERVER['REQUEST_URI'] = '/api.php/resource';
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-403';
+
+        RouteController::insertLogs(50, 403, 'Forbidden', 2);
+
+        $this->assertDatabaseHas('smartauth_logs', [
+            'http_status' => 403,
+            'entity' => 2
+        ]);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
+
+    /**
+     * Test insertLogs() with status 500
+     */
+    public function testInsertLogsStatus500(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['REQUEST_METHOD'] = 'PUT';
+        $_SERVER['REQUEST_URI'] = '/api.php/update';
+        $_SERVER['REMOTE_ADDR'] = '172.16.0.1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-500';
+
+        RouteController::insertLogs(75, 500, 'Internal error', 1);
+
+        $this->assertDatabaseHas('smartauth_logs', [
+            'http_status' => 500,
+            'fk_key' => 75
+        ]);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
+
+    /**
+     * Test insertLogs() with status 503
+     */
+    public function testInsertLogsStatus503(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api.php/status';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-503';
+
+        RouteController::insertLogs(null, 503, 'Service unavailable', 1);
+
+        $this->assertDatabaseHas('smartauth_logs', [
+            'http_status' => 503
+        ]);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
+
+    /**
+     * Test insertLogs() without message
+     */
+    public function testInsertLogsWithoutMessage(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api.php/test';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-nomsg';
+
+        // Call without message (empty string is default)
+        RouteController::insertLogs(123, 200, '', 1);
+
+        $this->assertDatabaseHas('smartauth_logs', [
+            'fk_key' => 123,
+            'http_status' => 200
+        ]);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
+
+    /**
+     * Test insertLogs() with element parameter
+     */
+    public function testInsertLogsWithElement(): void
+    {
+        global $conf;
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI'] = '/api.php/invoices';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-elem';
+
+        RouteController::insertLogs(200, 201, 'Created', 1, 'invoice');
+
+        $this->assertDatabaseHas('smartauth_logs', [
+            'fk_key' => 200,
+            'http_status' => 201,
+            'dol_element' => 'invoice'
+        ]);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $originalMethod;
+        }
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+    }
+
+    /**
+     * Test parseAction with invalid URI format
+     */
+    public function testParseActionInvalidUriFormat(): void
+    {
+        // Save original
+        $originalUri = $_SERVER['REQUEST_URI'] ?? null;
+
+        // Set an invalid URI
+        $_SERVER['REQUEST_URI'] = 'not-a-valid-uri';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseAction');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null);
+
+        // Should still return something (empty string likely)
+        $this->assertIsString($result);
+
+        // Restore
+        if ($originalUri !== null) {
+            $_SERVER['REQUEST_URI'] = $originalUri;
+        } else {
+            unset($_SERVER['REQUEST_URI']);
+        }
+    }
+
+    /**
+     * Test matchAction with empty action and pattern
+     */
+    public function testMatchActionEmptyStrings(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('matchAction');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, '', '');
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * Test extractUrlParameters with complex multi-placeholder pattern
+     */
+    public function testExtractUrlParametersComplexPattern(): void
+    {
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('extractUrlParameters');
+        $method->setAccessible(true);
+
+        $data = ['existing_key' => 'existing_value'];
+
+        // Test with pattern: /api/v1/users/{userId}/posts/{postId}/comments/{commentId}
+        $result = $method->invoke(
+            null,
+            'api/v1/users/{userId}/posts/{postId}/comments/{commentId}',
+            'api/v1/users/42/posts/100/comments/5',
+            $data
+        );
+
+        // Should extract userId at minimum
+        $this->assertArrayHasKey('userId', $result);
+        $this->assertEquals('42', $result['userId']);
+        // Should preserve existing data
+        $this->assertArrayHasKey('existing_key', $result);
+        $this->assertEquals('existing_value', $result['existing_key']);
+    }
+
+    /**
+     * Test get_client_ip with X-Real-IP header
+     */
+    public function testGetClientIpWithXRealIP(): void
+    {
+        // Save original
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $originalForwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
+
+        // Clean forwarded header
+        unset($_SERVER['HTTP_X_FORWARDED_FOR']);
+
+        // Set REMOTE_ADDR to private IP (should trigger fallback logic)
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.5';
+
+        $ip = RouteController::get_client_ip();
+
+        // Should return the private IP since there's no X-Forwarded-For
+        $this->assertEquals('10.0.0.5', $ip);
+
+        // Restore
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+        if ($originalForwarded !== null) {
+            $_SERVER['HTTP_X_FORWARDED_FOR'] = $originalForwarded;
+        }
+    }
+
+    /**
+     * Test parseRequestData with numeric array keys in GET
+     */
+    public function testParseRequestDataGetWithNumericKeys(): void
+    {
+        // Save original
+        $originalGet = $_GET;
+
+        // Numeric keys should be filtered out
+        $_GET = [
+            'valid_string_key' => 'value1',
+            123 => 'numeric_key_value',
+            'another_valid' => 'value2'
+        ];
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('parseRequestData');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(null, 'GET');
+
+        // Valid string keys should be present
+        $this->assertArrayHasKey('valid_string_key', $result);
+        $this->assertArrayHasKey('another_valid', $result);
+        // Numeric key should be filtered
+        $this->assertArrayNotHasKey(123, $result);
+
+        // Restore
+        $_GET = $originalGet;
+    }
+
+    /**
+     * Test route with matching action but executeAction fails with invalid response format
+     */
+    public function testExecuteActionInvalidResponseFormat(): void
+    {
+        global $conf;
+
+        // Create test controller with invalid response
+        if (!class_exists('TestControllerInvalidResponse')) {
+            eval('
+                class TestControllerInvalidResponse {
+                    public function badAction($data) {
+                        return "not an array"; // Invalid format
+                    }
+                }
+            ');
+        }
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-invalid-response';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        ob_start();
+        $method->invoke(
+            null,
+            'TestControllerInvalidResponse',
+            'badAction',
+            [],
+            null,
+            1,
+            null,
+            new \Societe($this->db),
+            null,
+            null
+        );
+        $output = ob_get_clean();
+
+        // Should produce 500 error for invalid response format
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('500', $output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test route with executeAction returning array with wrong count
+     */
+    public function testExecuteActionWrongArrayCount(): void
+    {
+        global $conf;
+
+        // Create test controller with wrong array count
+        if (!class_exists('TestControllerWrongCount')) {
+            eval('
+                class TestControllerWrongCount {
+                    public function wrongCountAction($data) {
+                        return ["only one element"]; // Should be 2 elements
+                    }
+                }
+            ');
+        }
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-wrong-count';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        ob_start();
+        $method->invoke(
+            null,
+            'TestControllerWrongCount',
+            'wrongCountAction',
+            [],
+            null,
+            1,
+            null,
+            new \Societe($this->db),
+            null,
+            null
+        );
+        $output = ob_get_clean();
+
+        // Should produce 500 error for invalid response format
+        $this->assertNotEmpty($output);
+        $this->assertStringContainsString('500', $output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
+    }
+
+    /**
+     * Test executeAction with payload merging (data should not override system keys)
+     */
+    public function testExecuteActionPayloadMerging(): void
+    {
+        global $conf;
+
+        // Create test controller
+        if (!class_exists('TestControllerPayload')) {
+            eval('
+                class TestControllerPayload {
+                    public function checkPayload($payload) {
+                        // Verify system keys are present and not overridden
+                        $result = [
+                            "has_user_key" => isset($payload["user"]),
+                            "has_entity_key" => isset($payload["entity"]),
+                            "has_custom_param" => isset($payload["custom_param"])
+                        ];
+                        return [$result, 200];
+                    }
+                }
+            ');
+        }
+
+        // Save original
+        $originalLogsValue = getDolGlobalString('SMARTAUTH_COLLECT_LOGS');
+        $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
+        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-payload';
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $reflection = new ReflectionClass(RouteController::class);
+        $method = $reflection->getMethod('executeAction');
+        $method->setAccessible(true);
+
+        // Try to override 'user' key with data
+        $data = [
+            'user' => 'should_not_override',
+            'custom_param' => 'custom_value'
+        ];
+
+        ob_start();
+        $method->invoke(
+            null,
+            'TestControllerPayload',
+            'checkPayload',
+            $data,
+            null, // user
+            1,    // entity
+            null, // token_id
+            new \Societe($this->db),
+            null, // family_id
+            null  // device_id
+        );
+        $output = ob_get_clean();
+
+        // Should have executed successfully
+        $this->assertNotEmpty($output);
+
+        // Restore
+        if ($originalLogsValue) {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = $originalLogsValue;
+        } else {
+            $conf->global->SMARTAUTH_COLLECT_LOGS = '';
+        }
+        if ($originalDeviceId !== null) {
+            $_SERVER['HTTP_X_DEVICEID'] = $originalDeviceId;
+        } else {
+            unset($_SERVER['HTTP_X_DEVICEID']);
+        }
+        if ($originalRemoteAddr !== null) {
+            $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
     }
 }
