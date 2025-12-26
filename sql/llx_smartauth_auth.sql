@@ -25,7 +25,7 @@ CREATE TABLE llx_smartauth_auth(
 	fk_user_creat integer NOT NULL, -- id of created user
 	fk_user_modif integer,
 	fk_authid integer NOT NULL, -- id of authenticated user or element
-	parent_token_id INTEGER DEFAULT NULL,
+	family_id INTEGER DEFAULT NULL,
 	auth_element varchar(128) NOT NULL, -- may be user or societe_account or ...
 	token_type VARCHAR(20) DEFAULT 'access',
 	ip varchar(50) DEFAULT '',

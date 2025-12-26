@@ -137,7 +137,7 @@ class SmartAuth extends CommonObject
 		'fk_device_id' => array('type' => 'integer:SmartAuthDevices:smartauth/class/smartauthdevices.class.php', 'label' => 'device', 'enabled' => '1', 'position' => 55, 'notnull' => -1, 'visible' => 1, 'index' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150', 'noteditable' => '1',),
 		'fk_authid' => array('type' => 'integer', 'label' => 'AuthElementID', 'enabled' => '1', 'position' => 60, 'notnull' => 1, 'visible' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150',),
 		'auth_element' => array('type' => 'varchar(128)', 'label' => 'AuthElementSource', 'enabled' => '1', 'position' => 65, 'notnull' => 1, 'visible' => 1,),
-		'parent_token_id' => array('type' => 'integer', 'label' => 'smartAuthParentTokenId', 'enabled' => '1', 'position' => 70, 'notnull' => 0, 'visible' => 1,),
+		'family_id' => array('type' => 'integer', 'label' => 'smartAuthFamilyId', 'enabled' => '1', 'position' => 70, 'notnull' => 0, 'visible' => 1,),
 		'token_type' => array('type' => 'varchar(20)', 'label' => 'smartAuthTokenType', 'enabled' => '1', 'position' => 75, 'notnull' => 0, 'visible' => 1,),
 		'status' => array('type' => 'integer', 'label' => 'Status', 'enabled' => 1, 'visible' => 2, 'position' => 1000, 'notnull' => 1, 'default' => 0, 'index' => 1, 'arrayofkeyval' => array(1 => 'Enabled', 9 => 'Disabled')),
 	);
@@ -154,7 +154,7 @@ class SmartAuth extends CommonObject
 	public $fk_device_id;
 	public $fk_authid; //id of auth element, it depends on auth_element value (user/societe_account)
 	public $auth_element; //user or societe_account for the moment
-	public $parent_token_id;
+	public $family_id;
 	public $ip;
 	public $token_type;
 	public $status;

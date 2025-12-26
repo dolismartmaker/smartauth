@@ -1042,7 +1042,7 @@ class AuthController
 		// Insert token into database
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth";
 		$sql .= " (appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, fk_device_id, ";
-		$sql .= " auth_element, token_type, parent_token_id, ip, status, entity)";
+		$sql .= " auth_element, token_type, family_id, ip, status, entity)";
 		$sql .= " VALUES (";
 		$sql .= (int) $smartAuthAppID . ", ";
 		$sql .= "'" . $salt . "', ";
@@ -1149,10 +1149,10 @@ class AuthController
 		$db->query($sql);
 
 		// Revoke all tokens in this family
-		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth a";
-		$sql .= " SET a.status = " . self::STATUS_LOGOUT;
-		$sql .= ", a.salt = '" . $db->escape($reason) . "'";
-		$sql .= " WHERE a.parent_token_id = '" . $db->escape($family_id) . "'";
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " SET status = " . self::STATUS_LOGOUT;
+		$sql .= ", salt = '" . $db->escape($reason) . "'";
+		$sql .= " WHERE family_id = " . (int) $family_id;
 		$db->query($sql);
 
 		dol_syslog("Token family $family_id revoked", LOG_INFO);
@@ -1375,7 +1375,7 @@ class AuthController
 		$cache_key = 'token-' . $token_id;
 		if (!isset($conf->cache['smartmakers'][$cache_key])) {
 			// Load token data from database
-			$sql = "SELECT rowid as token_id, salt, token_type, fk_authid, entity, date_eol, status, parent_token_id, refresh_count";
+			$sql = "SELECT rowid as token_id, salt, token_type, fk_authid, entity, date_eol, status, family_id, refresh_count";
 			$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_auth";
 			$sql .= " WHERE rowid = " . (int) $token_id;
 			$sql .= " AND status = " . self::STATUS_VALID;
