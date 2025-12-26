@@ -625,22 +625,23 @@ class AuthController
 			json_reply('Access denied (invalid token payload)', 401);
 		}
 
-		// * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)
-		// Update token last used timestamp and refresh expiry
-		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " SET date_lastused = '" . $db->idate(dol_now()) . "',";
-		$sql .= " date_eol = '" . $db->idate(dol_now() + SmartTokenConfig::ACCESS_TOKEN_LIFETIME) . "',";
-		$sql .= " ip = '" . $db->escape(self::get_client_ip()) . "' ";
-		$sql .= " WHERE rowid = " . (int) $decoded->token_id;
+		if (isset($decoded->token_id) && $decoded->token_id > 0) {
+			// * 24 * getDolGlobalInt('SMARTAUTH_TOKEN_EOL_DAYS', 30)
+			// Update token last used timestamp and refresh expiry
+			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sql .= " SET date_lastused = '" . $db->idate(dol_now()) . "',";
+			$sql .= " date_eol = '" . $db->idate(dol_now() + SmartTokenConfig::ACCESS_TOKEN_LIFETIME) . "',";
+			$sql .= " ip = '" . $db->escape(self::get_client_ip()) . "' ";
+			$sql .= " WHERE rowid = " . (int) $decoded->token_id;
 
-		dol_syslog("smartauth : update token last used " . $sql);
-		$resql = $db->query($sql);
+			dol_syslog("smartauth : update token last used " . $sql);
+			$resql = $db->query($sql);
 
-		if (!$resql) {
-			dol_syslog("smartauth : update token failed: " . $db->lasterror(), LOG_ERR);
-			json_reply('Access denied', 401);
+			if (!$resql) {
+				dol_syslog("smartauth : update token failed: " . $db->lasterror(), LOG_ERR);
+				json_reply('Access denied', 401);
+			}
 		}
-
 		return $decoded;
 	}
 
