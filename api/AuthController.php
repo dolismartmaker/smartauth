@@ -1344,6 +1344,11 @@ class AuthController
 				json_reply('Invalid or revoked token', 401);
 			}
 
+			if($sa->status != SmartAuth::STATUS_VALIDATED){
+				dol_syslog("smartauth : Invalid status token", LOG_WARNING);
+				json_reply('Invalid or revoked token', 401);
+			}
+
 			// $token_data = $db->fetch_object($resql);
 
 			// Cache token data
