@@ -55,5 +55,5 @@ cleandevsqlite:
 	if [ -d vendor/cap-rel/dolibarr-integration-sqlite/ ]; then cd vendor/cap-rel/dolibarr-integration-sqlite/ && git reset --hard; fi
 
 tests:
-	php -d pcov.enabled=1 -d pcov.directory="./" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
+	php -d display_startup_errors=0 -d display_errors=0 -d pcov.enabled=1 -d pcov.directory="./" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
 

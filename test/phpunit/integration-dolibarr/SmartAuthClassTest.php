@@ -277,7 +277,7 @@ class SmartAuthClassTest extends DolibarrRealTestCase
         $childAuth->auth_element = 'user';
         $childAuth->fk_device_id = $this->testDevice->id;
         $childAuth->token_type = 'refresh';
-        $childAuth->parent_token_id = $parentAuth->id;
+        $childAuth->family_id = $parentAuth->id;
         $childAuth->status = SmartAuth::STATUS_VALIDATED;
         $childAuth->ip = '10.0.0.50';
         $childAuth->entity = 1;
@@ -285,7 +285,7 @@ class SmartAuthClassTest extends DolibarrRealTestCase
 
         $this->assertDatabaseHas('smartauth_auth', [
             'rowid' => $childAuth->id,
-            'parent_token_id' => $parentAuth->id
+            'family_id' => $parentAuth->id
         ]);
     }
 
@@ -2289,7 +2289,7 @@ class SmartAuthClassTest extends DolibarrRealTestCase
         $auth->refresh_count = 10;
         $auth->date_eol = dol_now() + 86400;
         $auth->date_lastused = dol_now();
-        $auth->parent_token_id = 0;
+        $auth->family_id = 0;
 
         $result = $auth->create($this->testUser);
 

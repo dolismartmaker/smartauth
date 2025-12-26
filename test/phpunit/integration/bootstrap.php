@@ -250,7 +250,7 @@ function createSmartAuthSchema($db)
         appuid INTEGER,
         salt TEXT,
         token_type TEXT DEFAULT 'access',
-        parent_token_id INTEGER,
+        family_id INTEGER,
         refresh_count INTEGER DEFAULT 0,
         date_creation TEXT,
         date_eol TEXT,

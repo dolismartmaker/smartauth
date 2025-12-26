@@ -189,7 +189,7 @@ class SmartAuthIntegrationTest extends DolibarrTestCase
         $refreshAuth->auth_element = 'user';
         $refreshAuth->fk_device_id = $this->testDevice->id;
         $refreshAuth->token_type = 'refresh';
-        $refreshAuth->parent_token_id = $accessAuth->id;
+        $refreshAuth->family_id = $accessAuth->id;
         $refreshAuth->status = SmartAuth::STATUS_VALIDATED;
         $refreshAuth->entity = 1;
         $refreshAuth->create($this->testUser);
@@ -199,7 +199,7 @@ class SmartAuthIntegrationTest extends DolibarrTestCase
         $fetchedRefresh->fetch($refreshAuth->id);
 
         $this->assertEquals('refresh', $fetchedRefresh->token_type);
-        $this->assertEquals($accessAuth->id, $fetchedRefresh->parent_token_id);
+        $this->assertEquals($accessAuth->id, $fetchedRefresh->family_id);
     }
 
     /**

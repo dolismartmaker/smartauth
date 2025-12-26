@@ -264,10 +264,10 @@ class AuthControllerLoginTest extends DolibarrRealTestCase
 
         // Get family ID from token in database
         $accessTokenId = explode('|', $accessToken)[0];
-        $sql = "SELECT parent_token_id FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE rowid = " . (int) $accessTokenId;
+        $sql = "SELECT family_id FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE rowid = " . (int) $accessTokenId;
         $res = $this->db->query($sql);
         $obj = $this->db->fetch_object($res);
-        $familyId = $obj->parent_token_id;
+        $familyId = $obj->family_id;
 
         // Fetch the user object for logout
         $user = new \User($this->db);

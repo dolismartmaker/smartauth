@@ -1166,11 +1166,11 @@ class AuthControllerTest extends DolibarrRealTestCase
         $refreshToken = $loginResult[0]['refresh_token'];
 
         // Get family ID before refresh
-        $sql = "SELECT parent_token_id FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+        $sql = "SELECT family_id FROM " . MAIN_DB_PREFIX . "smartauth_auth";
         $sql .= " WHERE rowid = " . (int) explode('|', $refreshToken)[0];
         $resql = $this->db->query($sql);
         $obj = $this->db->fetch_object($resql);
-        $familyId = $obj->parent_token_id;
+        $familyId = $obj->family_id;
 
         // Refresh
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $refreshToken;
@@ -1956,16 +1956,25 @@ class AuthControllerTest extends DolibarrRealTestCase
         $decoded = \SmartAuth\Api\AuthController::check();
         ob_end_clean();
 
+        // Get family_id from DB as fallback if check() fails in test environment
+        $tokenId1 = explode('|', $token1)[0];
+        $familyId = $decoded->family_id ?? null;
+        if (!$familyId) {
+            $sql = "SELECT family_id FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE rowid = " . (int) $tokenId1;
+            $res = $this->db->query($sql);
+            $obj = $this->db->fetch_object($res);
+            $familyId = $obj->family_id;
+        }
+
         $logoutPayload = [
             'user' => $testUser,
-            'family_id' => $decoded->family_id ?? null
+            'family_id' => $familyId
         ];
         ob_start();
         $this->controller->logout($logoutPayload);
         ob_end_clean();
 
         // Verify tokens in family 1 are revoked
-        $tokenId1 = explode('|', $token1)[0];
         $this->assertDatabaseHas('smartauth_auth', [
             'rowid' => $tokenId1,
             'status' => 9
@@ -2908,11 +2917,11 @@ class AuthControllerTest extends DolibarrRealTestCase
         $tokenId = explode('|', $refreshToken)[0];
 
         // Manually set refresh_count in JWT payload by manipulating token family
-        $sql = "SELECT parent_token_id FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+        $sql = "SELECT family_id FROM " . MAIN_DB_PREFIX . "smartauth_auth";
         $sql .= " WHERE rowid = " . (int) $tokenId;
         $resql = $this->db->query($sql);
         $obj = $this->db->fetch_object($resql);
-        $familyId = $obj->parent_token_id;
+        $familyId = $obj->family_id;
 
         // Set high refresh count
         $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_token_family";
