@@ -321,7 +321,7 @@ class SmartAuth extends CommonObject
 			foreach ($filter as $key => $value) {
 				if ($key == 't.rowid') {
 					$sqlwhere[] = $key . " = " . ((int) $value);
-				} elseif (in_array($this->fields[$key]['type'], array('date', 'datetime', 'timestamp'))) {
+				} elseif (isset($this->fields[$key]['type']) && in_array($this->fields[$key]['type'], array('date', 'datetime', 'timestamp'))) {
 					$sqlwhere[] = $key . " = '" . $this->db->idate($value) . "'";
 				} elseif ($key == 'customsql') {
 					$sqlwhere[] = $value;
@@ -1052,7 +1052,9 @@ class SmartAuth extends CommonObject
 		if (empty($_appNameUIDCache)) {
 			$this->getAllModulesNames();
 		}
-		return $_appNameUIDCache[$id];
+		if(isset($_appNameUIDCache[$id]))
+			return $_appNameUIDCache[$id];
+		return '';
 	}
 
 	public function getAllModulesNames()
