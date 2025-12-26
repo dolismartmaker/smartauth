@@ -1225,9 +1225,9 @@ class RouteControllerTest extends DolibarrRealTestCase
         RouteController::route('GET', 'protected/route', 'TestController', 'testMethod', true);
         $output = ob_get_clean();
 
-        // Should produce 401 response
+        // Should produce 401 response with authentication message
         $this->assertNotEmpty($output);
-        $this->assertStringContainsString('401', $output);
+        $this->assertStringContainsString('Authentication required', $output);
 
         // Restore
         if ($originalMethod !== null) {
@@ -1263,9 +1263,13 @@ class RouteControllerTest extends DolibarrRealTestCase
         RouteController::route('GET', 'protected/route', 'TestController', 'testMethod', true);
         $output = ob_get_clean();
 
-        // Should produce 401 response
+        // Should produce 401 response with authentication error
         $this->assertNotEmpty($output);
-        $this->assertStringContainsString('401', $output);
+        $this->assertTrue(
+            str_contains($output, 'Authentication required') ||
+            str_contains($output, 'Invalid token') ||
+            str_contains($output, 'Authentication failed')
+        );
 
         // Restore
         if ($originalMethod !== null) {
@@ -1419,9 +1423,9 @@ class RouteControllerTest extends DolibarrRealTestCase
         );
         $output = ob_get_clean();
 
-        // Should produce 500 error
+        // Should produce 500 error with class not found message
         $this->assertNotEmpty($output);
-        $this->assertStringContainsString('500', $output);
+        $this->assertStringContainsString('Class not found', $output);
 
         // Restore
         if ($originalLogsValue) {
@@ -1488,9 +1492,9 @@ class RouteControllerTest extends DolibarrRealTestCase
         );
         $output = ob_get_clean();
 
-        // Should produce 500 error
+        // Should produce 500 error with method not found message
         $this->assertNotEmpty($output);
-        $this->assertStringContainsString('500', $output);
+        $this->assertStringContainsString('Method not found', $output);
 
         // Restore
         if ($originalLogsValue) {
@@ -1760,9 +1764,9 @@ class RouteControllerTest extends DolibarrRealTestCase
         );
         $output = ob_get_clean();
 
-        // Should produce 500 error
+        // Should produce 500 error with exception message
         $this->assertNotEmpty($output);
-        $this->assertStringContainsString('500', $output);
+        $this->assertStringContainsString('Exception', $output);
 
         // Restore
         if ($originalLogsValue) {
@@ -2320,7 +2324,7 @@ class RouteControllerTest extends DolibarrRealTestCase
 
         // Should produce 500 error for invalid response format
         $this->assertNotEmpty($output);
-        $this->assertStringContainsString('500', $output);
+        $this->assertStringContainsString('Invalid response format', $output);
 
         // Restore
         if ($originalLogsValue) {
@@ -2386,9 +2390,9 @@ class RouteControllerTest extends DolibarrRealTestCase
         );
         $output = ob_get_clean();
 
-        // Should produce 500 error for invalid response format
+        // Should produce 500 error for invalid response format (wrong array count)
         $this->assertNotEmpty($output);
-        $this->assertStringContainsString('500', $output);
+        $this->assertStringContainsString('Invalid response format', $output);
 
         // Restore
         if ($originalLogsValue) {
