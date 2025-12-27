@@ -160,44 +160,6 @@ class SmartAuth extends CommonObject
 	public $status;
 	// END MODULEBUILDER PROPERTIES
 
-
-
-	// If this object has a subtable with lines
-
-	// /**
-	//  * @var string    Name of subtable line
-	//  */
-	// public $table_element_line = 'smartauth_authline';
-
-	// /**
-	//  * @var string    Field with ID of parent key if this object has a parent
-	//  */
-	// public $fk_element = 'fk_auth';
-
-	// /**
-	//  * @var string    Name of subtable class that manage subtable lines
-	//  */
-	// public $class_element_line = 'Authline';
-
-	// /**
-	//  * @var array	List of child tables. To test if we can delete object.
-	//  */
-	// protected $childtables = array('mychildtable' => array('name'=>'Auth', 'fk_element'=>'fk_auth'));
-
-	// /**
-	//  * @var array    List of child tables. To know object to delete on cascade.
-	//  *               If name matches '@ClassNAme:FilePathClass;ParentFkFieldName' it will
-	//  *               call method deleteByParentField(parentId, ParentFkFieldName) to fetch and delete child object
-	//  */
-	// protected $childtablesoncascade = array('smartauth_authdet');
-
-	/**
-	 * @var SmartAuthLine[]     Array of subtable lines
-	 */
-	public $lines = array();
-
-
-
 	/**
 	 * Constructor
 	 *
@@ -270,22 +232,6 @@ class SmartAuth extends CommonObject
 	public function fetch($id, $ref = null)
 	{
 		$result = $this->fetchCommon($id, $ref);
-		if ($result > 0 && !empty($this->table_element_line)) {
-			$this->fetchLines();
-		}
-		return $result;
-	}
-
-	/**
-	 * Load object lines in memory from the database
-	 *
-	 * @return int         <0 if KO, 0 if not found, >0 if OK
-	 */
-	public function fetchLines()
-	{
-		$this->lines = array();
-
-		$result = $this->fetchLinesCommon();
 		return $result;
 	}
 
@@ -878,27 +824,6 @@ class SmartAuth extends CommonObject
 	}
 
 	/**
-	 * 	Create an array of lines
-	 *
-	 * 	@return array|int		array of lines if OK, <0 if KO
-	 */
-	public function getLinesArray()
-	{
-		$this->lines = array();
-
-		$objectline = new SmartAuthLine($this->db);
-		$result = $objectline->fetchAll('ASC', 'position', 0, 0, array('customsql' => 'fk_auth = ' . ((int) $this->id)));
-
-		if (is_numeric($result)) {
-			$this->setErrorsFromObject($objectline);
-			return $result;
-		} else {
-			$this->lines = $result;
-			return $this->lines;
-		}
-	}
-
-	/**
 	 *  Returns the reference to the following non used object depending on the active numbering module.
 	 *
 	 *  @return string      		Object free reference
@@ -951,45 +876,6 @@ class SmartAuth extends CommonObject
 			print $langs->trans("ErrorNumberingModuleNotSetup", $this->element);
 			return "";
 		}
-	}
-
-	/**
-	 *  Create a document onto disk according to template module.
-	 *
-	 *  @param	    string		$modele			Force template to use ('' to not force)
-	 *  @param		Translate	$outputlangs	objet lang a utiliser pour traduction
-	 *  @param      int			$hidedetails    Hide details of lines
-	 *  @param      int			$hidedesc       Hide description
-	 *  @param      int			$hideref        Hide ref
-	 *  @param      null|array  $moreparams     Array to provide more information
-	 *  @return     int         				0 if KO, 1 if OK
-	 */
-	public function generateDocument($modele, $outputlangs, $hidedetails = 0, $hidedesc = 0, $hideref = 0, $moreparams = null)
-	{
-		global $conf, $langs;
-
-		$result = 0;
-		$includedocgeneration = 0;
-
-		$langs->load("smartauth@smartauth");
-
-		if (!dol_strlen($modele)) {
-			$modele = 'standard_auth';
-
-			if (!empty($this->model_pdf)) {
-				$modele = $this->model_pdf;
-			} elseif (getDolGlobalString('MYOBJECT_ADDON_PDF')) {
-				$modele = getDolGlobalString('MYOBJECT_ADDON_PDF');
-			}
-		}
-
-		$modelpath = "core/modules/smartauth/doc/";
-
-		if ($includedocgeneration && !empty($modele)) {
-			$result = $this->commonGenerateDocument($modelpath, $modele, $outputlangs, $hidedetails, $hidedesc, $hideref, $moreparams);
-		}
-
-		return $result;
 	}
 
 	/**
@@ -1085,31 +971,5 @@ class SmartAuth extends CommonObject
 	public function setDisabled($user, $notrigger = 0)
 	{
 		return $this->setStatusCommon($user, self::STATUS_DISABLED, $notrigger, 'SMARTAUTH_KEY_DISABLED');
-	}
-}
-
-require_once DOL_DOCUMENT_ROOT . '/core/class/commonobjectline.class.php';
-
-/**
- * Class SmartAuthLine. You can also remove this and generate a CRUD class for lines objects.
- */
-class SmartAuthLine extends CommonObjectLine
-{
-	// To complete with content of an object AuthLine
-	// We should have a field rowid, fk_auth and position
-
-	/**
-	 * @var int  Does object support extrafields ? 0=No, 1=Yes
-	 */
-	public $isextrafieldmanaged = 0;
-
-	/**
-	 * Constructor
-	 *
-	 * @param DoliDb $db Database handler
-	 */
-	public function __construct(DoliDB $db)
-	{
-		$this->db = $db;
 	}
 }
