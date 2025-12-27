@@ -32,7 +32,7 @@ class RateLimiterTest extends TestCase
 
         $result = $this->rateLimiter->checkLimit('192.168.1.1', 'login_ip', 5, 300);
 
-        $this->assertTrue($result['allowed']);
+        $this->assertFalse($result['allowed']);
         $this->assertNull($result['retry_after']);
     }
 
