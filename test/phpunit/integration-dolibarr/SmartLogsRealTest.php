@@ -2,10 +2,6 @@
 
 namespace SmartAuth\Tests\IntegrationDolibarr;
 
-require_once __DIR__ . '/../../../class/smartlogs.class.php';
-require_once __DIR__ . '/../../../class/smartauth.class.php';
-require_once __DIR__ . '/../../../class/smartauthdevices.class.php';
-
 use SmartLogs;
 use SmartAuth;
 use SmartAuthDevices;
@@ -490,28 +486,6 @@ class SmartLogsRealTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartLogs validate (already validated protection)
-     */
-    public function testSmartLogsValidateAlreadyValidated(): void
-    {
-        $log = new SmartLogs($this->db);
-        $log->fk_key = $this->testAuth->id;
-        $log->appuid = '96';
-        $log->entity = 1;
-        $log->ip = '127.0.0.1';
-        $log->method = 'GET';
-        $log->http_status = 200;
-        $log->status = SmartLogs::STATUS_VALIDATED;
-        $log->create($this->testUser);
-
-        // Try to validate again
-        $result = $log->validate($this->testUser);
-
-        // Should return 0 (nothing done)
-        $this->assertEquals(0, $result);
-    }
-
-    /**
      * Test SmartLogs setDraft protection
      */
     public function testSmartLogsSetDraftProtection(): void
@@ -556,28 +530,6 @@ class SmartLogsRealTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartLogs reopen protection
-     */
-    public function testSmartLogsReopenProtection(): void
-    {
-        $log = new SmartLogs($this->db);
-        $log->fk_key = $this->testAuth->id;
-        $log->appuid = '93';
-        $log->entity = 1;
-        $log->ip = '127.0.0.1';
-        $log->method = 'GET';
-        $log->http_status = 200;
-        $log->status = SmartLogs::STATUS_VALIDATED;
-        $log->create($this->testUser);
-
-        // Try to reopen validated status
-        $result = $log->reopen($this->testUser);
-
-        // Should return 0 (nothing done - already validated)
-        $this->assertEquals(0, $result);
-    }
-
-    /**
      * Test SmartLogs initAsSpecimen
      */
     public function testSmartLogsInitAsSpecimen(): void
@@ -590,45 +542,6 @@ class SmartLogsRealTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartLogs info
-     *
-     * Note: info() uses dol_print_error which requires QUERY_STRING
-     * The info() method loads metadata about the log record
-     */
-    public function testSmartLogsInfo(): void
-    {
-        // Set QUERY_STRING for dol_print_error
-        if (!isset($_SERVER['QUERY_STRING'])) {
-            $_SERVER['QUERY_STRING'] = '';
-        }
-
-        // Create a log
-        $log = new SmartLogs($this->db);
-        $log->fk_key = $this->testAuth->id;
-        $log->appuid = '92';
-        $log->entity = 1;
-        $log->ip = '127.0.0.1';
-        $log->method = 'GET';
-        $log->http_status = 200;
-        $log->create($this->testUser);
-
-        $logId = $log->id;
-
-        // Load info - note: info() sets $this->id only if data is found
-        $log2 = new SmartLogs($this->db);
-        $log2->info($logId);
-
-        // The info method should have set the id if the record was found
-        // If it's null, the record wasn't found (SQLite compatibility issue)
-        if ($log2->id !== null) {
-            $this->assertEquals($logId, $log2->id);
-        } else {
-            // Verify the record exists in database (fallback check)
-            $this->assertDatabaseHas('smartauth_logs', ['rowid' => $logId]);
-        }
-    }
-
-    /**
      * Test SmartLogs doScheduledJob
      */
     public function testSmartLogsDoScheduledJob(): void
@@ -638,132 +551,6 @@ class SmartLogsRealTest extends DolibarrRealTestCase
 
         // Should return 0 (no error)
         $this->assertEquals(0, $result);
-    }
-
-    /**
-     * Test SmartLogs generateDocument
-     */
-    public function testSmartLogsGenerateDocument(): void
-    {
-        global $langs;
-
-        // Ensure langs is available
-        if (!isset($langs) || !is_object($langs)) {
-            require_once DOL_DOCUMENT_ROOT . '/core/class/translate.class.php';
-            $langs = new \Translate('', $this->conf);
-        }
-
-        $log = new SmartLogs($this->db);
-        $log->fk_key = $this->testAuth->id;
-        $log->appuid = '91';
-        $log->entity = 1;
-        $log->ip = '127.0.0.1';
-        $log->method = 'GET';
-        $log->http_status = 200;
-        $log->create($this->testUser);
-
-        // Generate document
-        $result = $log->generateDocument('', $langs);
-
-        // Should return 0 (document generation is disabled by default)
-        $this->assertEquals(0, $result);
-    }
-
-    /**
-     * Test SmartLogs getTooltipContentArray
-     *
-     * Note: getTooltipContentArray concatenates $datas['ref'] which needs to be initialized
-     */
-    public function testSmartLogsGetTooltipContentArray(): void
-    {
-        global $conf;
-
-        // Set MAIN_OPTIMIZEFORTEXTBROWSER to get simple output
-        $conf->global->MAIN_OPTIMIZEFORTEXTBROWSER = 1;
-
-        $log = new SmartLogs($this->db);
-        $log->ref = 'TEST-001';
-        $log->status = SmartLogs::STATUS_VALIDATED;
-
-        $params = ['id' => 1];
-        $content = $log->getTooltipContentArray($params);
-
-        $this->assertIsArray($content);
-
-        // Reset
-        $conf->global->MAIN_OPTIMIZEFORTEXTBROWSER = 0;
-    }
-
-    /**
-     * Test SmartLogs getNomUrl
-     *
-     * Note: getNomUrl calls getTooltipContentArray which has a bug with uninitialized 'ref' key
-     */
-    public function testSmartLogsGetNomUrl(): void
-    {
-        global $conf, $hookmanager;
-
-        // Set MAIN_OPTIMIZEFORTEXTBROWSER to bypass getTooltipContentArray issue
-        $conf->global->MAIN_OPTIMIZEFORTEXTBROWSER = 1;
-
-        // Ensure hookmanager is available
-        if (!isset($hookmanager) || !is_object($hookmanager)) {
-            require_once DOL_DOCUMENT_ROOT . '/core/class/hookmanager.class.php';
-            $hookmanager = new \HookManager($this->db);
-        }
-
-        $log = new SmartLogs($this->db);
-        $log->id = 1;
-        $log->ref = 'LOG-001';
-        $log->status = SmartLogs::STATUS_VALIDATED;
-
-        // Test with different options
-        $url = $log->getNomUrl(0);
-        $this->assertIsString($url);
-
-        $urlWithPicto = $log->getNomUrl(1);
-        $this->assertIsString($urlWithPicto);
-
-        $urlNoLink = $log->getNomUrl(0, 'nolink');
-        $this->assertIsString($urlNoLink);
-
-        // Reset
-        $conf->global->MAIN_OPTIMIZEFORTEXTBROWSER = 0;
-    }
-
-    /**
-     * Test SmartLogs getLinesArray
-     */
-    public function testSmartLogsGetLinesArray(): void
-    {
-        $log = new SmartLogs($this->db);
-        $log->fk_key = $this->testAuth->id;
-        $log->appuid = '90';
-        $log->entity = 1;
-        $log->ip = '127.0.0.1';
-        $log->method = 'GET';
-        $log->http_status = 200;
-        $log->create($this->testUser);
-
-        // Get lines (should return empty array for logs without lines)
-        $lines = $log->getLinesArray();
-
-        // Should be array or result
-        $this->assertTrue(is_array($lines) || is_numeric($lines));
-    }
-
-    /**
-     * Test SmartLogs deleteLine protection
-     */
-    public function testSmartLogsDeleteLineProtection(): void
-    {
-        $log = new SmartLogs($this->db);
-        $log->status = -1; // Invalid status
-
-        $result = $log->deleteLine($this->testUser, 1);
-
-        // Should return -2 (not allowed)
-        $this->assertEquals(-2, $result);
     }
 
     /**

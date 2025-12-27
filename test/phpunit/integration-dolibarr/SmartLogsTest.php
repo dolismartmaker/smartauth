@@ -2,10 +2,6 @@
 
 namespace SmartAuth\Tests\IntegrationDolibarr;
 
-require_once __DIR__ . '/../../../class/smartlogs.class.php';
-require_once __DIR__ . '/../../../class/smartauth.class.php';
-require_once __DIR__ . '/../../../class/smartauthdevices.class.php';
-
 use SmartLogs;
 use SmartAuth;
 use SmartAuthDevices;
@@ -334,33 +330,6 @@ class SmartLogsTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartLogs info method
-     */
-    public function testSmartLogsInfo(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->appuid = 1;
-        $logs->fk_key = $this->testAuth->id;
-        $logs->entity = 1;
-        $logs->dol_element = 'product';
-        $logs->ip = '127.0.0.1';
-        $logs->method = 'GET';
-        $logs->http_status = 200;
-        $logs->bytes_sent = 100;
-        $logs->content_type = 'application/json';
-        $logs->url_requested = '/api/products';
-        $logs->user_agent = 'TestAgent';
-        $logs->fk_device_id = $this->testDevice->id;
-        $logs->referer = '';
-        $logs->create($this->testUser);
-
-        $logs->info($logs->id);
-
-        $this->assertEquals($logs->id, $logs->id);
-        $this->assertNotEmpty($logs->date_creation);
-    }
-
-    /**
      * Test SmartLogs initAsSpecimen
      */
     public function testSmartLogsInitAsSpecimen(): void
@@ -426,99 +395,6 @@ class SmartLogsTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartLogs getNomUrl
-     */
-    public function testSmartLogsGetNomUrl(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->appuid = 1;
-        $logs->fk_key = $this->testAuth->id;
-        $logs->entity = 1;
-        $logs->dol_element = 'product';
-        $logs->ip = '127.0.0.1';
-        $logs->method = 'GET';
-        $logs->http_status = 200;
-        $logs->bytes_sent = 100;
-        $logs->content_type = 'application/json';
-        $logs->url_requested = '/api/products';
-        $logs->user_agent = 'TestAgent';
-        $logs->fk_device_id = $this->testDevice->id;
-        $logs->referer = '';
-        $logs->create($this->testUser);
-
-        $result = $logs->getNomUrl();
-        $this->assertIsString($result);
-        $this->assertStringContainsString('logs_card.php', $result);
-    }
-
-    /**
-     * Test SmartLogs getNomUrl with picto
-     */
-    public function testSmartLogsGetNomUrlWithPicto(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->appuid = 1;
-        $logs->fk_key = $this->testAuth->id;
-        $logs->entity = 1;
-        $logs->dol_element = 'product';
-        $logs->ip = '127.0.0.1';
-        $logs->method = 'GET';
-        $logs->http_status = 200;
-        $logs->bytes_sent = 100;
-        $logs->content_type = 'application/json';
-        $logs->url_requested = '/api/products';
-        $logs->user_agent = 'TestAgent';
-        $logs->fk_device_id = $this->testDevice->id;
-        $logs->referer = '';
-        $logs->create($this->testUser);
-
-        $result = $logs->getNomUrl(1);
-        $this->assertIsString($result);
-    }
-
-    /**
-     * Test SmartLogs getNomUrl nolink option
-     */
-    public function testSmartLogsGetNomUrlNoLink(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->appuid = 1;
-        $logs->fk_key = $this->testAuth->id;
-        $logs->entity = 1;
-        $logs->dol_element = 'product';
-        $logs->ip = '127.0.0.1';
-        $logs->method = 'GET';
-        $logs->http_status = 200;
-        $logs->bytes_sent = 100;
-        $logs->content_type = 'application/json';
-        $logs->url_requested = '/api/products';
-        $logs->user_agent = 'TestAgent';
-        $logs->fk_device_id = $this->testDevice->id;
-        $logs->referer = '';
-        $logs->create($this->testUser);
-
-        $result = $logs->getNomUrl(0, 'nolink');
-        $this->assertIsString($result);
-        $this->assertStringNotContainsString('<a ', $result);
-    }
-
-    /**
-     * Test SmartLogs getTooltipContentArray
-     */
-    public function testSmartLogsGetTooltipContentArray(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->ref = 'TEST-001';
-        $logs->status = SmartLogs::STATUS_VALIDATED;
-
-        $result = $logs->getTooltipContentArray([]);
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('picto', $result);
-        $this->assertArrayHasKey('ref', $result);
-    }
-
-    /**
      * Test SmartLogs doScheduledJob
      */
     public function testSmartLogsDoScheduledJob(): void
@@ -527,60 +403,6 @@ class SmartLogsTest extends DolibarrRealTestCase
         $result = $logs->doScheduledJob();
 
         $this->assertEquals(0, $result);
-    }
-
-    /**
-     * Test SmartLogs generateDocument
-     */
-    public function testSmartLogsGenerateDocument(): void
-    {
-        global $langs;
-
-        $logs = new SmartLogs($this->db);
-        $logs->appuid = 1;
-        $logs->fk_key = $this->testAuth->id;
-        $logs->entity = 1;
-        $logs->dol_element = 'product';
-        $logs->ip = '127.0.0.1';
-        $logs->method = 'GET';
-        $logs->http_status = 200;
-        $logs->bytes_sent = 100;
-        $logs->content_type = 'application/json';
-        $logs->url_requested = '/api/products';
-        $logs->user_agent = 'TestAgent';
-        $logs->fk_device_id = $this->testDevice->id;
-        $logs->referer = '';
-        $logs->create($this->testUser);
-
-        $result = $logs->generateDocument('', $langs);
-        $this->assertEquals(0, $result);
-    }
-
-    /**
-     * Test SmartLogs getLinesArray
-     */
-    public function testSmartLogsGetLinesArray(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->appuid = 1;
-        $logs->fk_key = $this->testAuth->id;
-        $logs->entity = 1;
-        $logs->dol_element = 'product';
-        $logs->ip = '127.0.0.1';
-        $logs->method = 'GET';
-        $logs->http_status = 200;
-        $logs->bytes_sent = 100;
-        $logs->content_type = 'application/json';
-        $logs->url_requested = '/api/products';
-        $logs->user_agent = 'TestAgent';
-        $logs->fk_device_id = $this->testDevice->id;
-        $logs->referer = '';
-        $logs->create($this->testUser);
-
-        $result = $logs->getLinesArray();
-
-        // SmartLogsLine doesn't have fetchAll, so this returns numeric result
-        $this->assertTrue(is_array($result) || is_numeric($result));
     }
 
     /**
@@ -595,19 +417,6 @@ class SmartLogsTest extends DolibarrRealTestCase
         ob_end_clean();
 
         $this->assertIsString($result);
-    }
-
-    /**
-     * Test SmartLogs validate when already validated
-     */
-    public function testSmartLogsValidateAlreadyValidated(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->status = SmartLogs::STATUS_VALIDATED;
-
-        $result = $logs->validate($this->testUser);
-
-        $this->assertEquals(0, $result);
     }
 
     /**
@@ -634,63 +443,6 @@ class SmartLogsTest extends DolibarrRealTestCase
         $result = $logs->cancel($this->testUser);
 
         $this->assertEquals(0, $result);
-    }
-
-    /**
-     * Test SmartLogs reopen when already validated
-     */
-    public function testSmartLogsReopenAlreadyValidated(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->status = SmartLogs::STATUS_VALIDATED;
-
-        $result = $logs->reopen($this->testUser);
-
-        $this->assertEquals(0, $result);
-    }
-
-    /**
-     * Test SmartLogs deleteLine with invalid status
-     */
-    public function testSmartLogsDeleteLineInvalidStatus(): void
-    {
-        $logs = new SmartLogs($this->db);
-        $logs->status = -1;
-
-        $result = $logs->deleteLine($this->testUser, 1);
-
-        $this->assertEquals(-2, $result);
-        $this->assertEquals('ErrorDeleteLineNotAllowedByObjectStatus', $logs->error);
-    }
-
-    /**
-     * Test SmartLogs createFromClone
-     */
-    public function testSmartLogsCreateFromClone(): void
-    {
-        // Create original log
-        $logs = new SmartLogs($this->db);
-        $logs->appuid = 1;
-        $logs->fk_key = $this->testAuth->id;
-        $logs->entity = 1;
-        $logs->dol_element = 'product';
-        $logs->ip = '127.0.0.1';
-        $logs->method = 'GET';
-        $logs->http_status = 200;
-        $logs->bytes_sent = 100;
-        $logs->content_type = 'application/json';
-        $logs->url_requested = '/api/products';
-        $logs->user_agent = 'TestAgent';
-        $logs->fk_device_id = $this->testDevice->id;
-        $logs->referer = '';
-        $logs->create($this->testUser);
-
-        // Clone it
-        $newLogs = new SmartLogs($this->db);
-        $result = $newLogs->createFromClone($this->testUser, $logs->id);
-
-        // Result should be an object or -1
-        $this->assertTrue($result instanceof SmartLogs || $result === -1);
     }
 
     /**

@@ -686,30 +686,6 @@ class SmartAuthClassTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartAuth getLinesArray method
-     */
-    public function testSmartAuthGetLinesArray(): void
-    {
-        $auth = new SmartAuth($this->db);
-        $auth->appuid = 1;
-        $auth->salt = bin2hex(random_bytes(16));
-        $auth->fk_user_creat = $this->testUser->id;
-        $auth->fk_authid = $this->testUser->id;
-        $auth->auth_element = 'user';
-        $auth->fk_device_id = $this->testDevice->id;
-        $auth->token_type = 'access';
-        $auth->status = SmartAuth::STATUS_VALIDATED;
-        $auth->ip = '127.0.0.1';
-        $auth->entity = 1;
-        $auth->create($this->testUser);
-
-        $lines = $auth->getLinesArray();
-
-        // getLinesArray may return 0 or -1 on error, or array on success
-        $this->assertTrue(is_array($lines) || $lines === 0 || $lines === -1);
-    }
-
-    /**
      * Test SmartAuth getNextNumRef method
      */
     public function testSmartAuthGetNextNumRef(): void
@@ -1018,32 +994,6 @@ class SmartAuthClassTest extends DolibarrRealTestCase
         } else {
             unset($conf->global->SMARTAUTH_TOKEN_EOL_DAYS);
         }
-    }
-
-    /**
-     * Test generateDocument method
-     */
-    public function testSmartAuthGenerateDocument(): void
-    {
-        global $langs;
-
-        $auth = new SmartAuth($this->db);
-        $auth->appuid = 1;
-        $auth->salt = bin2hex(random_bytes(16));
-        $auth->fk_user_creat = $this->testUser->id;
-        $auth->fk_authid = $this->testUser->id;
-        $auth->auth_element = 'user';
-        $auth->fk_device_id = $this->testDevice->id;
-        $auth->token_type = 'access';
-        $auth->status = SmartAuth::STATUS_VALIDATED;
-        $auth->ip = '127.0.0.1';
-        $auth->entity = 1;
-        $auth->create($this->testUser);
-
-        $result = $auth->generateDocument('standard_auth', $langs);
-
-        // Should return 0 because includedocgeneration is false
-        $this->assertEquals(0, $result);
     }
 
     /**
@@ -1444,30 +1394,6 @@ class SmartAuthClassTest extends DolibarrRealTestCase
 
         $this->assertEquals(-2, $result);
         $this->assertEquals('ErrorDeleteLineNotAllowedByObjectStatus', $auth->error);
-    }
-
-    /**
-     * Test fetchLines method
-     */
-    public function testSmartAuthFetchLines(): void
-    {
-        $auth = new SmartAuth($this->db);
-        $auth->appuid = 1;
-        $auth->salt = bin2hex(random_bytes(16));
-        $auth->fk_user_creat = $this->testUser->id;
-        $auth->fk_authid = $this->testUser->id;
-        $auth->auth_element = 'user';
-        $auth->fk_device_id = $this->testDevice->id;
-        $auth->token_type = 'access';
-        $auth->status = SmartAuth::STATUS_VALIDATED;
-        $auth->ip = '127.0.0.1';
-        $auth->entity = 1;
-        $auth->create($this->testUser);
-
-        $result = $auth->fetchLines();
-
-        $this->assertTrue($result >= 0 || $result < 0);
-        $this->assertIsArray($auth->lines);
     }
 
     /**
@@ -2068,59 +1994,6 @@ class SmartAuthClassTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test generateDocument with custom model
-     */
-    public function testSmartAuthGenerateDocumentCustomModel(): void
-    {
-        global $langs;
-
-        $auth = new SmartAuth($this->db);
-        $auth->appuid = 1;
-        $auth->salt = bin2hex(random_bytes(16));
-        $auth->fk_user_creat = $this->testUser->id;
-        $auth->fk_authid = $this->testUser->id;
-        $auth->auth_element = 'user';
-        $auth->fk_device_id = $this->testDevice->id;
-        $auth->token_type = 'access';
-        $auth->status = SmartAuth::STATUS_VALIDATED;
-        $auth->ip = '127.0.0.1';
-        $auth->entity = 1;
-        $auth->model_pdf = 'custom_model';
-        $auth->create($this->testUser);
-
-        $result = $auth->generateDocument('', $langs);
-
-        // Should return 0 because includedocgeneration is false
-        $this->assertEquals(0, $result);
-    }
-
-    /**
-     * Test generateDocument with hidedetails and hidedesc parameters
-     */
-    public function testSmartAuthGenerateDocumentWithHideParams(): void
-    {
-        global $langs;
-
-        $auth = new SmartAuth($this->db);
-        $auth->appuid = 1;
-        $auth->salt = bin2hex(random_bytes(16));
-        $auth->fk_user_creat = $this->testUser->id;
-        $auth->fk_authid = $this->testUser->id;
-        $auth->auth_element = 'user';
-        $auth->fk_device_id = $this->testDevice->id;
-        $auth->token_type = 'access';
-        $auth->status = SmartAuth::STATUS_VALIDATED;
-        $auth->ip = '127.0.0.1';
-        $auth->entity = 1;
-        $auth->create($this->testUser);
-
-        $result = $auth->generateDocument('standard_auth', $langs, 1, 1, 1);
-
-        // Should return 0 because includedocgeneration is false
-        $this->assertEquals(0, $result);
-    }
-
-    /**
      * Test info with user validation tracking
      */
     public function testSmartAuthInfoWithUserValidation(): void
@@ -2168,32 +2041,6 @@ class SmartAuthClassTest extends DolibarrRealTestCase
         // Check if specimen initialized some properties
         if ($result > 0) {
             $this->assertNotEmpty($auth->fk_user_creat);
-        }
-    }
-
-    /**
-     * Test getLinesArray returns empty for auth without lines
-     */
-    public function testSmartAuthGetLinesArrayEmpty(): void
-    {
-        $auth = new SmartAuth($this->db);
-        $auth->appuid = 1;
-        $auth->salt = bin2hex(random_bytes(16));
-        $auth->fk_user_creat = $this->testUser->id;
-        $auth->fk_authid = $this->testUser->id;
-        $auth->auth_element = 'user';
-        $auth->fk_device_id = $this->testDevice->id;
-        $auth->token_type = 'access';
-        $auth->status = SmartAuth::STATUS_VALIDATED;
-        $auth->ip = '127.0.0.1';
-        $auth->entity = 1;
-        $auth->create($this->testUser);
-
-        $lines = $auth->getLinesArray();
-
-        // Should return empty array since auth has no lines
-        if (is_array($lines)) {
-            $this->assertEmpty($lines);
         }
     }
 

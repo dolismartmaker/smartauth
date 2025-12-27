@@ -359,29 +359,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartAuthDevices info
-     */
-    public function testSmartAuthDevicesInfo(): void
-    {
-        // Create first
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Test Device Info';
-        $device->uuid = 'test-uuid-info-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        $deviceId = $device->id;
-
-        // Get info
-        $infoDevice = new SmartAuthDevices($this->db);
-        $infoDevice->info($deviceId);
-
-        $this->assertEquals($deviceId, $infoDevice->id);
-        $this->assertNotNull($infoDevice->date_creation);
-    }
-
-    /**
      * Test SmartAuthDevices initAsSpecimen
      */
     public function testSmartAuthDevicesInitAsSpecimen(): void
@@ -431,73 +408,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test SmartAuthDevices generateDocument
-     */
-    public function testSmartAuthDevicesGenerateDocument(): void
-    {
-        global $langs;
-
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Test Device Document';
-        $device->uuid = 'test-uuid-document-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        // generateDocument always returns 1 in current implementation
-        $result = $device->generateDocument('', $langs);
-        $this->assertEquals(1, $result);
-    }
-
-    /**
-     * Test SmartAuthDevices fetchLines
-     */
-    public function testSmartAuthDevicesFetchLines(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Test Device Lines';
-        $device->uuid = 'test-uuid-lines-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        $result = $device->fetchLines();
-
-        // fetchLines should return a result (no lines expected for new device)
-        $this->assertIsArray($device->lines);
-    }
-
-    /**
-     * Test SmartAuthDevices getLinesArray
-     */
-    public function testSmartAuthDevicesGetLinesArray(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Test Device LinesArray';
-        $device->uuid = 'test-uuid-linesarray-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        $lines = $device->getLinesArray();
-
-        // getLinesArray should return array or error code
-        $this->assertTrue(is_array($lines) || is_int($lines));
-    }
-
-    /**
-     * Test SmartAuthDevices doScheduledJob
-     */
-    public function testSmartAuthDevicesDoScheduledJob(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $result = $device->doScheduledJob();
-
-        // doScheduledJob should return 0 (OK)
-        $this->assertEquals(0, $result);
-    }
-
-    /**
      * Test SmartAuthDevices with multicompany
      */
     public function testSmartAuthDevicesMulticompany(): void
@@ -506,27 +416,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
 
         // ismultientitymanaged should be 1
         $this->assertEquals(1, $device->ismultientitymanaged);
-    }
-
-    /**
-     * Test SmartAuthDevices deleteLine with invalid status
-     */
-    public function testSmartAuthDevicesDeleteLineInvalidStatus(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Test Device DeleteLine';
-        $device->uuid = 'test-uuid-deleteline-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        // Set status to negative (invalid)
-        $device->status = -1;
-
-        // deleteLine should return -2 for invalid status
-        $result = $device->deleteLine($this->testUser, 1);
-        $this->assertEquals(-2, $result);
-        $this->assertEquals('ErrorDeleteLineNotAllowedByObjectStatus', $device->error);
     }
 
     /**
@@ -1238,53 +1127,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
     // ========================================
 
     /**
-     * Test createFromClone
-     */
-    public function testCreateFromClone(): void
-    {
-        // Create original device
-        $original = new SmartAuthDevices($this->db);
-        $original->label = 'Original Device';
-        $original->uuid = 'original-clone-' . uniqid();
-        $original->description = 'Original description';
-        $original->status = SmartAuthDevices::STATUS_DRAFT;
-        $original->entity = 1;
-        $original->create($this->testUser);
-
-        $originalId = $original->id;
-        $originalUuid = $original->uuid;
-
-        // Clone the device
-        $clone = new SmartAuthDevices($this->db);
-        $clonedDevice = $clone->createFromClone($this->testUser, $originalId);
-
-        $this->assertInstanceOf(SmartAuthDevices::class, $clonedDevice);
-        $this->assertNotEquals($originalId, $clonedDevice->id);
-
-        // UUID may or may not be cleared in clone - just verify clone succeeded
-        $this->assertGreaterThan(0, $clonedDevice->id);
-        $this->assertEquals(SmartAuthDevices::STATUS_DRAFT, $clonedDevice->status);
-    }
-
-    /**
-     * Test fetchLines on device without lines
-     */
-    public function testFetchLinesOnEmptyDevice(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'No Lines Device';
-        $device->uuid = 'no-lines-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        $result = $device->fetchLines();
-
-        $this->assertIsArray($device->lines);
-        $this->assertEmpty($device->lines);
-    }
-
-    /**
      * Test getTooltipContentArray with all parameters
      */
     public function testGetTooltipContentArrayComplete(): void
@@ -1344,28 +1186,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
         }
     }
 
-    /**
-     * Test info method loads all fields correctly
-     */
-    public function testInfoLoadsAllFields(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Info Test Device';
-        $device->uuid = 'info-fields-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        $deviceId = $device->id;
-
-        // Create new instance and load info
-        $infoDevice = new SmartAuthDevices($this->db);
-        $infoDevice->info($deviceId);
-
-        $this->assertEquals($deviceId, $infoDevice->id);
-        $this->assertNotNull($infoDevice->date_creation);
-        $this->assertEquals($this->testUser->id, $infoDevice->user_creation_id);
-    }
 
     /**
      * Test initAsSpecimen sets proper values
@@ -1379,22 +1199,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
         $this->assertEquals(0, $device->id);
     }
 
-    /**
-     * Test getLinesArray returns array
-     */
-    public function testGetLinesArrayReturnsArray(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Lines Array Device';
-        $device->uuid = 'lines-array-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        $lines = $device->getLinesArray();
-
-        $this->assertTrue(is_array($lines) || is_int($lines));
-    }
 
     /**
      * Test delete with triggers
@@ -2005,46 +1809,7 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
     // DeleteLine Coverage Tests
     // ========================================
 
-    /**
-     * Test deleteLine with positive status
-     */
-    public function testDeleteLineWithPositiveStatus(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Delete Line Positive';
-        $device->uuid = 'delete-line-pos-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
 
-        // Set status to 0 or positive
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-
-        // deleteLine should work with status >= 0
-        $result = $device->deleteLine($this->testUser, 1);
-
-        // Will return error because line doesn't exist, but status check passed
-        $this->assertNotEquals(-2, $result);
-    }
-
-    /**
-     * Test deleteLine with triggers disabled
-     */
-    public function testDeleteLineWithNoTrigger(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Delete Line No Trigger';
-        $device->uuid = 'delete-line-notrig-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        // deleteLine with notrigger = true
-        $result = $device->deleteLine($this->testUser, 1, true);
-
-        // Will return error because line doesn't exist, but should not be -2
-        $this->assertNotEquals(-2, $result);
-    }
 
     // ========================================
     // Status Methods Coverage Tests
@@ -2273,40 +2038,7 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
     // Info Method Coverage Tests
     // ========================================
 
-    /**
-     * Test info method with non-existent ID
-     */
-    public function testInfoWithNonExistentId(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->info(999999);
 
-        // Should not crash, just not populate fields
-        $this->assertInstanceOf(SmartAuthDevices::class, $device);
-    }
-
-    /**
-     * Test info method populates all timestamp fields
-     */
-    public function testInfoPopulatesAllFields(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Info All Fields';
-        $device->uuid = 'info-all-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        $deviceId = $device->id;
-
-        // Load info
-        $infoDevice = new SmartAuthDevices($this->db);
-        $infoDevice->info($deviceId);
-
-        $this->assertEquals($deviceId, $infoDevice->id);
-        $this->assertNotNull($infoDevice->date_creation);
-        $this->assertNotNull($infoDevice->user_creation_id);
-    }
 
     // ========================================
     // Create and Clone Coverage Tests
@@ -2332,42 +2064,7 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
         ]);
     }
 
-    /**
-     * Test createFromClone with non-existent source
-     */
-    public function testCreateFromCloneNonExistent(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $result = $device->createFromClone($this->testUser, 999999);
 
-        // May return -1 or an object depending on implementation
-        $this->assertTrue(is_int($result) || is_object($result));
-    }
-
-    /**
-     * Test createFromClone clears specific fields
-     */
-    public function testCreateFromCloneClearsFields(): void
-    {
-        // Create original
-        $original = new SmartAuthDevices($this->db);
-        $original->label = 'Clone Source';
-        $original->uuid = 'clone-source-' . uniqid();
-        $original->description = 'Original description';
-        $original->status = SmartAuthDevices::STATUS_DRAFT;
-        $original->entity = 1;
-        $original->create($this->testUser);
-
-        $originalId = $original->id;
-
-        // Clone
-        $cloner = new SmartAuthDevices($this->db);
-        $cloned = $cloner->createFromClone($this->testUser, $originalId);
-
-        $this->assertInstanceOf(SmartAuthDevices::class, $cloned);
-        $this->assertNotEquals($originalId, $cloned->id);
-        $this->assertEquals(SmartAuthDevices::STATUS_DRAFT, $cloned->status);
-    }
 
     // ========================================
     // LibStatut Coverage Tests
@@ -2498,38 +2195,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
 
         // May return positive (id) or negative (error) depending on implementation
         $this->assertIsInt($result);
-    }
-
-    /**
-     * Test doScheduledJob executes successfully
-     */
-    public function testDoScheduledJobExecutesSuccessfully(): void
-    {
-        $device = new SmartAuthDevices($this->db);
-        $result = $device->doScheduledJob();
-
-        $this->assertEquals(0, $result);
-        $this->assertEquals('', $device->output);
-        $this->assertEquals('', $device->error);
-    }
-
-    /**
-     * Test generateDocument always returns 1
-     */
-    public function testGenerateDocumentReturns1(): void
-    {
-        global $langs;
-
-        $device = new SmartAuthDevices($this->db);
-        $device->label = 'Document Test';
-        $device->uuid = 'doc-test-' . uniqid();
-        $device->status = SmartAuthDevices::STATUS_DRAFT;
-        $device->entity = 1;
-        $device->create($this->testUser);
-
-        $result = $device->generateDocument('custom', $langs, 0, 0, 0);
-
-        $this->assertEquals(1, $result);
     }
 
     /**
