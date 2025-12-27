@@ -65,7 +65,7 @@ class RateLimiter
 
         $obj = $this->db->fetch_object($resql);
         if (!$obj) {
-            return ['allowed' => false, 'retry_after' => null];
+            return ['allowed' => true, 'retry_after' => null];
         }
         $attempt_count = (int) $obj->attempt_count;
         $last_attempt = (int) $obj->last_attempt;
