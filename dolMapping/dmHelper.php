@@ -92,7 +92,7 @@ class dmHelper
 	 *
 	 * @param   [type]  $str  [$str description]
 	 *
-	 * @return  [type]        [return description]
+	 * @return  array        [return description]
 	 */
 	private function _customFilterAttributeTypeInteger($str)
 	{
@@ -118,7 +118,7 @@ class dmHelper
 	 *
 	 * @param   [type]  $str  [$str description]
 	 *
-	 * @return  [type]        [return description]
+	 * @return  array        [return description]
 	 */
 	private function _customFilterAttributeTypeSellist($str)
 	{
@@ -137,7 +137,7 @@ class dmHelper
 	 *
 	 * @param   [type]  $str  [$str description]
 	 *
-	 * @return  [type]        [return description]
+	 * @return  array        [return description]
 	 */
 	private function _customFilterAttributeOptions($arr)
 	{
@@ -162,7 +162,7 @@ class dmHelper
 	 *
 	 * @param   [type]  $str  dolibarr "type" string
 	 *
-	 * @return  [type]        [return description]
+	 * @return  array        [return description]
 	 */
 	private function _customFilterAttributeType($str)
 	{
@@ -244,7 +244,7 @@ class dmHelper
 	 *
 	 * @param   [type]  $val  [$val description]
 	 *
-	 * @return  [type]        [return description]
+	 * @return  array        [return description]
 	 */
 	public function _customFilterAttributeVisible($val)
 	{
@@ -381,7 +381,7 @@ class dmHelper
 	 *
 	 * @param   [type]  $array  [$array description]
 	 *
-	 * @return  [type]          [return description]
+	 * @return  array          [return description]
 	 */
 	public function extrafieldsFilter($objectElement, $dolikey, $frontkey, $extrafields)
 	{
@@ -458,6 +458,9 @@ class dmHelper
 		return $ret;
 	}
 
+	/**
+	 * access to listOfForeignKeys
+	 */
 	public function getListOfForeignKeys()
 	{
 		return $this->listOfForeignKeys;
@@ -483,7 +486,7 @@ class dmHelper
 	 * @param   [type]  $maxHeight  [$maxHeight description]
 	 * @param   [type]  $quality    [$quality description]
 	 *
-	 * @return  [type]              [return description]
+	 * @return  void
 	 */
 	public function setGlobalMaxImageSize($maxWidth, $maxHeight = -1, $quality = 90)
 	{
