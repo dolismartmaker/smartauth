@@ -1,5 +1,21 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 1.0.16 -- 20251227
+
+Fix null pointer in RateLimiter when fetch_object returns null
+Fix undefined array keys in dmTrait and class files
+Fix handling of non-present properties in $fields of core Dolibarr objects
+Fix date_creation in smartlogs class
+Fix decoded token handling in AuthController
+Fix logs creation when user does not exist in table
+AuthController now returns complete smartauth object with token and decoded data
+Add status check in AuthController
+Remove Kanban mode from list views
+Improve test coverage with new integration tests
+Optimize test performance with SQLite in RAM
+Improve GitLab CI pipeline
+
+
 ## 1.0.14 -- 20251216
 
 new mapping for near than all dolibarr objects
