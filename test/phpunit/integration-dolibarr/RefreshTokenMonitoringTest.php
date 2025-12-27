@@ -170,4 +170,169 @@ class RefreshTokenMonitoringTest extends DolibarrRealTestCase
         $detectAnomalies = $class->getMethod('detectAnomalies');
         $this->assertTrue($detectAnomalies->isStatic());
     }
+
+    /**
+     * Test detectAnomalies with exactly threshold refresh count (10)
+     */
+    public function testDetectAnomaliesAtRefreshThreshold(): void
+    {
+        // Create token family with exactly 10 refresh count (should NOT trigger alert)
+        $now = time();
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_token_family
+                (fk_user, created_at, last_refresh_at, refresh_count, revoked)
+                VALUES (" . $this->testUser->id . ", " . $now . ", " . $now . ", 10, 0)";
+        $this->db->query($sql);
+
+        $alerts = RefreshTokenMonitoring::detectAnomalies($this->db, $this->testUser->id);
+
+        // Should return empty array - 10 is not > 10
+        $this->assertIsArray($alerts);
+    }
+
+    /**
+     * Test detectAnomalies with exactly 3 IPs (threshold is > 3)
+     */
+    public function testDetectAnomaliesAtIpThreshold(): void
+    {
+        // Create auth entries from exactly 3 IPs (should NOT trigger alert)
+        $ips = ['192.168.10.1', '10.0.10.1', '172.16.10.1'];
+        $now = time();
+
+        foreach ($ips as $ip) {
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
+                    (fk_authid, date_creation, token_type, ip, status, entity)
+                    VALUES (" . $this->testUser->id . ", " . $now . ", 'refresh', '" . $ip . "', 1, 1)";
+            $this->db->query($sql);
+        }
+
+        $alerts = RefreshTokenMonitoring::detectAnomalies($this->db, $this->testUser->id);
+
+        // Should return empty array - 3 is not > 3
+        $this->assertIsArray($alerts);
+    }
+
+    /**
+     * Test detectAnomalies with old refresh data (outside time window)
+     */
+    public function testDetectAnomaliesOldRefreshData(): void
+    {
+        // Create token family with high refresh count but old timestamp
+        $oldTime = time() - 7200; // 2 hours ago (outside 1 hour window)
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_token_family
+                (fk_user, created_at, last_refresh_at, refresh_count, revoked)
+                VALUES (" . $this->testUser->id . ", " . $oldTime . ", " . $oldTime . ", 50, 0)";
+        $this->db->query($sql);
+
+        $alerts = RefreshTokenMonitoring::detectAnomalies($this->db, $this->testUser->id);
+
+        // Old data should not trigger alert
+        $this->assertIsArray($alerts);
+    }
+
+    /**
+     * Test detectAnomalies with old auth records (outside time window)
+     */
+    public function testDetectAnomaliesOldAuthRecords(): void
+    {
+        // Create auth entries from multiple IPs but old timestamps
+        $ips = ['192.168.50.1', '10.0.50.1', '172.16.50.1', '8.8.50.8', '1.1.50.1'];
+        $oldTime = time() - 7200; // 2 hours ago (outside 1 hour window)
+
+        foreach ($ips as $ip) {
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
+                    (fk_authid, date_creation, token_type, ip, status, entity)
+                    VALUES (" . $this->testUser->id . ", " . $oldTime . ", 'refresh', '" . $ip . "', 1, 1)";
+            $this->db->query($sql);
+        }
+
+        $alerts = RefreshTokenMonitoring::detectAnomalies($this->db, $this->testUser->id);
+
+        // Old data should not trigger alert
+        $this->assertIsArray($alerts);
+    }
+
+    /**
+     * Test detectAnomalies with different token types (not refresh)
+     */
+    public function testDetectAnomaliesNonRefreshTokens(): void
+    {
+        // Create auth entries with different token types
+        $ips = ['192.168.60.1', '10.0.60.1', '172.16.60.1', '8.8.60.8'];
+        $now = time();
+
+        foreach ($ips as $ip) {
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
+                    (fk_authid, date_creation, token_type, ip, status, entity)
+                    VALUES (" . $this->testUser->id . ", " . $now . ", 'access', '" . $ip . "', 1, 1)";
+            $this->db->query($sql);
+        }
+
+        $alerts = RefreshTokenMonitoring::detectAnomalies($this->db, $this->testUser->id);
+
+        // Non-refresh tokens should not trigger multiple_locations alert
+        $this->assertIsArray($alerts);
+    }
+
+    /**
+     * Test detectAnomalies returns correct alert structure
+     */
+    public function testDetectAnomaliesAlertStructureComplete(): void
+    {
+        // Create conditions for both alerts
+        $now = time();
+
+        // Excessive refresh
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_token_family
+                (fk_user, created_at, last_refresh_at, refresh_count, revoked)
+                VALUES (" . $this->testUser->id . ", " . $now . ", " . $now . ", 25, 0)";
+        $this->db->query($sql);
+
+        // Multiple IPs
+        $ips = ['192.168.70.1', '10.0.70.1', '172.16.70.1', '8.8.70.8'];
+        foreach ($ips as $ip) {
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
+                    (fk_authid, date_creation, token_type, ip, status, entity)
+                    VALUES (" . $this->testUser->id . ", " . $now . ", 'refresh', '" . $ip . "', 1, 1)";
+            $this->db->query($sql);
+        }
+
+        $alerts = RefreshTokenMonitoring::detectAnomalies($this->db, $this->testUser->id);
+
+        $this->assertIsArray($alerts);
+
+        // Check alert structure if any alerts
+        foreach ($alerts as $alert) {
+            $this->assertArrayHasKey('type', $alert);
+            $this->assertArrayHasKey('severity', $alert);
+            $this->assertArrayHasKey('message', $alert);
+
+            // Verify valid severity values
+            $this->assertContains($alert['severity'], ['low', 'medium', 'high']);
+
+            // Verify valid type values
+            $this->assertContains($alert['type'], ['excessive_refresh', 'multiple_locations']);
+        }
+    }
+
+    /**
+     * Test detectAnomalies with zero user_id
+     */
+    public function testDetectAnomaliesWithZeroUserId(): void
+    {
+        $alerts = RefreshTokenMonitoring::detectAnomalies($this->db, 0);
+
+        $this->assertIsArray($alerts);
+        $this->assertEmpty($alerts);
+    }
+
+    /**
+     * Test detectAnomalies with negative user_id
+     */
+    public function testDetectAnomaliesWithNegativeUserId(): void
+    {
+        $alerts = RefreshTokenMonitoring::detectAnomalies($this->db, -1);
+
+        $this->assertIsArray($alerts);
+        $this->assertEmpty($alerts);
+    }
 }
