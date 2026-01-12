@@ -359,6 +359,10 @@ class RouteController
 		// Reload configuration for entity
 		$conf->setValues($db);
 		$mysoc->setMysoc($conf);
+
+		// Load user permissions
+		$user->getrights();
+
 		// Load buyer (third-party) if user is attached to one
 		if (!empty($user->socid)) {
 			$res = $buyer->fetch($user->socid);
