@@ -220,13 +220,17 @@ class RouteController
 
 		if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE') {
 			$raw = file_get_contents('php://input');
+			dol_syslog("Debug smartauth parseRequestData: method=$method, raw_length=" . strlen($raw) . ", raw=" . substr($raw, 0, 500));
 			if ($raw !== false && $raw !== '') {
 				$decoded = json_decode($raw, true);
 				if (json_last_error() === JSON_ERROR_NONE) {
 					$data = $decoded;
+					dol_syslog("Debug smartauth parseRequestData: decoded data keys=" . implode(',', array_keys($data)));
 				} else {
 					dol_syslog("Debug smartauth  JSON decode error: " . json_last_error_msg(), LOG_WARNING);
 				}
+			} else {
+				dol_syslog("Debug smartauth parseRequestData: raw is empty or false");
 			}
 		} elseif ($method === 'GET') {
 			// Filter and sanitize GET parameters
@@ -261,27 +265,19 @@ class RouteController
 			return $data;
 		}
 
-		// Extract parameter names from {name} placeholders
-		preg_match_all("/\{(\w+)\}/", $targetAction, $matches);
-		$paramNames = $matches[1];
+		// Split both target and action into segments
+		$targetSegments = explode('/', $targetAction);
+		$actionSegments = explode('/', $action);
 
-		if (empty($paramNames)) {
-			return $data;
+		// Match segments and extract parameter values
+		foreach ($targetSegments as $i => $segment) {
+			if (preg_match('/^\{(\w+)\}$/', $segment, $match)) {
+				// This is a placeholder - extract the value from the action
+				$paramName = $match[1];
+				$data[$paramName] = $actionSegments[$i] ?? '';
+			}
 		}
 
-		// Get the prefix before first placeholder
-		$prefix = substr($targetAction, 0, strpos($targetAction, '{'));
-
-		// Remove prefix from action to get parameter values
-		$valuePart = preg_replace('/^' . preg_quote($prefix, '/') . '/', '', $action);
-		$paramValues = array_filter(explode('/', $valuePart));
-
-		// Map parameter names to values
-		$i = 0;
-		foreach ($paramNames as $name) {
-			$data[$name] = $paramValues[$i] ?? '';
-			$i++;
-		}
 		return $data;
 	}
 
