@@ -533,6 +533,7 @@ class AuthController
 					$result = $device->update($user);
 					$message = "update device name : success";
 					if ($result) {
+						dol_syslog("smartauth::AuthController : device update ok call validate", LOG_DEBUG);
 						$message = "";
 						$device->validate($user);
 					}
@@ -540,11 +541,13 @@ class AuthController
 						'message' => $message,
 					];
 				} else {
+					dol_syslog("smartauth::AuthController : success but device name is empty", LOG_DEBUG);
 					$ret = [
 						'message' => "success but device name is empty",
 					];
 				}
 			} else {
+				dol_syslog("smartauth::AuthController : success same device", LOG_DEBUG);
 				$ret = [
 					'message' => "success, same device",
 				];
