@@ -129,7 +129,7 @@ class RouteController
 
 		// Match action against target pattern
 		if (!self::matchAction($action, $targetAction)) {
-			dol_syslog("Debug smartauth  Route does not match: $action != $targetAction");
+			// dol_syslog("Debug smartauth  Route does not match: $action != $targetAction");
 			return;
 		}
 
