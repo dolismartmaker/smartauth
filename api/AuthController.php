@@ -1447,6 +1447,7 @@ class AuthController
 		return $decoded;
 	}
 
+
 	/**
 	 * Generate tokens for an already authenticated Dolibarr user
 	 *
@@ -1456,21 +1457,42 @@ class AuthController
 	 * @param User $user Dolibarr User object (already authenticated)
 	 * @param int $entity Entity ID
 	 * @param string $device_label Optional device label (default: 'Dolibarr Web')
-	 * @return array ['access_token' => string, 'refresh_token' => string, 'expires_in' => int]
+	 * @param string $device_uuid Optional device UUID. If not provided, uses User-Agent hash for consistency with _getSalt2 fallback
+	 * @return array ['access_token' => string, 'refresh_token' => string, 'expires_in' => int, 'device_uuid' => string]
 	 */
-	public function generateTokenForAuthenticatedUser($user, $entity = 1, $device_label = 'Dolibarr Web')
+	public function generateTokenForAuthenticatedUser($user, $entity = 1, $device_label = 'Dolibarr Web', $device_uuid = '')
 	{
+		global $db;
+
 		if (!is_object($user) || empty($user->id) || empty($user->login)) {
 			throw new \Exception('Invalid user object');
+		}
+
+		// Generate stable device_uuid from User-Agent if not provided
+		// This matches the fallback behavior in _getSalt2()
+		if (empty($device_uuid)) {
+			$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+			$device_uuid = hash('sha256', 'dolibarr-web-' . $user->id . '-' . $userAgent);
 		}
 
 		// Create token family
 		$family_id = $this->_createTokenFamily($user->id);
 
-		// Create/get device with a stable UUID based on user
-		$device_id = $this->_createDeviceIdIfNeeded($user->id, $device_label);
+		// Create/get device directly (bypass _createDeviceIdIfNeeded which requires HTTP_X_DEVICEID)
+		$device_id = self::getDeviceIDFromUUID($device_uuid);
+		if ($device_id <= 0) {
+			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
+			$sql .= " (uuid, fk_user_creat, label, date_creation, status, entity)";
+			$sql .= " VALUES ('" . substr($db->escape($device_uuid), 0, 64) . "', ";
+			$sql .= (int) $user->id . ", ";
+			$sql .= "'" . $db->escape($device_label) . "', ";
+			$sql .= "'" . $db->idate(time()) . "', 1, " . (int) $entity . ")";
 
-		// Generate token pair
+			$db->query($sql);
+			$device_id = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_devices");
+		}
+
+		// Generate token pair with explicit device_uuid
 		$tokens = $this->_generateTokenPair(
 			'user',
 			$user->id,
@@ -1478,13 +1500,15 @@ class AuthController
 			$user->login,
 			$entity,
 			$family_id,
-			$device_id
+			$device_id,
+			$device_uuid
 		);
 
 		return [
 			'access_token' => $tokens['access_token'],
 			'refresh_token' => $tokens['refresh_token'],
-			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME
+			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
+			'device_uuid' => $device_uuid
 		];
 	}
 }
