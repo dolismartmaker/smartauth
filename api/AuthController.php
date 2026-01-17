@@ -1446,4 +1446,45 @@ class AuthController
 		}
 		return $decoded;
 	}
+
+	/**
+	 * Generate tokens for an already authenticated Dolibarr user
+	 *
+	 * Use this when user is already logged in Dolibarr (session-based)
+	 * and needs a JWT token for API calls (e.g., from embedded React apps)
+	 *
+	 * @param User $user Dolibarr User object (already authenticated)
+	 * @param int $entity Entity ID
+	 * @param string $device_label Optional device label (default: 'Dolibarr Web')
+	 * @return array ['access_token' => string, 'refresh_token' => string, 'expires_in' => int]
+	 */
+	public function generateTokenForAuthenticatedUser($user, $entity = 1, $device_label = 'Dolibarr Web')
+	{
+		if (!is_object($user) || empty($user->id) || empty($user->login)) {
+			throw new \Exception('Invalid user object');
+		}
+
+		// Create token family
+		$family_id = $this->_createTokenFamily($user->id);
+
+		// Create/get device with a stable UUID based on user
+		$device_id = $this->_createDeviceIdIfNeeded($user->id, $device_label);
+
+		// Generate token pair
+		$tokens = $this->_generateTokenPair(
+			'user',
+			$user->id,
+			$user->id,
+			$user->login,
+			$entity,
+			$family_id,
+			$device_id
+		);
+
+		return [
+			'access_token' => $tokens['access_token'],
+			'refresh_token' => $tokens['refresh_token'],
+			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME
+		];
+	}
 }
