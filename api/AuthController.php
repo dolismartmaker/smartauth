@@ -73,9 +73,11 @@ class AuthController
 	 */
 	public function index($arr = null)
 	{
+		global $mysoc;
 		dol_syslog("Debug smartauth::AuthController : index");
 		$ret = [
 			'entities' => $this->_api_GetListOfEntities(),
+			'socname' => $mysoc->name,
 		];
 		return ([$ret, 200]);
 	}
@@ -94,7 +96,7 @@ class AuthController
 	 */
 	public function ping($arr = null)
 	{
-		dol_syslog("Call on SmartAuth::ping deprecated function");
+		dol_syslog("smartauth : Call on SmartAuth::ping deprecated function");
 		return $this->refresh($arr);
 	}
 
@@ -902,7 +904,7 @@ class AuthController
 		// Check for X-DEVICEID header (future-proof for mobile apps)
 		if ($device_uuid == '') {
 			$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
-			dol_syslog("_getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
+			dol_syslog("smartauth : _getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
 
 			if (!empty($device_uuid)) {
 				dol_syslog("smartauth : using X-DEVICEID header (hash format) for salt2", LOG_DEBUG);
@@ -915,7 +917,7 @@ class AuthController
 			$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
 			return substr(hash('sha256', $userAgent), 0, 16);
 		} else {
-			dol_syslog("_getSalt2 debug deviceid is set from function arg value : " . $device_uuid);
+			dol_syslog("smartauth : _getSalt2 debug deviceid is set from function arg value : " . $device_uuid);
 			dol_syslog("smartauth : using deviceid from function arg (hash format) for salt2", LOG_DEBUG);
 			return substr(hash('sha256', $device_uuid), 0, 16);
 		}
@@ -979,7 +981,7 @@ class AuthController
 	 */
 	private function _generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id, $device_uuid = '')
 	{
-		dol_syslog("_generateTokenPair element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, family_id=$family_id, device_id=$device_id, device_uuid=$device_uuid");
+		dol_syslog("smartauth : _generateTokenPair element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, family_id=$family_id, device_id=$device_id, device_uuid=$device_uuid");
 		// Generate access token (short-lived)
 		$access_token = $this->_generateToken(
 			$element,
@@ -1037,7 +1039,7 @@ class AuthController
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
 
-		dol_syslog("_generateToken element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, token_type=$token_type, lifetime=$lifetime, family_id=$family_id, device_id=$device_id,  device_uuid=$device_uuid");
+		dol_syslog("smartauth : _generateToken element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, token_type=$token_type, lifetime=$lifetime, family_id=$family_id, device_id=$device_id,  device_uuid=$device_uuid");
 
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
 		$salt2 = $this->_getSalt2($device_uuid); // same as app_id logic but for device
@@ -1095,7 +1097,7 @@ class AuthController
 	private function _checkTokenFamily($family_id, $user_id)
 	{
 		global $db;
-		dol_syslog("_checkTokenFamily family_id=$family_id, user_id=$user_id");
+		dol_syslog("smartauth : _checkTokenFamily family_id=$family_id, user_id=$user_id");
 
 		$sql = "SELECT revoked, refresh_count, fk_user";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "smartauth_token_family";
@@ -1429,11 +1431,18 @@ class AuthController
 		$salt2 = self::_getSalt2();
 		$key = $token_data->salt . $salt2 . $smartAuthAppKey;
 
+		// Debug logging for signature verification
+		$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+		$httpDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? '';
+		dol_syslog("smartauth : _decodeJWT DEBUG: token_id=$token_id, salt=" . substr($token_data->salt, 0, 8) . "..., salt2=$salt2", LOG_DEBUG);
+		dol_syslog("smartauth : _decodeJWT DEBUG: HTTP_X_DEVICEID=" . ($httpDeviceId ?: '(empty)') . ", User-Agent=" . substr($userAgent, 0, 50) . "...", LOG_DEBUG);
+		dol_syslog("smartauth : _decodeJWT DEBUG: expected salt2 from UA=" . substr(hash('sha256', $userAgent), 0, 16), LOG_DEBUG);
+
 		$decoded = null;
 		try {
 			$decoded = JWT::decode($jwt, new Key($key, 'HS256'));
 		} catch (SignatureInvalidException $e) {
-			dol_syslog("smartauth : jwt signature error : reset token please", LOG_ERR);
+			dol_syslog("smartauth : jwt signature error : reset token please (salt2 used: $salt2)", LOG_ERR);
 			json_reply('Invalid token signature, please login', 401);
 		} catch (Exception $e) {
 			dol_syslog("smartauth : jwt error : " . $e->getMessage(), LOG_ERR);
@@ -1468,22 +1477,31 @@ class AuthController
 			throw new \Exception('Invalid user object');
 		}
 
-		// Generate stable device_uuid from User-Agent if not provided
-		// This matches the fallback behavior in _getSalt2()
+		// Generate device_uuid from User-Agent if not provided
+		// IMPORTANT: Must match exactly the fallback behavior in _getSalt2()
+		// which uses: substr(hash('sha256', $userAgent), 0, 16)
+		// So we use the raw User-Agent hash (not prefixed) to ensure
+		// token verification will produce the same salt2
 		if (empty($device_uuid)) {
 			$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
-			$device_uuid = hash('sha256', 'dolibarr-web-' . $user->id . '-' . $userAgent);
+			$device_uuid = $userAgent; // Will be hashed by _getSalt2()
+			dol_syslog("smartauth : generateTokenForAuthenticatedUser: using User-Agent as device_uuid: " . substr($userAgent, 0, 50) . "...", LOG_DEBUG);
+			dol_syslog("smartauth : generateTokenForAuthenticatedUser: salt2 will be: " . substr(hash('sha256', $userAgent), 0, 16), LOG_DEBUG);
 		}
 
 		// Create token family
 		$family_id = $this->_createTokenFamily($user->id);
 
+		// Hash the device_uuid for database storage (max 64 chars)
+		// but keep original for _generateTokenPair which passes it to _getSalt2
+		$device_uuid_for_db = hash('sha256', $device_uuid);
+
 		// Create/get device directly (bypass _createDeviceIdIfNeeded which requires HTTP_X_DEVICEID)
-		$device_id = self::getDeviceIDFromUUID($device_uuid);
+		$device_id = self::getDeviceIDFromUUID($device_uuid_for_db);
 		if ($device_id <= 0) {
 			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
 			$sql .= " (uuid, fk_user_creat, label, date_creation, status, entity)";
-			$sql .= " VALUES ('" . substr($db->escape($device_uuid), 0, 64) . "', ";
+			$sql .= " VALUES ('" . $db->escape($device_uuid_for_db) . "', ";
 			$sql .= (int) $user->id . ", ";
 			$sql .= "'" . $db->escape($device_label) . "', ";
 			$sql .= "'" . $db->idate(time()) . "', 1, " . (int) $entity . ")";
@@ -1492,7 +1510,7 @@ class AuthController
 			$device_id = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_devices");
 		}
 
-		// Generate token pair with explicit device_uuid
+		// Generate token pair with original device_uuid (will be hashed by _getSalt2)
 		$tokens = $this->_generateTokenPair(
 			'user',
 			$user->id,
@@ -1508,7 +1526,7 @@ class AuthController
 			'access_token' => $tokens['access_token'],
 			'refresh_token' => $tokens['refresh_token'],
 			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
-			'device_uuid' => $device_uuid
+			'device_uuid' => $device_uuid_for_db
 		];
 	}
 }
