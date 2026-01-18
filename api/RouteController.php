@@ -88,6 +88,21 @@ class RouteController
 	}
 
 	/**
+	 * Register a PATCH route in the routing table
+	 *
+	 * @param   string  $targetAction       URL pattern to match (e.g., '/users/{id}')
+	 * @param   string  $targetClass        Controller class name to instantiate
+	 * @param   string  $redirectFunction   Method name to call on the controller
+	 * @param   bool    $protected          Whether JWT authentication is required
+	 *
+	 * @return  void
+	 */
+	public static function patch($targetAction, $targetClass, $redirectFunction, $protected = false)
+	{
+		self::route('PATCH', $targetAction, $targetClass, $redirectFunction, $protected);
+	}
+
+	/**
 	 * Main routing dispatcher that handles HTTP requests
 	 *
 	 * This method:
@@ -218,7 +233,7 @@ class RouteController
 		$user = null;
 		$data = [];
 
-		if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE') {
+		if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE' || $method === 'PATCH') {
 			$raw = file_get_contents('php://input');
 			dol_syslog("Debug smartauth parseRequestData: method=$method, raw_length=" . strlen($raw) . ", raw=" . substr($raw, 0, 500));
 			if ($raw !== false && $raw !== '') {
