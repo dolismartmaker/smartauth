@@ -267,3 +267,196 @@ InputSanitizer::clearCache();
 ```
 
 This is mainly useful for testing or when modules are dynamically enabled/disabled.
+
+---
+
+## Synchronisation Offline Hooks
+
+Ces hooks permettent aux modules d'étendre les fonctionnalités de synchronisation offline.
+
+### smartmaker_registerSyncableObjects
+
+Permet aux modules de déclarer leurs objets synchronisables pour le mode offline.
+
+**Context:** `smartmaker`
+
+**Parameters:**
+- `$parameters` (array): Empty array, reserved for future use
+- `&$objects` (array): Reference to syncable objects array, modules add their objects here
+- `&$action` (string): Current action
+- `$hookmanager` (HookManager): Dolibarr hook manager instance
+
+**Example implementation:**
+
+```php
+// In your module: class/actions_smartinterventions.class.php
+
+class ActionsSmartInterventions
+{
+    public function smartmaker_registerSyncableObjects($parameters, &$objects, &$action, $hookmanager)
+    {
+        // Fiches d'intervention
+        $objects['intervention'] = [
+            'class' => 'dmIntervention',
+            'file' => DOL_DOCUMENT_ROOT.'/custom/smartauth/dolMapping/dmIntervention.php',
+            'table' => 'fichinter',
+            'label' => 'Interventions',
+            'module' => 'ficheinter',
+            'priority' => 'high',           // high, medium, low
+            'default_enabled' => true,      // Activé par défaut dans l'admin
+        ];
+
+        // Contrats
+        $objects['contract'] = [
+            'class' => 'dmContract',
+            'file' => DOL_DOCUMENT_ROOT.'/custom/smartauth/dolMapping/dmContract.php',
+            'table' => 'contrat',
+            'label' => 'Contrats',
+            'module' => 'contrat',
+            'priority' => 'medium',
+            'default_enabled' => true,
+        ];
+
+        // Dictionnaire (lecture seule côté client)
+        $objects['c_ticket_type'] = [
+            'class' => 'dmCtickettype',
+            'file' => DOL_DOCUMENT_ROOT.'/custom/smartauth/dolMapping/dmCtickettype.php',
+            'table' => 'c_ticket_type',
+            'label' => 'Types de tickets',
+            'module' => 'ticket',
+            'priority' => 'low',
+            'default_enabled' => true,
+            'readonly' => true,             // Pas de push client (dictionnaire)
+        ];
+
+        return 0;
+    }
+}
+```
+
+**Object configuration options:**
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `class` | string | Nom de la classe dolMapping |
+| `file` | string | Chemin vers le fichier de la classe |
+| `table` | string | Nom de la table Dolibarr (sans préfixe llx_) |
+| `label` | string | Libellé affiché dans l'interface admin |
+| `module` | string | Module Dolibarr requis pour les permissions |
+| `priority` | string | Priorité de sync: `high`, `medium`, `low` |
+| `default_enabled` | bool | Activé par défaut (default: false) |
+| `readonly` | bool | Lecture seule, pas de push client (default: false) |
+
+---
+
+### smartmaker_beforeSyncPush
+
+Appelé avant l'envoi des modifications client vers le serveur. Permet de valider ou modifier les changements.
+
+**Context:** `smartmaker`
+
+**Parameters:**
+- `$parameters` (array): Contains `client` (SyncClient object)
+- `&$changes` (array): Reference to changes array, can be modified
+- `&$action` (string): Current action
+- `$hookmanager` (HookManager): Dolibarr hook manager instance
+
+**Example implementation:**
+
+```php
+class ActionsMyModule
+{
+    public function smartmaker_beforeSyncPush($parameters, &$changes, &$action, $hookmanager)
+    {
+        $client = $parameters['client'];
+
+        foreach ($changes as $key => &$change) {
+            // Exemple: Bloquer les modifications sur les factures validées
+            if ($change['table'] === 'invoice' && $change['action'] === 'update') {
+                $invoice = new Facture($this->db);
+                $invoice->fetch($change['id']);
+
+                if ($invoice->statut == Facture::STATUS_VALIDATED) {
+                    // Retirer ce changement de la liste
+                    unset($changes[$key]);
+                    // Ou lever une erreur
+                    // return -1;
+                }
+            }
+
+            // Exemple: Ajouter des métadonnées
+            $change['data']['sync_source'] = 'mobile_app';
+            $change['data']['sync_user'] = $client->fk_user;
+        }
+
+        return 0;
+    }
+}
+```
+
+**Return values:**
+- `0` : Continue normally
+- `-1` : Abort push with error
+
+---
+
+### smartmaker_afterConflictResolution
+
+Appelé après la résolution d'un conflit de synchronisation.
+
+**Context:** `smartmaker`
+
+**Parameters:**
+- `$parameters` (array): Contains `conflict` (SyncConflict object)
+- `&$resolution` (array): Resolution data (resolution type, final data)
+- `&$action` (string): Current action
+- `$hookmanager` (HookManager): Dolibarr hook manager instance
+
+**Example implementation:**
+
+```php
+class ActionsMyModule
+{
+    public function smartmaker_afterConflictResolution($parameters, &$resolution, &$action, $hookmanager)
+    {
+        $conflict = $parameters['conflict'];
+
+        // Exemple: Logger la résolution pour audit
+        dol_syslog(
+            "Sync conflict resolved: " . $conflict->table_name .
+            " #" . $conflict->object_id .
+            " -> " . $resolution['resolution'],
+            LOG_INFO
+        );
+
+        // Exemple: Notifier un administrateur si résolution manuelle
+        if ($resolution['resolution'] === 'merged') {
+            $this->notifyAdmin($conflict, $resolution);
+        }
+
+        // Exemple: Déclencher un workflow post-résolution
+        if ($conflict->table_name === 'intervention') {
+            $this->triggerInterventionWorkflow($conflict->object_id);
+        }
+
+        return 0;
+    }
+}
+```
+
+**Resolution types:**
+- `client` : Version client conservée
+- `server` : Version serveur conservée
+- `merged` : Fusion manuelle des données
+
+---
+
+## Résumé des hooks disponibles
+
+| Hook | Description | Usage principal |
+|------|-------------|-----------------|
+| `smartmaker_addValidationSchemas` | Ajouter des schémas de validation | Validation API |
+| `smartmaker_addSanitizers` | Ajouter des types de sanitization | Nettoyage données |
+| `smartmaker_registerSyncableObjects` | Déclarer des objets synchronisables | Sync offline |
+| `smartmaker_beforeSyncPush` | Intercepter avant push sync | Validation/audit |
+| `smartmaker_afterConflictResolution` | Réagir après résolution conflit | Workflow/audit |
