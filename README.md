@@ -25,10 +25,12 @@ SmartAuth is a modern authentication module for Dolibarr that provides JWT-based
 - **SQL Injection Protection**: Parameterized queries throughout the codebase
 
 ### API Features
-- **RESTful Endpoints**: Login, logout, refresh, device management
+- **RESTful Endpoints**: Login, logout, refresh, device management, password reset
 - **Multi-entity Support**: Compatible with Dolibarr's multi-company mode
-- **Request Routing**: Configurable route-based access control
+- **Route Caching**: Optimized routing with compiled PHP cache files
+- **Automatic CORS**: Built-in CORS handling with configurable origins
 - **Extensible Hooks**: SmartMaker hooks for validation schemas and custom sanitizers
+- **Offline Sync**: Client registration and data synchronization for offline-capable apps
 
 ### Monitoring
 - **Comprehensive Logging**: All authentication events are logged with sanitized data
@@ -51,14 +53,25 @@ SmartAuth is a modern authentication module for Dolibarr that provides JWT-based
 | POST | `/login` | Authenticate user, returns access + refresh tokens |
 | GET | `/refresh` | Get new access token using refresh token |
 | POST | `/logout` | Revoke current token family |
-| GET | `/ping` | Health check endpoint |
+| POST | `/password-reset` | Request password reset email |
 
 ### Device Management
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/device` | Register/update device information |
-| GET | `/index` | List available entities for user |
+| GET | `/login` | List available entities for user |
+
+### Offline Sync
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/sync/register` | Register a sync client |
+| GET | `/sync/pull` | Pull changes from server |
+| POST | `/sync/push` | Push changes to server |
+| GET | `/sync/status` | Get sync status |
+| GET | `/sync/conflicts` | List pending conflicts |
+| POST | `/sync/conflicts/{id}/resolve` | Resolve a specific conflict |
 
 ### Request Headers
 
@@ -100,6 +113,8 @@ Refresh Token (long-lived):
 - `llx_smartauth_devices`: Registered devices with UUID and labels
 - `llx_smartauth_logs`: Authentication event logs
 - `llx_smartauth_ratelimit`: Rate limiting tracking
+- `llx_smartauth_sync_clients`: Registered sync clients for offline mode
+- `llx_smartauth_sync_events`: Sync events and change tracking
 
 ## Integration with Other Modules
 
@@ -139,20 +154,30 @@ Configure via Dolibarr Setup > Modules > SmartAuth:
 - **SMARTAUTH_TOKEN_TTL**: Access token lifetime in seconds (default: 3600)
 - **SMARTAUTH_REFRESH_TTL**: Refresh token lifetime in seconds (default: 86400)
 - **SMARTAUTH_RATE_LIMIT_ENABLED**: Enable/disable rate limiting
+- **SMARTAUTH_CORS_ORIGIN**: Allowed CORS origin (default: '*')
+- **SMARTAUTH_CORS_METHODS**: Allowed HTTP methods (default: 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+- **SMARTAUTH_CORS_HEADERS**: Allowed request headers (default: 'Content-Type, Authorization, X-DeviceId')
 
 ### App Integration
 
-When integrating SmartAuth with your module:
+When using SmartAuth with smartboot, JWT keys are **fully automatic**. Just initialize the route cache:
 
 ```php
-global $smartAuthAppID, $smartAuthAppKey;
-
-// Your module's unique identifier (from modMyModule.class.php)
-$smartAuthAppID = 123456;
-
-// Your module's secret key (generated during setup)
-$smartAuthAppKey = 'your-random-secret-key';
+RouteCache::init('MYMODULE');
 ```
+
+**That's it.** No configuration needed. SmartAuth handles JWT keys internally:
+- Generated (64-character secure random hex string) on first API request
+- Stored in `llx_const` as `MYMODULE_JWT_KEY`
+- Retrieved from database on subsequent requests
+
+The `JwtKeyHelper` class is available for advanced use cases:
+- `hasValidKey($moduleName)`: Check if a valid key exists
+- `rotateKey($moduleName)`: Force key regeneration (invalidates all tokens)
+
+### CORS
+
+CORS is handled automatically by SmartAuth. Preflight OPTIONS requests are answered with a 200 response. Configure allowed origins via `SMARTAUTH_CORS_ORIGIN` if you need to restrict access to specific domains.
 
 ## Security Best Practices
 
