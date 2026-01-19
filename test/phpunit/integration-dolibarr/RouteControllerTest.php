@@ -15,6 +15,27 @@ use ReflectionMethod;
  */
 class RouteControllerTest extends DolibarrRealTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        global $smartAuthAppID, $smartAuthAppKey;
+        $smartAuthAppID = 'test-app-id';
+        $smartAuthAppKey = 'test-secret-key-for-jwt-signing-min-32-chars';
+    }
+
+    private function generateUUID(): string
+    {
+        return sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
+    }
+
     /**
      * Test get_client_ip with REMOTE_ADDR only
      */
@@ -383,7 +404,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/api.php/test';
         $_SERVER['HTTP_USER_AGENT'] = 'PHPUnit Test';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-id';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         // Should insert a log entry
@@ -621,7 +642,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
         $_SERVER['REQUEST_METHOD'] = 'POST';
         $_SERVER['REQUEST_URI'] = '/api.php/test';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-id';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         // Test various HTTP status codes
@@ -775,7 +796,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         // Set required server variables
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-id';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         // Disable logging (empty string disables it)
@@ -896,7 +917,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'PUT';
         $_SERVER['REQUEST_URI'] = '/api.php/testentry';
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-id';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         // Create unique marker for this test
         $uniqueMarker = 'unique-test-' . uniqid();
@@ -1135,7 +1156,7 @@ class RouteControllerTest extends DolibarrRealTestCase
 
         // Set up environment
         $_SERVER['REQUEST_METHOD'] = 'GET';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-bad-uri';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
         // Unset REQUEST_URI to make parseAction return false
         unset($_SERVER['REQUEST_URI']);
@@ -1400,7 +1421,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-class-not-found';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);
@@ -1469,7 +1490,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-method-not-found';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);
@@ -1538,7 +1559,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-success-200';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);
@@ -1606,7 +1627,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-success-201';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);
@@ -1674,7 +1695,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-not-found';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);
@@ -1742,7 +1763,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-exception';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);
@@ -1804,7 +1825,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/api.php/test';
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-200';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         RouteController::insertLogs(100, 200, 'Success message', 1, 'user');
 
@@ -1856,7 +1877,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'POST';
         $_SERVER['REQUEST_URI'] = '/api.php/auth';
         $_SERVER['REMOTE_ADDR'] = '192.168.1.1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-401';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         RouteController::insertLogs(null, 401, 'Unauthorized', 1);
 
@@ -1907,7 +1928,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'DELETE';
         $_SERVER['REQUEST_URI'] = '/api.php/resource';
         $_SERVER['REMOTE_ADDR'] = '10.0.0.1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-403';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         RouteController::insertLogs(50, 403, 'Forbidden', 2);
 
@@ -1958,7 +1979,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'PUT';
         $_SERVER['REQUEST_URI'] = '/api.php/update';
         $_SERVER['REMOTE_ADDR'] = '172.16.0.1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-500';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         RouteController::insertLogs(75, 500, 'Internal error', 1);
 
@@ -2009,7 +2030,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/api.php/status';
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-503';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         RouteController::insertLogs(null, 503, 'Service unavailable', 1);
 
@@ -2059,7 +2080,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/api.php/test';
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-nomsg';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         // Call without message (empty string is default)
         RouteController::insertLogs(123, 200, '', 1);
@@ -2111,7 +2132,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_METHOD'] = 'POST';
         $_SERVER['REQUEST_URI'] = '/api.php/invoices';
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-elem';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         RouteController::insertLogs(200, 201, 'Created', 1, 'invoice');
 
@@ -2300,7 +2321,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-invalid-response';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);
@@ -2368,7 +2389,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-wrong-count';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);
@@ -2442,7 +2463,7 @@ class RouteControllerTest extends DolibarrRealTestCase
         $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
 
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-payload';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $reflection = new ReflectionClass(RouteController::class);

@@ -25,10 +25,27 @@ class AuthControllerRealTest extends DolibarrRealTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        global $smartAuthAppID, $smartAuthAppKey;
+        $smartAuthAppID = 'test-app-id';
+        $smartAuthAppKey = 'test-secret-key-for-jwt-signing-min-32-chars';
+
         $this->authController = new AuthController();
 
         // Setup device ID header for tests
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
+    }
+
+    private function generateUUID(): string
+    {
+        return sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
     }
 
     protected function tearDown(): void
@@ -101,7 +118,7 @@ class AuthControllerRealTest extends DolibarrRealTestCase
      */
     public function testDeviceCreation(): void
     {
-        $_SERVER['HTTP_X_DEVICEID'] = 'new-device-uuid-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $reflection = new \ReflectionClass($this->authController);
         $method = $reflection->getMethod('_createDeviceIdIfNeeded');
@@ -222,7 +239,7 @@ class AuthControllerRealTest extends DolibarrRealTestCase
         for ($i = 0; $i < 3; $i++) {
             $device = new SmartAuthDevices($this->db);
             $device->label = "Test Device $i";
-            $device->uuid = "test-device-$i-" . uniqid();
+            $device->uuid = $this->generateUUID();
             $device->status = SmartAuthDevices::STATUS_VALIDATED;
             $device->entity = 1;
             $device->fk_user_creat = $this->testUser->id;
@@ -290,7 +307,7 @@ class AuthControllerRealTest extends DolibarrRealTestCase
         // Create a device
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Cache Test Device';
-        $uuid = 'cache-test-' . uniqid();
+        $uuid = $this->generateUUID();
         $device->uuid = $uuid;
         $device->status = SmartAuthDevices::STATUS_DRAFT;
         $device->entity = 1;
@@ -316,7 +333,7 @@ class AuthControllerRealTest extends DolibarrRealTestCase
     {
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Named Test Device';
-        $device->uuid = 'named-device-' . uniqid();
+        $device->uuid = $this->generateUUID();
         $device->status = SmartAuthDevices::STATUS_DRAFT;
         $device->entity = 1;
         $device->create($this->testUser);
@@ -341,7 +358,7 @@ class AuthControllerRealTest extends DolibarrRealTestCase
     {
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Storage Test Device';
-        $device->uuid = 'storage-test-' . uniqid();
+        $device->uuid = $this->generateUUID();
         $device->status = SmartAuthDevices::STATUS_DRAFT;
         $device->entity = 1;
         $device->create($this->testUser);

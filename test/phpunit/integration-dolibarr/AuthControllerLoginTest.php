@@ -27,10 +27,27 @@ class AuthControllerLoginTest extends DolibarrRealTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        global $smartAuthAppID, $smartAuthAppKey;
+        $smartAuthAppID = 'test-app-id';
+        $smartAuthAppKey = 'test-secret-key-for-jwt-signing-min-32-chars';
+
         $this->authController = new AuthController();
-        $this->testDeviceUUID = 'login-test-device-' . uniqid();
+        $this->testDeviceUUID = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $this->testDeviceUUID;
         $_SERVER['REMOTE_ADDR'] = '192.168.1.100';
+    }
+
+    private function generateUUID(): string
+    {
+        return sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
     }
 
     protected function tearDown(): void
@@ -203,11 +220,11 @@ class AuthControllerLoginTest extends DolibarrRealTestCase
         ];
 
         // First login
-        $_SERVER['HTTP_X_DEVICEID'] = 'device-1-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $result1 = $this->authController->login($payload);
 
         // Second login (different device)
-        $_SERVER['HTTP_X_DEVICEID'] = 'device-2-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $result2 = $this->authController->login($payload);
 
         $this->assertEquals(200, $result1[1]);
@@ -300,14 +317,14 @@ class AuthControllerLoginTest extends DolibarrRealTestCase
 
         $existingDevice = new SmartAuthDevices($this->db);
         $existingDevice->label = 'My Known Device';
-        $existingDevice->uuid = 'known-device-' . uniqid();
+        $existingDevice->uuid = $this->generateUUID();
         $existingDevice->status = SmartAuthDevices::STATUS_VALIDATED;
         $existingDevice->entity = 1;
         $existingDevice->fk_user_creat = $user->id;
         $existingDevice->create($user);
 
         // Login with new device UUID
-        $newDeviceUUID = 'new-unknown-device-' . uniqid();
+        $newDeviceUUID = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $newDeviceUUID;
 
         $payload = [

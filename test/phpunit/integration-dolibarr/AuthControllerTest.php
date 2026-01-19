@@ -17,7 +17,24 @@ class AuthControllerTest extends DolibarrRealTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        global $smartAuthAppID, $smartAuthAppKey;
+        $smartAuthAppID = 'test-app-id';
+        $smartAuthAppKey = 'test-secret-key-for-jwt-signing-min-32-chars';
+
         $this->controller = new AuthController();
+    }
+
+    private function generateUUID(): string
+    {
+        return sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
     }
 
     /**
@@ -280,7 +297,7 @@ class AuthControllerTest extends DolibarrRealTestCase
     public function testDeviceCreationInDatabase(): void
     {
         // Create a device directly in database
-        $uuid = 'test-device-' . uniqid();
+        $uuid = $this->generateUUID();
 
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
         $sql .= " (uuid, label, fk_user_creat, date_creation, status)";
@@ -684,7 +701,7 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         // Set required server variables
         $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $reflection = new \ReflectionClass($this->controller);
         $createFamilyMethod = $reflection->getMethod('_createTokenFamily');
@@ -738,7 +755,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         $method = $reflection->getMethod('_createDeviceIdIfNeeded');
         $method->setAccessible(true);
 
-        $uuid = 'test-uuid-' . time();
+        $uuid = $this->generateUUID();
         $device_id = $method->invoke($this->controller, $user->id, $uuid);
 
         $this->assertGreaterThan(0, $device_id);
@@ -756,7 +773,7 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         // Set HTTP_X_DEVICEID to avoid undefined key error
         $originalDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? null;
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-uuid';
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('_getAllDevicesForUser');
@@ -794,7 +811,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -835,7 +852,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->login,
@@ -864,7 +881,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -884,7 +901,7 @@ class AuthControllerTest extends DolibarrRealTestCase
      */
     public function testLoginWithNonExistentUser(): void
     {
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => 'nonexistent_' . uniqid() . '@example.com',
@@ -910,7 +927,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 0  // Disabled
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -939,7 +956,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -1012,7 +1029,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -1049,7 +1066,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1093,7 +1110,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1153,7 +1170,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1210,7 +1227,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1252,7 +1269,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1310,7 +1327,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1367,7 +1384,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1552,7 +1569,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         ]);
 
         // Login from device 1
-        $_SERVER['HTTP_X_DEVICEID'] = 'device1-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1565,7 +1582,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         $device1Token = $result1[0]['access_token'];
 
         // Login from device 2
-        $_SERVER['HTTP_X_DEVICEID'] = 'device2-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $result2 = $this->controller->login($loginPayload);
         $device2Token = $result2[0]['access_token'];
@@ -1651,7 +1668,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1711,7 +1728,7 @@ class AuthControllerTest extends DolibarrRealTestCase
      */
     public function testSQLInjectionInEmailField(): void
     {
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => "' OR '1'='1' --",
@@ -1800,7 +1817,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $reflection = new \ReflectionClass($this->controller);
 
@@ -1890,7 +1907,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -1935,7 +1952,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         ]);
 
         // Login from device 1
-        $_SERVER['HTTP_X_DEVICEID'] = 'device1-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $loginPayload = [
             'email' => $testUser->email,
             'password' => 'TestPass123!',
@@ -1946,7 +1963,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         $token1 = $result1[0]['access_token'];
 
         // Login from device 2
-        $_SERVER['HTTP_X_DEVICEID'] = 'device2-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
         $result2 = $this->controller->login($loginPayload);
         $token2 = $result2[0]['access_token'];
 
@@ -2022,7 +2039,7 @@ class AuthControllerTest extends DolibarrRealTestCase
      */
     public function testGetDeviceByUUID(): void
     {
-        $uuid = 'test-uuid-' . uniqid();
+        $uuid = $this->generateUUID();
 
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
         $sql .= " (uuid, label, fk_user_creat, date_creation, status)";
@@ -2086,7 +2103,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         // Use 'username' instead of 'email'
         $payload = [
@@ -2119,7 +2136,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             // No email provided
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->login,
@@ -2152,7 +2169,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -2187,7 +2204,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'entity' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -2219,7 +2236,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -2251,7 +2268,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $payload = [
             'email' => $testUser->email,
@@ -2434,7 +2451,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'email' => 'company_' . uniqid() . '@example.com'
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'thirdparty-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $result = $this->controller->newThirdpartKey($societe->id, $societe->email, 1);
 
@@ -2467,7 +2484,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'email' => 'revoke_' . uniqid() . '@example.com'
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'revoke-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         // Create first token
         $result1 = $this->controller->newThirdpartKey($societe->id, $societe->email, 1);
@@ -2509,7 +2526,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         $user->fetch(1);
 
         $smartAuthAppID = 1;
-        $_SERVER['HTTP_X_DEVICEID'] = 'generate-test-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $reflection = new \ReflectionClass($this->controller);
 
@@ -2578,7 +2595,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         $user = new \User($db);
         $user->fetch(1);
 
-        $uuid = 'existing-device-' . uniqid();
+        $uuid = $this->generateUUID();
 
         // Create device first
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
@@ -2612,8 +2629,8 @@ class AuthControllerTest extends DolibarrRealTestCase
         $user->fetch(1);
 
         // Create multiple devices
-        $uuid1 = 'filter1-' . uniqid();
-        $uuid2 = 'filter2-' . uniqid();
+        $uuid1 = $this->generateUUID();
+        $uuid2 = $this->generateUUID();
 
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
         $sql .= " (uuid, label, fk_user_creat, date_creation, status)";
@@ -2654,7 +2671,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $uuid = 'single-' . uniqid();
+        $uuid = $this->generateUUID();
 
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
         $sql .= " (uuid, label, fk_user_creat, date_creation, status)";
@@ -2692,7 +2709,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -2738,7 +2755,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
@@ -2903,7 +2920,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-' . uniqid();
+        $_SERVER['HTTP_X_DEVICEID'] = $this->generateUUID();
 
         $loginPayload = [
             'email' => $testUser->email,
