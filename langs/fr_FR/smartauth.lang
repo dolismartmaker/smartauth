@@ -112,3 +112,4 @@ Access=Access
 Expired=Expiré
 SetupGeoIPForSmartAuth = Télécharger et initialiser GeoIP
 SmartAuthDevicesMenu = Périphériques
+SetupGeoIPForSmartAuthFileIsPresent = Le fichier %s est installé !

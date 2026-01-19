@@ -33,6 +33,7 @@ use Firebase\JWT\Key;
 use SmartAuth\Api\RateLimiter;
 use SmartAuth\Api\InputSanitizer;
 use SmartAuth\Api\ValidationSchemas;
+use SmartAuth\Api\JwtKeyHelper;
 use Firebase\JWT\SignatureInvalidException;
 
 class AuthController
@@ -136,7 +137,7 @@ class AuthController
 	 */
 	public function refresh($arr = null)
 	{
-		global $db, $smartAuthAppID, $smartAuthAppKey;
+		global $db, $smartAuthAppID;
 		dol_syslog("Debug smartauth::AuthController : refresh");
 
 		// Get refresh token from Authorization header
@@ -359,9 +360,13 @@ class AuthController
 
 
 		$entity = (int) ($payload['entity'] ?? 1);
-		if (isModEnabled('multicompany') && empty($payload['entity'])) {
+		if (empty($payload['entity'])) {
+			if (isModEnabled('multicompany')) {
 			//search entity for that user ?
 			$entity = $this->_findEntityForUser($login);
+			} else {
+				$entity = 1;
+			}
 		}
 
 		//waiting for regis answer
@@ -429,7 +434,7 @@ class AuthController
 		$rememberme  = (int) $payload['rememberMe']  ?? 0;
 
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id); // full debug . ", " . json_encode($tmpuser));
-		$user = $tmpuser->email;
+		$userlogin = $tmpuser->email;
 
 		$device_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '') ?? '';
 		$name = $this->getDeviceName(null, $device_uuid);
@@ -440,10 +445,10 @@ class AuthController
 		}
 
 		if (empty($tmpuser->email)) {
-			$user = $tmpuser->login;
+			$userlogin = $tmpuser->login;
 		}
 		$ret = [
-			'user' => $user,
+			'user' => $userlogin,
 			'userid' => $tmpuser->id,
 			'entity' => $entity,
 			'token' => $tokens['access_token'], // to be compatible with "old" process
@@ -644,7 +649,7 @@ class AuthController
 	 */
 	public static function check()
 	{
-		global $db, $smartAuthAppID, $smartAuthAppKey, $conf;
+		global $db, $smartAuthAppID, $conf;
 
 		$token = self::_getBearerToken();
 		$tokenparts = explode('|', $token);
@@ -1171,13 +1176,7 @@ class AuthController
 	 */
 	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id,  $device_uuid = null)
 	{
-		global $db, $smartAuthAppID, $smartAuthAppKey;
-
-		// Validate smartAuthAppKey is properly configured
-		if (empty($smartAuthAppKey) || strlen($smartAuthAppKey) < 32) {
-			dol_syslog("smartauth : CRITICAL - smartAuthAppKey is not defined or too short (min 32 chars required)", LOG_ERR);
-			throw new Exception("SmartAuth configuration error: smartAuthAppKey must be defined and at least 32 characters");
-		}
+		global $db, $smartAuthAppID;
 
 		dol_syslog("smartauth : _generateToken element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, token_type=$token_type, lifetime=$lifetime, family_id=$family_id, device_id=$device_id,  device_uuid=$device_uuid");
 
@@ -1244,7 +1243,7 @@ class AuthController
 			"exp" => time() + $lifetime // Expiration timestamp
 		];
 
-		$key = $salt . $salt2 . $smartAuthAppKey;
+		$key = $salt . $salt2 . JwtKeyHelper::getKey();
 		$jwt = JWT::encode($payload, $key, 'HS256');
 
 		// Return token_id|jwt format
@@ -1619,13 +1618,7 @@ class AuthController
 	 */
 	private static function _decodeJWT($token, $checktype)
 	{
-		global $db, $smartAuthAppID, $smartAuthAppKey, $conf;
-
-		// Validate smartAuthAppKey is properly configured
-		if (empty($smartAuthAppKey) || strlen($smartAuthAppKey) < 32) {
-			dol_syslog("smartauth : CRITICAL - smartAuthAppKey is not defined or too short (min 32 chars required)", LOG_ERR);
-			throw new Exception("SmartAuth configuration error: smartAuthAppKey must be defined and at least 32 characters");
-		}
+		global $db, $smartAuthAppID, $conf;
 
 		if (empty($token)) {
 			json_reply('Access denied (protected route)', 401);
@@ -1703,7 +1696,7 @@ class AuthController
 
 		// Verify JWT signature
 		$salt2 = self::_getSalt2();
-		$key = $token_data->salt . $salt2 . $smartAuthAppKey;
+		$key = $token_data->salt . $salt2 . JwtKeyHelper::getKey();
 
 		// Debug logging for signature verification
 		$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';

@@ -601,6 +601,8 @@ class RouteController
 			self::insertLogs($token_id, 401, 'User not found', $entity);
 			\json_reply('Authentication failed', 401);
 			return false;
+		} else {
+			dol_syslog("Debug smartauth  User found: login=$login, entity=$entity, id=" . $user->id);
 		}
 
 		// Set user entity
@@ -613,7 +615,7 @@ class RouteController
 		$mysoc->setMysoc($conf);
 
 		// Load user permissions
-		$user->getrights();
+		$user->getrights('',1);
 
 		// Load buyer (third-party) if user is attached to one
 		if (!empty($user->socid)) {

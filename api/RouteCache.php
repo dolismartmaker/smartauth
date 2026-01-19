@@ -413,6 +413,16 @@ class RouteCache
     }
 
     /**
+     * Get the current module name
+     *
+     * @return string Module name (lowercase) or empty string if not initialized
+     */
+    public static function getModuleName(): string
+    {
+        return self::$moduleName;
+    }
+
+    /**
      * Get all cached routes (for debugging)
      *
      * @return array|null
