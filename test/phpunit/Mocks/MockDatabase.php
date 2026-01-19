@@ -244,4 +244,50 @@ class MockDatabase
         $this->affectedRows = $rows;
         return $this;
     }
+
+    /**
+     * Begin a transaction
+     */
+    public function begin(): int
+    {
+        $this->executedQueries[] = 'BEGIN';
+        return 1;
+    }
+
+    /**
+     * Commit a transaction
+     */
+    public function commit(): int
+    {
+        $this->executedQueries[] = 'COMMIT';
+        return 1;
+    }
+
+    /**
+     * Rollback a transaction
+     */
+    public function rollback(): int
+    {
+        $this->executedQueries[] = 'ROLLBACK';
+        return 1;
+    }
+
+    /**
+     * Reset all mock state
+     */
+    public function reset(): self
+    {
+        $this->queryResults = [];
+        $this->executedQueries = [];
+        $this->lastInsertId = 0;
+        $this->numRows = 0;
+        $this->fetchData = [];
+        $this->fetchIndex = 0;
+        $this->lastError = null;
+        $this->singleFetchResult = null;
+        $this->fetchResultSequence = [];
+        $this->fetchSequenceIndex = 0;
+        $this->affectedRows = 0;
+        return $this;
+    }
 }
