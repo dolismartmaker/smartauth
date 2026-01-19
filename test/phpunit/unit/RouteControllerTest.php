@@ -112,7 +112,7 @@ class RouteControllerTest extends TestCase
     /**
      * Test extractUrlParameters with multiple placeholders
      * Note: The current implementation extracts values sequentially from the path
-     * after removing the prefix, so intermediate segments are included
+     * Both pattern and action are split by segments and matched by index
      */
     public function testExtractUrlParametersMultiplePlaceholders(): void
     {
@@ -121,17 +121,17 @@ class RouteControllerTest extends TestCase
         $data = [];
         // Pattern: users/{id}/posts/{postid}
         // Action:  users/123/posts/456
-        // Prefix:  users/
-        // After prefix removal: 123/posts/456
-        // Split: ['123', 'posts', '456'] (indices 0, 1, 2)
-        // array_filter keeps original indices
+        // Segments are matched by index:
+        // - index 0: 'users' matches 'users' (no placeholder)
+        // - index 1: '{id}' matches '123' -> id = 123
+        // - index 2: 'posts' matches 'posts' (no placeholder)
+        // - index 3: '{postid}' matches '456' -> postid = 456
         $result = $method->invoke(null, 'users/{id}/posts/{postid}', 'users/123/posts/456', $data);
 
         $this->assertArrayHasKey('id', $result);
         $this->assertArrayHasKey('postid', $result);
         $this->assertEquals('123', $result['id']);
-        // Due to array_filter keeping indices, index 1 is 'posts', not '456'
-        $this->assertEquals('posts', $result['postid']);
+        $this->assertEquals('456', $result['postid']);
     }
 
     /**

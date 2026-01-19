@@ -19,6 +19,13 @@ class AuthControllerTest extends TestCase
     protected function setUp(): void
     {
         $this->controller = new AuthController();
+
+        // Mock mysoc for index() method
+        global $mysoc;
+        if (!is_object($mysoc)) {
+            $mysoc = new \stdClass();
+        }
+        $mysoc->name = 'Test Company';
     }
 
     /**

@@ -16,6 +16,12 @@ class RateLimiterTest extends TestCase
 
     protected function setUp(): void
     {
+        global $conf;
+        // Reset the cleanup cache to ensure consistent test behavior
+        if (isset($conf->cache['smartmakers'])) {
+            unset($conf->cache['smartmakers']);
+        }
+
         $this->db = new MockDatabase();
         $this->rateLimiter = new RateLimiter($this->db);
     }
@@ -25,7 +31,8 @@ class RateLimiterTest extends TestCase
      */
     public function testCheckLimitAllowsRequestUnderLimit(): void
     {
-        // Simulate 3 attempts in window (under default limit of 5)
+        // First query is for cleanup check (getLastCleanupTime), second is actual limit check
+        $this->db->setQueryResult(true, [['value' => time()]]); // cleanup: recent, skip
         $this->db->setQueryResult(true, [
             ['attempt_count' => 3, 'last_attempt' => time() - 60]
         ]);
@@ -44,7 +51,8 @@ class RateLimiterTest extends TestCase
         $lastAttempt = time() - 60;
         $windowSeconds = 300;
 
-        // Simulate 5 attempts (at limit)
+        // First query is for cleanup check, second is actual limit check
+        $this->db->setQueryResult(true, [['value' => time()]]);
         $this->db->setQueryResult(true, [
             ['attempt_count' => 5, 'last_attempt' => $lastAttempt]
         ]);
@@ -63,7 +71,8 @@ class RateLimiterTest extends TestCase
      */
     public function testCheckLimitBlocksRequestOverLimit(): void
     {
-        // Simulate 10 attempts (over limit)
+        // First query is for cleanup check, second is actual limit check
+        $this->db->setQueryResult(true, [['value' => time()]]);
         $this->db->setQueryResult(true, [
             ['attempt_count' => 10, 'last_attempt' => time() - 30]
         ]);
@@ -78,7 +87,8 @@ class RateLimiterTest extends TestCase
      */
     public function testCheckLimitAllowsFirstRequest(): void
     {
-        // No previous attempts
+        // First query is for cleanup check, second is actual limit check
+        $this->db->setQueryResult(true, [['value' => time()]]);
         $this->db->setQueryResult(true, [
             ['attempt_count' => 0, 'last_attempt' => 0]
         ]);
@@ -90,17 +100,18 @@ class RateLimiterTest extends TestCase
     }
 
     /**
-     * Test that database failure results in fail-open (allow request)
+     * Test that database failure results in fail-closed (block request)
      */
-    public function testCheckLimitFailsOpenOnDatabaseError(): void
+    public function testCheckLimitFailsClosedOnDatabaseError(): void
     {
-        // Simulate database failure
+        // First query for cleanup check, then fail the actual limit query
+        $this->db->setQueryResult(true, [['value' => time()]]);
         $this->db->setQueryResult(false);
 
         $result = $this->rateLimiter->checkLimit('192.168.1.1', 'login_ip', 5, 300);
 
-        $this->assertTrue($result['allowed'], 'Should fail open on database error');
-        $this->assertNull($result['retry_after']);
+        $this->assertFalse($result['allowed'], 'Should fail closed on database error');
+        $this->assertEquals(60, $result['retry_after']);
     }
 
     /**
@@ -164,6 +175,7 @@ class RateLimiterTest extends TestCase
      */
     public function testIdentifiersAreEscaped(): void
     {
+        $this->db->setQueryResult(true, [['value' => time()]]);
         $this->db->setQueryResult(true, [
             ['attempt_count' => 0, 'last_attempt' => 0]
         ]);
@@ -181,6 +193,9 @@ class RateLimiterTest extends TestCase
      */
     public function testDifferentActionsTrackedSeparately(): void
     {
+        global $conf;
+
+        $this->db->setQueryResult(true, [['value' => time()]]);
         $this->db->setQueryResult(true, [
             ['attempt_count' => 0, 'last_attempt' => 0]
         ]);
@@ -189,6 +204,9 @@ class RateLimiterTest extends TestCase
         $query1 = $this->db->getLastQuery();
 
         $this->db->clearQueries();
+        // Reset cache to force cleanup check again
+        unset($conf->cache['smartmakers']);
+        $this->db->setQueryResult(true, [['value' => time()]]);
         $this->db->setQueryResult(true, [
             ['attempt_count' => 0, 'last_attempt' => 0]
         ]);
@@ -209,6 +227,7 @@ class RateLimiterTest extends TestCase
         // Last attempt was exactly at window boundary
         $lastAttempt = time() - $windowSeconds;
 
+        $this->db->setQueryResult(true, [['value' => time()]]);
         $this->db->setQueryResult(true, [
             ['attempt_count' => 5, 'last_attempt' => $lastAttempt]
         ]);

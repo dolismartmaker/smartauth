@@ -21,12 +21,18 @@ class AuthControllerExtendedTest extends TestCase
         $this->controller = new AuthController();
 
         // Ensure global conf is set
-        global $conf;
+        global $conf, $mysoc;
         if (!is_object($conf)) {
             $conf = new \stdClass();
         }
         $conf->cache = [];
         $conf->cache['smartmakers'] = [];
+
+        // Mock mysoc for index() method
+        if (!is_object($mysoc)) {
+            $mysoc = new \stdClass();
+        }
+        $mysoc->name = 'Test Company';
     }
 
     /**
@@ -102,11 +108,12 @@ class AuthControllerExtendedTest extends TestCase
     {
         $method = $this->getPrivateMethod('_getSalt2');
 
-        // Set HTTP header
-        $_SERVER['HTTP_X_DEVICEID'] = 'test-device-header-uuid';
+        // Use a valid UUID format for the header
+        $validUuid = '550e8400-e29b-41d4-a716-446655440000';
+        $_SERVER['HTTP_X_DEVICEID'] = $validUuid;
 
         $result1 = $method->invoke($this->controller, '');
-        $result2 = $method->invoke($this->controller, 'test-device-header-uuid');
+        $result2 = $method->invoke($this->controller, $validUuid);
 
         // Cleanup
         unset($_SERVER['HTTP_X_DEVICEID']);

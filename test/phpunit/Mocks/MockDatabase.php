@@ -18,6 +18,7 @@ class MockDatabase
     private ?object $singleFetchResult = null;
     private array $fetchResultSequence = [];
     private int $fetchSequenceIndex = 0;
+    private int $affectedRows = 0;
 
     /**
      * Set the result for the next query
@@ -225,5 +226,22 @@ class MockDatabase
     public function free($result = null): void
     {
         // No-op
+    }
+
+    /**
+     * Get number of affected rows from last query
+     */
+    public function affected_rows($result = null): int
+    {
+        return $this->affectedRows;
+    }
+
+    /**
+     * Set the number of affected rows for next query
+     */
+    public function setAffectedRows(int $rows): self
+    {
+        $this->affectedRows = $rows;
+        return $this;
     }
 }
