@@ -96,6 +96,7 @@ $dest = DOL_DATA_ROOT . "/geoipmaxmind/GeoLite2-City.mmdb";
 if ($action == "download") {
     require_once DOL_DOCUMENT_ROOT . '/core/lib/geturl.lib.php';
     $url = "https://raw.githubusercontent.com/P3TERX/GeoLite.mmdb/download/GeoLite2-City.mmdb";
+    $dir = dirname($dest);
     if (!is_dir($dir)) {
         dol_mkdir($dir);
     }
@@ -103,7 +104,6 @@ if ($action == "download") {
         $res = getURLContent($url);
         if (is_array($res) && $res['http_code'] == 200) {
             // $content = $res['content'];
-            $dir = dirname($dest);
             file_put_contents($dest, $res['content']);
 
             $out = "<p>File is downloaded !</p>";
@@ -111,10 +111,13 @@ if ($action == "download") {
     }
 
     if (file_exists($dest)) {
+        dol_syslog("smartauth / geoip enable file $dest as geoip source... !");
         dolibarr_set_const($db, 'GEOIP_VERSION', '1');
         dolibarr_set_const($db, 'MAIN_MODULE_GEOIPMAXMIND', '1');
         dolibarr_set_const($db, 'GEOIPMAXMIND_COUNTRY_DATAFILE', $dest);
         $out .= "<p>Configuration is done, GeoIP is enabled !</p>";
+    } else {
+        dol_syslog("smartauth / geoip error file $dest does not exists !");
     }
 } else {
     if (file_exists($dest)) {
@@ -149,7 +152,11 @@ echo '<span class="opacitymedium">' . $langs->trans("SmartauthGeoIPSetupPage") .
 if ($action == 'download' || file_exists($dest)) {
     print $out;
 } else {
-    print '<a class="button button-cancel" type="submit" href="' . $PHP_SELF . '?action=download">' . $langs->trans('SetupGeoIPForSmartAuth') . '</a>';
+    if (file_exists($dest)) {
+        print '<p>' . $langs->trans('SetupGeoIPForSmartAuthFileIsPresent', $dest) . '</p>';
+    } else {
+        print '<a class="button button-cancel" type="submit" href="' . $PHP_SELF . '?action=download">' . $langs->trans('SetupGeoIPForSmartAuth') . '</a>';
+    }
 }
 
 
