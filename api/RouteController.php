@@ -27,9 +27,76 @@ use SmartAuth\Api\AuthController;
 use SmartAuth\Api\InputSanitizer;
 use SmartAuth\Api\ValidationSchemas;
 use SmartAuth\Api\LogSanitizer;
+use SmartAuth\Api\RouteCache;
 
 class RouteController
 {
+	/**
+	 * Dispatch request using cached routes (optimized)
+	 *
+	 * This is the main entry point when using route caching.
+	 * It finds the matching route from cache and executes it.
+	 *
+	 * @return bool True if a route was matched and executed
+	 */
+	public static function dispatch(): bool
+	{
+		global $conf, $db, $user, $buyer, $mysoc;
+		$user = $entity = $auth_socid = null;
+		$buyer = new \Societe($db);
+
+		$method = $_SERVER['REQUEST_METHOD'];
+
+		// Parse action from URI
+		self::checkCORSConfiguration();
+
+		$action = self::parseAction();
+		if ($action === false) {
+			self::insertLogs(null, 400, 'Bad request URI', null);
+			\json_reply('Bad request', 400);
+			return true;
+		}
+
+		// Find route in cache
+		$route = RouteCache::findRoute($method, $action);
+		if ($route === null) {
+			return false;
+		}
+
+		dol_syslog("Debug smartauth  Route matched (cached): method=$method, action=$action, target=" . $route['action']);
+
+		// Parse request data
+		$data = self::parseRequestData($method, $route['action']);
+
+		// Merge URL parameters from cache
+		if (!empty($route['params'])) {
+			$data = array_merge($data, $route['params']);
+		}
+
+		// Authentication and authorization
+		$authContext = self::handleAuthentication($route['protected'], $db, $conf, $mysoc);
+		if ($authContext === false) {
+			return true;
+		}
+
+		list($user, $entity, $token_id, $buyer, $family_id, $device_id) = $authContext;
+
+		// Execute controller action
+		self::executeAction(
+			$route['class'],
+			$route['function'],
+			$data,
+			$user,
+			$entity,
+			$token_id,
+			$buyer,
+			$family_id,
+			$device_id
+		);
+
+		return true;
+	}
+
 	/**
 	 * Register a GET route in the routing table
 	 *
@@ -42,6 +109,11 @@ class RouteController
 	 */
 	public static function get($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
+		// Register in cache if in registration mode
+		if (RouteCache::isRegistrationMode()) {
+			RouteCache::register('GET', $targetAction, $targetClass, $redirectFunction, $protected);
+			return;
+		}
 		self::route('GET', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
@@ -57,6 +129,10 @@ class RouteController
 	 */
 	public static function post($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
+		if (RouteCache::isRegistrationMode()) {
+			RouteCache::register('POST', $targetAction, $targetClass, $redirectFunction, $protected);
+			return;
+		}
 		self::route('POST', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
@@ -72,6 +148,10 @@ class RouteController
 	 */
 	public static function put($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
+		if (RouteCache::isRegistrationMode()) {
+			RouteCache::register('PUT', $targetAction, $targetClass, $redirectFunction, $protected);
+			return;
+		}
 		self::route('PUT', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
@@ -87,6 +167,10 @@ class RouteController
 	 */
 	public static function delete($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
+		if (RouteCache::isRegistrationMode()) {
+			RouteCache::register('DELETE', $targetAction, $targetClass, $redirectFunction, $protected);
+			return;
+		}
 		self::route('DELETE', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
@@ -102,6 +186,10 @@ class RouteController
 	 */
 	public static function patch($targetAction, $targetClass, $redirectFunction, $protected = false)
 	{
+		if (RouteCache::isRegistrationMode()) {
+			RouteCache::register('PATCH', $targetAction, $targetClass, $redirectFunction, $protected);
+			return;
+		}
 		self::route('PATCH', $targetAction, $targetClass, $redirectFunction, $protected);
 	}
 
