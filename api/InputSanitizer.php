@@ -24,6 +24,82 @@ class InputSanitizer
 	const MAX_STRING_LENGTH = 255;
 
 	/**
+	 * Cache for external sanitizers loaded via hook
+	 *
+	 * @var array|null
+	 */
+	private static ?array $externalSanitizers = null;
+
+	/**
+	 * Load sanitizers from external modules via hook
+	 *
+	 * External modules can register custom sanitization types by implementing
+	 * the hook smartmaker_addSanitizers in their actions class.
+	 *
+	 * Example implementation in a module:
+	 * ```php
+	 * public function smartmaker_addSanitizers($parameters, &$sanitizers, &$action, $hookmanager) {
+	 *     $sanitizers['phone_fr'] = function($value, $rules, $field) {
+	 *         $clean = preg_replace('/[^0-9+]/', '', $value);
+	 *         if (preg_match('/^(?:\+33|0)[1-9][0-9]{8}$/', $clean)) {
+	 *             return $clean;
+	 *         }
+	 *         if ($rules['required'] ?? false) {
+	 *             throw new \InvalidArgumentException("Invalid phone format for field: $field");
+	 *         }
+	 *         return null;
+	 *     };
+	 *     return 0;
+	 * }
+	 * ```
+	 *
+	 * @param bool $forceReload Force reloading sanitizers (bypass cache)
+	 *
+	 * @return array External sanitizers indexed by type name
+	 */
+	public static function loadExternalSanitizers(bool $forceReload = false): array
+	{
+		if (self::$externalSanitizers !== null && !$forceReload) {
+			return self::$externalSanitizers;
+		}
+
+		self::$externalSanitizers = [];
+
+		// Check if Dolibarr hookmanager is available
+		global $hookmanager;
+
+		if (!is_object($hookmanager)) {
+			return self::$externalSanitizers;
+		}
+
+		// Initialize hooks for smartmaker context
+		$hookmanager->initHooks(['smartmaker']);
+
+		// Call the hook - modules will add their sanitizers
+		$parameters = [];
+		$action = '';
+		$hookmanager->executeHooks(
+			'smartmaker_addSanitizers',
+			$parameters,
+			self::$externalSanitizers,
+			$action
+		);
+
+		return self::$externalSanitizers;
+	}
+
+	/**
+	 * Clear the external sanitizers cache
+	 * Useful for testing or when modules are dynamically loaded
+	 *
+	 * @return void
+	 */
+	public static function clearCache(): void
+	{
+		self::$externalSanitizers = null;
+	}
+
+	/**
 	 * Maximum string length for short fields (labels, names)
 	 */
 	const MAX_SHORT_LENGTH = 100;
@@ -140,6 +216,12 @@ class InputSanitizer
 	 */
 	private static function sanitizeByType($value, string $type, array $rules, string $field)
 	{
+		// Check for external sanitizer first
+		$externalSanitizers = self::loadExternalSanitizers();
+		if (isset($externalSanitizers[$type]) && is_callable($externalSanitizers[$type])) {
+			return call_user_func($externalSanitizers[$type], $value, $rules, $field);
+		}
+
 		$maxLen = $rules['maxLen'] ?? self::MAX_STRING_LENGTH;
 
 		switch ($type) {

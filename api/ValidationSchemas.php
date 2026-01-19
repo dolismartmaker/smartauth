@@ -19,6 +19,13 @@ namespace SmartAuth\Api;
 class ValidationSchemas
 {
 	/**
+	 * Cache for external schemas loaded via hook
+	 *
+	 * @var array|null
+	 */
+	private static ?array $externalSchemas = null;
+
+	/**
 	 * Get validation schema for a specific endpoint
 	 *
 	 * @param string $endpoint Endpoint identifier (e.g., 'login', 'device', 'refresh')
@@ -33,13 +40,101 @@ class ValidationSchemas
 	}
 
 	/**
-	 * Get all validation schemas
+	 * Get validation schema for a specific module and endpoint
 	 *
-	 * @return array All schemas indexed by endpoint
+	 * @param string $module   Module identifier (e.g., 'interventions', 'smartauth')
+	 * @param string $endpoint Endpoint identifier (e.g., 'POST:/interventions')
+	 *
+	 * @return array|null Validation schema or null if not found
 	 */
-	public static function getAllSchemas(): array
+	public static function getSchemaForModule(string $module, string $endpoint): ?array
 	{
-		return [
+		// SmartAuth internal schemas
+		if ($module === 'smartauth') {
+			return self::getSchema($endpoint);
+		}
+
+		// External module schemas
+		$externalSchemas = self::loadExternalSchemas();
+
+		return $externalSchemas[$module][$endpoint] ?? null;
+	}
+
+	/**
+	 * Load validation schemas from external modules via hook
+	 *
+	 * External modules can register their schemas by implementing
+	 * the hook smartmaker_addValidationSchemas in their actions class.
+	 *
+	 * Example implementation in a module:
+	 * ```php
+	 * public function smartmaker_addValidationSchemas($parameters, &$schemas, &$action, $hookmanager) {
+	 *     $schemas['mymodule'] = [
+	 *         'POST:/myendpoint' => [
+	 *             'field1' => ['type' => InputSanitizer::TYPE_STRING, 'required' => true],
+	 *             'field2' => ['type' => InputSanitizer::TYPE_INT, 'min' => 0],
+	 *         ],
+	 *     ];
+	 *     return 0;
+	 * }
+	 * ```
+	 *
+	 * @param bool $forceReload Force reloading schemas (bypass cache)
+	 *
+	 * @return array External schemas indexed by module name
+	 */
+	public static function loadExternalSchemas(bool $forceReload = false): array
+	{
+		if (self::$externalSchemas !== null && !$forceReload) {
+			return self::$externalSchemas;
+		}
+
+		self::$externalSchemas = [];
+
+		// Check if Dolibarr hookmanager is available
+		global $hookmanager;
+
+		if (!is_object($hookmanager)) {
+			return self::$externalSchemas;
+		}
+
+		// Initialize hooks for smartmaker context
+		$hookmanager->initHooks(['smartmaker']);
+
+		// Call the hook - modules will add their schemas to $externalSchemas
+		$parameters = [];
+		$action = '';
+		$hookmanager->executeHooks(
+			'smartmaker_addValidationSchemas',
+			$parameters,
+			self::$externalSchemas,
+			$action
+		);
+
+		return self::$externalSchemas;
+	}
+
+	/**
+	 * Clear the external schemas cache
+	 * Useful for testing or when modules are dynamically loaded
+	 *
+	 * @return void
+	 */
+	public static function clearCache(): void
+	{
+		self::$externalSchemas = null;
+	}
+
+	/**
+	 * Get all validation schemas (SmartAuth + external modules)
+	 *
+	 * @param bool $includeExternal Include schemas from external modules
+	 *
+	 * @return array All schemas indexed by endpoint (or by module then endpoint if external)
+	 */
+	public static function getAllSchemas(bool $includeExternal = false): array
+	{
+		$schemas = [
 			// POST /login
 			'login' => [
 				'email' => [
@@ -139,6 +234,17 @@ class ValidationSchemas
 				],
 			],
 		];
+
+		if ($includeExternal) {
+			$externalSchemas = self::loadExternalSchemas();
+			foreach ($externalSchemas as $module => $moduleSchemas) {
+				foreach ($moduleSchemas as $endpoint => $schema) {
+					$schemas[$module . ':' . $endpoint] = $schema;
+				}
+			}
+		}
+
+		return $schemas;
 	}
 
 	/**
