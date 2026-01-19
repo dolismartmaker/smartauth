@@ -58,21 +58,44 @@ test:integration-dolibarr:php82:
     - php-82
   <<: *phpunit_template
   stage: test
+  rules:
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "merge_request_event"
+  before_script:
+    - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
+    - make cleandevsqlite
+    - mkdir -p .phpunit.cache
+  script:
+    - php vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --colors=never --log-junit .phpunit.cache/test-results.xml
+  coverage: '/Total \| (\d+\.?\d*)%/'
+  artifacts:
+    when: always
+    paths:
+      - .phpunit.cache/
+    reports:
+      junit: .phpunit.cache/test-results.xml
+    expire_in: 1 week
+  allow_failure: true
+
+# Coverage report job (only on default branch or merge requests)
+test:integration-dolibarr:coverage:
+  tags:
+    - php-82
+  stage: test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   before_script:
     - php -m | grep pcov
     - composer require --dev cap-rel/dolibarr-integration-sqlite:18.0.x-dev --no-interaction
     - make cleandevsqlite
     - mkdir -p .phpunit.cache
   script:
-    - |
-      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
-        php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml --log-junit .phpunit.cache/test-results.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
-        COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' .phpunit.cache/coverage-output.txt | head -1 || echo "0")
-        echo "Total | ${COVERAGE}%"
-      else
-        php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --colors=never --log-junit .phpunit.cache/test-results.xml
-      fi
+    - php -d pcov.enabled=1 -d pcov.directory="$CI_PROJECT_DIR" vendor/bin/phpunit -c phpunit-integration-dolibarr.xml --coverage-text --coverage-cobertura=.phpunit.cache/coverage.xml --log-junit .phpunit.cache/test-results.xml 2>&1 | tee .phpunit.cache/coverage-output.txt
+    - COVERAGE=$(grep -oP 'Lines:\s+\K[\d.]+' .phpunit.cache/coverage-output.txt | head -1 || echo "0")
+    - echo "Total | ${COVERAGE}%"
   coverage: '/Total \| (\d+\.?\d*)%/'
+  after_script:
+    - make cleandevsqlite
   artifacts:
     when: always
     paths:
