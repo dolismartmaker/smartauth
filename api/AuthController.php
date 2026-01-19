@@ -150,6 +150,36 @@ class AuthController
 			return [['error' => 'Invalid token format'], 401];
 		}
 
+		// === REPLAY ATTACK PREVENTION ===
+		// Extract and mark jti BEFORE full token validation (atomic operation)
+		$jti = $this->_extractJtiFromToken($refresh_token);
+		if ($jti !== null) {
+			if (!$this->_markJtiAsUsed($jti)) {
+				// jti already used = replay attack detected
+				dol_syslog("smartauth : REPLAY ATTACK DETECTED on refresh token", LOG_ERR);
+				// Extract token_id to revoke the family
+				$token_id = substr($refresh_token, 0, strpos($refresh_token, '|'));
+				if (is_numeric($token_id)) {
+					// Try to get family_id from database to revoke entire family
+					$sql = "SELECT family_id FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE rowid = " . (int) $token_id;
+					$resql = $db->query($sql);
+					if ($resql && $db->num_rows($resql) > 0) {
+						$obj = $db->fetch_object($resql);
+						if ($obj->family_id) {
+							$this->_revokeTokenFamily($obj->family_id, 'replay_attack_detected');
+						}
+					}
+				}
+				return [['error' => 'Security violation detected. Token reuse is not allowed.'], 401];
+			}
+		}
+		// Note: if jti is null, token is old format (pre-jti) - continue with legacy validation
+
+		// Periodic cleanup of old jti entries (1% chance per request to avoid overhead)
+		if (mt_rand(1, 100) === 1) {
+			$this->_cleanupOldJti();
+		}
+
 		$decoded = $this->_decodeJWT($refresh_token, SmartTokenConfig::TYPE_REFRESH);
 
 		// Extract info from JWT
@@ -273,7 +303,7 @@ class AuthController
 		$rateLimiter = new RateLimiter($db);
 		$ip = $this->get_client_ip();
 
-			//try old username field
+		// Extract and validate email/login
 		$rawLogin = $payload['email'] ?? '';
 		if (empty($rawLogin)) {
 			// Try old username field for backwards compatibility
@@ -379,9 +409,6 @@ class AuthController
 		$rateLimiter->recordAttempt($ip, 'login_ip', true);
 		$rateLimiter->recordAttempt($login, 'login_username', true);
 
-		// dol_syslog("Debug smartauth::AuthController : conf " . json_encode($conf));
-		// dol_syslog("Debug smartauth::AuthController : user " . $tmpuser->entity);
-
 		if (!is_object($tmpuser) || empty($tmpuser->id)) {
 			dol_syslog("smartauth : AuthController::login : authentication failed (user object invalid)", LOG_WARNING);
 			json_reply($genericAuthError, 401);
@@ -404,7 +431,7 @@ class AuthController
 		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id); // full debug . ", " . json_encode($tmpuser));
 		$user = $tmpuser->email;
 
-		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		$device_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '') ?? '';
 		$name = $this->getDeviceName(null, $device_uuid);
 		$devices_choice = null;
 		dol_syslog("AuthController : device name is $name for uuid=$device_uuid");
@@ -974,7 +1001,7 @@ class AuthController
 	{
 		// Check for X-DEVICEID header (future-proof for mobile apps)
 		if ($device_uuid == '') {
-			$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
+			$device_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '') ?? '';
 			dol_syslog("smartauth : _getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
 
 			if (!empty($device_uuid)) {
@@ -1032,7 +1059,7 @@ class AuthController
 
 		// Check if it looks like an email
 		if (strpos($input, '@') !== false) {
-			// Validate as email
+			// Use InputSanitizer for email validation
 			$sanitized = InputSanitizer::sanitizeEmail($input);
 			if ($sanitized === null) {
 				dol_syslog("smartauth : invalid email format for login", LOG_WARNING);
@@ -1041,7 +1068,7 @@ class AuthController
 			return $sanitized;
 		}
 
-		// Plain username: allow only alphanumeric, underscore, hyphen, dot
+		// Plain username: use username sanitization (allows alphanumeric, underscore, hyphen, dot)
 		$sanitized = InputSanitizer::sanitizeUsername($input, 255);
 		if ($sanitized === null) {
 			dol_syslog("smartauth : invalid characters in username", LOG_WARNING);
@@ -1201,8 +1228,12 @@ class AuthController
 		$token_id = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
 		dol_syslog("_generateToken id=$token_id");
 
+		// Generate unique JWT ID to prevent replay attacks
+		$jti = bin2hex(random_bytes(16));
+
 		// Build JWT payload
 		$payload = [
+			"jti" => $jti,
 			"login" => $login,
 			"user_id" => $user_id,
 			"entity" => $entity,
@@ -1312,6 +1343,103 @@ class AuthController
 		}
 	}
 
+	/**
+	 * Mark a JWT ID (jti) as used to prevent replay attacks
+	 * This operation is atomic - if the jti already exists, returns false
+	 *
+	 * @param string $jti The JWT ID to mark as used
+	 * @param int|null $token_id Optional token ID for reference
+	 * @return bool True if marked successfully (first use), false if already used (replay detected)
+	 */
+	private function _markJtiAsUsed($jti, $token_id = null)
+	{
+		global $db;
+
+		// Validate jti format (32 hex characters)
+		if (empty($jti) || !preg_match('/^[a-f0-9]{32}$/i', $jti)) {
+			dol_syslog("smartauth : _markJtiAsUsed invalid jti format", LOG_ERR);
+			return false;
+		}
+
+		// Atomic insert - will fail if jti already exists (PRIMARY KEY constraint)
+		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_jti_used";
+		$sql .= " (jti, used_at, token_id)";
+		$sql .= " VALUES (";
+		$sql .= "'" . $db->escape($jti) . "', ";
+		$sql .= time() . ", ";
+		$sql .= ($token_id ? (int) $token_id : "NULL") . ")";
+
+		$resql = $db->query($sql);
+
+		if (!$resql) {
+			// Insert failed - jti already exists = replay attack
+			dol_syslog("smartauth : _markJtiAsUsed REPLAY DETECTED for jti=" . substr($jti, 0, 8) . "...", LOG_WARNING);
+			return false;
+		}
+
+		dol_syslog("smartauth : _markJtiAsUsed success for jti=" . substr($jti, 0, 8) . "...");
+		return true;
+	}
+
+	/**
+	 * Extract jti from a token without full validation
+	 * Used for early replay detection before expensive signature verification
+	 *
+	 * @param string $token The full token in format "token_id|jwt"
+	 * @return string|null The jti if found, null otherwise
+	 */
+	private function _extractJtiFromToken($token)
+	{
+		if (empty($token) || strpos($token, '|') === false) {
+			return null;
+		}
+
+		$jwt = substr($token, strpos($token, '|') + 1);
+		$parts = explode('.', $jwt);
+
+		if (count($parts) !== 3) {
+			return null;
+		}
+
+		// Decode payload (middle part) without signature verification
+		$payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+
+		if (!$payload || !isset($payload['jti'])) {
+			return null;
+		}
+
+		return $payload['jti'];
+	}
+
+	/**
+	 * Cleanup old jti entries to prevent table bloat
+	 * Should be called periodically (e.g., via cron or on each refresh)
+	 *
+	 * @param int $max_age_seconds Maximum age of jti entries to keep (default: 30 days)
+	 * @return int Number of entries deleted
+	 */
+	private function _cleanupOldJti($max_age_seconds = 2592000)
+	{
+		global $db;
+
+		$cutoff = time() - $max_age_seconds;
+
+		$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_jti_used";
+		$sql .= " WHERE used_at < " . $cutoff;
+
+		$resql = $db->query($sql);
+
+		if ($resql) {
+			$deleted = $db->affected_rows($resql);
+			if ($deleted > 0) {
+				dol_syslog("smartauth : _cleanupOldJti deleted $deleted old entries");
+			}
+			return $deleted;
+		}
+
+		return 0;
+	}
+
 
 
 	/**
@@ -1378,7 +1506,7 @@ class AuthController
 	{
 		global $db;
 
-		$current_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
+		$current_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '') ?? '';
 
 		$ret = [];
 		$sql = "SELECT label, uuid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
@@ -1413,18 +1541,29 @@ class AuthController
 		global $db, $user;
 
 		$deviceid = '';
+
+		// Get device UUID from parameter or HTTP header
 		if ($device_uuid == '') {
-			$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
+			$raw_uuid = $_SERVER['HTTP_X_DEVICEID'] ?? '';
+
+			// Reject invalid JavaScript values explicitly
+			$invalid_values = ['undefined', 'null', 'NaN', 'false', 'true', '0', ''];
+			if (in_array($raw_uuid, $invalid_values, true)) {
+				dol_syslog("SmartAuth : invalid device UUID value: '$raw_uuid'", LOG_ERR);
+				throw new Exception("SmartAuth: invalid device UUID. Please provide a valid UUID or SHA256 hash.");
+			}
+
+			// Sanitize and validate UUID format
+			$device_uuid = InputSanitizer::sanitizeUUID($raw_uuid);
+		} else {
+			// Validate UUID passed as parameter
+			$device_uuid = InputSanitizer::sanitizeUUID($device_uuid);
 		}
 
-		if ($device_uuid == 'undefined') {
-			//note this case is for auto create device uuid on front side
-		}
-
-		if ($device_uuid == '') {
-			dol_syslog("SmartAuth : there is no device uuid into HTTP_X_DEVICEID header, this is mandatory !", LOG_AUTH);
-			dol_syslog("SmartAuth : there is no device uuid into HTTP_X_DEVICEID header, this is mandatory !", LOG_ALERT);
-			throw new Exception("SmartAuth : there is no device uuid into HTTP_X_DEVICEID header, this is mandatory !");
+		// Reject if UUID is invalid or empty after sanitization
+		if (empty($device_uuid)) {
+			dol_syslog("SmartAuth : device UUID is missing or invalid format", LOG_ERR);
+			throw new Exception("SmartAuth: X-DeviceId header is required and must be a valid UUID (RFC 4122) or SHA256 hash.");
 		}
 
 		if ($device_uuid != '') {
