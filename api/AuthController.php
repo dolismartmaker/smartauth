@@ -31,6 +31,8 @@ use SmartAuthDevices;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use SmartAuth\Api\RateLimiter;
+use SmartAuth\Api\InputSanitizer;
+use SmartAuth\Api\ValidationSchemas;
 use Firebase\JWT\SignatureInvalidException;
 
 class AuthController
@@ -271,11 +273,15 @@ class AuthController
 		$rateLimiter = new RateLimiter($db);
 		$ip = $this->get_client_ip();
 
-		$login  = filter_var($payload['email'] ?? '', FILTER_SANITIZE_EMAIL);
-		if (empty($login)) {
 			//try old username field
-			$login  = filter_var($payload['username']  ?? '', FILTER_SANITIZE_EMAIL);
+		$rawLogin = $payload['email'] ?? '';
+		if (empty($rawLogin)) {
+			// Try old username field for backwards compatibility
+			$rawLogin = $payload['username'] ?? '';
 		}
+
+		// Sanitize and validate email format
+		$login = $this->_validateAndSanitizeLogin($rawLogin);
 
 		// Check 1: IP-based rate limit (prevent distributed attacks on same IP)
 		$ip_limit = $rateLimiter->checkLimit(
@@ -343,21 +349,25 @@ class AuthController
 		include_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
 		$login = checkLoginPassEntity($login, $pass, $entity, ['dolibarr'], 'api');		// Check credentials.
 		dol_syslog("Debug smartauth : AuthController::login : checklogin is " . json_encode($login));
+		// SECURITY: Use generic error message to prevent user enumeration
+		// Detailed reason is logged server-side only
+		$genericAuthError = 'Invalid credentials';
+
 		if ($login === '--bad-login-validity--') {
 			$login = '';
 		}
 		if (empty($login)) {
-			dol_syslog("Debug smartauth : AuthController::login : login empty");
-			json_reply('Access denied (login empty)', 401);
+			dol_syslog("smartauth : AuthController::login : authentication failed (empty login after check)", LOG_WARNING);
+			json_reply($genericAuthError, 401);
 		}
 
 		$tmpuser = new User($db);
 		$resuser = $tmpuser->fetch(0, $login);
 		if ($resuser < 0) {
-			dol_syslog("Debug smartauth::AuthController load user from login fail ... try with email");
+			dol_syslog("smartauth : AuthController::login : fetch by login failed, trying email", LOG_DEBUG);
 			$resuser = $tmpuser->fetch(0, '', '', 0, -1, $login);
 			if ($resuser < 0) {
-				dol_syslog("Debug smartauth::AuthController load user from email fail too !", LOG_ERR);
+				dol_syslog("smartauth : AuthController::login : fetch by email also failed", LOG_WARNING);
 			}
 		}
 
@@ -373,8 +383,8 @@ class AuthController
 		// dol_syslog("Debug smartauth::AuthController : user " . $tmpuser->entity);
 
 		if (!is_object($tmpuser) || empty($tmpuser->id)) {
-			dol_syslog("Debug smartauth : AuthController::login : failed to load user");
-			json_reply('Failed to load user', 401);
+			dol_syslog("smartauth : AuthController::login : authentication failed (user object invalid)", LOG_WARNING);
+			json_reply($genericAuthError, 401);
 		}
 
 		// Create token family (for tracking refresh chain)
@@ -516,9 +526,9 @@ class AuthController
 		$token = self::_getBearerToken();
 		$decoded = self::_decodeJWT($token, SmartTokenConfig::TYPE_ACCESS);
 
-		$current_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']) ?? '';
-		$new_uuid = $payload['uuid'];
-		$new_name = sanitizeVal($payload['label']);
+		$current_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '') ?? '';
+		$new_uuid = InputSanitizer::sanitizeUUID($payload['uuid'] ?? '') ?? '';
+		$new_name = InputSanitizer::sanitizeString($payload['label'] ?? '', 100);
 
 		$ret = null;
 
@@ -721,13 +731,74 @@ class AuthController
 
 		if (!empty($headers)) {
 			if (preg_match('/Bearer\s(\S+)/', $headers, $matches)) {
-				dol_syslog("Debug smartauth : _getBearerToken, matches, return " . json_encode($matches));
-				return $matches[1];
+				$token = $matches[1];
+
+				// Validate token format: must be "numeric_id|jwt_base64"
+				// JWT format: base64.base64.base64 (header.payload.signature)
+				if (!self::_validateBearerTokenFormat($token)) {
+					dol_syslog("Debug smartauth : _getBearerToken invalid token format", LOG_WARNING);
+					return null;
+				}
+
+				dol_syslog("Debug smartauth : _getBearerToken, valid format, return token");
+				return $token;
 			}
 		}
 
 		dol_syslog("Debug smartauth : _getBearerToken empty headers, return null");
 		return null;
+	}
+
+	/**
+	 * Validate Bearer token format
+	 *
+	 * Expected format: "token_id|jwt_token"
+	 * - token_id: numeric identifier (1-20 digits)
+	 * - jwt_token: standard JWT format (base64url.base64url.base64url)
+	 *
+	 * @param string $token Raw token string
+	 * @return bool True if format is valid
+	 */
+	private static function _validateBearerTokenFormat($token)
+	{
+		if (empty($token) || !is_string($token)) {
+			return false;
+		}
+
+		// Check max length to prevent DoS (reasonable limit for JWT)
+		if (strlen($token) > 2048) {
+			dol_syslog("smartauth : token exceeds maximum length", LOG_WARNING);
+			return false;
+		}
+
+		// Must contain exactly one pipe separator
+		if (substr_count($token, '|') !== 1) {
+			return false;
+		}
+
+		// Split token into parts
+		$parts = explode('|', $token);
+		if (count($parts) !== 2) {
+			return false;
+		}
+
+		list($token_id, $jwt) = $parts;
+
+		// Validate token_id: must be numeric (1-20 digits)
+		if (!preg_match('/^\d{1,20}$/', $token_id)) {
+			dol_syslog("smartauth : invalid token_id format", LOG_WARNING);
+			return false;
+		}
+
+		// Validate JWT format: three base64url-encoded parts separated by dots
+		// Base64url: A-Z, a-z, 0-9, -, _ (no padding = allowed at end)
+		$jwtPattern = '/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/';
+		if (!preg_match($jwtPattern, $jwt)) {
+			dol_syslog("smartauth : invalid JWT format", LOG_WARNING);
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -944,6 +1015,42 @@ class AuthController
 		return false;
 	}
 
+	/**
+	 * Validate and sanitize login/email input
+	 *
+	 * Uses InputSanitizer for consistent validation across the codebase.
+	 * Accepts both email format and plain username (for backwards compatibility)
+	 *
+	 * @param string $input Raw login/email input
+	 * @return string Sanitized login or empty string if invalid
+	 */
+	private function _validateAndSanitizeLogin($input)
+	{
+		if (empty($input) || !is_string($input)) {
+			return '';
+		}
+
+		// Check if it looks like an email
+		if (strpos($input, '@') !== false) {
+			// Validate as email
+			$sanitized = InputSanitizer::sanitizeEmail($input);
+			if ($sanitized === null) {
+				dol_syslog("smartauth : invalid email format for login", LOG_WARNING);
+				return '';
+			}
+			return $sanitized;
+		}
+
+		// Plain username: allow only alphanumeric, underscore, hyphen, dot
+		$sanitized = InputSanitizer::sanitizeUsername($input, 255);
+		if ($sanitized === null) {
+			dol_syslog("smartauth : invalid characters in username", LOG_WARNING);
+			return '';
+		}
+
+		return $sanitized;
+	}
+
 
 	/**
 	 * Create a new token family for tracking refresh chain
@@ -1039,7 +1146,29 @@ class AuthController
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey;
 
+		// Validate smartAuthAppKey is properly configured
+		if (empty($smartAuthAppKey) || strlen($smartAuthAppKey) < 32) {
+			dol_syslog("smartauth : CRITICAL - smartAuthAppKey is not defined or too short (min 32 chars required)", LOG_ERR);
+			throw new Exception("SmartAuth configuration error: smartAuthAppKey must be defined and at least 32 characters");
+		}
+
 		dol_syslog("smartauth : _generateToken element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, token_type=$token_type, lifetime=$lifetime, family_id=$family_id, device_id=$device_id,  device_uuid=$device_uuid");
+
+		// Validate enum values against whitelist
+		$safeElement = ValidationSchemas::validateEnum('auth_element', $element, null);
+		if ($safeElement === null) {
+			dol_syslog("smartauth : _generateToken invalid element: $element", LOG_ERR);
+			return null;
+		}
+
+		$safeTokenType = ValidationSchemas::validateEnum('token_type', $token_type, null);
+		if ($safeTokenType === null) {
+			dol_syslog("smartauth : _generateToken invalid token_type: $token_type", LOG_ERR);
+			return null;
+		}
+
+		// Sanitize IP address
+		$clientIp = InputSanitizer::sanitizeIP($this->get_client_ip()) ?? '0.0.0.0';
 
 		$salt = substr(bin2hex(random_bytes(32)), 0, 32);
 		$salt2 = $this->_getSalt2($device_uuid); // same as app_id logic but for device
@@ -1056,10 +1185,10 @@ class AuthController
 		$sql .= (int) $user_id . ", ";
 		$sql .= (int) $element_id . ", ";
 		$sql .= (int) $device_id . ", ";
-		$sql .= "'" . $element . "', ";
-		$sql .= "'" . $token_type . "', ";
+		$sql .= "'" . $db->escape($safeElement) . "', ";
+		$sql .= "'" . $db->escape($safeTokenType) . "', ";
 		$sql .= ($family_id ? (int) $family_id : "NULL") . ", ";
-		$sql .= "'" . $this->get_client_ip() . "', ";
+		$sql .= "'" . $db->escape($clientIp) . "', ";
 		$sql .= self::STATUS_VALID . ", ";
 		$sql .= (int) $entity . ")";
 
@@ -1352,6 +1481,12 @@ class AuthController
 	private static function _decodeJWT($token, $checktype)
 	{
 		global $db, $smartAuthAppID, $smartAuthAppKey, $conf;
+
+		// Validate smartAuthAppKey is properly configured
+		if (empty($smartAuthAppKey) || strlen($smartAuthAppKey) < 32) {
+			dol_syslog("smartauth : CRITICAL - smartAuthAppKey is not defined or too short (min 32 chars required)", LOG_ERR);
+			throw new Exception("SmartAuth configuration error: smartAuthAppKey must be defined and at least 32 characters");
+		}
 
 		if (empty($token)) {
 			json_reply('Access denied (protected route)', 401);

@@ -24,6 +24,9 @@ namespace SmartAuth\Api;
 use User;
 use Exception;
 use SmartAuth\Api\AuthController;
+use SmartAuth\Api\InputSanitizer;
+use SmartAuth\Api\ValidationSchemas;
+use SmartAuth\Api\LogSanitizer;
 
 class RouteController
 {
@@ -135,6 +138,9 @@ class RouteController
 		}
 
 		// Parse action from URI
+		self::checkCORSConfiguration();
+
+		// Parse action from URI
 		$action = self::parseAction();
 		if ($action === false) {
 			self::insertLogs(null, 400, 'Bad request URI', null);
@@ -151,7 +157,7 @@ class RouteController
 		dol_syslog("Debug smartauth  Route matched: method=$method, action=$action, target=$targetAction");
 
 		// Parse request data
-		$data = self::parseRequestData($method);
+		$data = self::parseRequestData($method, $targetAction);
 
 		// Extract URL parameters
 		$data = self::extractUrlParameters($targetAction, $action, $data);
@@ -223,14 +229,15 @@ class RouteController
 	 * - GET: extracts query string parameters from $_GET
 	 * - POST/PUT/DELETE: parses JSON body from php://input
 	 * - Validates JSON syntax and filters malicious input
+	 * - Applies sanitization via InputSanitizer middleware
 	 *
 	 * @param   string  $method     HTTP method (GET, POST, PUT, DELETE)
+	 * @param   string|null $targetAction   Route pattern for schema lookup
 	 *
-	 * @return  array               Associative array of request parameters
+	 * @return  array                       Associative array of sanitized request parameters
 	 */
-	private static function parseRequestData($method)
+	private static function parseRequestData($method, $targetAction = null)
 	{
-		$user = null;
 		$data = [];
 
 		if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE' || $method === 'PATCH') {
@@ -238,7 +245,7 @@ class RouteController
 			dol_syslog("Debug smartauth parseRequestData: method=$method, raw_length=" . strlen($raw) . ", raw=" . substr($raw, 0, 500));
 			if ($raw !== false && $raw !== '') {
 				$decoded = json_decode($raw, true);
-				if (json_last_error() === JSON_ERROR_NONE) {
+				if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
 					$data = $decoded;
 					dol_syslog("Debug smartauth parseRequestData: decoded data keys=" . implode(',', array_keys($data)));
 				} else {
@@ -256,7 +263,153 @@ class RouteController
 			}
 		}
 
+		// Apply sanitization middleware
+		$data = self::sanitizeRequestData($data, $targetAction);
+
 		return $data;
+	}
+
+	/**
+	 * Apply sanitization to request data
+	 *
+	 * Uses schema-based validation if a schema exists for the endpoint,
+	 * otherwise applies default sanitization to all fields.
+	 *
+	 * @param   array       $data           Raw request data
+	 * @param   string|null $targetAction   Route pattern for schema lookup
+	 *
+	 * @return  array                       Sanitized data
+	 */
+	private static function sanitizeRequestData(array $data, $targetAction = null)
+	{
+		if (empty($data)) {
+			return $data;
+		}
+
+		try {
+			// Try to get specific schema for this endpoint
+			$schemaName = $targetAction ? ValidationSchemas::mapRouteToSchema($targetAction) : 'default';
+			$schema = ValidationSchemas::getSchema($schemaName);
+
+			if ($schema !== null && !empty($schema)) {
+				// Schema-based sanitization: validate known fields, sanitize unknown ones
+				$sanitized = [];
+
+				// First, apply schema to known fields
+				foreach ($schema as $field => $rules) {
+					if (array_key_exists($field, $data)) {
+						$sanitized[$field] = self::sanitizeField($data[$field], $rules, $field);
+					} elseif (isset($rules['default'])) {
+						$sanitized[$field] = $rules['default'];
+					}
+				}
+
+				// Then, sanitize any extra fields not in schema with default sanitization
+				foreach ($data as $key => $value) {
+					if (!isset($sanitized[$key])) {
+						$sanitized[$key] = self::sanitizeUnknownField($key, $value);
+					}
+				}
+
+				return $sanitized;
+			}
+
+			// No specific schema: apply default sanitization to all fields
+			return InputSanitizer::sanitizeAll($data);
+		} catch (\InvalidArgumentException $e) {
+			dol_syslog("Debug smartauth sanitizeRequestData validation error: " . $e->getMessage(), LOG_WARNING);
+			// Return empty array on validation error - controller will handle missing required fields
+			return [];
+		} catch (Exception $e) {
+			dol_syslog("Debug smartauth sanitizeRequestData error: " . $e->getMessage(), LOG_ERR);
+			// Fallback to default sanitization on unexpected errors
+			return InputSanitizer::sanitizeAll($data);
+		}
+	}
+
+	/**
+	 * Sanitize a single field based on schema rules
+	 *
+	 * @param   mixed   $value  Raw value
+	 * @param   array   $rules  Validation rules from schema
+	 * @param   string  $field  Field name for error messages
+	 *
+	 * @return  mixed           Sanitized value
+	 */
+	private static function sanitizeField($value, array $rules, string $field)
+	{
+		$type = $rules['type'] ?? InputSanitizer::TYPE_STRING;
+		$maxLen = $rules['maxLen'] ?? InputSanitizer::MAX_STRING_LENGTH;
+
+		switch ($type) {
+			case InputSanitizer::TYPE_EMAIL:
+				return InputSanitizer::sanitizeEmail($value);
+
+			case InputSanitizer::TYPE_UUID:
+				return InputSanitizer::sanitizeUUID($value);
+
+			case InputSanitizer::TYPE_INT:
+				$int = InputSanitizer::sanitizeInt($value);
+				if (isset($rules['min']) && $int < $rules['min']) {
+					$int = $rules['min'];
+				}
+				if (isset($rules['max']) && $int > $rules['max']) {
+					$int = $rules['max'];
+				}
+				return $int;
+
+			case InputSanitizer::TYPE_BOOL:
+				return InputSanitizer::sanitizeBool($value);
+
+			case InputSanitizer::TYPE_ALPHANUMERIC:
+				return InputSanitizer::sanitizeAlphanumeric($value, $maxLen);
+
+			case InputSanitizer::TYPE_RAW:
+				// No sanitization (for passwords, etc.)
+				return $value;
+
+			case InputSanitizer::TYPE_ARRAY:
+				if (!is_array($value)) {
+					return [];
+				}
+				return InputSanitizer::sanitizeArray($value, $rules['itemType'] ?? InputSanitizer::TYPE_STRING, $rules);
+
+			case InputSanitizer::TYPE_STRING:
+			default:
+				return InputSanitizer::sanitizeString($value, $maxLen);
+		}
+	}
+
+	/**
+	 * Sanitize an unknown field (not in schema)
+	 *
+	 * @param   string  $key    Field name
+	 * @param   mixed   $value  Raw value
+	 *
+	 * @return  mixed           Sanitized value
+	 */
+	private static function sanitizeUnknownField(string $key, $value)
+	{
+		// Sanitize key first
+		$cleanKey = InputSanitizer::sanitizeAlphanumeric($key, InputSanitizer::MAX_SHORT_LENGTH);
+		if (empty($cleanKey)) {
+			return null;
+		}
+
+		// Apply type-appropriate sanitization
+		if (is_array($value)) {
+			return InputSanitizer::sanitizeAll($value);
+		} elseif (is_int($value)) {
+			return InputSanitizer::sanitizeInt($value);
+		} elseif (is_float($value)) {
+			return InputSanitizer::sanitizeFloat($value);
+		} elseif (is_bool($value)) {
+			return InputSanitizer::sanitizeBool($value);
+		} elseif (is_string($value)) {
+			return InputSanitizer::sanitizeString($value, InputSanitizer::MAX_STRING_LENGTH);
+		}
+
+		return null;
 	}
 
 	/**
@@ -506,37 +659,68 @@ class RouteController
 			return;
 		}
 
-		$device_uuid = sanitizeVal($_SERVER['HTTP_X_DEVICEID']);
+		$device_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '');
 
 		$ac = new AuthController();
 		$deviceid = $ac->getDeviceIDFromUUID($device_uuid);
 		if (empty($deviceid) || $deviceid <= 0) {
-			$deviceid = '-1';
+			$deviceid = -1;
 		}
 
+		// Validate HTTP method against whitelist
+		$httpMethod = ValidationSchemas::validateEnum(
+			'http_method',
+			$_SERVER['REQUEST_METHOD'] ?? '',
+			'GET'
+		);
+
+		// Sanitize element against whitelist (if provided)
+		$safeElement = '';
+		if (!empty($element)) {
+			$safeElement = ValidationSchemas::validateEnum('auth_element', $element, '');
+			if (empty($safeElement)) {
+				// Not in whitelist, use alphanumeric sanitization
+				$safeElement = InputSanitizer::sanitizeAlphanumeric($element, 32);
+			}
+		}
+
+
 		// Always log, even without keyid (for failed auth attempts)
+		// SECURITY: Sanitize sensitive data before logging to prevent PII exposure
+		$rawUrl = preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI'] ?? '');
+		$rawUserAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+		$rawReferer = $_SERVER['HTTP_REFERER'] ?? '';
+		$rawIp = self::get_client_ip();
+
 		$arr = [
-			'fk_key' => $keyid ?? 0,
-			'appuid' => $smartAuthAppID ?? '',
+			'fk_key' => (int) ($keyid ?? 0),
+			'appuid' => InputSanitizer::sanitizeAlphanumeric($smartAuthAppID ?? '', 64),
 			'entity' => (int)$entity,
-			'dol_element' => substr($element, 0, 32),
-			'ip' => substr(self::get_client_ip(), 0, 20),
-			'method' => substr($_SERVER['REQUEST_METHOD'] ?? '', 0, 8),
+			'dol_element' => $safeElement,
+			// Store masked IP for privacy (full IP in memory only)
+			'ip' => LogSanitizer::maskIP($rawIp),
+			'method' => $httpMethod,
 			'http_status' => (int) $status,
-			'bytes_sent' => strlen(serialize($message)),
-			'content_type' => "json",
-			'url_requested' => substr(preg_replace("/.*api.php/", "", $_SERVER['REQUEST_URI'] ?? ''), 0, 255),
-			'user_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? "", 0, 100),
-			'fk_device_id' => $deviceid,
-			'referer' => substr($_SERVER['HTTP_REFERER'] ?? '', 0, 255),
+			'bytes_sent' => (int) strlen(serialize($message)),
+			'content_type' => 'json',
+			// Sanitize URL to remove sensitive query parameters
+			'url_requested' => LogSanitizer::sanitizeURL($rawUrl, 255),
+			// Truncate and sanitize User-Agent (remove version fingerprinting)
+			'user_agent' => LogSanitizer::sanitizeUserAgent($rawUserAgent, 100),
+			'fk_device_id' => (int) $deviceid,
+			// Sanitize referer URL
+			'referer' => LogSanitizer::sanitizeURL($rawReferer, 255),
 		];
+
 		// Escape values for SQL injection prevention
 		$escapedValues = array_map(function ($val) use ($db) {
 			return $db->escape($val);
 		}, $arr);
+
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_logs (";
 		$sql .= implode(',', array_keys($arr));
 		$sql .= ") VALUES ('" . implode("','", $escapedValues) . "')";
+
 		try {
 			$resql = $db->query($sql);
 			if (!$resql) {
@@ -601,5 +785,85 @@ class RouteController
 		}
 
 		return $remoteAddr;
+	}
+
+	/**
+	 * Check if CORS headers are properly configured
+	 *
+	 * This is a lightweight check that runs once per session.
+	 * It logs a warning if CORS doesn't appear to be configured,
+	 * which could indicate a security misconfiguration.
+	 *
+	 * The check is performed only when:
+	 * - Origin header is present (cross-origin request)
+	 * - Check hasn't been performed in this session
+	 *
+	 * @return void
+	 */
+	private static function checkCORSConfiguration()
+	{
+		global $conf;
+
+		// Only check once per session (performance)
+		$cacheKey = 'smartauth_cors_checked';
+		if (isset($conf->cache['smartmakers'][$cacheKey])) {
+			return;
+		}
+		$conf->cache['smartmakers'][$cacheKey] = true;
+
+		// Only relevant for cross-origin requests
+		$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+		if (empty($origin)) {
+			return; // Same-origin request, no CORS needed
+		}
+
+		// Check if this is a preflight request
+		$isPreflight = ($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS';
+
+		// Check for common CORS header indicators
+		// These might be set by Apache/Nginx or by PHP
+		$corsHeaders = [
+			'Access-Control-Allow-Origin',
+			'access-control-allow-origin',
+		];
+
+		$corsConfigured = false;
+
+		// Check if headers are already sent (by server config)
+		$sentHeaders = headers_list();
+		foreach ($sentHeaders as $header) {
+			$headerLower = strtolower($header);
+			if (strpos($headerLower, 'access-control-allow-origin') !== false) {
+				$corsConfigured = true;
+				break;
+			}
+		}
+
+		// If not configured and this is a cross-origin request, log warning
+		if (!$corsConfigured && !$isPreflight) {
+			// Only log once per day to avoid log spam
+			$lastWarning = getDolGlobalInt('SMARTAUTH_CORS_WARNING_TIME', 0);
+			if ((time() - $lastWarning) > 86400) {
+				dol_syslog(
+					"SECURITY WARNING: Cross-origin request detected from '$origin' but no CORS headers found. " .
+					"Ensure CORS is configured at server level (Apache/Nginx) for security.",
+					LOG_WARNING
+				);
+
+				// Update last warning time
+				global $db;
+				if ($db) {
+					$sql = "UPDATE " . MAIN_DB_PREFIX . "const SET value = '" . time() . "' " .
+						   "WHERE name = 'SMARTAUTH_CORS_WARNING_TIME' AND entity = 0";
+					$db->query($sql);
+
+					if ($db->affected_rows($db) == 0) {
+						$sql = "INSERT INTO " . MAIN_DB_PREFIX . "const (name, value, type, visible, entity) " .
+							   "VALUES ('SMARTAUTH_CORS_WARNING_TIME', '" . time() . "', 'chaine', 0, 0)";
+						$db->query($sql);
+					}
+				}
+			}
+		}
 	}
 }
