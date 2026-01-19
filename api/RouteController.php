@@ -45,6 +45,9 @@ class RouteController
 		$user = $entity = $auth_socid = null;
 		$buyer = new \Societe($db);
 
+		// Handle CORS headers and preflight requests
+		self::handleCORS();
+
 		$method = $_SERVER['REQUEST_METHOD'];
 
 		// Parse action from URI
@@ -217,6 +220,9 @@ class RouteController
 		global $conf, $db, $user, $buyer, $mysoc; //global user super important pour propager les droits de l'utilisateur connecté
 		$user = $entity = $auth_socid = null;
 		$buyer = new \Societe($db);
+
+		// note: uri is like /action/ but with rewrite rules it's /index.php/action
+		self::handleCORS();
 
 		// note: uri is like /action/ but with rewrite rules it's /index.php/action
 		$action = "";
@@ -875,6 +881,36 @@ class RouteController
 		}
 
 		return $remoteAddr;
+	}
+
+	/**
+	 * Handle CORS headers and preflight requests
+	 *
+	 * Sets appropriate CORS headers for cross-origin requests and
+	 * handles OPTIONS preflight requests automatically.
+	 *
+	 * Configuration via Dolibarr constants:
+	 * - SMARTAUTH_CORS_ORIGIN: Allowed origin (default: '*')
+	 * - SMARTAUTH_CORS_METHODS: Allowed methods (default: 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+	 * - SMARTAUTH_CORS_HEADERS: Allowed headers (default: 'Content-Type, Authorization, X-DeviceId')
+	 *
+	 * @return void
+	 */
+	public static function handleCORS(): void
+	{
+		$allowedOrigin = getDolGlobalString('SMARTAUTH_CORS_ORIGIN', '*');
+		$allowedMethods = getDolGlobalString('SMARTAUTH_CORS_METHODS', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+		$allowedHeaders = getDolGlobalString('SMARTAUTH_CORS_HEADERS', 'Content-Type, Authorization, X-DeviceId');
+
+		header('Access-Control-Allow-Origin: ' . $allowedOrigin);
+		header('Access-Control-Allow-Methods: ' . $allowedMethods);
+		header('Access-Control-Allow-Headers: ' . $allowedHeaders);
+
+		// Handle preflight OPTIONS request
+		if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+			http_response_code(200);
+			exit;
+		}
 	}
 
 	/**
