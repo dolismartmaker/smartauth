@@ -435,12 +435,14 @@ class RouteController
 
 		// Build payload
 		$payload = [
+			'jwt_token_id' => $token_id,
+			'jwt_family_id' => $family_id,
+			'jwt_device_id' => $device_id,
 			'user' => $user,
+			'login' => $user->login,
+			'user_id' => $user->id,
 			'entity' => $entity,
-			'token_id' => $token_id,
 			'buyer' => $buyer,
-			'family_id' => $family_id,
-			'device_id' => $device_id,
 		];
 
 		// Flatten data into payload for easier access
