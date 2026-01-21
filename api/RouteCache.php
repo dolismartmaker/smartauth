@@ -182,10 +182,7 @@ class RouteCache
         self::$registeredRoutes = [];
 
         // Capture the source file that defines routes
-        $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
-        if (isset($trace[1]['file'])) {
-            self::$sourceFile = $trace[1]['file'];
-        }
+        self::$sourceFile = $_SERVER['SCRIPT_FILENAME'];
 
         dol_syslog("RouteCache: Started registration mode", LOG_DEBUG);
     }
