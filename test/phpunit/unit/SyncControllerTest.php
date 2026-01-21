@@ -370,7 +370,7 @@ class SyncControllerTest extends TestCase
      */
     public function testStatusReturnsCorrectData(): void
     {
-        $client = (object) [
+        $client = [
             'rowid' => 1,
             'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'last_sync_at' => '2025-01-19 10:00:00',
@@ -378,12 +378,11 @@ class SyncControllerTest extends TestCase
             'status' => 1
         ];
 
-        $conflictCount = (object) ['nb' => 3];
+        $conflictCount = ['nb' => 3];
 
         $this->mockDb
-            ->setQueryResult(true, [], 1)
-            ->setQueryResult(true, [], 1)
-            ->setFetchResultSequence([$client, $conflictCount]);
+            ->setQueryResult(true, [$client], 1)
+            ->setQueryResult(true, [$conflictCount], 1);
 
         $result = $this->controller->status([
             'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
