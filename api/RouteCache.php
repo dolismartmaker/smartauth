@@ -44,6 +44,12 @@ class RouteCache
     private static $registrationMode = false;
 
     /**
+     * Source file that defines routes (detected via backtrace)
+     * @var string
+     */
+    private static $sourceFile = '';
+
+    /**
      * Initialize the cache for a specific module
      *
      * Must be called before any other method.
@@ -128,6 +134,15 @@ class RouteCache
             return false;
         }
 
+        // Check if source file has been modified since cache generation
+        $sourceFile = $cached['source_file'] ?? '';
+        if (!empty($sourceFile) && file_exists($sourceFile)) {
+            if (filemtime($sourceFile) > filemtime($cacheFile)) {
+                dol_syslog("RouteCache: Source file modified, cache invalidated", LOG_DEBUG);
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -165,6 +180,13 @@ class RouteCache
     {
         self::$registrationMode = true;
         self::$registeredRoutes = [];
+
+        // Capture the source file that defines routes
+        $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
+        if (isset($trace[1]['file'])) {
+            self::$sourceFile = $trace[1]['file'];
+        }
+
         dol_syslog("RouteCache: Started registration mode", LOG_DEBUG);
     }
 
@@ -223,6 +245,8 @@ class RouteCache
         $cacheFile = self::getCacheFilePath();
         $cacheDir = dirname($cacheFile);
 
+        dol_syslog("RouteCache: save to dir=$cacheDir filename=$cacheFile", LOG_ERR);
+
         // Create cache directory if needed
         if (!is_dir($cacheDir)) {
             if (!mkdir($cacheDir, 0755, true)) {
@@ -243,6 +267,7 @@ class RouteCache
         $content .= "return " . var_export([
             'version' => self::getCurrentVersion(),
             'generated' => time(),
+            'source_file' => self::$sourceFile,
             'routes' => $optimized,
         ], true) . ";\n";
 
