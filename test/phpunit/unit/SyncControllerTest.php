@@ -381,8 +381,9 @@ class SyncControllerTest extends TestCase
         $conflictCount = (object) ['nb' => 3];
 
         $this->mockDb
-            ->setQueryResult(true, [(array) $client], 1)
-            ->setFetchResult($conflictCount);
+            ->setQueryResult(true, [], 1)
+            ->setQueryResult(true, [], 1)
+            ->setFetchResultSequence([$client, $conflictCount]);
 
         $result = $this->controller->status([
             'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
