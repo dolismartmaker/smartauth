@@ -992,7 +992,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $deviceUuid = 'test-device-' . uniqid();
+        $deviceUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
 
         $payload = [
@@ -1453,7 +1453,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $deviceUuid = 'test-device-' . uniqid();
+        $deviceUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
 
         $loginPayload = [
@@ -1507,8 +1507,8 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $device1Uuid = 'device1-' . uniqid();
-        $device2Uuid = 'device2-' . uniqid();
+        $device1Uuid = $this->generateUUID();
+        $device2Uuid = $this->generateUUID();
 
         // Login with device 1
         $_SERVER['HTTP_X_DEVICEID'] = $device1Uuid;
@@ -1615,7 +1615,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $deviceUuid = 'new-device-' . uniqid();
+        $deviceUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
 
         $loginPayload = [
@@ -1757,7 +1757,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $deviceUuid = 'xss-device-' . uniqid();
+        $deviceUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
 
         $loginPayload = [
@@ -2352,7 +2352,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $deviceUuid = 'same-device-' . uniqid();
+        $deviceUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
 
         $loginPayload = [
@@ -2401,7 +2401,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $deviceUuid = 'notfound-device-' . uniqid();
+        $deviceUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
 
         $loginPayload = [
@@ -2809,7 +2809,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         ]);
 
         // Create an existing device with label
-        $existingUuid = 'existing-' . uniqid();
+        $existingUuid = $this->generateUUID();
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
         $sql .= " (uuid, label, fk_user_creat, date_creation, status, entity)";
         $sql .= " VALUES ('" . $this->db->escape($existingUuid) . "', 'Existing Device', ";
@@ -2817,7 +2817,7 @@ class AuthControllerTest extends DolibarrRealTestCase
         $this->db->query($sql);
 
         // Login with a new device
-        $newUuid = 'newdev-' . uniqid();
+        $newUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $newUuid;
 
         $payload = [
@@ -2851,7 +2851,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $deviceUuid = 'validate-device-' . uniqid();
+        $deviceUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
 
         $loginPayload = [
@@ -2969,7 +2969,7 @@ class AuthControllerTest extends DolibarrRealTestCase
             'statut' => 1
         ]);
 
-        $deviceUuid = 'fail-device-' . uniqid();
+        $deviceUuid = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
 
         $loginPayload = [

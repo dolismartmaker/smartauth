@@ -268,5 +268,10 @@ function createSmartAuthTables($db)
     return true;
 }
 
+// Initialize RouteCache for SmartAuth module
+// This is required by JwtKeyHelper::getKey() to auto-detect module name
+require_once __DIR__ . '/../../../api/RouteCache.php';
+\SmartAuth\Api\RouteCache::init('smartauth');
+
 // Load test base class
 require_once __DIR__ . '/DolibarrRealTestCase.php';

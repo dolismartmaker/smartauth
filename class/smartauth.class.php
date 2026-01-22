@@ -392,7 +392,7 @@ class SmartAuth extends CommonObject
 		$this->db->begin();
 
 		// Define new ref
-		if (!$error && (preg_match('/^[\(]?PROV/i', $this->ref) || empty($this->ref))) { // empty should not happened, but when it occurs, the test save life
+		if (!$error && (preg_match('/^[\(]?PROV/i', (string) $this->ref) || empty($this->ref))) { // empty should not happened, but when it occurs, the test save life
 			$num = $this->getNextNumRef();
 		} else {
 			$num = $this->ref;
@@ -434,7 +434,7 @@ class SmartAuth extends CommonObject
 			$this->oldref = $this->ref;
 
 			// Rename directory if dir was a temporary ref
-			if (preg_match('/^[\(]?PROV/i', $this->ref)) {
+			if (preg_match('/^[\(]?PROV/i', (string) $this->ref)) {
 				// Now we rename also files into index
 				$sql = 'UPDATE ' . MAIN_DB_PREFIX . "ecm_files set filename = CONCAT('" . $this->db->escape($this->newref) . "', SUBSTR(filename, " . (strlen($this->ref) + 1) . ")), filepath = 'auth/" . $this->db->escape($this->newref) . "'";
 				$sql .= " WHERE filename LIKE '" . $this->db->escape($this->ref) . "%' AND filepath = 'auth/" . $this->db->escape($this->ref) . "' and entity = " . $conf->entity;
