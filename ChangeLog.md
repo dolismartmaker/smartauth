@@ -1,5 +1,13 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 1.1.0 -- 20260123
+
+Major version
+Auto build cache router and auto detect invalidate cache if routes changed
+Add full CORS support
+Fix GeoIP auto setup
+Add PATCH support to router
+
 ## 1.0.16 -- 20251227
 
 Fix null pointer in RateLimiter when fetch_object returns null
