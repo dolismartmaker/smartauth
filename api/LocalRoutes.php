@@ -1,0 +1,63 @@
+<?php
+
+/**
+ * LocalRoutes.php
+ *
+ * Local routes definitions for SmartAuth module.
+ * These routes are automatically discovered and included by RouteCache
+ * during the registration phase.
+ *
+ * Uses the same syntax as api.php: Route::get(), Route::post(), etc.
+ *
+ * Copyright (c) 2025 Eric Seigne <eric.seigne@cap-rel.fr>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ */
+
+use SmartAuth\Api\RouteController as Route;
+use SmartAuth\Api\AuthController;
+use SmartAuth\Api\SmartFileControler;
+use SmartAuth\Api\SyncController;
+
+// ========== Auth Routes ========== //
+
+// Login (unprotected)
+Route::get('login', AuthController::class, 'index');
+Route::post('login', AuthController::class, 'login');
+
+// Refresh token
+Route::get('refresh', AuthController::class, 'refresh');
+
+// Logout (protected)
+Route::post('logout', AuthController::class, 'logout', true);
+
+// Device registration (protected)
+Route::post('device', AuthController::class, 'device', true);
+
+// ========== File Routes ========== //
+
+// File download (protected)
+Route::get('file/{id}', SmartFileControler::class, 'download', true);
+
+// ========== Sync Routes ========== //
+
+// Sync client registration
+Route::post('sync/register', SyncController::class, 'register', true);
+
+// Sync pull - get changes from server
+Route::get('sync/pull', SyncController::class, 'pull', true);
+
+// Sync push - send changes to server
+Route::post('sync/push', SyncController::class, 'push', true);
+
+// Sync status - get client sync status
+Route::get('sync/status', SyncController::class, 'status', true);
+
+// Sync conflicts - list pending conflicts
+Route::get('sync/conflicts', SyncController::class, 'conflicts', true);
+
+// Sync conflict resolution
+Route::post('sync/conflicts/{id}/resolve', SyncController::class, 'resolveConflict', true);

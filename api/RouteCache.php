@@ -143,7 +143,55 @@ class RouteCache
             }
         }
 
+        // Check if any LocalRoutes.php files have been modified
+        $cachedLocalFiles = $cached['local_routes_files'] ?? [];
+        $currentLocalFiles = self::scanLocalRoutesFiles();
+
+        // If the list of files changed, invalidate
+        if (array_keys($cachedLocalFiles) !== array_keys($currentLocalFiles)) {
+            dol_syslog("RouteCache: Local routes files list changed, cache invalidated", LOG_DEBUG);
+            return false;
+        }
+
+        // If any file was modified, invalidate
+        foreach ($currentLocalFiles as $file => $mtime) {
+            if (!isset($cachedLocalFiles[$file]) || $cachedLocalFiles[$file] < $mtime) {
+                dol_syslog("RouteCache: Local routes file modified: $file", LOG_DEBUG);
+                return false;
+            }
+        }
+
         return true;
+    }
+
+    /**
+     * Scan for LocalRoutes.php files in active modules
+     *
+     * @return array Map of file path => modification time
+     */
+    private static function scanLocalRoutesFiles(): array
+    {
+        $files = [];
+
+        // Scan custom modules directory
+        $customDir = DOL_DOCUMENT_ROOT . '/custom';
+        if (!is_dir($customDir)) {
+            return $files;
+        }
+
+        $modules = scandir($customDir);
+        foreach ($modules as $module) {
+            if ($module === '.' || $module === '..') {
+                continue;
+            }
+
+            $localRoutesFile = $customDir . '/' . $module . '/api/LocalRoutes.php';
+            if (file_exists($localRoutesFile)) {
+                $files[$localRoutesFile] = filemtime($localRoutesFile);
+            }
+        }
+
+        return $files;
     }
 
     /**
@@ -223,12 +271,37 @@ class RouteCache
             return false;
         }
 
+        // Include local routes from modules before ending registration
+        self::includeLocalRoutes();
+
         self::$registrationMode = false;
 
         $result = self::saveCache(self::$registeredRoutes);
         self::$registeredRoutes = [];
 
         return $result;
+    }
+
+    /**
+     * Include LocalRoutes.php files from modules during registration
+     *
+     * This allows modules to define routes using the same Route::get(), Route::post()
+     * syntax as the main api.php file.
+     *
+     * @return void
+     */
+    private static function includeLocalRoutes(): void
+    {
+        $files = self::scanLocalRoutesFiles();
+
+        foreach ($files as $file => $mtime) {
+            try {
+                dol_syslog("RouteCache: Including local routes from $file", LOG_DEBUG);
+                include_once $file;
+            } catch (\Exception $e) {
+                dol_syslog("RouteCache: Error including $file: " . $e->getMessage(), LOG_ERR);
+            }
+        }
     }
 
     /**
@@ -253,7 +326,11 @@ class RouteCache
         }
 
         // Build optimized route structure
+        // Note: local routes are already included via includeLocalRoutes() during registration
         $optimized = self::optimizeRoutes($routes);
+
+        // Get local routes files for cache validation
+        $localRoutesFiles = self::scanLocalRoutesFiles();
 
         // Generate PHP cache file
         $content = "<?php\n";
@@ -265,6 +342,7 @@ class RouteCache
             'version' => self::getCurrentVersion(),
             'generated' => time(),
             'source_file' => self::$sourceFile,
+            'local_routes_files' => $localRoutesFiles,
             'routes' => $optimized,
         ], true) . ";\n";
 
