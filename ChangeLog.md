@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 1.1.2 -- 20260201
+
+Add more tools for offline mode
+Add LocalRoute system
+
 ## 1.1.0 -- 20260123
 
 Major version
