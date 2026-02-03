@@ -20,8 +20,7 @@ class SmartLogsClassTest extends DolibarrRealTestCase
 {
     private $smartLogs;
 
-    /** @var SmartAuthDevices */
-    private $testDevice;
+    // Note: $testDevice is inherited from DolibarrRealTestCase
 
     protected function setUp(): void
     {

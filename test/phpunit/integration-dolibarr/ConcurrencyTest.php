@@ -253,7 +253,7 @@ class ConcurrencyTest extends DolibarrRealTestCase
             $familyId = $createTokenFamily->invoke($this->authController, $user->id);
 
             // Create device for each iteration
-            $deviceId = $this->createTestDevice($user->id);
+            $deviceId = $this->createConcurrencyTestDevice($user->id);
 
             $tokenPair = $generateTokenPair->invoke(
                 $this->authController,
@@ -391,9 +391,15 @@ class ConcurrencyTest extends DolibarrRealTestCase
         $iterations = 15;
         $deviceIds = [];
 
+        // Count existing devices before test (parent::setUp creates one)
+        $sql = "SELECT COUNT(*) as cnt FROM " . MAIN_DB_PREFIX . "smartauth_devices WHERE fk_user_creat = " . (int) $user->id;
+        $result = $this->db->query($sql);
+        $obj = $this->db->fetch_object($result);
+        $initialCount = (int) $obj->cnt;
+
         for ($i = 0; $i < $iterations; $i++) {
             $uuid = $this->generateDeviceUUID();
-            $deviceId = $this->createTestDevice($user->id, $uuid);
+            $deviceId = $this->createConcurrencyTestDevice($user->id, $uuid);
 
             $this->assertGreaterThan(0, $deviceId, "Device ID should be positive");
             $deviceIds[] = $deviceId;
@@ -403,12 +409,13 @@ class ConcurrencyTest extends DolibarrRealTestCase
         $uniqueDeviceIds = array_unique($deviceIds);
         $this->assertCount($iterations, $uniqueDeviceIds, "All device IDs should be unique");
 
-        // Verify database consistency
+        // Verify database consistency (initial devices + new devices)
         $sql = "SELECT COUNT(*) as cnt FROM " . MAIN_DB_PREFIX . "smartauth_devices WHERE fk_user_creat = " . (int) $user->id;
         $result = $this->db->query($sql);
         $obj = $this->db->fetch_object($result);
 
-        $this->assertEquals($iterations, (int) $obj->cnt, "Database should contain exactly $iterations devices for user");
+        $expectedTotal = $initialCount + $iterations;
+        $this->assertEquals($expectedTotal, (int) $obj->cnt, "Database should contain $expectedTotal devices for user");
     }
 
     /**
@@ -429,7 +436,7 @@ class ConcurrencyTest extends DolibarrRealTestCase
 
         // Create a family and generate multiple token pairs
         $familyId = $createTokenFamily->invoke($this->authController, $user->id);
-        $deviceId = $this->createTestDevice($user->id);
+        $deviceId = $this->createConcurrencyTestDevice($user->id);
 
         $tokenCount = 5;
         for ($i = 0; $i < $tokenCount; $i++) {
@@ -543,7 +550,7 @@ class ConcurrencyTest extends DolibarrRealTestCase
         $iterations = 5;
         for ($i = 0; $i < $iterations; $i++) {
             $familyId = $createTokenFamily->invoke($this->authController, $user->id);
-            $deviceId = $this->createTestDevice($user->id);
+            $deviceId = $this->createConcurrencyTestDevice($user->id);
 
             $tokenPair = $generateTokenPair->invoke(
                 $this->authController,
@@ -661,7 +668,7 @@ class ConcurrencyTest extends DolibarrRealTestCase
      * @param string|null $uuid Device UUID (generates one if not provided)
      * @return int Device ID
      */
-    private function createTestDevice(int $userId, ?string $uuid = null): int
+    private function createConcurrencyTestDevice(int $userId, ?string $uuid = null): int
     {
         if ($uuid === null) {
             $uuid = $this->generateDeviceUUID();
@@ -730,7 +737,7 @@ class ConcurrencyTest extends DolibarrRealTestCase
 
         // Create family and token pair
         $familyId = $createTokenFamily->invoke($this->authController, $user->id);
-        $deviceId = $this->createTestDevice($user->id);
+        $deviceId = $this->createConcurrencyTestDevice($user->id);
 
         $tokenPair = $generateTokenPair->invoke(
             $this->authController,

@@ -279,6 +279,7 @@ class AuthControllerTest extends DolibarrRealTestCase
      */
     public function testRefreshWithInvalidTokenFormatReturnsError(): void
     {
+        // Token without pipe is rejected by _getBearerToken() which validates format
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer invalid-token-without-pipe';
 
         $result = $this->controller->refresh();
@@ -286,7 +287,8 @@ class AuthControllerTest extends DolibarrRealTestCase
         $this->assertIsArray($result);
         $this->assertEquals(401, $result[1]);
         $this->assertArrayHasKey('error', $result[0]);
-        $this->assertEquals('Invalid token format', $result[0]['error']);
+        // _getBearerToken() returns null for invalid format, so refresh() returns this error
+        $this->assertEquals('Refresh token required', $result[0]['error']);
 
         unset($_SERVER['HTTP_AUTHORIZATION']);
     }
@@ -467,11 +469,14 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         // Create a token directly
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth";
-        $sql .= " (appuid, salt, date_creation, fk_user_creat, fk_authid, auth_element, status, entity)";
+        $sql .= " (appuid, salt, date_creation, fk_user_creat, fk_authid, auth_element, status, entity, fk_device_id)";
         $sql .= " VALUES (1, 'testsalt', '" . $this->db->idate(time()) . "', ";
-        $sql .= $this->testUser->id . ", " . $this->testUser->id . ", 'user', 1, 1)";
-        $this->db->query($sql);
+        $sql .= $this->testUser->id . ", " . $this->testUser->id . ", 'user', 1, 1, " . $this->testDevice->id . ")";
+        $result = $this->db->query($sql);
+        $this->assertNotFalse($result, "Failed to insert token: " . $this->db->lasterror());
+
         $tokenId = $this->db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
+        $this->assertGreaterThan(0, $tokenId, "Failed to get last insert id");
 
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('_revokeToken');
@@ -482,7 +487,10 @@ class AuthControllerTest extends DolibarrRealTestCase
         $sql = "SELECT status, salt FROM " . MAIN_DB_PREFIX . "smartauth_auth";
         $sql .= " WHERE rowid = " . (int) $tokenId;
         $resql = $this->db->query($sql);
+        $this->assertNotFalse($resql, "Failed to query token: " . $this->db->lasterror());
+
         $obj = $this->db->fetch_object($resql);
+        $this->assertNotFalse($obj, "Token not found after revocation (id: $tokenId)");
 
         $this->assertEquals(AuthController::STATUS_LOGOUT, $obj->status);
         $this->assertEquals('test_revoke', $obj->salt);
@@ -658,7 +666,9 @@ class AuthControllerTest extends DolibarrRealTestCase
      */
     public function testGetBearerTokenExtractsToken(): void
     {
-        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer 123|abc-token-xyz';
+        // Use a properly formatted token: numeric_id|jwt (header.payload.signature)
+        $validFormatToken = '123|eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dummysig';
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $validFormatToken;
 
         $reflection = new \ReflectionClass(AuthController::class);
         $method = $reflection->getMethod('_getBearerToken');
@@ -666,7 +676,7 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         $result = $method->invoke(null);
 
-        $this->assertEquals('123|abc-token-xyz', $result);
+        $this->assertEquals($validFormatToken, $result);
 
         unset($_SERVER['HTTP_AUTHORIZATION']);
     }
@@ -1144,13 +1154,15 @@ class AuthControllerTest extends DolibarrRealTestCase
      */
     public function testRefreshWithMalformedToken(): void
     {
+        // Malformed token is rejected by _getBearerToken() which validates format
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer malformed-token-no-pipe';
 
         $result = $this->controller->refresh();
 
         $this->assertEquals(401, $result[1]);
         $this->assertArrayHasKey('error', $result[0]);
-        $this->assertEquals('Invalid token format', $result[0]['error']);
+        // _getBearerToken() returns null for invalid format, so refresh() returns this error
+        $this->assertEquals('Refresh token required', $result[0]['error']);
 
         unset($_SERVER['HTTP_AUTHORIZATION']);
     }
@@ -1876,10 +1888,10 @@ class AuthControllerTest extends DolibarrRealTestCase
         // Create expired token
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth";
         $sql .= " (appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, ";
-        $sql .= " auth_element, token_type, status, entity)";
+        $sql .= " auth_element, token_type, status, entity, fk_device_id)";
         $sql .= " VALUES (1, 'testsalt', '" . $this->db->idate(time() - 7200) . "', ";
         $sql .= "'" . $this->db->idate(time() - 3600) . "', ";  // Expired 1 hour ago
-        $sql .= "1, 1, 'user', 'access', 1, 1)";
+        $sql .= "1, 1, 'user', 'access', 1, 1, " . $this->testDevice->id . ")";
         $this->db->query($sql);
         $tokenId = $this->db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
 

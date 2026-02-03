@@ -191,6 +191,7 @@ class AuthControllerRealTest extends DolibarrRealTestCase
         $auth->status = SmartAuth::STATUS_VALIDATED;
         $auth->ip = '127.0.0.1';
         $auth->entity = 1;
+        $auth->fk_device_id = $this->testDevice->id;
         $auth->create($this->testUser);
 
         $tokenId = $auth->id;

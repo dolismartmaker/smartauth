@@ -67,7 +67,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
     /**
      * Create a test device for sync client
      */
-    private function createTestDevice(): int
+    private function createSyncTestDevice(): int
     {
         $uuid = $this->generateUUID();
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
@@ -109,7 +109,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testRegisterCreatesNewSyncClient(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
 
         $result = $this->controller->register([
             'client_uuid' => $this->testClientUUID,
@@ -141,7 +141,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testRegisterUpdatesExistingClient(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
 
         // First registration
         $result1 = $this->controller->register([
@@ -178,7 +178,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testPullReturnsEmptyForFreshClient(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $this->registerSyncClient($deviceId);
 
         $result = $this->controller->pull([
@@ -197,7 +197,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testPullReturnsUpdatedThirdparties(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $this->registerSyncClient($deviceId);
 
         // Create a thirdparty
@@ -230,7 +230,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testPullWithLastSyncAtFiltersResults(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $this->registerSyncClient($deviceId);
 
         // Create a thirdparty
@@ -256,7 +256,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testPullReturnsTombstones(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $clientId = $this->registerSyncClient($deviceId);
 
         // Create a tombstone manually
@@ -284,7 +284,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testStatusReturnsClientInfo(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $this->registerSyncClient($deviceId);
 
         $result = $this->controller->status([
@@ -303,7 +303,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testStatusReturnsPendingConflictsCount(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $clientId = $this->registerSyncClient($deviceId);
 
         // Create some conflicts
@@ -335,7 +335,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testConflictsReturnsEmptyWhenNone(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $this->registerSyncClient($deviceId);
 
         $result = $this->controller->conflicts([
@@ -351,7 +351,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testConflictsReturnsPendingConflicts(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $clientId = $this->registerSyncClient($deviceId);
 
         // Create a conflict
@@ -388,7 +388,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         global $user;
         $user = $this->testUser;
 
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $clientId = $this->registerSyncClient($deviceId);
 
         // Create a real thirdparty
@@ -432,7 +432,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         global $user;
         $user = $this->testUser;
 
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $clientId = $this->registerSyncClient($deviceId);
 
         // Create a real thirdparty
@@ -445,7 +445,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $sql .= " (fk_client, table_name, object_id, client_data, server_data, client_tms, server_tms, status, date_creation)";
         $sql .= " VALUES (";
         $sql .= $clientId . ", 'societe', " . $societe->id . ", ";
-        $sql .= "'{\"nom\":\"Client Name\"}', '{\"nom\":\"Original Name\"}', ";
+        $sql .= "'{\"name\":\"Client Name\"}', '{\"name\":\"Original Name\"}', ";
         $sql .= "'" . $this->db->idate(time() - 3600) . "', '" . $this->db->idate(time()) . "', ";
         $sql .= "'pending', '" . $this->db->idate(time()) . "')";
         $this->db->query($sql);
@@ -463,7 +463,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         // Verify thirdparty was updated
         $updatedSociete = new \Societe($this->db);
         $updatedSociete->fetch($societe->id);
-        $this->assertEquals('Client Name', $updatedSociete->nom);
+        $this->assertEquals('Client Name', $updatedSociete->name);
     }
 
     /**
@@ -474,7 +474,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         global $user;
         $user = $this->testUser;
 
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $clientId = $this->registerSyncClient($deviceId);
 
         // Create a real thirdparty
@@ -487,7 +487,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $sql .= " (fk_client, table_name, object_id, client_data, server_data, client_tms, server_tms, status, date_creation)";
         $sql .= " VALUES (";
         $sql .= $clientId . ", 'societe', " . $societe->id . ", ";
-        $sql .= "'{\"nom\":\"Client Name\"}', '{\"nom\":\"Original Name\"}', ";
+        $sql .= "'{\"name\":\"Client Name\"}', '{\"name\":\"Original Name\"}', ";
         $sql .= "'" . $this->db->idate(time() - 3600) . "', '" . $this->db->idate(time()) . "', ";
         $sql .= "'pending', '" . $this->db->idate(time()) . "')";
         $this->db->query($sql);
@@ -498,7 +498,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
             'id' => $conflictId,
             'resolution' => 'merged',
             'data' => [
-                'nom' => 'Merged Name'
+                'name' => 'Merged Name'
             ]
         ]);
 
@@ -508,7 +508,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         // Verify thirdparty was updated with merged data
         $updatedSociete = new \Societe($this->db);
         $updatedSociete->fetch($societe->id);
-        $this->assertEquals('Merged Name', $updatedSociete->nom);
+        $this->assertEquals('Merged Name', $updatedSociete->name);
 
         // Verify conflict status
         $this->assertDatabaseHas('smartauth_sync_conflicts', [
@@ -527,7 +527,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testEventsAreLoggedForOperations(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $clientId = $this->registerSyncClient($deviceId);
 
         // Initial count (register event)
@@ -569,7 +569,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     public function testPullWithInvalidObjectType(): void
     {
-        $deviceId = $this->createTestDevice();
+        $deviceId = $this->createSyncTestDevice();
         $this->registerSyncClient($deviceId);
 
         $result = $this->controller->pull([

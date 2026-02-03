@@ -186,7 +186,7 @@ error_reporting($previousErrorReporting);
 
 // Note: init() may return errors for non-fatal issues like "column already exists"
 // We verify the essential tables exist instead of relying solely on return value
-$requiredTables = ['llx_smartauth_auth', 'llx_smartauth_devices', 'llx_smartauth_token_family'];
+$requiredTables = ['llx_smartauth_auth', 'llx_smartauth_devices', 'llx_smartauth_token_family', 'llx_smartauth_ratelimit', 'llx_smartauth_logs'];
 foreach ($requiredTables as $table) {
     $sql = "SELECT name FROM sqlite_master WHERE type='table' AND name='" . $db->escape($table) . "'";
     $resql = $db->query($sql);

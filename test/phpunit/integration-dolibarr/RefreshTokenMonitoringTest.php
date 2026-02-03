@@ -123,11 +123,12 @@ class RefreshTokenMonitoringTest extends DolibarrRealTestCase
         // Create auth entries from different IPs
         $ips = ['192.168.1.1', '10.0.0.1', '172.16.0.1', '8.8.8.8'];
         $now = time();
+        $deviceId = $this->testDevice->id;
 
         foreach ($ips as $ip) {
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
-                    (fk_authid, date_creation, token_type, ip, status, entity)
-                    VALUES (" . $this->testUser->id . ", " . $now . ", 'refresh', '" . $ip . "', 1, 1)";
+                    (fk_authid, date_creation, token_type, ip, status, entity, fk_device_id)
+                    VALUES (" . $this->testUser->id . ", " . $now . ", 'refresh', '" . $ip . "', 1, 1, " . $deviceId . ")";
             $result = $this->db->query($sql);
             $this->assertTrue($result !== false, 'INSERT should succeed for IP ' . $ip);
         }
@@ -197,11 +198,12 @@ class RefreshTokenMonitoringTest extends DolibarrRealTestCase
         // Create auth entries from exactly 3 IPs (should NOT trigger alert)
         $ips = ['192.168.10.1', '10.0.10.1', '172.16.10.1'];
         $now = time();
+        $deviceId = $this->testDevice->id;
 
         foreach ($ips as $ip) {
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
-                    (fk_authid, date_creation, token_type, ip, status, entity)
-                    VALUES (" . $this->testUser->id . ", " . $now . ", 'refresh', '" . $ip . "', 1, 1)";
+                    (fk_authid, date_creation, token_type, ip, status, entity, fk_device_id)
+                    VALUES (" . $this->testUser->id . ", " . $now . ", 'refresh', '" . $ip . "', 1, 1, " . $deviceId . ")";
             $this->db->query($sql);
         }
 
@@ -237,11 +239,12 @@ class RefreshTokenMonitoringTest extends DolibarrRealTestCase
         // Create auth entries from multiple IPs but old timestamps
         $ips = ['192.168.50.1', '10.0.50.1', '172.16.50.1', '8.8.50.8', '1.1.50.1'];
         $oldTime = time() - 7200; // 2 hours ago (outside 1 hour window)
+        $deviceId = $this->testDevice->id;
 
         foreach ($ips as $ip) {
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
-                    (fk_authid, date_creation, token_type, ip, status, entity)
-                    VALUES (" . $this->testUser->id . ", " . $oldTime . ", 'refresh', '" . $ip . "', 1, 1)";
+                    (fk_authid, date_creation, token_type, ip, status, entity, fk_device_id)
+                    VALUES (" . $this->testUser->id . ", " . $oldTime . ", 'refresh', '" . $ip . "', 1, 1, " . $deviceId . ")";
             $this->db->query($sql);
         }
 
@@ -259,11 +262,12 @@ class RefreshTokenMonitoringTest extends DolibarrRealTestCase
         // Create auth entries with different token types
         $ips = ['192.168.60.1', '10.0.60.1', '172.16.60.1', '8.8.60.8'];
         $now = time();
+        $deviceId = $this->testDevice->id;
 
         foreach ($ips as $ip) {
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
-                    (fk_authid, date_creation, token_type, ip, status, entity)
-                    VALUES (" . $this->testUser->id . ", " . $now . ", 'access', '" . $ip . "', 1, 1)";
+                    (fk_authid, date_creation, token_type, ip, status, entity, fk_device_id)
+                    VALUES (" . $this->testUser->id . ", " . $now . ", 'access', '" . $ip . "', 1, 1, " . $deviceId . ")";
             $this->db->query($sql);
         }
 
@@ -280,6 +284,7 @@ class RefreshTokenMonitoringTest extends DolibarrRealTestCase
     {
         // Create conditions for both alerts
         $now = time();
+        $deviceId = $this->testDevice->id;
 
         // Excessive refresh
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_token_family
@@ -291,8 +296,8 @@ class RefreshTokenMonitoringTest extends DolibarrRealTestCase
         $ips = ['192.168.70.1', '10.0.70.1', '172.16.70.1', '8.8.70.8'];
         foreach ($ips as $ip) {
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
-                    (fk_authid, date_creation, token_type, ip, status, entity)
-                    VALUES (" . $this->testUser->id . ", " . $now . ", 'refresh', '" . $ip . "', 1, 1)";
+                    (fk_authid, date_creation, token_type, ip, status, entity, fk_device_id)
+                    VALUES (" . $this->testUser->id . ", " . $now . ", 'refresh', '" . $ip . "', 1, 1, " . $deviceId . ")";
             $this->db->query($sql);
         }
 

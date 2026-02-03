@@ -11,8 +11,7 @@ use SmartAuthDevices;
  */
 class SmartLogsRealTest extends DolibarrRealTestCase
 {
-    /** @var SmartAuthDevices */
-    private $testDevice;
+    // Note: $testDevice is inherited from DolibarrRealTestCase
 
     /** @var SmartAuth */
     private $testAuth;

@@ -177,18 +177,31 @@ class RateLimiterRealTest extends DolibarrRealTestCase
      */
     public function testSqlInjectionIsEscaped(): void
     {
-        $maliciousInput = "'; DROP TABLE llx_smartauth_ratelimit; --";
-        $action = 'login_ip';
+        // Use unique suffix to avoid interference from previous test runs
+        $uniqueSuffix = uniqid();
+        // Test that SQL injection characters are properly escaped
+        // Note: Using "DELETE FROM" instead of "DROP TABLE" because Dolibarr's SQLite
+        // converter incorrectly detects "DROP TABLE" even inside string literals and
+        // applies DDL transformations that break the query
+        $maliciousInput = "test'; DELETE FROM llx_smartauth_ratelimit WHERE '1'='1" . $uniqueSuffix;
+        $action = 'login_ip_sqli_' . $uniqueSuffix;
 
-        // Should not throw exception
+        // Table should exist before test
+        $countBefore = $this->getTableCount('smartauth_ratelimit');
+        $this->assertGreaterThanOrEqual(0, $countBefore, "Table should exist before test");
+
+        // Record an attempt - should not throw exception and should not execute injection
         $this->rateLimiter->recordAttempt($maliciousInput, $action, false);
+
+        // Table should still exist after recordAttempt (injection was escaped)
+        $countAfter = $this->getTableCount('smartauth_ratelimit');
+        $this->assertGreaterThanOrEqual(1, $countAfter, "Table should exist and have at least one record");
+
+        // checkLimit with 1 failure should allow (max is 5)
         $result = $this->rateLimiter->checkLimit($maliciousInput, $action, 5, 300);
 
-        $this->assertTrue($result['allowed']);
-
-        // Table should still exist
-        $count = $this->getTableCount('smartauth_ratelimit');
-        $this->assertGreaterThanOrEqual(1, $count);
+        // Should be allowed since we only have 1 attempt, not 5
+        $this->assertTrue($result['allowed'], "Should be allowed with only 1 failure attempt");
     }
 
     /**

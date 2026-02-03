@@ -27,8 +27,7 @@ class SecurityAdvancedTest extends DolibarrRealTestCase
     /** @var AuthController */
     private $authController;
 
-    /** @var SmartAuthDevices */
-    private $testDevice;
+    // Note: $testDevice is inherited from DolibarrRealTestCase
 
     /** @var ReflectionClass */
     private $reflection;

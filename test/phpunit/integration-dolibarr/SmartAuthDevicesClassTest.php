@@ -1273,7 +1273,8 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
         $device->createCommon($this->testUser, true);
         $this->db->commit();
 
-        $this->assertEquals('(PROV)', $device->ref);
+        // createCommon generates provisional ref like "(PROV)" or "(PROVxxx)"
+        $this->assertStringStartsWith('(PROV', $device->ref);
 
         // Validate should update ref
         $result = $device->validate($this->testUser);

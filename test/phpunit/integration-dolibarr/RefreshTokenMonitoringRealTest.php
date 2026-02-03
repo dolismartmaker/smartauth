@@ -115,11 +115,13 @@ class RefreshTokenMonitoringRealTest extends DolibarrRealTestCase
         $userId = $this->testUser->id;
 
         // Insert auth records from multiple IPs
+        // Note: date_creation is stored as timestamp for comparison with time() in detectAnomalies
+        $deviceId = $this->testDevice->id;
         $ips = ['192.168.1.1', '10.0.0.1', '172.16.0.1', '8.8.8.8'];
         foreach ($ips as $ip) {
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
-                    (appuid, salt, token_type, fk_authid, ip, date_creation, status, entity)
-                    VALUES (1, 'salt123', 'refresh', $userId, '$ip', '$now', 1, 1)";
+                    (appuid, salt, token_type, fk_authid, ip, date_creation, status, entity, fk_device_id, fk_user_creat, auth_element)
+                    VALUES (1, 'salt123', 'refresh', $userId, '$ip', $now, 1, 1, $deviceId, $userId, 'user')";
             $this->db->query($sql);
         }
 
@@ -149,17 +151,19 @@ class RefreshTokenMonitoringRealTest extends DolibarrRealTestCase
         $userId = $this->testUser->id;
 
         // Create excessive refresh
+        // Note: timestamps are stored as integers for comparison with time() in detectAnomalies
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_token_family
                 (fk_user, created_at, last_refresh_at, refresh_count, revoked)
                 VALUES ($userId, $now, $now, 20, 0)";
         $this->db->query($sql);
 
         // Create multiple locations
+        $deviceId = $this->testDevice->id;
         $ips = ['192.168.1.1', '10.0.0.1', '172.16.0.1', '8.8.8.8'];
         foreach ($ips as $ip) {
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth
-                    (appuid, salt, token_type, fk_authid, ip, date_creation, status, entity)
-                    VALUES (1, 'salt123', 'refresh', $userId, '$ip', '$now', 1, 1)";
+                    (appuid, salt, token_type, fk_authid, ip, date_creation, status, entity, fk_device_id, fk_user_creat, auth_element)
+                    VALUES (1, 'salt123', 'refresh', $userId, '$ip', $now, 1, 1, $deviceId, $userId, 'user')";
             $this->db->query($sql);
         }
 

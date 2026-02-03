@@ -23,6 +23,9 @@ abstract class DolibarrRealTestCase extends TestCase
     /** @var object */
     protected $conf;
 
+    /** @var \SmartAuthDevices Default test device for FK constraints */
+    protected $testDevice;
+
     /** @var string Path to SQLite vendor directory for cleanup */
     private static $sqliteVendorPath;
 
@@ -67,6 +70,30 @@ abstract class DolibarrRealTestCase extends TestCase
 
         // Clean SmartAuth tables before each test
         $this->cleanSmartAuthTables();
+
+        // Create a default test device for FK constraints (fk_device_id is NOT NULL in many tables)
+        $this->testDevice = $this->createTestDevice();
+    }
+
+    /**
+     * Create a test device for FK constraints
+     */
+    protected function createTestDevice(array $data = []): \SmartAuthDevices
+    {
+        require_once dirname(__DIR__, 3) . '/class/smartauthdevices.class.php';
+
+        $device = new \SmartAuthDevices($this->db);
+        $device->label = $data['label'] ?? 'Default Test Device';
+        $device->uuid = $data['uuid'] ?? 'test-device-' . uniqid();
+        $device->status = $data['status'] ?? \SmartAuthDevices::STATUS_VALIDATED;
+        $device->entity = $data['entity'] ?? 1;
+
+        $result = $device->create($this->testUser);
+        if ($result < 0) {
+            throw new \Exception("Failed to create test device: " . $device->error);
+        }
+
+        return $device;
     }
 
     /**

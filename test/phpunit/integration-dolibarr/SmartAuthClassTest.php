@@ -13,8 +13,7 @@ use SmartAuthDevices;
  */
 class SmartAuthClassTest extends DolibarrRealTestCase
 {
-    /** @var SmartAuthDevices */
-    private $testDevice;
+    // Note: $testDevice is inherited from DolibarrRealTestCase
 
     protected function setUp(): void
     {
