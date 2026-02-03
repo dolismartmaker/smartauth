@@ -20,9 +20,6 @@
         ]
     },
     "autoload-dev": {
-        "files": [
-            "test/phpunit/dolibarr-autoload-init.php"
-        ],
         "psr-4": {
             "SmartAuth\\Tests\\": "test/phpunit/"
         }
