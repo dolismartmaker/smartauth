@@ -229,20 +229,6 @@ class SmartAuthDevices extends \CommonObject
 	 */
 	public function create(User $user, $notrigger = false)
 	{
-		//sqlite specifs
-		if ($this->db->type == 'sqlite') {
-			if (!empty($this->uuid)) {
-				$sql = "SELECT rowid FROM " . $this->db->prefix() . $this->table_element;
-				$sql .= " WHERE uuid = '" . $this->db->escape($this->uuid) . "'";
-				$sql .= " AND entity IN (" . getEntity($this->element) . ")";
-				$resql = $this->db->query($sql);
-				if ($resql && $this->db->num_rows($resql) > 0) {
-					$this->error = 'ErrorDuplicateUUID';
-					$this->errors[] = 'A device with this UUID already exists';
-					return -1;
-				}
-			}
-		}
 		$resultcreate = $this->createCommon($user, $notrigger);
 
 		$resultvalidate = $this->validate($user, $notrigger);
@@ -810,6 +796,7 @@ class SmartAuthDevices extends \CommonObject
 		$langs->load("smartauth@smartauth");
 		// first we get the max value
 		$posindice = strlen($prefix) + 2;
+		// Use database-agnostic syntax: SUBSTR works in both MySQL and SQLite
 		$sql = "SELECT MAX(CAST(SUBSTR(ref, " . $posindice . ") AS INTEGER)) as max";
 		$sql .= " FROM " . MAIN_DB_PREFIX . $this->table_element;
 		$sql .= " WHERE ref LIKE '" . $db->escape($prefix) . "-%'";
