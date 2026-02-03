@@ -261,7 +261,7 @@ class dmHelper
 			4 => ["update", "read"],
 			5 => ["read"],
 		];
-		$ret['visible'] = $dolmap[abs($val)];
+		$ret['visible'] = $dolmap[abs($val ?? 0)];
 		return $ret;
 	}
 
