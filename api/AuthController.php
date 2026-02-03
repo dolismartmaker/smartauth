@@ -1537,7 +1537,7 @@ class AuthController
 
 	private function _createDeviceIdIfNeeded($user_id, $device_uuid = '')
 	{
-		global $db, $user;
+		global $db, $user, $conf;
 
 		$deviceid = '';
 
@@ -1584,6 +1584,8 @@ class AuthController
 
 			$rowid = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_devices");
 			if ($rowid > 0) {
+				$cache_key = 'device-' . $device_uuid;
+				$conf->cache['smartmakers'][$cache_key] = $rowid;
 				return $rowid;
 			}
 		}
