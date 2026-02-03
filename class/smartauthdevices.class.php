@@ -796,7 +796,7 @@ class SmartAuthDevices extends \CommonObject
 		$langs->load("smartauth@smartauth");
 		// first we get the max value
 		$posindice = strlen($prefix) + 2;
-		$sql = "SELECT MAX(CAST(SUBSTRING(ref FROM " . $posindice . ") AS SIGNED)) as max";
+		$sql = "SELECT MAX(CAST(SUBSTR(ref, " . $posindice . ") AS INTEGER)) as max";
 		$sql .= " FROM " . MAIN_DB_PREFIX . $this->table_element;
 		$sql .= " WHERE ref LIKE '" . $db->escape($prefix) . "-%'";
 		if ($this->ismultientitymanaged == 1) {

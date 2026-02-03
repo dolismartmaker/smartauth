@@ -688,8 +688,8 @@ class RouteController
 			'jwt_family_id' => $family_id,
 			'jwt_device_id' => $device_id,
 			'user' => $user,
-			'login' => $user->login,
-			'user_id' => $user->id,
+			'login' => $user ? $user->login : null,
+			'user_id' => $user ? $user->id : null,
 			'entity' => $entity,
 			'buyer' => $buyer,
 		];
@@ -898,6 +898,9 @@ class RouteController
 	 */
 	public static function handleCORS(): void
 	{
+		if (defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING) {
+			return;
+		}
 		$allowedOrigin = getDolGlobalString('SMARTAUTH_CORS_ORIGIN', '*');
 		$allowedMethods = getDolGlobalString('SMARTAUTH_CORS_METHODS', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
 		$allowedHeaders = getDolGlobalString('SMARTAUTH_CORS_HEADERS', 'Content-Type, Authorization, X-DeviceId');
