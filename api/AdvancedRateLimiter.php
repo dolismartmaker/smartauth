@@ -45,7 +45,7 @@ class AdvancedRateLimiter extends RateLimiter
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            return ['allowed' => true, 'retry_after' => null];
+            return ['allowed' => true, 'retry_after' => null, 'failures' => 0];
         }
 
         $failures = 0;
