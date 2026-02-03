@@ -182,7 +182,8 @@ class InputSanitizer
 		foreach ($data as $key => $value) {
 			// Sanitize key
 			$cleanKey = self::sanitizeAlphanumeric($key, self::MAX_SHORT_LENGTH);
-			if (empty($cleanKey)) {
+			// Note: Don't use empty() here - empty("0") returns true in PHP
+			if ($cleanKey === '' || $cleanKey === null) {
 				continue; // Skip invalid keys
 			}
 
