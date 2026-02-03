@@ -1,0 +1,116 @@
+# Copyright (C) 2024 Eric Seigne <eric.seigne@cap-rel.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#
+# Generic
+#
+SmartAuthMainMenu=SmartAuth
+SmartAuthLogsMenu=Registos (Logs)
+SmartAuthTokensMenu=Tokens
+ListOfTokens=Lista de tokens ativos
+SmartauthDescription=Ferramentas para conexao de rede de aplicacoes moveis
+
+# Module label 'ModuleSmartauthName'
+ModuleSmartauthName=Smartauth
+ModuleSmartauthDesc=Ferramentas para conexao de rede de aplicacoes moveis SmartMaker
+
+SmartauthSetup=Configuracao do Smartauth
+Settings=Definicoes
+SmartauthSetupPage=Pagina de configuracao do Smartauth
+
+About=Sobre
+SmartauthAbout=Sobre o Smartauth
+SmartauthAboutPage=Pagina sobre o Smartauth
+
+SmartAuthArea=Gestao de tokens de acesso
+
+smartAuthAppuid=Aplicacao
+smartAuthSalt=Salt
+Datecreation=Data de criacao
+Datelastused=Ultima conexao
+Dateeol=Data de expiracao
+IpAddr=Endereco IP
+SMARTAUTH_TOKEN_EOL_DAYS=Tempo (em dias) apos o qual um token expira
+smartAuthID=ID
+smartAuthApp=Aplicacao
+smartAuthUserOrSoc=Utilizador/Empresa
+smartAuthCreated=Data de criacao do token
+smartAuthLastUsed=Ultima conexao
+smartAuthLastIP=Do IP
+smartAuthEOL=Fim de vida do token
+AuthElementID=Associado a
+AuthElementSource=Tipo de associacao
+SMARTAUTH_DEFAULT_USER=Utilizador predefinido para acoes anonimas
+SMARTAUTH_COLLECT_LOGS=Ativar recolha de registos web
+SMARTAUTH_COLLECT_LOGSTooltip=Se ativar esta opcao, cada pedido a API sera registado na base de dados para consultar o historico de acoes
+SmartAuthHereIsYourKeys=Lista das suas chaves API SmartAuth
+SmartAuthHereIsYourLastKeys=Abaixo encontram-se as suas ultimas chaves API. Siga este link para ver a <a href="%s">lista completa</a>
+SmartAuthAPILogs=Historico de conexoes realizadas
+
+SMARTAUTH_CLEAN_LOGS=Limpeza automatica de registos
+SMARTAUTH_LAST_LOGS=Duracao de conservacao dos registos se a limpeza automatica estiver ativa
+SMARTAUTH_TRUSTED_PROXIES=IPs de proxies de confianca
+SMARTAUTH_TRUSTED_PROXIESTooltip=Lista de enderecos IP dos seus proxies de confianca, separados por virgulas (ex: 10.0.0.1,172.17.0.1). Quando um pedido vem de um destes IPs, o cabecalho X-Forwarded-For sera usado para determinar o IP real do cliente. Os IPs privados (127.x, 10.x, 172.16-31.x, 192.168.x) sao automaticamente de confianca. Deixar vazio se nao usar um proxy reverso com IP publico.
+AuthElementKey=Chave SmartAuth
+SmartauthGeoIP=GeoIP
+SmartauthGeoIPSetupPage=Configuracao do modulo GeoIP
+SmartAuthDashboard=Painel SmartAuth
+ActiveTokens=Tokens ativos
+ConnectedUsers=Utilizadores conectados
+RateLimitHits=Bloqueios rate limit
+RefreshSuccessRate=Taxa de sucesso refresh
+SecurityAlertsDetected=Alertas de seguranca detetados
+TopUsers=Utilizadores principais
+RecentRateLimitBlocks=Bloqueios recentes
+TokenFamiliesStats=Estatisticas de familias de tokens
+ActiveFamilies=Familias ativas
+RevokedFamilies=Familias revogadas
+AverageRefreshCount=Media de refreshs
+ReplayAttacksDetected=Ataques replay detetados
+QuickLinks=Links rapidos
+ViewAllTokens=Ver todos os tokens
+ViewLogs=Ver registos
+ActiveNow=Ativo agora
+NoRecentBlocks=Sem bloqueios recentes
+JustNow=Agora mesmo
+ViewDetails=Ver detalhes
+LastActivity=Atividade recente
+TokenRevoked=Token revogado com sucesso
+ErrorRevokingToken=Erro ao revogar o token
+TokenNotFound=Token nao encontrado
+DeviceRenamed=Dispositivo renomeado com sucesso
+RenameDevice=Renomear dispositivo
+ViewHistory=Ver historico
+RevokeToken=Revogar token
+ConfirmRevokeToken=Tem a certeza que deseja revogar este token? O dispositivo sera desconectado.
+EnterDeviceName=Introduza o nome do dispositivo:
+TokenActivityHistory=Historico de atividade do token
+Loading=A carregar
+Close=Fechar
+Time=Hora
+Method=Metodo
+Endpoint=Ponto de acesso
+Status=Estado
+NoHistory=Sem historico disponivel
+ErrorLoadingHistory=Erro ao carregar o historico
+minutes=minutos
+hours=horas
+days=dias
+Refresh=Refresh
+Access=Access
+Expired=Expirado
+SetupGeoIPForSmartAuth=Descarregar e inicializar GeoIP
+SmartAuthDevicesMenu=Dispositivos
+SetupGeoIPForSmartAuthFileIsPresent=O ficheiro %s esta instalado

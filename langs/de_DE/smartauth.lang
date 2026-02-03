@@ -1,0 +1,116 @@
+# Copyright (C) 2024 Eric Seigne <eric.seigne@cap-rel.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#
+# Generic
+#
+SmartAuthMainMenu=SmartAuth
+SmartAuthLogsMenu=Protokolle (Logs)
+SmartAuthTokensMenu=Token
+ListOfTokens=Liste der aktiven Token
+SmartauthDescription=Werkzeuge fuer die Netzwerkverbindung mobiler Anwendungen
+
+# Module label 'ModuleSmartauthName'
+ModuleSmartauthName=Smartauth
+ModuleSmartauthDesc=Werkzeuge fuer die Netzwerkverbindung mobiler SmartMaker-Anwendungen
+
+SmartauthSetup=Smartauth-Einrichtung
+Settings=Einstellungen
+SmartauthSetupPage=Smartauth-Einrichtungsseite
+
+About=Ueber
+SmartauthAbout=Ueber Smartauth
+SmartauthAboutPage=Smartauth Info-Seite
+
+SmartAuthArea=Verwaltung von Zugangs-Token
+
+smartAuthAppuid=Anwendung
+smartAuthSalt=Salt
+Datecreation=Erstellungsdatum
+Datelastused=Letzte Verbindung
+Dateeol=Ablaufdatum
+IpAddr=IP-Adresse
+SMARTAUTH_TOKEN_EOL_DAYS=Zeit (in Tagen) nach der ein Token ablaeuft
+smartAuthID=ID
+smartAuthApp=Anwendung
+smartAuthUserOrSoc=Benutzer/Firma
+smartAuthCreated=Token-Erstellungsdatum
+smartAuthLastUsed=Letzte Verbindung
+smartAuthLastIP=Von IP
+smartAuthEOL=Token-Ablauf
+AuthElementID=Verknuepft mit
+AuthElementSource=Verknuepfungstyp
+SMARTAUTH_DEFAULT_USER=Standard-Benutzer fuer anonyme Aktionen
+SMARTAUTH_COLLECT_LOGS=Web-Protokollierung aktivieren
+SMARTAUTH_COLLECT_LOGSTooltip=Wenn Sie diese Option aktivieren, wird jede API-Anfrage in der Datenbank protokolliert, um den Aktionsverlauf einzusehen
+SmartAuthHereIsYourKeys=Liste Ihrer SmartAuth API-Schluessel
+SmartAuthHereIsYourLastKeys=Unten finden Sie Ihre letzten API-Schluessel. Folgen Sie diesem Link fuer die <a href="%s">vollstaendige Liste</a>
+SmartAuthAPILogs=Verbindungsverlauf
+
+SMARTAUTH_CLEAN_LOGS=Automatische Protokollbereinigung
+SMARTAUTH_LAST_LOGS=Aufbewahrungsdauer der Protokolle bei aktiver automatischer Bereinigung
+SMARTAUTH_TRUSTED_PROXIES=Vertrauenswuerdige Proxy-IPs
+SMARTAUTH_TRUSTED_PROXIESTooltip=Kommagetrennte Liste der IP-Adressen Ihrer vertrauenswuerdigen Proxies (z.B.: 10.0.0.1,172.17.0.1). Wenn eine Anfrage von einer dieser IPs kommt, wird der X-Forwarded-For-Header verwendet, um die echte Client-IP zu ermitteln. Private IPs (127.x, 10.x, 172.16-31.x, 192.168.x) sind automatisch vertrauenswuerdig. Leer lassen, wenn Sie keinen Reverse-Proxy mit oeffentlicher IP verwenden.
+AuthElementKey=SmartAuth-Schluessel
+SmartauthGeoIP=GeoIP
+SmartauthGeoIPSetupPage=GeoIP-Modul Konfiguration
+SmartAuthDashboard=SmartAuth-Dashboard
+ActiveTokens=Aktive Token
+ConnectedUsers=Verbundene Benutzer
+RateLimitHits=Rate-Limit-Blockierungen
+RefreshSuccessRate=Refresh-Erfolgsrate
+SecurityAlertsDetected=Erkannte Sicherheitswarnungen
+TopUsers=Hauptbenutzer
+RecentRateLimitBlocks=Kuerzliche Blockierungen
+TokenFamiliesStats=Token-Familien-Statistiken
+ActiveFamilies=Aktive Familien
+RevokedFamilies=Widerrufene Familien
+AverageRefreshCount=Durchschnittliche Refreshs
+ReplayAttacksDetected=Erkannte Replay-Angriffe
+QuickLinks=Schnelllinks
+ViewAllTokens=Alle Token anzeigen
+ViewLogs=Protokolle anzeigen
+ActiveNow=Jetzt aktiv
+NoRecentBlocks=Keine kuerzlichen Blockierungen
+JustNow=Gerade eben
+ViewDetails=Details anzeigen
+LastActivity=Letzte Aktivitaet
+TokenRevoked=Token erfolgreich widerrufen
+ErrorRevokingToken=Fehler beim Widerrufen des Tokens
+TokenNotFound=Token nicht gefunden
+DeviceRenamed=Geraet erfolgreich umbenannt
+RenameDevice=Geraet umbenennen
+ViewHistory=Verlauf anzeigen
+RevokeToken=Token widerrufen
+ConfirmRevokeToken=Sind Sie sicher, dass Sie dieses Token widerrufen moechten? Das Geraet wird getrennt.
+EnterDeviceName=Geraetename eingeben:
+TokenActivityHistory=Token-Aktivitaetsverlauf
+Loading=Laden
+Close=Schliessen
+Time=Zeit
+Method=Methode
+Endpoint=Endpunkt
+Status=Status
+NoHistory=Kein Verlauf verfuegbar
+ErrorLoadingHistory=Fehler beim Laden des Verlaufs
+minutes=Minuten
+hours=Stunden
+days=Tage
+Refresh=Refresh
+Access=Access
+Expired=Abgelaufen
+SetupGeoIPForSmartAuth=GeoIP herunterladen und initialisieren
+SmartAuthDevicesMenu=Geraete
+SetupGeoIPForSmartAuthFileIsPresent=Die Datei %s ist installiert

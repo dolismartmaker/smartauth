@@ -1,0 +1,116 @@
+# Copyright (C) 2024 Eric Seigne <eric.seigne@cap-rel.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#
+# Generic
+#
+SmartAuthMainMenu=SmartAuth
+SmartAuthLogsMenu=Logboeken (Logs)
+SmartAuthTokensMenu=Tokens
+ListOfTokens=Lijst van actieve tokens
+SmartauthDescription=Hulpmiddelen voor netwerkverbinding van mobiele applicaties
+
+# Module label 'ModuleSmartauthName'
+ModuleSmartauthName=Smartauth
+ModuleSmartauthDesc=Hulpmiddelen voor netwerkverbinding van SmartMaker mobiele applicaties
+
+SmartauthSetup=Smartauth-instellingen
+Settings=Instellingen
+SmartauthSetupPage=Smartauth instellingenpagina
+
+About=Over
+SmartauthAbout=Over Smartauth
+SmartauthAboutPage=Smartauth info-pagina
+
+SmartAuthArea=Beheer van toegangstokens
+
+smartAuthAppuid=Applicatie
+smartAuthSalt=Salt
+Datecreation=Aanmaakdatum
+Datelastused=Laatste verbinding
+Dateeol=Vervaldatum
+IpAddr=IP-adres
+SMARTAUTH_TOKEN_EOL_DAYS=Tijd (in dagen) waarna een token verloopt
+smartAuthID=ID
+smartAuthApp=Applicatie
+smartAuthUserOrSoc=Gebruiker/Bedrijf
+smartAuthCreated=Token aanmaakdatum
+smartAuthLastUsed=Laatste verbinding
+smartAuthLastIP=Van IP
+smartAuthEOL=Token-verval
+AuthElementID=Gekoppeld aan
+AuthElementSource=Type koppeling
+SMARTAUTH_DEFAULT_USER=Standaardgebruiker voor anonieme acties
+SMARTAUTH_COLLECT_LOGS=Weblogboekregistratie activeren
+SMARTAUTH_COLLECT_LOGSTooltip=Als u deze optie activeert, wordt elk API-verzoek in de database geregistreerd om de actiegeschiedenis te bekijken
+SmartAuthHereIsYourKeys=Lijst van uw SmartAuth API-sleutels
+SmartAuthHereIsYourLastKeys=Hieronder vindt u uw laatste API-sleutels. Volg deze link voor de <a href="%s">volledige lijst</a>
+SmartAuthAPILogs=Verbindingsgeschiedenis
+
+SMARTAUTH_CLEAN_LOGS=Automatische logboekopruiming
+SMARTAUTH_LAST_LOGS=Bewaartermijn van logboeken bij actieve automatische opruiming
+SMARTAUTH_TRUSTED_PROXIES=Vertrouwde proxy-IPs
+SMARTAUTH_TRUSTED_PROXIESTooltip=Kommagescheiden lijst van IP-adressen van uw vertrouwde proxies (bijv.: 10.0.0.1,172.17.0.1). Wanneer een verzoek van een van deze IPs komt, wordt de X-Forwarded-For-header gebruikt om het echte client-IP te bepalen. Private IPs (127.x, 10.x, 172.16-31.x, 192.168.x) zijn automatisch vertrouwd. Leeg laten als u geen reverse proxy met een openbaar IP gebruikt.
+AuthElementKey=SmartAuth-sleutel
+SmartauthGeoIP=GeoIP
+SmartauthGeoIPSetupPage=GeoIP-module configuratie
+SmartAuthDashboard=SmartAuth-dashboard
+ActiveTokens=Actieve tokens
+ConnectedUsers=Verbonden gebruikers
+RateLimitHits=Rate-limit blokkeringen
+RefreshSuccessRate=Refresh-succespercentage
+SecurityAlertsDetected=Gedetecteerde beveiligingswaarschuwingen
+TopUsers=Belangrijkste gebruikers
+RecentRateLimitBlocks=Recente blokkeringen
+TokenFamiliesStats=Token-familie statistieken
+ActiveFamilies=Actieve families
+RevokedFamilies=Ingetrokken families
+AverageRefreshCount=Gemiddeld aantal refreshes
+ReplayAttacksDetected=Gedetecteerde replay-aanvallen
+QuickLinks=Snelkoppelingen
+ViewAllTokens=Alle tokens bekijken
+ViewLogs=Logboeken bekijken
+ActiveNow=Nu actief
+NoRecentBlocks=Geen recente blokkeringen
+JustNow=Zojuist
+ViewDetails=Details bekijken
+LastActivity=Recente activiteit
+TokenRevoked=Token succesvol ingetrokken
+ErrorRevokingToken=Fout bij intrekken van token
+TokenNotFound=Token niet gevonden
+DeviceRenamed=Apparaat succesvol hernoemd
+RenameDevice=Apparaat hernoemen
+ViewHistory=Geschiedenis bekijken
+RevokeToken=Token intrekken
+ConfirmRevokeToken=Weet u zeker dat u dit token wilt intrekken? Het apparaat wordt losgekoppeld.
+EnterDeviceName=Voer de apparaatnaam in:
+TokenActivityHistory=Token-activiteitsgeschiedenis
+Loading=Laden
+Close=Sluiten
+Time=Tijd
+Method=Methode
+Endpoint=Eindpunt
+Status=Status
+NoHistory=Geen geschiedenis beschikbaar
+ErrorLoadingHistory=Fout bij laden van geschiedenis
+minutes=minuten
+hours=uren
+days=dagen
+Refresh=Refresh
+Access=Access
+Expired=Verlopen
+SetupGeoIPForSmartAuth=GeoIP downloaden en initialiseren
+SmartAuthDevicesMenu=Apparaten
+SetupGeoIPForSmartAuthFileIsPresent=Het bestand %s is geinstalleerd

@@ -45,3 +45,5 @@ Datelastused=Visto su
 Dateeol=Scade il
 IpAddr=Indirizzo IP
 SMARTAUTH_TOKEN_EOL_DAYS=Tempo (in giorni) dopo il quale un token scade
+SMARTAUTH_TRUSTED_PROXIES=IP dei proxy affidabili
+SMARTAUTH_TRUSTED_PROXIESTooltip=Elenco degli indirizzi IP dei proxy affidabili, separati da virgole (es: 10.0.0.1,172.17.0.1). Quando una richiesta proviene da uno di questi IP, l'intestazione X-Forwarded-For verra utilizzata per determinare l'IP reale del client. Gli IP privati (127.x, 10.x, 172.16-31.x, 192.168.x) sono automaticamente affidabili. Lasciare vuoto se non si utilizza un reverse proxy con IP pubblico.

@@ -61,6 +61,8 @@ SmartAuthAPILogs = Historique des connexions réalisées
 
 SMARTAUTH_CLEAN_LOGS = Nettoyage automatique des journaux (logs)
 SMARTAUTH_LAST_LOGS = Durée de conservation des journaux (logs) si le nettoyage automatique est actif
+SMARTAUTH_TRUSTED_PROXIES = IPs des proxies de confiance
+SMARTAUTH_TRUSTED_PROXIESTooltip = Liste des adresses IP de vos proxies de confiance, séparées par des virgules (ex: 10.0.0.1,172.17.0.1). Quand une requête provient d'une de ces IPs, l'en-tête X-Forwarded-For sera utilisé pour déterminer l'IP réelle du client. Les IPs privées (127.x, 10.x, 172.16-31.x, 192.168.x) sont automatiquement de confiance. Laissez vide si vous n'utilisez pas de reverse proxy avec une IP publique.
 AuthElementKey = Clé SmartAuth
 SmartauthGeoIP = GeoIP
 SmartauthGeoIPSetupPage = Configuration du module GeoIP
