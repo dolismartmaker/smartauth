@@ -954,12 +954,80 @@ class SyncController
             }
         }
 
-        $result = $object->update($user);
+        // Dolibarr classes have different update() signatures:
+        // - Societe, Product, Contact: update($id, $user, ...)
+        // - User, Facture: update($user, ...)
+        // Use reflection to detect the correct signature
+        $result = $this->callUpdateMethod($object, $user);
         if ($result > 0) {
             return ['success' => true];
         }
 
         return ['success' => false, 'error' => $object->error ?: 'Update failed'];
+    }
+
+    /**
+     * Call the update method with the correct signature using reflection
+     *
+     * Dolibarr classes have different update() signatures:
+     * - Societe:  update($id, $user = '', $call_trigger = 1, ...)
+     * - Product:  update($id, $user, $notrigger = false, ...)
+     * - Contact:  update($id, $user = null, $notrigger = 0, ...)
+     * - User:     update($user, $notrigger = 0, ...)
+     * - Facture:  update(User $user, $notrigger = 0)
+     *
+     * @param object $object The Dolibarr object to update
+     * @param User $user The user performing the update
+     * @return int Result of the update operation
+     */
+    private function callUpdateMethod($object, $user)
+    {
+        $reflection = new \ReflectionMethod($object, 'update');
+        $params = $reflection->getParameters();
+
+        if (empty($params)) {
+            return $object->update();
+        }
+
+        // Analyze first parameter to detect signature type
+        $firstParam = $params[0];
+        $firstParamName = $firstParam->getName();
+        $firstParamType = $firstParam->getType();
+
+        $isIdFirst = ($firstParamName === 'id')
+            || ($firstParamType && in_array($firstParamType->getName(), ['int', 'integer']));
+
+        // Analyze trigger parameter (2nd for user-first, 3rd for id-first)
+        $triggerParamIndex = $isIdFirst ? 2 : 1;
+        $triggerParam = $params[$triggerParamIndex] ?? null;
+
+        // Determine trigger value: we want triggers enabled
+        // - $call_trigger: 1 = enabled (Societe)
+        // - $notrigger: 0 = enabled, false = enabled (Product, Contact, User, Facture)
+        $triggerValue = null;
+        if ($triggerParam) {
+            $triggerParamName = $triggerParam->getName();
+            if ($triggerParamName === 'call_trigger') {
+                $triggerValue = 1; // Enable trigger
+            } elseif (in_array($triggerParamName, ['notrigger', 'noTrigger'])) {
+                $triggerValue = 0; // Enable trigger (notrigger=0 means triggers ARE called)
+            }
+        }
+
+        // Call with appropriate signature
+        if ($isIdFirst) {
+            // Signature: update($id, $user, $trigger?, ...)
+            if ($triggerValue !== null) {
+                return $object->update($object->id, $user, $triggerValue);
+            }
+            return $object->update($object->id, $user);
+        } else {
+            // Signature: update($user, $trigger?, ...)
+            if ($triggerValue !== null) {
+                return $object->update($user, $triggerValue);
+            }
+            return $object->update($user);
+        }
     }
 
     /**
