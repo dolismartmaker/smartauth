@@ -651,7 +651,7 @@ class AuthController
 	{
 		global $db, $smartAuthAppID, $conf;
 
-		$token = self::_getBearerToken();
+		$token = self::_getBearerToken() ?? '';
 		$tokenparts = explode('|', $token);
 		$token_id = $tokenparts[0];
 
@@ -1620,6 +1620,7 @@ class AuthController
 	{
 		global $db, $smartAuthAppID, $conf;
 
+		$token = $token ?? '';
 		if (empty($token)) {
 			json_reply('Access denied (protected route)', 401);
 		}

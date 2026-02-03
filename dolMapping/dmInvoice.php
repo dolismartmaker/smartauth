@@ -48,7 +48,6 @@ class dmInvoice extends dmBase
 		'delivery_date'     => 'date_delivery',
 		'fk_soc'            => 'thirdparty',
 		'fk_projet'         => 'project',
-		'fk_contrat'        => 'contract',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
 		'fk_user_modif'     => 'updated_by',
@@ -72,7 +71,8 @@ class dmInvoice extends dmBase
 		'multicurrency_total_tva' => 'multicurrency_total_vat',
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
 	];
-
+		
+	// 'fk_contrat'        => 'contract',
 	// Configuration for lines support
 	protected $parentClassNameForLines = 'FactureLigne';
 	protected $parentLabelForLines = 'InvoiceLines';

@@ -46,8 +46,8 @@ class dmContact extends dmBase
 		'note_public' 		=> 'public_note',
 		'note_private' 		=> 'private_note',
 		'fk_soc'            => 'thirdparty',
-		'fk_c_type_contact' => 'contact_type',
 	];
+	// 'fk_c_type_contact' => 'contact_type',
 
 	/**
 	 * object constructor
