@@ -345,10 +345,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testSmartAuthDevicesGetNextNumRef(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SmartAuthDevices getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $device = new SmartAuthDevices($this->db);
         $device->entity = 1;
 
@@ -711,10 +707,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testCompleteStatusWorkflow(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('Validation requires getNextNumRef which uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Workflow Test Device';
         $device->uuid = 'workflow-' . uniqid();
@@ -822,10 +814,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testValidateWithNoTrigger(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('Validation requires getNextNumRef which uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Validate No Trigger';
         $device->uuid = 'val-notrig-' . uniqid();
@@ -1003,10 +991,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testGetNextNumRefSequential(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $device1 = new SmartAuthDevices($this->db);
         $device1->entity = 1;
         $ref1 = $device1->getNextNumRef();
@@ -1278,10 +1262,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testValidateUpdatesRefFromProv(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $device = new SmartAuthDevices($this->db);
         $device->label = 'PROV Ref Device';
         $device->uuid = 'prov-ref-' . uniqid();
@@ -1632,10 +1612,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testValidateWithEmptyRef(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Empty Ref Device';
         $device->uuid = 'empty-ref-' . uniqid();
@@ -1663,10 +1639,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testValidateWithNonProvRef(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Non-PROV Ref Device';
         $device->uuid = 'non-prov-ref-' . uniqid();
@@ -1697,10 +1669,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testValidateWithProvVariations(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $provVariations = ['(PROV)', 'PROV123', '(prov)', '(PROV1)'];
 
         foreach ($provVariations as $provRef) {
@@ -1738,10 +1706,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testGetNextNumRefWithHighNumbers(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         // Create device with high number (> 9999)
         $device = new SmartAuthDevices($this->db);
         $device->label = 'High Number Device';
@@ -1774,10 +1738,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testGetNextNumRefMulticompany(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         $device = new SmartAuthDevices($this->db);
         $device->entity = 2;
 
@@ -1792,10 +1752,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testGetNextNumRefNoRecords(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('getNextNumRef uses CAST(SUBSTRING...) not supported in SQLite');
-        }
-
         // Get next ref for entity that has no devices
         $device = new SmartAuthDevices($this->db);
         $device->entity = 999;

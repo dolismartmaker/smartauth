@@ -15,14 +15,9 @@ class RefreshTokenMonitoringRealTest extends DolibarrRealTestCase
 {
     /**
      * Test getRefreshStats returns empty array when no data
-     * Note: Skipped on SQLite because FROM_UNIXTIME is MySQL-specific
      */
     public function testGetRefreshStatsReturnsEmptyWhenNoData(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('FROM_UNIXTIME not supported in SQLite');
-        }
-
         $stats = RefreshTokenMonitoring::getRefreshStats($this->db, 7);
 
         $this->assertIsArray($stats);
@@ -31,14 +26,9 @@ class RefreshTokenMonitoringRealTest extends DolibarrRealTestCase
 
     /**
      * Test getRefreshStats with token families in database
-     * Note: Skipped on SQLite because FROM_UNIXTIME is MySQL-specific
      */
     public function testGetRefreshStatsWithData(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('FROM_UNIXTIME not supported in SQLite');
-        }
-
         // Insert test data into token_family table
         $now = time();
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_token_family
@@ -55,14 +45,9 @@ class RefreshTokenMonitoringRealTest extends DolibarrRealTestCase
 
     /**
      * Test getRefreshStats respects days parameter
-     * Note: Skipped on SQLite because FROM_UNIXTIME is MySQL-specific
      */
     public function testGetRefreshStatsRespectsTimeWindow(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('FROM_UNIXTIME not supported in SQLite');
-        }
-
         // Insert data from 10 days ago
         $oldTime = time() - (10 * 86400);
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_token_family
@@ -189,14 +174,9 @@ class RefreshTokenMonitoringRealTest extends DolibarrRealTestCase
 
     /**
      * Test refresh stats counts revocations correctly
-     * Note: Skipped on SQLite because FROM_UNIXTIME is MySQL-specific
      */
     public function testGetRefreshStatsCountsRevocations(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('FROM_UNIXTIME not supported in SQLite');
-        }
-
         $now = time();
 
         // Insert normal token family

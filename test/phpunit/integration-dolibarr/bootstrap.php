@@ -149,6 +149,13 @@ if (!$db || !$user) {
 // Load admin user for tests
 $user->fetch(1);
 
+// Add module path to dol_document_root so dol_buildpath() can find module files
+// This is CRITICAL for Dolibarr to find numbering classes (mod_auth_standard), triggers, etc.
+if (!isset($conf->file->dol_document_root) || !is_array($conf->file->dol_document_root)) {
+    $conf->file->dol_document_root = array('main' => DOL_DOCUMENT_ROOT);
+}
+$conf->file->dol_document_root['alt0'] = $projectRoot;
+
 // Initialize SmartAuth module configuration in $conf
 // This simulates what happens when the SmartAuth module is enabled
 if (!isset($conf->smartauth)) {
@@ -255,6 +262,61 @@ function createSmartAuthTables($db)
         user_agent TEXT,
         fk_device_id INTEGER,
         referer TEXT,
+        tms TEXT DEFAULT CURRENT_TIMESTAMP
+    )";
+
+    // Sync clients table
+    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_clients (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        fk_device INTEGER NOT NULL,
+        client_uuid TEXT NOT NULL,
+        last_sync_at TEXT DEFAULT NULL,
+        sync_scope TEXT DEFAULT NULL,
+        app_version TEXT DEFAULT NULL,
+        date_creation TEXT NOT NULL,
+        tms TEXT DEFAULT CURRENT_TIMESTAMP,
+        status INTEGER DEFAULT 1 NOT NULL
+    )";
+
+    // Sync events table
+    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_events (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        fk_client INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        table_name TEXT DEFAULT NULL,
+        object_id INTEGER DEFAULT NULL,
+        event_data TEXT DEFAULT NULL,
+        date_creation TEXT NOT NULL
+    )";
+
+    // Sync tombstones table
+    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_tombstones (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        table_name TEXT NOT NULL,
+        object_id INTEGER NOT NULL,
+        deleted_at TEXT NOT NULL,
+        deleted_by INTEGER DEFAULT NULL,
+        parent_table TEXT DEFAULT NULL,
+        parent_id INTEGER DEFAULT NULL
+    )";
+
+    // Sync conflicts table
+    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_conflicts (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        fk_client INTEGER NOT NULL,
+        table_name TEXT NOT NULL,
+        object_id INTEGER NOT NULL,
+        client_data TEXT NOT NULL,
+        server_data TEXT NOT NULL,
+        client_tms TEXT NOT NULL,
+        server_tms TEXT NOT NULL,
+        field_conflicts TEXT DEFAULT NULL,
+        status TEXT DEFAULT 'pending' NOT NULL,
+        resolution TEXT DEFAULT NULL,
+        resolved_data TEXT DEFAULT NULL,
+        resolved_at TEXT DEFAULT NULL,
+        resolved_by INTEGER DEFAULT NULL,
+        date_creation TEXT NOT NULL,
         tms TEXT DEFAULT CURRENT_TIMESTAMP
     )";
 
