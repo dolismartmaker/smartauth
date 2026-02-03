@@ -6,6 +6,11 @@
  * This file sets up the test environment without requiring a full Dolibarr installation.
  */
 
+// Configure pcov for code coverage
+if (extension_loaded('pcov')) {
+    ini_set('pcov.directory', dirname(__DIR__, 2));
+}
+
 // Autoload composer dependencies
 require_once __DIR__ . '/../../vendor/autoload.php';
 

@@ -18,6 +18,10 @@ use ReflectionMethod;
  * - SQL injection prevention
  * - XSS prevention
  * - Log sanitization
+ *
+ * @covers \SmartAuth\Api\AuthController
+ * @covers \SmartAuth\Api\LogSanitizer
+ * @covers \SmartAuth\Api\InputSanitizer
  */
 class SecurityTest extends TestCase
 {

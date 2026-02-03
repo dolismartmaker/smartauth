@@ -59,6 +59,9 @@ class TestDmLinkedObjectsMapper
     }
 }
 
+/**
+ * @covers \SmartAuth\DolibarrMapping\dmLinkedObjectsTrait
+ */
 class DmLinkedObjectsTraitTest extends DolibarrRealTestCase
 {
     private $mapper;

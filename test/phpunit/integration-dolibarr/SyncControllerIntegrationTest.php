@@ -9,6 +9,8 @@ use SmartAuth\Api\SyncController;
 
 /**
  * Integration tests for SyncController with real Dolibarr database
+ *
+ * @covers \SmartAuth\Api\SyncController
  */
 class SyncControllerIntegrationTest extends DolibarrRealTestCase
 {

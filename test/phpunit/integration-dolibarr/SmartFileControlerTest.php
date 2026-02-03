@@ -17,6 +17,9 @@ require_once __DIR__ . '/../../../api/SmartFileControler.php';
 
 use SmartAuth\Api\SmartFileControler;
 
+/**
+ * @covers \SmartAuth\Api\SmartFileControler
+ */
 class SmartFileControlerTest extends DolibarrRealTestCase
 {
     private $controller;

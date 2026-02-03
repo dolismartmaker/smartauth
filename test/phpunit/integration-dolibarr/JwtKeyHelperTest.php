@@ -10,6 +10,8 @@ use SmartAuth\Api\RouteCache;
 
 /**
  * Integration tests for JwtKeyHelper
+ *
+ * @covers \SmartAuth\Api\JwtKeyHelper
  */
 class JwtKeyHelperTest extends DolibarrRealTestCase
 {
@@ -237,5 +239,223 @@ class JwtKeyHelperTest extends DolibarrRealTestCase
         // Due to hex conversion, odd lengths round up
         $this->assertGreaterThanOrEqual(33, strlen($key));
         $this->assertMatchesRegularExpression('/^[a-f0-9]+$/i', $key);
+    }
+
+    /**
+     * Test getKey stores key in database
+     */
+    public function testGetKeyStoresKeyInDatabase(): void
+    {
+        global $conf;
+
+        $moduleName = 'dbstore_' . uniqid();
+        $configKey = strtoupper($moduleName) . '_JWT_KEY';
+
+        // Ensure key doesn't exist
+        unset($conf->global->$configKey);
+
+        // Initialize RouteCache
+        RouteCache::init($moduleName, dirname(__DIR__, 3));
+
+        $key = JwtKeyHelper::getKey($moduleName);
+
+        // Verify key was stored in database
+        $sql = "SELECT value FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'";
+        $resql = $this->db->query($sql);
+
+        $this->assertNotFalse($resql);
+        $obj = $this->db->fetch_object($resql);
+
+        // Key should be stored
+        if ($obj) {
+            $this->assertEquals($key, $obj->value);
+        }
+
+        // Cleanup
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'");
+        unset($conf->global->$configKey);
+    }
+
+    /**
+     * Test rotateKey stores new key in database
+     */
+    public function testRotateKeyStoresInDatabase(): void
+    {
+        global $conf;
+
+        $moduleName = 'rotatedb_' . uniqid();
+        $configKey = strtoupper($moduleName) . '_JWT_KEY';
+
+        // Rotate key (will create new one)
+        $newKey = JwtKeyHelper::rotateKey($moduleName);
+
+        $this->assertNotFalse($newKey);
+
+        // Verify key was stored in database
+        $sql = "SELECT value FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'";
+        $resql = $this->db->query($sql);
+
+        $this->assertNotFalse($resql);
+        $obj = $this->db->fetch_object($resql);
+
+        if ($obj) {
+            $this->assertEquals($newKey, $obj->value);
+        }
+
+        // Cleanup
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'");
+        unset($conf->global->$configKey);
+    }
+
+    /**
+     * Test rotateKey updates existing key in database
+     */
+    public function testRotateKeyUpdatesExistingKeyInDatabase(): void
+    {
+        global $conf;
+
+        $moduleName = 'rotateupdate_' . uniqid();
+        $configKey = strtoupper($moduleName) . '_JWT_KEY';
+
+        // Insert initial key
+        $initialKey = 'initial_key_value_' . bin2hex(random_bytes(16));
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "const (name, value, type, visible, entity)";
+        $sql .= " VALUES ('" . $this->db->escape($configKey) . "', '" . $this->db->escape($initialKey) . "', 'chaine', 0, 0)";
+        $this->db->query($sql);
+
+        $conf->global->$configKey = $initialKey;
+
+        // Rotate key
+        $newKey = JwtKeyHelper::rotateKey($moduleName);
+
+        $this->assertNotFalse($newKey);
+        $this->assertNotEquals($initialKey, $newKey);
+
+        // Verify key was updated in database
+        $sql = "SELECT value FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'";
+        $resql = $this->db->query($sql);
+        $obj = $this->db->fetch_object($resql);
+
+        $this->assertEquals($newKey, $obj->value);
+
+        // Cleanup
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'");
+        unset($conf->global->$configKey);
+    }
+
+    /**
+     * Test getKey uses auto-detected module name from RouteCache
+     */
+    public function testGetKeyUsesAutoDetectedModuleName(): void
+    {
+        global $conf;
+
+        $moduleName = 'autodetect_' . uniqid();
+        $configKey = strtoupper($moduleName) . '_JWT_KEY';
+
+        // Set a key for this module
+        $existingKey = JwtKeyHelper::generateKey();
+        $conf->global->$configKey = $existingKey;
+
+        // Initialize RouteCache with module name
+        RouteCache::init($moduleName, dirname(__DIR__, 3));
+
+        // Call getKey without explicit module name
+        $key = JwtKeyHelper::getKey();
+
+        $this->assertEquals($existingKey, $key);
+
+        // Cleanup
+        unset($conf->global->$configKey);
+    }
+
+    /**
+     * Test hasValidKey with exactly MIN_KEY_LENGTH characters
+     */
+    public function testHasValidKeyWithExactMinLength(): void
+    {
+        global $conf;
+
+        $moduleName = 'exactmin_' . uniqid();
+        $configKey = strtoupper($moduleName) . '_JWT_KEY';
+
+        // Set a key with exactly MIN_KEY_LENGTH characters
+        $exactKey = str_repeat('a', JwtKeyHelper::MIN_KEY_LENGTH);
+        $conf->global->$configKey = $exactKey;
+
+        $this->assertTrue(JwtKeyHelper::hasValidKey($moduleName));
+
+        // Cleanup
+        unset($conf->global->$configKey);
+    }
+
+    /**
+     * Test hasValidKey with MIN_KEY_LENGTH - 1 characters returns false
+     */
+    public function testHasValidKeyWithOneLessThanMinReturnsfalse(): void
+    {
+        global $conf;
+
+        $moduleName = 'lessmin_' . uniqid();
+        $configKey = strtoupper($moduleName) . '_JWT_KEY';
+
+        // Set a key with MIN_KEY_LENGTH - 1 characters
+        $shortKey = str_repeat('a', JwtKeyHelper::MIN_KEY_LENGTH - 1);
+        $conf->global->$configKey = $shortKey;
+
+        $this->assertFalse(JwtKeyHelper::hasValidKey($moduleName));
+
+        // Cleanup
+        unset($conf->global->$configKey);
+    }
+
+    /**
+     * Test getKey regenerates when existing key is too short
+     */
+    public function testGetKeyRegeneratesWhenKeyTooShort(): void
+    {
+        global $conf;
+
+        $moduleName = 'regenshort_' . uniqid();
+        $configKey = strtoupper($moduleName) . '_JWT_KEY';
+
+        // Set a short key
+        $shortKey = 'tooshort';
+        $conf->global->$configKey = $shortKey;
+
+        RouteCache::init($moduleName, dirname(__DIR__, 3));
+
+        $key = JwtKeyHelper::getKey($moduleName);
+
+        // Should have regenerated
+        $this->assertNotEquals($shortKey, $key);
+        $this->assertGreaterThanOrEqual(JwtKeyHelper::MIN_KEY_LENGTH, strlen($key));
+
+        // Cleanup
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'");
+        unset($conf->global->$configKey);
+    }
+
+    /**
+     * Test rotateKey updates global conf cache
+     */
+    public function testRotateKeyUpdatesGlobalConfCache(): void
+    {
+        global $conf;
+
+        $moduleName = 'confcache_' . uniqid();
+        $configKey = strtoupper($moduleName) . '_JWT_KEY';
+
+        // Set initial value
+        $conf->global->$configKey = 'initial_value';
+
+        $newKey = JwtKeyHelper::rotateKey($moduleName);
+
+        $this->assertNotFalse($newKey);
+        $this->assertEquals($newKey, $conf->global->$configKey);
+
+        // Cleanup
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'");
+        unset($conf->global->$configKey);
     }
 }

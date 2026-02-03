@@ -10,6 +10,8 @@ use SmartAuthDevices;
 
 /**
  * Integration tests for SmartAuth with real Dolibarr
+ *
+ * @covers \SmartAuth
  */
 class SmartAuthRealTest extends DolibarrRealTestCase
 {

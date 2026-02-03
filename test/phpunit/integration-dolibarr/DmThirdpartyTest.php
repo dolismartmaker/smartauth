@@ -82,6 +82,10 @@ class TestDmThirdpartyMapper extends dmBase
     }
 }
 
+/**
+ * @covers \SmartAuth\DolibarrMapping\dmThirdparty
+ * @covers \SmartAuth\DolibarrMapping\dmSociete
+ */
 class DmThirdpartyTest extends DolibarrRealTestCase
 {
     private $mapper;

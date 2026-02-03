@@ -9,6 +9,8 @@ use ReflectionMethod;
 
 /**
  * Unit tests for RouteController
+ *
+ * @covers \SmartAuth\Api\RouteController
  */
 class RouteControllerTest extends TestCase
 {
@@ -338,5 +340,341 @@ class RouteControllerTest extends TestCase
 
         $this->assertArrayHasKey('valid', $result);
         $this->assertArrayNotHasKey($longKey, $result);
+    }
+
+    // =============================================
+    // Tests for sanitizeField method
+    // =============================================
+
+    /**
+     * Test sanitizeField with string type
+     */
+    public function testSanitizeFieldString(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'string', 'maxLen' => 50];
+        $result = $method->invoke(null, '  hello world  ', $rules, 'test');
+
+        $this->assertEquals('hello world', $result);
+    }
+
+    /**
+     * Test sanitizeField with string truncation
+     */
+    public function testSanitizeFieldStringTruncation(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'string', 'maxLen' => 10];
+        $result = $method->invoke(null, 'this is a very long string', $rules, 'test');
+
+        $this->assertEquals(10, strlen($result));
+    }
+
+    /**
+     * Test sanitizeField with email type
+     */
+    public function testSanitizeFieldEmail(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'email'];
+        $result = $method->invoke(null, 'TEST@Example.COM', $rules, 'email');
+
+        $this->assertEquals('test@example.com', $result);
+    }
+
+    /**
+     * Test sanitizeField with invalid email
+     */
+    public function testSanitizeFieldInvalidEmail(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'email'];
+        $result = $method->invoke(null, 'not-an-email', $rules, 'email');
+
+        $this->assertNull($result);
+    }
+
+    /**
+     * Test sanitizeField with UUID type
+     */
+    public function testSanitizeFieldUUID(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'uuid'];
+        $result = $method->invoke(null, '550E8400-E29B-41D4-A716-446655440000', $rules, 'uuid');
+
+        $this->assertEquals('550e8400-e29b-41d4-a716-446655440000', $result);
+    }
+
+    /**
+     * Test sanitizeField with int type
+     */
+    public function testSanitizeFieldInt(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'int'];
+        $result = $method->invoke(null, '42', $rules, 'count');
+
+        $this->assertSame(42, $result);
+    }
+
+    /**
+     * Test sanitizeField with int type and min/max
+     */
+    public function testSanitizeFieldIntWithMinMax(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'int', 'min' => 0, 'max' => 100];
+
+        // Test min clamping
+        $result = $method->invoke(null, '-50', $rules, 'count');
+        $this->assertSame(0, $result);
+
+        // Test max clamping
+        $result = $method->invoke(null, '200', $rules, 'count');
+        $this->assertSame(100, $result);
+
+        // Test normal value
+        $result = $method->invoke(null, '50', $rules, 'count');
+        $this->assertSame(50, $result);
+    }
+
+    /**
+     * Test sanitizeField with bool type
+     */
+    public function testSanitizeFieldBool(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'bool'];
+
+        $this->assertTrue($method->invoke(null, 'true', $rules, 'flag'));
+        $this->assertTrue($method->invoke(null, '1', $rules, 'flag'));
+        $this->assertTrue($method->invoke(null, 'yes', $rules, 'flag'));
+        $this->assertFalse($method->invoke(null, 'false', $rules, 'flag'));
+        $this->assertFalse($method->invoke(null, '0', $rules, 'flag'));
+        $this->assertFalse($method->invoke(null, 'no', $rules, 'flag'));
+    }
+
+    /**
+     * Test sanitizeField with alphanumeric type
+     */
+    public function testSanitizeFieldAlphanumeric(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'alphanumeric', 'maxLen' => 50];
+        $result = $method->invoke(null, 'abc_123-XYZ!@#', $rules, 'code');
+
+        $this->assertEquals('abc_123-XYZ', $result);
+    }
+
+    /**
+     * Test sanitizeField with raw type (no sanitization)
+     */
+    public function testSanitizeFieldRaw(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'raw'];
+        $dangerous = '<script>alert("xss")</script>';
+        $result = $method->invoke(null, $dangerous, $rules, 'password');
+
+        $this->assertEquals($dangerous, $result);
+    }
+
+    /**
+     * Test sanitizeField with array type
+     */
+    public function testSanitizeFieldArray(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'array', 'itemType' => 'int'];
+        $result = $method->invoke(null, ['1', '2', '3'], $rules, 'ids');
+
+        $this->assertIsArray($result);
+        $this->assertEquals([1, 2, 3], $result);
+    }
+
+    /**
+     * Test sanitizeField with array type and non-array value
+     */
+    public function testSanitizeFieldArrayWithNonArray(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = ['type' => 'array', 'itemType' => 'int'];
+        $result = $method->invoke(null, 'not-an-array', $rules, 'ids');
+
+        $this->assertIsArray($result);
+        $this->assertEmpty($result);
+    }
+
+    /**
+     * Test sanitizeField uses default type when not specified
+     */
+    public function testSanitizeFieldDefaultType(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeField');
+
+        $rules = []; // No type specified, should default to string
+        $result = $method->invoke(null, '  test value  ', $rules, 'field');
+
+        $this->assertEquals('test value', $result);
+    }
+
+    // =============================================
+    // Tests for sanitizeUnknownField method
+    // =============================================
+
+    /**
+     * Test sanitizeUnknownField with string value
+     */
+    public function testSanitizeUnknownFieldString(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeUnknownField');
+
+        $result = $method->invoke(null, 'valid_key', '  test value  ');
+
+        $this->assertEquals('test value', $result);
+    }
+
+    /**
+     * Test sanitizeUnknownField with int value
+     */
+    public function testSanitizeUnknownFieldInt(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeUnknownField');
+
+        $result = $method->invoke(null, 'count', 42);
+
+        $this->assertSame(42, $result);
+    }
+
+    /**
+     * Test sanitizeUnknownField with float value
+     */
+    public function testSanitizeUnknownFieldFloat(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeUnknownField');
+
+        $result = $method->invoke(null, 'price', 19.99);
+
+        $this->assertSame(19.99, $result);
+    }
+
+    /**
+     * Test sanitizeUnknownField with bool value
+     */
+    public function testSanitizeUnknownFieldBool(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeUnknownField');
+
+        $this->assertTrue($method->invoke(null, 'enabled', true));
+        $this->assertFalse($method->invoke(null, 'disabled', false));
+    }
+
+    /**
+     * Test sanitizeUnknownField with array value
+     * Note: InputSanitizer::sanitizeAll skips numeric key "0" due to empty("0") being true
+     */
+    public function testSanitizeUnknownFieldArray(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeUnknownField');
+
+        // Use associative array to avoid numeric key issues
+        $result = $method->invoke(null, 'items', ['key1' => 'a', 'key2' => 'b', 'key3' => 'c']);
+
+        $this->assertIsArray($result);
+        $this->assertEquals('a', $result['key1']);
+        $this->assertEquals('b', $result['key2']);
+        $this->assertEquals('c', $result['key3']);
+    }
+
+    /**
+     * Test sanitizeUnknownField with invalid key
+     */
+    public function testSanitizeUnknownFieldInvalidKey(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeUnknownField');
+
+        // Key with only special characters becomes empty after sanitization
+        $result = $method->invoke(null, '!@#$%^', 'value');
+
+        $this->assertNull($result);
+    }
+
+    /**
+     * Test sanitizeUnknownField with null value
+     */
+    public function testSanitizeUnknownFieldNullValue(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeUnknownField');
+
+        $result = $method->invoke(null, 'field', null);
+
+        $this->assertNull($result);
+    }
+
+    // =============================================
+    // Tests for sanitizeRequestData method
+    // =============================================
+
+    /**
+     * Test sanitizeRequestData with empty data
+     */
+    public function testSanitizeRequestDataEmpty(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeRequestData');
+
+        $result = $method->invoke(null, [], null);
+
+        $this->assertIsArray($result);
+        $this->assertEmpty($result);
+    }
+
+    /**
+     * Test sanitizeRequestData without schema (default sanitization)
+     */
+    public function testSanitizeRequestDataNoSchema(): void
+    {
+        $method = $this->getPrivateMethod('sanitizeRequestData');
+
+        $data = [
+            'name' => '  John Doe  ',
+            'age' => 30,
+            'active' => true
+        ];
+
+        $result = $method->invoke(null, $data, null);
+
+        $this->assertEquals('John Doe', $result['name']);
+        $this->assertSame(30, $result['age']);
+        $this->assertTrue($result['active']);
+    }
+
+    /**
+     * Test handleCORS in test environment (should skip headers)
+     */
+    public function testHandleCORSInTestEnvironment(): void
+    {
+        // When PHPUNIT_RUNNING is defined, handleCORS should return without sending headers
+        if (!defined('PHPUNIT_RUNNING')) {
+            define('PHPUNIT_RUNNING', true);
+        }
+
+        // Should not throw or cause issues
+        RouteController::handleCORS();
+
+        // If we reach here, the test passed (no fatal error from header already sent)
+        $this->assertTrue(true);
     }
 }

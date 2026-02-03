@@ -21,6 +21,8 @@ use PHPUnit\Framework\TestCase;
  * Note: These tests focus on the static validateToken method which doesn't
  * require Dolibarr dependencies. Tests for requestReset require
  * integration tests with mocked database and lang objects.
+ *
+ * @covers \SmartAuth\Api\PasswordResetController
  */
 class PasswordResetControllerTest extends TestCase
 {

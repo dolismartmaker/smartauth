@@ -10,6 +10,8 @@ use SmartAuth;
 
 /**
  * Integration tests for RefreshTokenMonitoring with real Dolibarr database
+ *
+ * @covers \SmartAuth\Api\RefreshTokenMonitoring
  */
 class RefreshTokenMonitoringRealTest extends DolibarrRealTestCase
 {

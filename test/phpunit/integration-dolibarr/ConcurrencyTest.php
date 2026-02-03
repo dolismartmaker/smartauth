@@ -39,6 +39,9 @@ use ReflectionMethod;
  *
  * These tests verify that SmartAuth handles concurrent operations correctly,
  * maintaining database consistency and proper atomicity of operations.
+ *
+ * @covers \SmartAuth\Api\AuthController
+ * @covers \SmartAuth\Api\RateLimiter
  */
 class ConcurrencyTest extends DolibarrRealTestCase
 {

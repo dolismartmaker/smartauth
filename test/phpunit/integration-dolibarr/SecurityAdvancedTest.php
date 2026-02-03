@@ -21,6 +21,9 @@ use ReflectionMethod;
  *
  * Tests for token replay attacks, family revocation, brute force protection,
  * SQL injection prevention, and token forgery detection.
+ *
+ * @covers \SmartAuth\Api\AuthController
+ * @covers \SmartAuth\Api\RateLimiter
  */
 class SecurityAdvancedTest extends DolibarrRealTestCase
 {

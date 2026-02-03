@@ -8,6 +8,8 @@ use SmartAuth\Tests\Mocks\MockDatabase;
 
 /**
  * Unit tests for RefreshTokenMonitoring
+ *
+ * @covers \SmartAuth\Api\RefreshTokenMonitoring
  */
 class RefreshTokenMonitoringTest extends TestCase
 {

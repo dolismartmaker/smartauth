@@ -14,6 +14,9 @@ use Societe;
  * Integration tests with real Dolibarr objects (User, Societe, etc.)
  *
  * Tests the SmartAuth module integration with Dolibarr core objects
+ *
+ * @covers \SmartAuth
+ * @covers \SmartAuthDevices
  */
 class DolibarrObjectsIntegrationTest extends DolibarrRealTestCase
 {

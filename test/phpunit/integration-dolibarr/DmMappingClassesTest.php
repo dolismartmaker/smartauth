@@ -18,6 +18,9 @@ namespace SmartAuth\Tests\IntegrationDolibarr;
 
 use ReflectionClass;
 
+/**
+ * @covers \SmartAuth\DolibarrMapping\dmBase
+ */
 class DmMappingClassesTest extends DolibarrRealTestCase
 {
     /**

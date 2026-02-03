@@ -27,6 +27,9 @@ require_once DOL_DOCUMENT_ROOT . '/comm/propal/class/propal.class.php';
 require_once DOL_DOCUMENT_ROOT . '/commande/class/commande.class.php';
 require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php';
 
+/**
+ * @covers \SmartAuth\DolibarrMapping\dmTrait
+ */
 class DmMappingValidationTest extends DolibarrRealTestCase
 {
     /**

@@ -4,13 +4,28 @@ namespace SmartAuth\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
 use SmartAuth\DolibarrMapping\dmHelper;
+use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * Unit tests for dmHelper
+ *
+ * @covers \SmartAuth\DolibarrMapping\dmHelper
  */
 class dmHelperTest extends TestCase
 {
     private dmHelper $helper;
+
+    /**
+     * Helper to access private/protected methods
+     */
+    private function getPrivateMethod(string $methodName): ReflectionMethod
+    {
+        $reflection = new ReflectionClass(dmHelper::class);
+        $method = $reflection->getMethod($methodName);
+        $method->setAccessible(true);
+        return $method;
+    }
 
     protected function setUp(): void
     {
@@ -398,5 +413,489 @@ class dmHelperTest extends TestCase
         $this->assertEquals('defaultVal', $result['defaultValue']);
         $this->assertEquals(5, $result['position']);
         $this->assertEquals(['read'], $result['visible']);
+    }
+
+    // =========================================================================
+    // Tests for private _customFilterAttributeType method
+    // =========================================================================
+
+    /**
+     * Test _customFilterAttributeType with simple varchar
+     */
+    public function testCustomFilterAttributeTypeVarchar(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'varchar');
+
+        $this->assertIsArray($result);
+        $this->assertEquals('varchar', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType with varchar(30)
+     */
+    public function testCustomFilterAttributeTypeVarcharWithLength(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'varchar(30)');
+
+        $this->assertEquals('varchar', $result['type']);
+        $this->assertEquals('30', $result['max']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts integer to int
+     */
+    public function testCustomFilterAttributeTypeInteger(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'integer');
+
+        $this->assertEquals('int', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts double to float
+     */
+    public function testCustomFilterAttributeTypeDouble(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'double');
+
+        $this->assertEquals('float', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts real to float
+     */
+    public function testCustomFilterAttributeTypeReal(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'real');
+
+        $this->assertEquals('float', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts price to float
+     */
+    public function testCustomFilterAttributeTypePrice(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'price');
+
+        $this->assertEquals('float', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts checkbox to boolean with switch variant
+     */
+    public function testCustomFilterAttributeTypeCheckbox(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'checkbox');
+
+        $this->assertEquals('boolean', $result['type']);
+        $this->assertEquals('switch', $result['typeVariant']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts radio to boolean with radio variant
+     */
+    public function testCustomFilterAttributeTypeRadio(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'radio');
+
+        $this->assertEquals('boolean', $result['type']);
+        $this->assertEquals('radio', $result['typeVariant']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts mail to email
+     */
+    public function testCustomFilterAttributeTypeMail(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'mail');
+
+        $this->assertEquals('email', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts phone to phoneNumber
+     */
+    public function testCustomFilterAttributeTypePhone(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'phone');
+
+        $this->assertEquals('phoneNumber', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts sellist to select
+     */
+    public function testCustomFilterAttributeTypeSellist(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'sellist');
+
+        $this->assertEquals('select', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts chkbxlst to check with multiple
+     */
+    public function testCustomFilterAttributeTypeChkbxlst(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'chkbxlst');
+
+        $this->assertEquals('check', $result['type']);
+        $this->assertEquals('checkbox', $result['typeVariant']);
+        $this->assertTrue($result['multiple']);
+    }
+
+    /**
+     * Test _customFilterAttributeType converts ip to varchar
+     */
+    public function testCustomFilterAttributeTypeIp(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'ip');
+
+        $this->assertEquals('varchar', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType keeps text as text
+     */
+    public function testCustomFilterAttributeTypeText(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'text');
+
+        $this->assertEquals('text', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeType with double(x,y) format
+     */
+    public function testCustomFilterAttributeTypeDoubleWithPrecision(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeType');
+
+        $result = $method->invoke($this->helper, 'double(10)');
+
+        $this->assertEquals('double', $result['type']);
+        $this->assertEquals('10', $result['max']);
+    }
+
+    // =========================================================================
+    // Tests for private _customFilterAttributeOptions method
+    // =========================================================================
+
+    /**
+     * Test _customFilterAttributeOptions with array input
+     */
+    public function testCustomFilterAttributeOptionsWithArray(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeOptions');
+
+        $input = [
+            '1' => 'Option One',
+            '2' => 'Option Two',
+            '3' => 'Option Three'
+        ];
+
+        $result = $method->invoke($this->helper, $input);
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('options', $result);
+        $this->assertCount(3, $result['options']);
+        $this->assertEquals('Option One', $result['options'][0]['label']);
+        $this->assertEquals('1', $result['options'][0]['value']);
+    }
+
+    /**
+     * Test _customFilterAttributeOptions with non-array input
+     */
+    public function testCustomFilterAttributeOptionsWithNonArray(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeOptions');
+
+        $result = $method->invoke($this->helper, 'not an array');
+
+        $this->assertIsArray($result);
+        $this->assertEmpty($result);
+    }
+
+    // =========================================================================
+    // Tests for private _customFilterAttributeTypeSellist method
+    // =========================================================================
+
+    /**
+     * Test _customFilterAttributeTypeSellist returns todo placeholder
+     */
+    public function testCustomFilterAttributeTypeSellistReturnsPlaceholder(): void
+    {
+        $method = $this->getPrivateMethod('_customFilterAttributeTypeSellist');
+
+        $result = $method->invoke($this->helper, 'sellist:sometable:somefield');
+
+        $this->assertIsArray($result);
+        $this->assertEquals('sellist', $result['type']);
+        $this->assertEquals('todo', $result['todo']);
+    }
+
+    // =========================================================================
+    // Tests for private _getCacheValue method
+    // =========================================================================
+
+    /**
+     * Test _getCacheValue returns default when no cache
+     */
+    public function testGetCacheValueReturnsDefault(): void
+    {
+        global $conf;
+        $conf->cache['smartmakers'] = [];
+
+        $method = $this->getPrivateMethod('_getCacheValue');
+
+        $result = $method->invoke($this->helper, 'photo', 'width', 1024);
+
+        $this->assertEquals(1024, $result);
+    }
+
+    /**
+     * Test _getCacheValue returns cached value when available
+     */
+    public function testGetCacheValueReturnsCachedValue(): void
+    {
+        global $conf;
+        $conf->cache['smartmakers']['photo']['width'] = 800;
+
+        $method = $this->getPrivateMethod('_getCacheValue');
+
+        $result = $method->invoke($this->helper, 'photo', 'width', 1024);
+
+        $this->assertEquals(800, $result);
+    }
+
+    // =========================================================================
+    // Tests for extrafieldsFilter method
+    // =========================================================================
+
+    /**
+     * Create a complete extrafields mock object
+     */
+    private function createExtrafieldsMock(string $element, string $fieldName, array $attributes): \stdClass
+    {
+        $extrafields = new \stdClass();
+        $extrafields->attributes = [
+            $element => []
+        ];
+
+        // Initialize all expected attributes with empty defaults
+        $allAttributes = [
+            'type', 'label', 'placeholder', 'help', 'picto', 'default',
+            'copytoclipboard', 'required', 'noteditable', 'visible', 'size', 'pos', 'options'
+        ];
+
+        foreach ($allAttributes as $attr) {
+            $extrafields->attributes[$element][$attr] = [];
+            $extrafields->attributes[$element][$attr][$fieldName] = $attributes[$attr] ?? null;
+        }
+
+        return $extrafields;
+    }
+
+    /**
+     * Test extrafieldsFilter returns is_extrafield flag
+     */
+    public function testExtrafieldsFilterReturnsIsExtrafieldFlag(): void
+    {
+        $extrafields = $this->createExtrafieldsMock('societe', 'test_field', [
+            'type' => 'varchar',
+            'label' => 'Test Label',
+            'visible' => 1
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'options_test_field', 'frontkey', $extrafields);
+
+        $this->assertIsArray($result);
+        $this->assertTrue($result['is_extrafield']);
+    }
+
+    /**
+     * Test extrafieldsFilter translates label
+     */
+    public function testExtrafieldsFilterTranslatesLabel(): void
+    {
+        $extrafields = $this->createExtrafieldsMock('societe', 'test_field', [
+            'type' => 'varchar',
+            'label' => 'My Label',
+            'help' => 'My Help'
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'options_test_field', 'frontkey', $extrafields);
+
+        $this->assertEquals('My Label', $result['label']);
+        $this->assertEquals('My Help', $result['help']);
+    }
+
+    /**
+     * Test extrafieldsFilter handles required field
+     */
+    public function testExtrafieldsFilterHandlesRequired(): void
+    {
+        $extrafields = $this->createExtrafieldsMock('societe', 'test_field', [
+            'type' => 'varchar',
+            'required' => 1
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'options_test_field', 'frontkey', $extrafields);
+
+        $this->assertTrue($result['required']);
+    }
+
+    /**
+     * Test extrafieldsFilter with smartphoto_ prefix
+     */
+    public function testExtrafieldsFilterWithSmartphotoPrefix(): void
+    {
+        global $conf;
+        $conf->cache['smartmakers'] = [];
+
+        $extrafields = $this->createExtrafieldsMock('societe', 'smartphoto_image', [
+            'type' => 'varchar',
+            'label' => 'Photo'
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'smartphoto_image', 'frontkey', $extrafields);
+
+        $this->assertEquals('photos', $result['type']);
+        $this->assertEquals(['create', 'update', 'read'], $result['visible']);
+        $this->assertArrayHasKey('compressOptions', $result);
+    }
+
+    /**
+     * Test extrafieldsFilter with smartaudio_ prefix
+     */
+    public function testExtrafieldsFilterWithSmartaudioPrefix(): void
+    {
+        $extrafields = $this->createExtrafieldsMock('societe', 'smartaudio_recording', [
+            'type' => 'varchar',
+            'label' => 'Recording'
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'smartaudio_recording', 'frontkey', $extrafields);
+
+        $this->assertEquals('audios', $result['type']);
+    }
+
+    /**
+     * Test extrafieldsFilter with smartvideo_ prefix
+     */
+    public function testExtrafieldsFilterWithSmartvideoPrefix(): void
+    {
+        $extrafields = $this->createExtrafieldsMock('societe', 'smartvideo_clip', [
+            'type' => 'varchar',
+            'label' => 'Video'
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'smartvideo_clip', 'frontkey', $extrafields);
+
+        $this->assertEquals('videos', $result['type']);
+    }
+
+    /**
+     * Test extrafieldsFilter with smartfile_ prefix
+     */
+    public function testExtrafieldsFilterWithSmartfilePrefix(): void
+    {
+        $extrafields = $this->createExtrafieldsMock('societe', 'smartfile_document', [
+            'type' => 'varchar',
+            'label' => 'Document'
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'smartfile_document', 'frontkey', $extrafields);
+
+        $this->assertEquals('files', $result['type']);
+    }
+
+    /**
+     * Test extrafieldsFilter with smartsignature_ prefix
+     */
+    public function testExtrafieldsFilterWithSmartsignaturePrefix(): void
+    {
+        $extrafields = $this->createExtrafieldsMock('societe', 'smartsignature_sig', [
+            'type' => 'varchar',
+            'label' => 'Signature'
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'smartsignature_sig', 'frontkey', $extrafields);
+
+        $this->assertEquals('signature', $result['type']);
+    }
+
+    /**
+     * Test _customFilterAttributeContacts (currently empty)
+     */
+    public function testCustomFilterAttributeContactsReturnsNothing(): void
+    {
+        $result = $this->helper->_customFilterAttributeContacts('test');
+
+        $this->assertNull($result);
+    }
+
+    /**
+     * Test propertiesFilter with type field
+     */
+    public function testPropertiesFilterWithTypeField(): void
+    {
+        $input = [
+            'type' => 'varchar(50)'
+        ];
+
+        $result = $this->helper->propertiesFilter($input, 'testkey', 'frontkey');
+
+        $this->assertArrayHasKey('type', $result);
+        $this->assertEquals('varchar', $result['type']);
+        $this->assertEquals('50', $result['max']);
+    }
+
+    /**
+     * Test propertiesFilter with options array
+     */
+    public function testPropertiesFilterWithOptionsArray(): void
+    {
+        $input = [
+            'options' => [
+                'opt1' => 'Value 1',
+                'opt2' => 'Value 2'
+            ]
+        ];
+
+        $result = $this->helper->propertiesFilter($input, 'testkey', 'frontkey');
+
+        $this->assertArrayHasKey('options', $result);
+        $this->assertIsArray($result['options']);
+        $this->assertCount(2, $result['options']);
     }
 }

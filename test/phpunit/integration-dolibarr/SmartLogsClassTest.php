@@ -16,6 +16,9 @@ namespace SmartAuth\Tests\IntegrationDolibarr;
 use SmartLogs;
 use SmartAuthDevices;
 
+/**
+ * @covers \SmartLogs
+ */
 class SmartLogsClassTest extends DolibarrRealTestCase
 {
     private $smartLogs;

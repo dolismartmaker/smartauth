@@ -16,6 +16,9 @@ namespace SmartAuth\Tests\Unit;
 use PHPUnit\Framework\TestCase;
 use SmartAuth\Api\LogSanitizer;
 
+/**
+ * @covers \SmartAuth\Api\LogSanitizer
+ */
 class LogSanitizerTest extends TestCase
 {
     // ==================== maskIP tests ====================

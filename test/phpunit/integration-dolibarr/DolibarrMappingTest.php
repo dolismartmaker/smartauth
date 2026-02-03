@@ -11,6 +11,8 @@ use SmartAuth\DolibarrMapping\dmHelper;
 /**
  * Integration tests for Dolibarr Mapping classes
  * Tests the field mapping system between Dolibarr objects and API responses
+ *
+ * @covers \SmartAuth\DolibarrMapping\dmHelper
  */
 class DolibarrMappingTest extends DolibarrRealTestCase
 {

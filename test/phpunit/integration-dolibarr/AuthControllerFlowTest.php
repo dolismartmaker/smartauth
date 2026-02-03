@@ -18,6 +18,8 @@ use ReflectionClass;
 /**
  * Integration tests for AuthController authentication flows
  * Tests the complete token lifecycle: creation, refresh, and revocation
+ *
+ * @covers \SmartAuth\Api\AuthController
  */
 class AuthControllerFlowTest extends DolibarrRealTestCase
 {

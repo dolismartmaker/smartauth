@@ -15,6 +15,9 @@ namespace SmartAuth\Tests\IntegrationDolibarr;
 
 use SmartAuth\Api\RouteCache;
 
+/**
+ * @covers \SmartAuth\Api\RouteCache
+ */
 class RouteCacheTest extends DolibarrRealTestCase
 {
     private string $testCacheDir;

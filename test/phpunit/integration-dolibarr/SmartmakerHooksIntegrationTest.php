@@ -10,6 +10,9 @@ use SmartAuth\Api\InputSanitizer;
  *
  * Tests the hook system (smartmaker_addValidationSchemas, smartmaker_addSanitizers)
  * in a real Dolibarr environment with the actual hookmanager.
+ *
+ * @covers \SmartAuth\Api\ValidationSchemas
+ * @covers \SmartAuth\Api\InputSanitizer
  */
 class SmartmakerHooksIntegrationTest extends DolibarrRealTestCase
 {

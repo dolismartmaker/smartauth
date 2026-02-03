@@ -10,6 +10,8 @@ use ReflectionMethod;
 
 /**
  * Extended unit tests for RouteController
+ *
+ * @covers \SmartAuth\Api\RouteController
  */
 class RouteControllerExtendedTest extends TestCase
 {

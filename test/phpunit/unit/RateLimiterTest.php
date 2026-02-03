@@ -8,6 +8,8 @@ use SmartAuth\Tests\Mocks\MockDatabase;
 
 /**
  * Unit tests for RateLimiter
+ *
+ * @covers \SmartAuth\Api\RateLimiter
  */
 class RateLimiterTest extends TestCase
 {
@@ -237,5 +239,235 @@ class RateLimiterTest extends TestCase
         // Should still be blocked but retry_after should be ~0
         $this->assertFalse($result['allowed']);
         $this->assertLessThanOrEqual(1, $result['retry_after']);
+    }
+
+    // =============================================
+    // Tests for cleanOldEntries method
+    // =============================================
+
+    /**
+     * Test cleanOldEntries with default retention
+     */
+    public function testCleanOldEntriesWithDefaultRetention(): void
+    {
+        $this->db->setQueryResult(true);
+        $this->db->setAffectedRows(10);
+
+        $deleted = $this->rateLimiter->cleanOldEntries();
+
+        $this->assertEquals(10, $deleted);
+        $this->assertTrue($this->db->hasQueryContaining('DELETE FROM'));
+        $this->assertTrue($this->db->hasQueryContaining('smartauth_ratelimit'));
+        $this->assertTrue($this->db->hasQueryContaining('attempt_time <'));
+    }
+
+    /**
+     * Test cleanOldEntries with custom retention
+     */
+    public function testCleanOldEntriesWithCustomRetention(): void
+    {
+        $this->db->setQueryResult(true);
+        $this->db->setAffectedRows(5);
+
+        $deleted = $this->rateLimiter->cleanOldEntries(3600); // 1 hour
+
+        $this->assertEquals(5, $deleted);
+        $query = $this->db->getLastQuery();
+        // The cutoff should be time() - 3600
+        $expectedCutoff = time() - 3600;
+        $this->assertStringContainsString((string)$expectedCutoff, $query);
+    }
+
+    /**
+     * Test cleanOldEntries returns zero when no entries deleted
+     */
+    public function testCleanOldEntriesReturnsZeroWhenNoneDeleted(): void
+    {
+        $this->db->setQueryResult(true);
+        $this->db->setAffectedRows(0);
+
+        $deleted = $this->rateLimiter->cleanOldEntries();
+
+        $this->assertEquals(0, $deleted);
+    }
+
+    /**
+     * Test cleanOldEntries returns -1 on database error
+     */
+    public function testCleanOldEntriesReturnsMinusOneOnError(): void
+    {
+        $this->db->setQueryResult(false);
+
+        $deleted = $this->rateLimiter->cleanOldEntries();
+
+        $this->assertEquals(-1, $deleted);
+    }
+
+    // =============================================
+    // Tests for forceCleanup method
+    // =============================================
+
+    /**
+     * Test forceCleanup executes cleanup immediately
+     */
+    public function testForceCleanupExecutesImmediately(): void
+    {
+        global $conf;
+
+        // Setup: cleanup query succeeds, update const succeeds
+        $this->db->setQueryResult(true); // DELETE query
+        $this->db->setAffectedRows(15);
+
+        $deleted = $this->rateLimiter->forceCleanup();
+
+        // Verify DELETE was executed
+        $this->assertTrue($this->db->hasQueryContaining('DELETE FROM'));
+        $this->assertEquals(15, $deleted);
+        // Should have updated cache
+        $this->assertEquals(time(), $conf->cache['smartmakers'][RateLimiter::CLEANUP_CACHE_KEY], '', 1);
+    }
+
+    /**
+     * Test forceCleanup with custom retention
+     */
+    public function testForceCleanupWithCustomRetention(): void
+    {
+        $this->db->setQueryResult(true);
+        $this->db->setAffectedRows(20);
+
+        $deleted = $this->rateLimiter->forceCleanup(7200); // 2 hours
+
+        // Verify the cutoff time in the query (time() - 7200)
+        $queries = $this->db->getQueries();
+        $deleteQuery = $queries[0];
+        $this->assertStringContainsString('DELETE FROM', $deleteQuery);
+        $this->assertEquals(20, $deleted);
+    }
+
+    /**
+     * Test forceCleanup updates last cleanup time even on zero deletions
+     */
+    public function testForceCleanupUpdatesTimeEvenOnZeroDeletions(): void
+    {
+        global $conf;
+
+        $this->db->setQueryResult(true);
+        $this->db->setAffectedRows(0);
+
+        $deleted = $this->rateLimiter->forceCleanup();
+
+        $this->assertEquals(0, $deleted);
+        // Should still update the cache
+        $this->assertArrayHasKey(RateLimiter::CLEANUP_CACHE_KEY, $conf->cache['smartmakers']);
+    }
+
+    // =============================================
+    // Tests for getStats method
+    // =============================================
+
+    /**
+     * Test getStats returns statistics
+     */
+    public function testGetStatsReturnsStatistics(): void
+    {
+        // First query for stats, second for getLastCleanupTime
+        $now = time();
+        $this->db->setFetchResultSequence([
+            (object)['total' => 100, 'oldest' => $now - 86400, 'newest' => $now - 60],
+            (object)['value' => $now - 3600]
+        ]);
+
+        $stats = $this->rateLimiter->getStats();
+
+        $this->assertIsArray($stats);
+        $this->assertEquals(100, $stats['total_entries']);
+        $this->assertEquals($now - 86400, $stats['oldest_entry']);
+        $this->assertEquals($now - 60, $stats['newest_entry']);
+        $this->assertEquals($now - 3600, $stats['last_cleanup']);
+    }
+
+    /**
+     * Test getStats returns zeros on empty table
+     */
+    public function testGetStatsReturnsZerosOnEmptyTable(): void
+    {
+        $this->db->setFetchResultSequence([
+            (object)['total' => 0, 'oldest' => null, 'newest' => null],
+            null // No cleanup time record
+        ]);
+
+        $stats = $this->rateLimiter->getStats();
+
+        $this->assertEquals(0, $stats['total_entries']);
+        $this->assertEquals(0, $stats['oldest_entry']);
+        $this->assertEquals(0, $stats['newest_entry']);
+        $this->assertEquals(0, $stats['last_cleanup']);
+    }
+
+    /**
+     * Test getStats returns defaults on database error
+     */
+    public function testGetStatsReturnsDefaultsOnError(): void
+    {
+        $this->db->setQueryResult(false);
+
+        $stats = $this->rateLimiter->getStats();
+
+        $this->assertEquals(0, $stats['total_entries']);
+        $this->assertEquals(0, $stats['oldest_entry']);
+        $this->assertEquals(0, $stats['newest_entry']);
+        $this->assertEquals(0, $stats['last_cleanup']);
+    }
+
+    /**
+     * Test getStats queries correct table
+     */
+    public function testGetStatsQueriesCorrectTable(): void
+    {
+        $this->db->setFetchResultSequence([
+            (object)['total' => 0, 'oldest' => 0, 'newest' => 0],
+            null
+        ]);
+
+        $this->rateLimiter->getStats();
+
+        $this->assertTrue($this->db->hasQueryContaining('smartauth_ratelimit'));
+        $this->assertTrue($this->db->hasQueryContaining('COUNT(*)'));
+        $this->assertTrue($this->db->hasQueryContaining('MIN(attempt_time)'));
+        $this->assertTrue($this->db->hasQueryContaining('MAX(attempt_time)'));
+    }
+
+    // =============================================
+    // Tests for constants
+    // =============================================
+
+    /**
+     * Test class constants are defined
+     */
+    public function testConstantsAreDefined(): void
+    {
+        $this->assertEquals('smartauth_ratelimit_last_cleanup', RateLimiter::CLEANUP_CACHE_KEY);
+        $this->assertEquals(3600, RateLimiter::CLEANUP_INTERVAL);
+        $this->assertEquals(86400, RateLimiter::MAX_ENTRY_AGE);
+    }
+
+    // =============================================
+    // Tests for checkLimit with no result from DB
+    // =============================================
+
+    /**
+     * Test checkLimit allows when DB returns null object
+     */
+    public function testCheckLimitAllowsWhenNoResult(): void
+    {
+        $this->db->setQueryResult(true, [['value' => time()]]);
+        // Second query returns empty result (no previous attempts)
+        $this->db->setQueryResult(true);
+        $this->db->setFetchResultSequence([null]);
+
+        $result = $this->rateLimiter->checkLimit('new-ip', 'login_ip', 5, 300);
+
+        $this->assertTrue($result['allowed']);
+        $this->assertNull($result['retry_after']);
     }
 }

@@ -11,6 +11,8 @@ use ReflectionMethod;
 
 /**
  * Extended unit tests for AuthController - testing more private methods
+ *
+ * @covers \SmartAuth\Api\AuthController
  */
 class AuthControllerExtendedTest extends TestCase
 {

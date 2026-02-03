@@ -24,6 +24,8 @@ use User;
  * - Token generation and validation
  * - Multi-device scenarios
  * - Session management across multiple users
+ *
+ * @covers \SmartAuth\Api\AuthController
  */
 class EndToEndAuthFlowTest extends DolibarrRealTestCase
 {

@@ -10,6 +10,8 @@ use SmartAuth\Api\RateLimiter;
 
 /**
  * Integration tests for AdvancedRateLimiter class
+ *
+ * @covers \SmartAuth\Api\AdvancedRateLimiter
  */
 class AdvancedRateLimiterTest extends DolibarrRealTestCase
 {

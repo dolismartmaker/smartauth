@@ -9,6 +9,8 @@ use SmartAuth\Api\InputSanitizer;
 /**
  * Integration tests for InputSanitizer
  * Focuses on methods not covered by other tests
+ *
+ * @covers \SmartAuth\Api\InputSanitizer
  */
 class InputSanitizerTest extends DolibarrRealTestCase
 {

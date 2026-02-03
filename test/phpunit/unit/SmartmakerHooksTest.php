@@ -9,6 +9,9 @@ use SmartAuth\Api\InputSanitizer;
 /**
  * Unit tests for SmartMaker hooks system
  * Tests ValidationSchemas and InputSanitizer external extension capabilities
+ *
+ * @covers \SmartAuth\Api\ValidationSchemas
+ * @covers \SmartAuth\Api\InputSanitizer
  */
 class SmartmakerHooksTest extends TestCase
 {

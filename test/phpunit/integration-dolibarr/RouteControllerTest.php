@@ -12,6 +12,8 @@ use ReflectionMethod;
 
 /**
  * Integration tests for RouteController class
+ *
+ * @covers \SmartAuth\Api\RouteController
  */
 class RouteControllerTest extends DolibarrRealTestCase
 {

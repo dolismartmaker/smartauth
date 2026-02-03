@@ -10,6 +10,8 @@ use ReflectionMethod;
 
 /**
  * Unit tests for SyncController
+ *
+ * @covers \SmartAuth\Api\SyncController
  */
 class SyncControllerTest extends TestCase
 {
@@ -669,5 +671,249 @@ class SyncControllerTest extends TestCase
         $this->assertEquals('contact', $method->invoke($this->controller, 'socpeople'));
         $this->assertEquals('product', $method->invoke($this->controller, 'product'));
         $this->assertNull($method->invoke($this->controller, 'unknown_table'));
+    }
+
+    /**
+     * Test getClientByUUID returns null when client not found
+     */
+    public function testGetClientByUUIDReturnsNullWhenNotFound(): void
+    {
+        $method = $this->getPrivateMethod('getClientByUUID');
+
+        $this->mockDb->setQueryResult(true, [], 0);
+
+        $result = $method->invoke($this->controller, '550e8400-e29b-41d4-a716-446655440000');
+
+        $this->assertNull($result);
+    }
+
+    /**
+     * Test getClientByUUID returns client object when found
+     */
+    public function testGetClientByUUIDReturnsClientWhenFound(): void
+    {
+        $method = $this->getPrivateMethod('getClientByUUID');
+
+        $client = [
+            'rowid' => 1,
+            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'status' => 1
+        ];
+
+        $this->mockDb->setQueryResult(true, [$client], 1);
+
+        $result = $method->invoke($this->controller, '550e8400-e29b-41d4-a716-446655440000');
+
+        $this->assertNotNull($result);
+        $this->assertEquals(1, $result->rowid);
+    }
+
+    /**
+     * Test updateClientSyncTimestamp updates the database
+     */
+    public function testUpdateClientSyncTimestampUpdatesDatabase(): void
+    {
+        $method = $this->getPrivateMethod('updateClientSyncTimestamp');
+
+        $this->mockDb->setQueryResult(true);
+
+        $method->invoke($this->controller, 123);
+
+        $this->assertTrue($this->mockDb->hasQueryContaining('UPDATE'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('smartauth_sync_clients'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('last_sync_at'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('123'));
+    }
+
+    /**
+     * Test logSyncEvent inserts event record
+     */
+    public function testLogSyncEventInsertsRecord(): void
+    {
+        $method = $this->getPrivateMethod('logSyncEvent');
+
+        $this->mockDb->setQueryResult(true);
+
+        $method->invoke($this->controller, 1, 'push', 'societe', 100, ['test' => 'data']);
+
+        $this->assertTrue($this->mockDb->hasQueryContaining('INSERT INTO'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('smartauth_sync_events'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('push'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('societe'));
+    }
+
+    /**
+     * Test logSyncEvent handles null values
+     */
+    public function testLogSyncEventHandlesNullValues(): void
+    {
+        $method = $this->getPrivateMethod('logSyncEvent');
+
+        $this->mockDb->setQueryResult(true);
+
+        $method->invoke($this->controller, 1, 'register', null, null, null);
+
+        $this->assertTrue($this->mockDb->hasQueryContaining('INSERT INTO'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('NULL'));
+    }
+
+    /**
+     * Test createTombstone inserts record
+     */
+    public function testCreateTombstoneInsertsRecord(): void
+    {
+        $method = $this->getPrivateMethod('createTombstone');
+
+        $this->mockDb->setQueryResult(true);
+
+        $method->invoke($this->controller, 'societe', 100, 1);
+
+        $this->assertTrue($this->mockDb->hasQueryContaining('INSERT INTO'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('smartauth_sync_tombstones'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('societe'));
+        $this->assertTrue($this->mockDb->hasQueryContaining('100'));
+    }
+
+    /**
+     * Test detectRealConflict ignores metadata fields
+     */
+    public function testDetectRealConflictIgnoresMetadataFields(): void
+    {
+        $method = $this->getPrivateMethod('detectRealConflict');
+
+        $clientData = [
+            'rowid' => 999,
+            'id' => 888,
+            'tms' => '2025-01-20 10:00:00',
+            'date_creation' => '2025-01-01 00:00:00',
+            'date_modification' => '2025-01-20 10:00:00',
+            'nom' => 'Same Name'
+        ];
+
+        $serverObj = (object) [
+            'rowid' => 1,
+            'nom' => 'Same Name',
+            'tms' => '2025-01-19 10:00:00'
+        ];
+
+        $config = ['table' => 'societe'];
+
+        $result = $method->invoke($this->controller, $clientData, $serverObj, $config);
+
+        // Should be null because 'nom' is the same and metadata fields are ignored
+        $this->assertNull($result);
+    }
+
+    /**
+     * Test formatObjectForSync handles missing tms
+     */
+    public function testFormatObjectForSyncHandlesMissingTms(): void
+    {
+        $method = $this->getPrivateMethod('formatObjectForSync');
+
+        $obj = (object) [
+            'rowid' => 123,
+            'nom' => 'Test Company'
+        ];
+
+        $result = $method->invoke($this->controller, $obj, 'thirdparty');
+
+        $this->assertIsArray($result);
+        $this->assertEquals(123, $result['id']);
+        $this->assertArrayNotHasKey('tms', $result);
+    }
+
+    /**
+     * Test normalizeValue handles boolean values
+     */
+    public function testNormalizeValueHandlesBooleans(): void
+    {
+        $method = $this->getPrivateMethod('normalizeValue');
+
+        $this->assertTrue($method->invoke($this->controller, true));
+        $this->assertFalse($method->invoke($this->controller, false));
+    }
+
+    /**
+     * Test normalizeValue handles arrays
+     */
+    public function testNormalizeValueHandlesArrays(): void
+    {
+        $method = $this->getPrivateMethod('normalizeValue');
+
+        $array = ['a', 'b', 'c'];
+        $result = $method->invoke($this->controller, $array);
+
+        $this->assertEquals($array, $result);
+    }
+
+    /**
+     * Test pull with last_sync_at from payload
+     */
+    public function testPullWithLastSyncAtFromPayload(): void
+    {
+        $client = (object) [
+            'rowid' => 1,
+            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'last_sync_at' => null,
+            'status' => 1
+        ];
+
+        $this->mockDb
+            ->setQueryResult(true, [(array) $client], 1)
+            ->setQueryResult(true, [], 0)  // No updated objects
+            ->setQueryResult(true, [], 0)  // No tombstones
+            ->setQueryResult(true);         // Event log
+
+        $result = $this->controller->pull([
+            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'object_type' => 'thirdparty',
+            'last_sync_at' => '2025-01-15 00:00:00'
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        // Verify the query used the provided last_sync_at
+        $this->assertTrue($this->mockDb->hasQueryContaining('tms >'));
+    }
+
+    /**
+     * Test register with custom sync_scope
+     */
+    public function testRegisterWithCustomSyncScope(): void
+    {
+        $this->mockDb
+            ->setQueryResult(true, [], 0)  // No existing client
+            ->setQueryResult(true)          // INSERT
+            ->setLastInsertId(1)
+            ->setQueryResult(true);         // Event log
+
+        $result = $this->controller->register([
+            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'jwt_device_id' => 42,
+            'sync_scope' => ['thirdparty', 'product']
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertTrue($result[0]['sync_scope']['thirdparty']);
+        $this->assertFalse($result[0]['sync_scope']['contact']);
+        $this->assertTrue($result[0]['sync_scope']['product']);
+    }
+
+    /**
+     * Test register insert failure returns 500
+     */
+    public function testRegisterInsertFailureReturns500(): void
+    {
+        $this->mockDb
+            ->setQueryResult(true, [], 0)  // No existing client
+            ->setQueryResult(false);        // INSERT fails
+
+        $result = $this->controller->register([
+            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'jwt_device_id' => 42
+        ]);
+
+        $this->assertEquals(500, $result[1]);
+        $this->assertStringContainsString('Failed', $result[0]['error']);
     }
 }

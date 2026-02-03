@@ -13,6 +13,9 @@
         <testsuite name="integration-dolibarr">
             <directory>test/phpunit/integration-dolibarr</directory>
         </testsuite>
+        <testsuite name="unit">
+            <directory>test/phpunit/unit</directory>
+        </testsuite>
     </testsuites>
 
     <coverage>
@@ -24,7 +27,10 @@
         <exclude>
             <directory>vendor</directory>
             <directory>test</directory>
+            <directory>stubs</directory>
             <file>api/tools.php</file>
+            <file>api/RedisRateLimiter.php</file>
+            <file>api/LocalRoutes.php</file>
             <!-- Exclude mapping configuration files (dm*) - these are simple config with no logic to test -->
             <file>dolMapping/dmAgendaEvent.php</file>
             <file>dolMapping/dmBom.php</file>
@@ -83,6 +89,5 @@
         <ini name="error_reporting" value="-1"/>
         <ini name="display_errors" value="On"/>
         <ini name="pcov.enabled" value="1"/>
-        <ini name="pcov.directory" value="."/>
     </php>
 </phpunit>

@@ -8,6 +8,8 @@ use SmartAuth\Api\RateLimiter;
 
 /**
  * Integration tests for RateLimiter with real Dolibarr database
+ *
+ * @covers \SmartAuth\Api\RateLimiter
  */
 class RateLimiterRealTest extends DolibarrRealTestCase
 {

@@ -96,6 +96,9 @@ class TestDmLinesMapper
     }
 }
 
+/**
+ * @covers \SmartAuth\DolibarrMapping\dmLinesTrait
+ */
 class DmLinesTraitTest extends DolibarrRealTestCase
 {
     private $mapper;

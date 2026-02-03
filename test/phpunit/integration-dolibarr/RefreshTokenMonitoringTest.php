@@ -19,6 +19,9 @@ require_once __DIR__ . '/../../../class/smartauth.class.php';
 use SmartAuth\Api\RefreshTokenMonitoring;
 use SmartAuth;
 
+/**
+ * @covers \SmartAuth\Api\RefreshTokenMonitoring
+ */
 class RefreshTokenMonitoringTest extends DolibarrRealTestCase
 {
     /**

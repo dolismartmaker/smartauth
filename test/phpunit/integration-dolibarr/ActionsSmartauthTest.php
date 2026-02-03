@@ -8,6 +8,8 @@ use ActionsSmartauth;
 
 /**
  * Integration tests for ActionsSmartauth class (Dolibarr hooks)
+ *
+ * @covers \ActionsSmartauth
  */
 class ActionsSmartauthTest extends DolibarrRealTestCase
 {

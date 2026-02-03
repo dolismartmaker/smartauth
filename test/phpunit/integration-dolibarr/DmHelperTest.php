@@ -8,6 +8,8 @@ use SmartAuth\DolibarrMapping\dmHelper;
 
 /**
  * Integration tests for dmHelper class (Dolibarr mapping helper)
+ *
+ * @covers \SmartAuth\DolibarrMapping\dmHelper
  */
 class DmHelperTest extends DolibarrRealTestCase
 {

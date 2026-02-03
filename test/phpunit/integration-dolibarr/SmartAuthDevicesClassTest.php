@@ -8,6 +8,8 @@ use SmartAuthDevices;
 
 /**
  * Integration tests for SmartAuthDevices class with real Dolibarr database
+ *
+ * @covers \SmartAuthDevices
  */
 class SmartAuthDevicesClassTest extends DolibarrRealTestCase
 {

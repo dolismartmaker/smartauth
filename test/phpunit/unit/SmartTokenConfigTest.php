@@ -7,6 +7,8 @@ use SmartAuth\Api\SmartTokenConfig;
 
 /**
  * Unit tests for SmartTokenConfig
+ *
+ * @covers \SmartAuth\Api\SmartTokenConfig
  */
 class SmartTokenConfigTest extends TestCase
 {

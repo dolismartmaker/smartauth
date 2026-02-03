@@ -123,6 +123,10 @@ class TestDmMapperWithExtrafields extends dmBase
     }
 }
 
+/**
+ * @covers \SmartAuth\DolibarrMapping\dmTrait
+ * @covers \SmartAuth\DolibarrMapping\dmBase
+ */
 class DmMappingTest extends DolibarrRealTestCase
 {
     private $mapper;

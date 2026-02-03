@@ -16,6 +16,8 @@ use SmartAuthDevices;
 
 /**
  * Integration tests for AuthController with real Dolibarr database
+ *
+ * @covers \SmartAuth\Api\AuthController
  */
 class AuthControllerRealTest extends DolibarrRealTestCase
 {

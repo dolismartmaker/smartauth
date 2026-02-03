@@ -22,6 +22,8 @@ use SmartAuth\Api\JwtKeyHelper;
  * Note: These tests focus on the static methods that don't require
  * database access. Tests for getKey() with auto-generation require
  * integration tests with a real database connection.
+ *
+ * @covers \SmartAuth\Api\JwtKeyHelper
  */
 class JwtKeyHelperTest extends TestCase
 {

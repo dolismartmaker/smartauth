@@ -18,6 +18,8 @@ use SmartAuthDevices;
  * Integration tests for AuthController login flow with real Dolibarr credentials
  *
  * Uses the default SQLite Dolibarr user: admin/adminadmin
+ *
+ * @covers \SmartAuth\Api\AuthController
  */
 class AuthControllerLoginTest extends DolibarrRealTestCase
 {
