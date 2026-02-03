@@ -14,15 +14,27 @@
 namespace SmartAuth\Tests\IntegrationDolibarr;
 
 use SmartLogs;
+use SmartAuthDevices;
 
 class SmartLogsClassTest extends DolibarrRealTestCase
 {
     private $smartLogs;
 
+    /** @var SmartAuthDevices */
+    private $testDevice;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->smartLogs = new SmartLogs($this->db);
+
+        // Create a device for testing (fk_device_id is NOT NULL)
+        $this->testDevice = new SmartAuthDevices($this->db);
+        $this->testDevice->label = 'Test Device for Logs';
+        $this->testDevice->uuid = 'logs-class-test-device-' . uniqid();
+        $this->testDevice->status = SmartAuthDevices::STATUS_DRAFT;
+        $this->testDevice->entity = 1;
+        $this->testDevice->create($this->testUser);
     }
 
     /**
@@ -93,6 +105,7 @@ class SmartLogsClassTest extends DolibarrRealTestCase
         $logs->ip = '127.0.0.1';
         $logs->method = 'GET';
         $logs->http_status = 200;
+        $logs->fk_device_id = $this->testDevice->id;
 
         $result = $logs->create($this->testUser);
 
@@ -113,6 +126,7 @@ class SmartLogsClassTest extends DolibarrRealTestCase
         $logs->ip = '192.168.1.1';
         $logs->method = 'POST';
         $logs->http_status = 201;
+        $logs->fk_device_id = $this->testDevice->id;
         $id = $logs->create($this->testUser);
         $this->assertGreaterThan(0, $id);
 
@@ -138,6 +152,7 @@ class SmartLogsClassTest extends DolibarrRealTestCase
         $logs->ip = '10.0.0.1';
         $logs->method = 'PUT';
         $logs->http_status = 200;
+        $logs->fk_device_id = $this->testDevice->id;
         $logs->create($this->testUser);
 
         // Update it
@@ -152,10 +167,6 @@ class SmartLogsClassTest extends DolibarrRealTestCase
      */
     public function testDelete(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SmartLogs delete has SQLite compatibility issues');
-        }
-
         // Create a record
         $logs = new SmartLogs($this->db);
         $logs->appuid = 100003;
@@ -164,6 +175,7 @@ class SmartLogsClassTest extends DolibarrRealTestCase
         $logs->ip = '172.16.0.1';
         $logs->method = 'DELETE';
         $logs->http_status = 204;
+        $logs->fk_device_id = $this->testDevice->id;
         $logs->create($this->testUser);
         $id = $logs->id;
 
@@ -192,6 +204,7 @@ class SmartLogsClassTest extends DolibarrRealTestCase
             $logs->ip = '192.168.1.' . $i;
             $logs->method = 'GET';
             $logs->http_status = 200;
+            $logs->fk_device_id = $this->testDevice->id;
             $logs->create($this->testUser);
         }
 
@@ -264,6 +277,7 @@ class SmartLogsClassTest extends DolibarrRealTestCase
         $logs->method = 'GET';
         $logs->http_status = 200;
         $logs->status = SmartLogs::STATUS_VALIDATED;
+        $logs->fk_device_id = $this->testDevice->id;
         $logs->create($this->testUser);
 
         $result = $logs->setDraft($this->testUser);
@@ -299,6 +313,7 @@ class SmartLogsClassTest extends DolibarrRealTestCase
         $logs->method = 'GET';
         $logs->http_status = 200;
         $logs->status = SmartLogs::STATUS_VALIDATED;
+        $logs->fk_device_id = $this->testDevice->id;
         $logs->create($this->testUser);
 
         $result = $logs->cancel($this->testUser);

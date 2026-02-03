@@ -154,10 +154,48 @@ $user->fetch(1);
 if (!isset($conf->file->dol_document_root) || !is_array($conf->file->dol_document_root)) {
     $conf->file->dol_document_root = array('main' => DOL_DOCUMENT_ROOT);
 }
-$conf->file->dol_document_root['alt0'] = $projectRoot;
+
+// Create symlink 'smartauth' -> 'smartAuth' for case-insensitive module path resolution
+// The module calls _load_tables('/smartauth/sql/') but the folder is 'smartAuth'
+$parentDir = dirname($projectRoot);
+$symlinkPath = $parentDir . '/smartauth';
+if (!file_exists($symlinkPath) && basename($projectRoot) !== 'smartauth') {
+    @symlink($projectRoot, $symlinkPath);
+    // Register cleanup
+    register_shutdown_function(function() use ($symlinkPath) {
+        if (is_link($symlinkPath)) {
+            @unlink($symlinkPath);
+        }
+    });
+}
+
+$conf->file->dol_document_root['alt0'] = $parentDir;
+
+// Initialize SmartAuth module by calling its init() method
+// This is the real activation process, same as when the module is enabled in Dolibarr
+require_once $projectRoot . '/core/modules/modSmartauth.class.php';
+
+// Suppress warnings during init (SQL conversion warnings are expected with SQLite)
+$previousErrorReporting = error_reporting(E_ALL & ~E_WARNING & ~E_DEPRECATED);
+
+$moduleSmartAuth = new modSmartauth($db);
+$result = $moduleSmartAuth->init();
+
+// Restore error reporting
+error_reporting($previousErrorReporting);
+
+// Note: init() may return errors for non-fatal issues like "column already exists"
+// We verify the essential tables exist instead of relying solely on return value
+$requiredTables = ['llx_smartauth_auth', 'llx_smartauth_devices', 'llx_smartauth_token_family'];
+foreach ($requiredTables as $table) {
+    $sql = "SELECT name FROM sqlite_master WHERE type='table' AND name='" . $db->escape($table) . "'";
+    $resql = $db->query($sql);
+    if (!$resql || $db->num_rows($resql) == 0) {
+        throw new Exception("Failed to initialize SmartAuth module: table $table was not created");
+    }
+}
 
 // Initialize SmartAuth module configuration in $conf
-// This simulates what happens when the SmartAuth module is enabled
 if (!isset($conf->smartauth)) {
     $conf->smartauth = new stdClass();
 }
@@ -170,165 +208,7 @@ if (!is_dir($conf->smartauth->dir_output)) {
     @mkdir($conf->smartauth->dir_output, 0755, true);
 }
 
-// Create SmartAuth tables if not exist
-createSmartAuthTables($db);
-
-/**
- * Create SmartAuth tables in the database
- */
-function createSmartAuthTables($db)
-{
-    $sqls = [];
-
-    // Check if tables already exist
-    $sql = "SELECT name FROM sqlite_master WHERE type='table' AND name='llx_smartauth_auth'";
-    $resql = $db->query($sql);
-    if ($resql && $db->num_rows($resql) > 0) {
-        return true; // Tables already exist
-    }
-
-    // SmartAuth main table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_auth (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        ref TEXT,
-        appuid INTEGER,
-        salt TEXT,
-        token_type TEXT DEFAULT 'access',
-        family_id INTEGER,
-        refresh_count INTEGER DEFAULT 0,
-        date_creation TEXT,
-        date_eol TEXT,
-        date_lastused TEXT,
-        fk_user_creat INTEGER,
-        fk_user_modif INTEGER,
-        fk_authid INTEGER,
-        fk_device_id INTEGER,
-        auth_element TEXT,
-        ip TEXT,
-        status INTEGER DEFAULT 1,
-        entity INTEGER DEFAULT 1,
-        tms timestamp DEFAULT CURRENT_TIMESTAMP
-    )";
-
-    // SmartAuth devices table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_devices (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        ref TEXT,
-        uuid TEXT,
-        label TEXT,
-        description TEXT,
-        date_creation TEXT,
-        date_validation TEXT,
-        fk_user_creat INTEGER,
-        fk_user_valid INTEGER,
-        fk_user_modif INTEGER,
-        status INTEGER DEFAULT 0,
-        entity INTEGER DEFAULT 1,
-        tms timestamp DEFAULT CURRENT_TIMESTAMP
-    )";
-
-    // Token family table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_token_family (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        fk_user INTEGER,
-        created_at INTEGER,
-        last_refresh_at INTEGER,
-        refresh_count INTEGER DEFAULT 0,
-        revoked INTEGER DEFAULT 0
-    )";
-
-    // Rate limit table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_ratelimit (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        identifier TEXT,
-        action TEXT,
-        attempt_time INTEGER,
-        success INTEGER DEFAULT 0
-    )";
-
-    // Logs table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_logs (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        fk_key INTEGER,
-        appuid TEXT,
-        entity INTEGER,
-        dol_element TEXT,
-        ip TEXT,
-        method TEXT,
-        http_status INTEGER,
-        bytes_sent INTEGER,
-        content_type TEXT,
-        url_requested TEXT,
-        user_agent TEXT,
-        fk_device_id INTEGER,
-        referer TEXT,
-        tms TEXT DEFAULT CURRENT_TIMESTAMP
-    )";
-
-    // Sync clients table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_clients (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        fk_device INTEGER NOT NULL,
-        client_uuid TEXT NOT NULL,
-        last_sync_at TEXT DEFAULT NULL,
-        sync_scope TEXT DEFAULT NULL,
-        app_version TEXT DEFAULT NULL,
-        date_creation TEXT NOT NULL,
-        tms TEXT DEFAULT CURRENT_TIMESTAMP,
-        status INTEGER DEFAULT 1 NOT NULL
-    )";
-
-    // Sync events table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_events (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        fk_client INTEGER NOT NULL,
-        event_type TEXT NOT NULL,
-        table_name TEXT DEFAULT NULL,
-        object_id INTEGER DEFAULT NULL,
-        event_data TEXT DEFAULT NULL,
-        date_creation TEXT NOT NULL
-    )";
-
-    // Sync tombstones table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_tombstones (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        table_name TEXT NOT NULL,
-        object_id INTEGER NOT NULL,
-        deleted_at TEXT NOT NULL,
-        deleted_by INTEGER DEFAULT NULL,
-        parent_table TEXT DEFAULT NULL,
-        parent_id INTEGER DEFAULT NULL
-    )";
-
-    // Sync conflicts table
-    $sqls[] = "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_conflicts (
-        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        fk_client INTEGER NOT NULL,
-        table_name TEXT NOT NULL,
-        object_id INTEGER NOT NULL,
-        client_data TEXT NOT NULL,
-        server_data TEXT NOT NULL,
-        client_tms TEXT NOT NULL,
-        server_tms TEXT NOT NULL,
-        field_conflicts TEXT DEFAULT NULL,
-        status TEXT DEFAULT 'pending' NOT NULL,
-        resolution TEXT DEFAULT NULL,
-        resolved_data TEXT DEFAULT NULL,
-        resolved_at TEXT DEFAULT NULL,
-        resolved_by INTEGER DEFAULT NULL,
-        date_creation TEXT NOT NULL,
-        tms TEXT DEFAULT CURRENT_TIMESTAMP
-    )";
-
-    foreach ($sqls as $sql) {
-        $result = $db->query($sql);
-        if ($result === false) {
-            throw new Exception("Failed to create SmartAuth tables: " . $db->lasterror());
-        }
-    }
-
-    return true;
-}
+// Module is now properly initialized with tables, permissions, menus, etc.
 
 // Initialize RouteCache for SmartAuth module
 // This is required by JwtKeyHelper::getKey() to auto-detect module name

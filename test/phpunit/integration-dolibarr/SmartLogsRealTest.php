@@ -71,14 +71,9 @@ class SmartLogsRealTest extends DolibarrRealTestCase
 
     /**
      * Test SmartLogs fetch
-     * Note: Skipped on SQLite due to fetchCommon compatibility issues
      */
     public function testFetchLog(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SmartLogs fetch has SQLite compatibility issues with fetchCommon');
-        }
-
         // Create a log first
         $log = new SmartLogs($this->db);
         $log->fk_key = $this->testAuth->id;
@@ -92,6 +87,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
         $log->content_type = 'application/json';
         $log->url_requested = '/api/thirdparties';
         $log->user_agent = 'Test Agent';
+        $log->fk_device_id = $this->testDevice->id;
         $log->create($this->testUser);
 
         $logId = $log->id;
@@ -109,14 +105,9 @@ class SmartLogsRealTest extends DolibarrRealTestCase
 
     /**
      * Test SmartLogs update
-     * Note: Skipped on SQLite due to fetchCommon compatibility issues
      */
     public function testUpdateLog(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SmartLogs update/fetch has SQLite compatibility issues');
-        }
-
         $log = new SmartLogs($this->db);
         $log->fk_key = $this->testAuth->id;
         $log->appuid = '3';
@@ -124,6 +115,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
         $log->ip = '127.0.0.1';
         $log->method = 'GET';
         $log->http_status = 200;
+        $log->fk_device_id = $this->testDevice->id;
         $log->create($this->testUser);
 
         $logId = $log->id;
@@ -144,14 +136,9 @@ class SmartLogsRealTest extends DolibarrRealTestCase
 
     /**
      * Test SmartLogs delete
-     * Note: Skipped on SQLite due to fetchCommon compatibility issues
      */
     public function testDeleteLog(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SmartLogs delete/fetch has SQLite compatibility issues');
-        }
-
         $log = new SmartLogs($this->db);
         $log->fk_key = $this->testAuth->id;
         $log->appuid = '4';
@@ -159,6 +146,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
         $log->ip = '127.0.0.1';
         $log->method = 'GET';
         $log->http_status = 200;
+        $log->fk_device_id = $this->testDevice->id;
         $log->create($this->testUser);
 
         $logId = $log->id;
@@ -189,6 +177,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
             $log->method = $method;
             $log->http_status = 200;
             $log->url_requested = '/api/test';
+            $log->fk_device_id = $this->testDevice->id;
 
             $result = $log->create($this->testUser);
             $this->assertGreaterThan(0, $result, "Log for $method should be created");
@@ -214,6 +203,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
             $log->ip = '127.0.0.1';
             $log->method = 'GET';
             $log->http_status = $status;
+            $log->fk_device_id = $this->testDevice->id;
 
             $result = $log->create($this->testUser);
             $this->assertGreaterThan(0, $result, "Log for status $status should be created");
@@ -259,6 +249,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
         $log->method = 'GET';
         $log->http_status = 200;
         $log->url_requested = $longUrl;
+        $log->fk_device_id = $this->testDevice->id;
 
         $result = $log->create($this->testUser);
         $this->assertGreaterThan(0, $result, "Should handle long URLs");
@@ -266,14 +257,9 @@ class SmartLogsRealTest extends DolibarrRealTestCase
 
     /**
      * Test log with user agent
-     * Note: Skipped on SQLite due to fetchCommon compatibility issues
      */
     public function testLogWithUserAgent(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SmartLogs fetch has SQLite compatibility issues');
-        }
-
         $userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
 
         $log = new SmartLogs($this->db);
@@ -284,6 +270,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
         $log->method = 'GET';
         $log->http_status = 200;
         $log->user_agent = $userAgent;
+        $log->fk_device_id = $this->testDevice->id;
 
         $result = $log->create($this->testUser);
         $this->assertGreaterThan(0, $result);
@@ -308,6 +295,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
             $log->method = 'GET';
             $log->http_status = 200;
             $log->url_requested = "/api/endpoint/$i";
+            $log->fk_device_id = $this->testDevice->id;
 
             $result = $log->create($this->testUser);
             $this->assertGreaterThan(0, $result);
@@ -371,6 +359,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
             $log->ip = '10.0.0.' . ($i + 1);
             $log->method = 'GET';
             $log->http_status = 200;
+            $log->fk_device_id = $this->testDevice->id;
             $log->create($this->testUser);
         }
 
@@ -401,6 +390,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
             $log->ip = '10.0.0.' . ($i + 1);
             $log->method = 'GET';
             $log->http_status = 200 + $i;
+            $log->fk_device_id = $this->testDevice->id;
             $log->create($this->testUser);
         }
 
@@ -428,6 +418,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
             $log->ip = '10.0.0.' . ($i + 1);
             $log->method = 'GET';
             $log->http_status = 200;
+            $log->fk_device_id = $this->testDevice->id;
             $log->create($this->testUser);
         }
 
@@ -498,6 +489,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
         $log->method = 'GET';
         $log->http_status = 200;
         $log->status = SmartLogs::STATUS_DRAFT;
+        $log->fk_device_id = $this->testDevice->id;
         $log->create($this->testUser);
 
         // Try to set draft on draft status
@@ -520,6 +512,7 @@ class SmartLogsRealTest extends DolibarrRealTestCase
         $log->method = 'GET';
         $log->http_status = 200;
         $log->status = SmartLogs::STATUS_DRAFT;
+        $log->fk_device_id = $this->testDevice->id;
         $log->create($this->testUser);
 
         // Try to cancel on draft status
