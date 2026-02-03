@@ -125,6 +125,11 @@ $days = [
 
 $item = $formSetup->newItem('SMARTAUTH_LAST_LOGS')->setAsSelect($days);
 
+// Trusted proxies for X-Forwarded-For header
+$item = $formSetup->newItem('SMARTAUTH_TRUSTED_PROXIES');
+$item->helpText = $langs->transnoentities('SMARTAUTH_TRUSTED_PROXIESTooltip');
+$item->cssClass = 'minwidth400';
+
 // // HTTP HOST
 // $item = $formSetup->newItem('NO_PARAM_JUST_TEXT');
 // $item->fieldOverride = (empty($_SERVER['HTTPS']) ? 'http://' : 'https://') . $_SERVER['HTTP_HOST'];

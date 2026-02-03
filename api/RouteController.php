@@ -828,56 +828,76 @@ class RouteController
 	}
 
 	/**
-	 * Get real client IP address with proxy support
+	 * Get real client IP address with secure proxy support
 	 *
-	 * Handles various proxy configurations:
-	 * - Checks X-Forwarded-For header when behind proxy
-	 * - Validates REMOTE_ADDR is not a private IP
-	 * - Returns first IP from forwarded chain (most reliable)
-	 * - Falls back to REMOTE_ADDR for direct connections
+	 * SECURITY: Only trusts X-Forwarded-For/X-Real-IP headers when:
+	 * - REMOTE_ADDR is a known trusted proxy (configured via SMARTAUTH_TRUSTED_PROXIES)
+	 * - OR REMOTE_ADDR is a private/localhost IP (backward compatibility)
 	 *
-	 * Private IP ranges detected:
+	 * Configuration:
+	 * - SMARTAUTH_TRUSTED_PROXIES: Comma-separated list of trusted proxy IPs
+	 *   Example: "10.0.0.1,10.0.0.2,192.168.1.100"
+	 *
+	 * Private IP ranges auto-trusted (for reverse proxy setups):
 	 * - 127.x.x.x (localhost)
 	 * - 10.x.x.x (Class A private)
 	 * - 172.16-31.x.x (Class B private)
 	 * - 192.168.x.x (Class C private)
 	 *
-	 * @return  string      Client IP address
+	 * @return string Client IP address (validated format)
 	 */
 	public static function get_client_ip()
 	{
-		// Get headers
-		$headers = function_exists('apache_request_headers')
-			? apache_request_headers()
-			: $_SERVER;
+		// Start with REMOTE_ADDR - only truly reliable source (TCP connection IP)
+		$remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
 
-		// dol_syslog("get_client_ip :: " . json_encode($headers));
+		// Check if we should trust forwarding headers
+		$trustForwardedHeaders = false;
 
-		// Check X-Real-IP header
-		if (isset($headers['X-Real-IP'])) {
-			$remoteAddr = $headers['X-Real-IP'];
-		} elseif (isset($headers['X-Forwarded-For'])) {
-			// Check X-Forwarded-For header
-			$remoteAddr = $headers['X-Forwarded-For'];
-		} elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-			// Use X-Forwarded-For if present and REMOTE_ADDR is local/private
-			$remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+		// Check explicit trusted proxies list
+		$trustedProxies = getDolGlobalString('SMARTAUTH_TRUSTED_PROXIES', '');
+		if (!empty($trustedProxies)) {
+			$trustedList = array_filter(array_map('trim', explode(',', $trustedProxies)));
+			if (in_array($remoteAddr, $trustedList)) {
+				$trustForwardedHeaders = true;
+			}
+		}
 
-			// Check if remote addr is localhost or private IP
-			if (
+		// Also trust private/localhost IPs (backward compatibility for reverse proxies)
+		if (
+			!$trustForwardedHeaders && (
 				empty($remoteAddr) ||
 				preg_match('/^127\./i', $remoteAddr) ||
 				preg_match('/^10\./i', $remoteAddr) ||
 				preg_match('/^172\.(1[6-9]|2\d|3[01])\./i', $remoteAddr) ||
 				preg_match('/^192\.168\./i', $remoteAddr)
-			) {
-				// Take first IP from X-Forwarded-For chain
+			)
+		) {
+			$trustForwardedHeaders = true;
+		}
+
+		// Only use forwarded headers if we trust the source
+		if ($trustForwardedHeaders) {
+			$headers = function_exists('apache_request_headers')
+				? apache_request_headers()
+				: [];
+
+			// Priority: X-Real-IP > X-Forwarded-For
+			if (!empty($headers['X-Real-IP'])) {
+				$remoteAddr = trim($headers['X-Real-IP']);
+			} elseif (!empty($headers['X-Forwarded-For'])) {
+				// Take first IP from chain (original client)
+				$ips = explode(',', $headers['X-Forwarded-For']);
+				$remoteAddr = trim($ips[0]);
+			} elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
 				$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
 				$remoteAddr = trim($ips[0]);
 			}
-		} else {
-			// Default to REMOTE_ADDR
-			$remoteAddr = $_SERVER['REMOTE_ADDR'];
+		}
+
+		// Validate IP format - return safe fallback if invalid
+		if (filter_var($remoteAddr, FILTER_VALIDATE_IP) === false) {
+			return '0.0.0.0';
 		}
 
 		return $remoteAddr;
@@ -898,9 +918,11 @@ class RouteController
 	 */
 	public static function handleCORS(): void
 	{
+		// Skip header sending in PHPUnit test environment
 		if (defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING) {
 			return;
 		}
+
 		$allowedOrigin = getDolGlobalString('SMARTAUTH_CORS_ORIGIN', '*');
 		$allowedMethods = getDolGlobalString('SMARTAUTH_CORS_METHODS', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
 		$allowedHeaders = getDolGlobalString('SMARTAUTH_CORS_HEADERS', 'Content-Type, Authorization, X-DeviceId');
