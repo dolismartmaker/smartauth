@@ -44,8 +44,8 @@ class dmUser extends dmBase
 		'address'           => 'address',
 		'zip'               => 'zip',
 		'town'              => 'city',
-		'fk_state'          => 'state',
-		'fk_country'        => 'country',
+		'state_id'          => 'state',
+		'country_id'        => 'country',
 		'datec'             => 'created_at',
 		'statut'            => 'status',
 	];

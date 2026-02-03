@@ -35,16 +35,16 @@ class dmCategory extends dmBase
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
-		'rowid'             => 'id',
+		'id'                => 'id',
 		'fk_parent'         => 'parent',
 		'label'             => 'label',
 		'description'       => 'description',
 		'color'             => 'color',
 		'visible'           => 'visible',
 		'type'              => 'type',
-		'fk_soc'            => 'thirdparty',
+		'socid'             => 'thirdparty',
 		'date_creation'     => 'created_at',
-		'tms'               => 'updated_at',
+		'date_modification' => 'updated_at',
 		'fk_user_creat'     => 'created_by',
 		'fk_user_modif'     => 'updated_by',
 	];
