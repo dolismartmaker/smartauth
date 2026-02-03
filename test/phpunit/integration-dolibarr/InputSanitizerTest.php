@@ -519,4 +519,45 @@ class InputSanitizerTest extends DolibarrRealTestCase
 
         $this->assertEquals($original, $result['data']);
     }
+
+    /**
+     * Test sanitizeAll preserves numeric key "0"
+     *
+     * Regression test: PHP's empty("0") returns true, which caused
+     * numeric key "0" to be incorrectly skipped in sanitizeAll().
+     */
+    public function testSanitizeAllPreservesNumericKeyZero(): void
+    {
+        $data = [
+            '0' => 'first_value',
+            '1' => 'second_value',
+            'name' => 'test'
+        ];
+
+        $result = InputSanitizer::sanitizeAll($data);
+
+        // Key "0" should NOT be skipped (regression: empty("0") === true in PHP)
+        $this->assertArrayHasKey('0', $result);
+        $this->assertEquals('first_value', $result['0']);
+        $this->assertArrayHasKey('1', $result);
+        $this->assertEquals('second_value', $result['1']);
+        $this->assertArrayHasKey('name', $result);
+    }
+
+    /**
+     * Test sanitizeAll with array having only numeric keys
+     */
+    public function testSanitizeAllWithNumericKeysArray(): void
+    {
+        // Indexed array with numeric string keys
+        $data = ['zero', 'one', 'two'];
+
+        $result = InputSanitizer::sanitizeAll($data);
+
+        // All values should be preserved
+        $this->assertCount(3, $result);
+        $this->assertEquals('zero', $result['0']);
+        $this->assertEquals('one', $result['1']);
+        $this->assertEquals('two', $result['2']);
+    }
 }

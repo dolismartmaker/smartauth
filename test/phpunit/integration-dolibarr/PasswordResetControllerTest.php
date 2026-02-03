@@ -28,7 +28,7 @@ class PasswordResetControllerTest extends DolibarrRealTestCase
         $this->controller = new PasswordResetController();
 
         // Clean rate limit table for password reset tests
-        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "smartauth_ratelimit WHERE action_type = 'password_reset'");
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "smartauth_ratelimit WHERE action = 'password_reset'");
     }
 
     // ==================== requestReset() tests ====================
@@ -172,7 +172,7 @@ class PasswordResetControllerTest extends DolibarrRealTestCase
         // Check rate limit table
         $sql = "SELECT COUNT(*) as cnt FROM " . MAIN_DB_PREFIX . "smartauth_ratelimit";
         $sql .= " WHERE identifier = '" . $this->db->escape($email) . "'";
-        $sql .= " AND action_type = 'password_reset'";
+        $sql .= " AND action = 'password_reset'";
 
         $resql = $this->db->query($sql);
         $obj = $this->db->fetch_object($resql);

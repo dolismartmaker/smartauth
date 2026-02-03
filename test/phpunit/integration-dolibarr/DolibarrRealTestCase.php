@@ -141,6 +141,16 @@ abstract class DolibarrRealTestCase extends TestCase
             $user->setPassword($this->testUser, $data['pass']);
         }
 
+        // Apply statut if different from default (1)
+        // Dolibarr's create() doesn't include statut in INSERT, so we must update it separately
+        $requestedStatut = $data['statut'] ?? 1;
+        if ($requestedStatut != 1) {
+            $sql = "UPDATE " . MAIN_DB_PREFIX . "user SET statut = " . (int) $requestedStatut;
+            $sql .= " WHERE rowid = " . (int) $user->id;
+            $this->db->query($sql);
+            $user->statut = $requestedStatut;
+        }
+
         return $user;
     }
 

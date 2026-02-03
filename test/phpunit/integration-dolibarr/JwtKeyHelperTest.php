@@ -266,9 +266,14 @@ class JwtKeyHelperTest extends DolibarrRealTestCase
         $this->assertNotFalse($resql);
         $obj = $this->db->fetch_object($resql);
 
-        // Key should be stored
+        // Key should be stored (may be encrypted with dolcrypt)
         if ($obj) {
-            $this->assertEquals($key, $obj->value);
+            $storedValue = $obj->value;
+            // Dolibarr encrypts sensitive values with dolcrypt:AES-256-CTR:...
+            if (strpos($storedValue, 'dolcrypt:') === 0) {
+                $storedValue = dolDecrypt($storedValue);
+            }
+            $this->assertEquals($key, $storedValue);
         }
 
         // Cleanup
@@ -299,7 +304,11 @@ class JwtKeyHelperTest extends DolibarrRealTestCase
         $obj = $this->db->fetch_object($resql);
 
         if ($obj) {
-            $this->assertEquals($newKey, $obj->value);
+            $storedValue = $obj->value;
+            if (strpos($storedValue, 'dolcrypt:') === 0) {
+                $storedValue = dolDecrypt($storedValue);
+            }
+            $this->assertEquals($newKey, $storedValue);
         }
 
         // Cleanup
@@ -336,7 +345,11 @@ class JwtKeyHelperTest extends DolibarrRealTestCase
         $resql = $this->db->query($sql);
         $obj = $this->db->fetch_object($resql);
 
-        $this->assertEquals($newKey, $obj->value);
+        $storedValue = $obj->value;
+        if (strpos($storedValue, 'dolcrypt:') === 0) {
+            $storedValue = dolDecrypt($storedValue);
+        }
+        $this->assertEquals($newKey, $storedValue);
 
         // Cleanup
         $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'");

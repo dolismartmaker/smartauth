@@ -85,6 +85,12 @@
         </report>
     </coverage>
 
+    <groups>
+        <exclude>
+            <group>unit-only</group>
+        </exclude>
+    </groups>
+
     <php>
         <ini name="error_reporting" value="-1"/>
         <ini name="display_errors" value="On"/>
