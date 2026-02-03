@@ -175,14 +175,9 @@ class SmartAuthClassTest extends DolibarrRealTestCase
 
     /**
      * Test SmartAuth delete
-     * Note: SQLite has compatibility issues with deleteCommon
      */
     public function testSmartAuthDelete(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SmartAuth delete has SQLite compatibility issues with deleteCommon');
-        }
-
         // Create first
         $auth = new SmartAuth($this->db);
         $auth->appuid = 1;

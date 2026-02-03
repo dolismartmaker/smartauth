@@ -44,14 +44,37 @@ class DmMappingValidationTest extends DolibarrRealTestCase
     }
 
     /**
+     * Helper to get public properties from a Dolibarr class via reflection
+     */
+    private function getPublicProperties(object $obj): array
+    {
+        $reflection = new \ReflectionClass($obj);
+        $properties = [];
+
+        foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $properties[] = $prop->getName();
+        }
+
+        return $properties;
+    }
+
+    /**
      * Helper to check field compatibility
      * Returns array of missing fields and available fields
+     * Now checks both $fields array AND public properties
      */
     private function checkFieldsCompatibility(string $mappingClass, string $dolibarrClass): array
     {
         $publishedFields = $this->getPublishedFields($mappingClass);
         $dolibarrObj = new $dolibarrClass($this->db);
         $dolibarrFields = $dolibarrObj->fields ?? [];
+        $dolibarrProperties = $this->getPublicProperties($dolibarrObj);
+
+        // Combine $fields keys and public properties
+        $availableFields = array_unique(array_merge(
+            array_keys($dolibarrFields),
+            $dolibarrProperties
+        ));
 
         $missing = [];
         $extrafields = [];
@@ -63,18 +86,67 @@ class DmMappingValidationTest extends DolibarrRealTestCase
                 continue;
             }
 
-            // Check if field exists in Dolibarr $fields
-            if (!isset($dolibarrFields[$doliField])) {
-                $missing[] = $doliField;
+            // Check if field exists in $fields OR as public property
+            if (!isset($dolibarrFields[$doliField]) && !in_array($doliField, $dolibarrProperties)) {
+                // Also check for common Dolibarr field name variations
+                $variations = $this->getFieldVariations($doliField);
+                $found = false;
+                foreach ($variations as $variation) {
+                    if (isset($dolibarrFields[$variation]) || in_array($variation, $dolibarrProperties)) {
+                        $found = true;
+                        break;
+                    }
+                }
+                if (!$found) {
+                    $missing[] = $doliField;
+                }
             }
         }
 
         return [
             'missing' => $missing,
             'extrafields' => $extrafields,
-            'dolibarr_fields' => array_keys($dolibarrFields),
+            'dolibarr_fields' => $availableFields,
             'published_fields' => array_keys($publishedFields)
         ];
+    }
+
+    /**
+     * Get common field name variations in Dolibarr
+     * e.g., statut -> fk_statut, date -> datec/datep, etc.
+     */
+    private function getFieldVariations(string $field): array
+    {
+        $variations = [];
+
+        // statut -> fk_statut, status
+        if ($field === 'statut') {
+            $variations = ['fk_statut', 'status'];
+        }
+        // date -> datec, datep, datef, date_creation
+        elseif ($field === 'date') {
+            $variations = ['datec', 'datep', 'datef', 'date_creation', 'date_commande'];
+        }
+        // datec -> date_creation
+        elseif ($field === 'datec') {
+            $variations = ['date_creation'];
+        }
+        // ref_customer -> ref_client
+        elseif ($field === 'ref_customer') {
+            $variations = ['ref_client'];
+        }
+        // delivery_date -> date_livraison
+        elseif ($field === 'delivery_date') {
+            $variations = ['date_livraison'];
+        }
+        // total_localtax1/2 -> localtax1/2
+        elseif ($field === 'total_localtax1') {
+            $variations = ['localtax1'];
+        } elseif ($field === 'total_localtax2') {
+            $variations = ['localtax2'];
+        }
+
+        return $variations;
     }
 
     /**

@@ -15,6 +15,8 @@ use ReflectionMethod;
  */
 class RouteControllerTest extends DolibarrRealTestCase
 {
+    private int $initialObLevel;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -22,6 +24,19 @@ class RouteControllerTest extends DolibarrRealTestCase
         global $smartAuthAppID, $smartAuthAppKey;
         $smartAuthAppID = 'test-app-id';
         $smartAuthAppKey = 'test-secret-key-for-jwt-signing-min-32-chars';
+
+        // Store initial output buffer level to clean up orphan buffers in tearDown
+        $this->initialObLevel = ob_get_level();
+    }
+
+    protected function tearDown(): void
+    {
+        // Clean up any orphan output buffers left by tested methods
+        while (ob_get_level() > $this->initialObLevel) {
+            ob_end_clean();
+        }
+
+        parent::tearDown();
     }
 
     private function generateUUID(): string

@@ -152,14 +152,9 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
 
     /**
      * Test SmartAuthDevices delete
-     * Note: SQLite has compatibility issues with deleteCommon
      */
     public function testSmartAuthDevicesDelete(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SmartAuthDevices delete has SQLite compatibility issues');
-        }
-
         // Create first
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Test Device Delete';
@@ -483,10 +478,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testCreateDeviceWithDuplicateUuid(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SQLite does not enforce UNIQUE constraint properly in test environment');
-        }
-
         $uuid = 'duplicate-uuid-' . uniqid();
 
         // Create first device
@@ -640,10 +631,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testDeviceUuidUniquenessAcrossUsers(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('SQLite does not enforce UNIQUE constraint properly in test environment');
-        }
-
         $uuid = 'unique-across-users-' . uniqid();
 
         // Create device with user 1
@@ -1189,10 +1176,6 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
      */
     public function testDeleteWithTriggers(): void
     {
-        if ($this->db->type === 'sqlite3') {
-            $this->markTestSkipped('Delete has SQLite compatibility issues');
-        }
-
         $device = new SmartAuthDevices($this->db);
         $device->label = 'Delete Trigger Device';
         $device->uuid = 'delete-trigger-' . uniqid();

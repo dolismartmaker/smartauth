@@ -225,4 +225,159 @@ class RateLimiterRealTest extends DolibarrRealTestCase
         $this->assertLessThanOrEqual($window, $result['retry_after']);
         $this->assertGreaterThan(0, $result['retry_after']);
     }
+
+    /**
+     * Test cleanOldEntries removes old records
+     */
+    public function testCleanOldEntriesRemovesOldRecords(): void
+    {
+        $ip = '172.16.0.6';
+        $action = 'old_entries_test';
+
+        // Insert old entries directly with old timestamps
+        $oldTime = time() - 100000; // ~27 hours ago
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_ratelimit";
+        $sql .= " (identifier, action, attempt_time, success)";
+        $sql .= " VALUES ('" . $this->db->escape($ip) . "', '" . $this->db->escape($action) . "', " . $oldTime . ", 0)";
+        $this->db->query($sql);
+
+        // Verify entry exists
+        $this->assertDatabaseHas('smartauth_ratelimit', [
+            'identifier' => $ip,
+            'action' => $action
+        ]);
+
+        // Clean entries older than 1 hour
+        $deleted = $this->rateLimiter->cleanOldEntries(3600);
+
+        $this->assertGreaterThanOrEqual(1, $deleted);
+
+        // Old entry should be gone
+        $this->assertDatabaseMissing('smartauth_ratelimit', [
+            'identifier' => $ip,
+            'action' => $action
+        ]);
+    }
+
+    /**
+     * Test cleanOldEntries keeps recent records
+     */
+    public function testCleanOldEntriesKeepsRecentRecords(): void
+    {
+        $ip = '172.16.0.7';
+        $action = 'recent_entries_test';
+
+        // Record a recent attempt
+        $this->rateLimiter->recordAttempt($ip, $action, false);
+
+        // Verify entry exists
+        $this->assertDatabaseHas('smartauth_ratelimit', [
+            'identifier' => $ip,
+            'action' => $action
+        ]);
+
+        // Clean entries older than 24 hours (should not delete recent entries)
+        $this->rateLimiter->cleanOldEntries(86400);
+
+        // Recent entry should still exist
+        $this->assertDatabaseHas('smartauth_ratelimit', [
+            'identifier' => $ip,
+            'action' => $action
+        ]);
+    }
+
+    /**
+     * Test forceCleanup performs immediate cleanup
+     */
+    public function testForceCleanupPerformsImmediateCleanup(): void
+    {
+        $ip = '172.16.0.8';
+        $action = 'force_cleanup_test';
+
+        // Insert old entry
+        $oldTime = time() - 200000;
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_ratelimit";
+        $sql .= " (identifier, action, attempt_time, success)";
+        $sql .= " VALUES ('" . $this->db->escape($ip) . "', '" . $this->db->escape($action) . "', " . $oldTime . ", 0)";
+        $this->db->query($sql);
+
+        // Force cleanup with short retention
+        $deleted = $this->rateLimiter->forceCleanup(3600);
+
+        $this->assertGreaterThanOrEqual(1, $deleted);
+
+        // Old entry should be removed
+        $this->assertDatabaseMissing('smartauth_ratelimit', [
+            'identifier' => $ip,
+            'action' => $action
+        ]);
+    }
+
+    /**
+     * Test getStats returns correct structure
+     */
+    public function testGetStatsReturnsCorrectStructure(): void
+    {
+        $stats = $this->rateLimiter->getStats();
+
+        $this->assertIsArray($stats);
+        $this->assertArrayHasKey('total_entries', $stats);
+        $this->assertArrayHasKey('oldest_entry', $stats);
+        $this->assertArrayHasKey('newest_entry', $stats);
+        $this->assertArrayHasKey('last_cleanup', $stats);
+    }
+
+    /**
+     * Test getStats reflects actual data
+     */
+    public function testGetStatsReflectsActualData(): void
+    {
+        // Record some attempts
+        $this->rateLimiter->recordAttempt('stats_test_1', 'test_action', false);
+        $this->rateLimiter->recordAttempt('stats_test_2', 'test_action', true);
+        $this->rateLimiter->recordAttempt('stats_test_3', 'test_action', false);
+
+        $stats = $this->rateLimiter->getStats();
+
+        $this->assertGreaterThanOrEqual(3, $stats['total_entries']);
+        $this->assertGreaterThan(0, $stats['newest_entry']);
+    }
+
+    /**
+     * Test getStats on empty table
+     */
+    public function testGetStatsOnEmptyTable(): void
+    {
+        // Clean the table first
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "smartauth_ratelimit");
+
+        $stats = $this->rateLimiter->getStats();
+
+        $this->assertEquals(0, $stats['total_entries']);
+        $this->assertEquals(0, $stats['oldest_entry']);
+        $this->assertEquals(0, $stats['newest_entry']);
+    }
+
+    /**
+     * Test cleanOldEntries with null retention uses default
+     */
+    public function testCleanOldEntriesWithNullUsesDefault(): void
+    {
+        // Should not throw exception
+        $deleted = $this->rateLimiter->cleanOldEntries(null);
+        $this->assertGreaterThanOrEqual(0, $deleted);
+    }
+
+    /**
+     * Test forceCleanup updates last cleanup time
+     */
+    public function testForceCleanupUpdatesLastCleanupTime(): void
+    {
+        $this->rateLimiter->forceCleanup();
+
+        $stats = $this->rateLimiter->getStats();
+
+        // last_cleanup should be recent (within last minute)
+        $this->assertGreaterThan(time() - 60, $stats['last_cleanup']);
+    }
 }
