@@ -571,7 +571,7 @@ class RouteController
 		$buyer = new \Societe($db);
 
 		if (!$protected) {
-			return [$user, $entity, $token_id, $buyer];
+			return [$user, $entity, $token_id, $buyer, null, null];
 		}
 
 		$ac = new AuthController();
