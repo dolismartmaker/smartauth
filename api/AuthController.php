@@ -1584,6 +1584,7 @@ class AuthController
 
 			$rowid = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_devices");
 			if ($rowid > 0) {
+				// Invalidate cache for this UUID
 				$cache_key = 'device-' . $device_uuid;
 				$conf->cache['smartmakers'][$cache_key] = $rowid;
 				return $rowid;
