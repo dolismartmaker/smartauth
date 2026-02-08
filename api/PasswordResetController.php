@@ -264,4 +264,257 @@ class PasswordResetController
 
         return $result;
     }
+
+    /**
+     * Confirm password reset with token and new password
+     *
+     * @param array|null $arr Request parameters containing 'email', 'token', 'password'
+     * @return array Response
+     */
+    public function confirmReset($arr = null)
+    {
+        global $db, $conf, $langs;
+
+        dol_syslog("PasswordResetController::confirmReset - Start", LOG_DEBUG);
+
+        $email = trim($arr['email'] ?? '');
+        $token = trim($arr['token'] ?? '');
+        $newPassword = $arr['password'] ?? '';
+
+        // Validate required fields
+        if (empty($email) || empty($token) || empty($newPassword)) {
+            return [
+                ['error' => 'Email, token and password are required'],
+                400
+            ];
+        }
+
+        // Validate email format
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return [
+                ['error' => 'Invalid email format'],
+                400
+            ];
+        }
+
+        // Validate password strength
+        $passwordValidation = $this->validatePasswordStrength($newPassword);
+        if (!$passwordValidation['valid']) {
+            return [
+                ['error' => $passwordValidation['message']],
+                400
+            ];
+        }
+
+        // Validate token format
+        $tokenValidation = self::validateToken($token);
+        if (!$tokenValidation['valid']) {
+            if ($tokenValidation['expired']) {
+                dol_syslog("PasswordResetController::confirmReset - Token expired for: " . $email, LOG_WARNING);
+                return [
+                    ['error' => 'Reset token has expired. Please request a new one.'],
+                    410
+                ];
+            }
+            dol_syslog("PasswordResetController::confirmReset - Invalid token format for: " . $email, LOG_WARNING);
+            return [
+                ['error' => 'Invalid reset token'],
+                400
+            ];
+        }
+
+        // Find user by email and verify token
+        $sql = "SELECT rowid, pass_temp FROM " . MAIN_DB_PREFIX . "user";
+        $sql .= " WHERE email = '" . $db->escape($email) . "'";
+        $sql .= " AND statut = 1";
+        $sql .= " AND entity IN (" . getEntity('user') . ")";
+        $sql .= " LIMIT 1";
+
+        $resql = $db->query($sql);
+
+        if (!$resql || $db->num_rows($resql) === 0) {
+            dol_syslog("PasswordResetController::confirmReset - User not found: " . $email, LOG_WARNING);
+            return [
+                ['error' => 'Invalid email or token'],
+                400
+            ];
+        }
+
+        $obj = $db->fetch_object($resql);
+
+        // Verify token matches
+        if (empty($obj->pass_temp) || $obj->pass_temp !== $token) {
+            dol_syslog("PasswordResetController::confirmReset - Token mismatch for user: " . $email, LOG_WARNING);
+            return [
+                ['error' => 'Invalid email or token'],
+                400
+            ];
+        }
+
+        // Load user and update password
+        $userObj = new User($db);
+        $userObj->fetch($obj->rowid);
+
+        // Use Dolibarr's setPassword method
+        $result = $userObj->setPassword($userObj, $newPassword);
+
+        if ($result < 0) {
+            dol_syslog("PasswordResetController::confirmReset - Failed to set password: " . $userObj->error, LOG_ERR);
+            return [
+                ['error' => 'Failed to update password'],
+                500
+            ];
+        }
+
+        // Clear the reset token
+        $sql = "UPDATE " . MAIN_DB_PREFIX . "user SET";
+        $sql .= " pass_temp = NULL";
+        $sql .= " WHERE rowid = " . ((int) $obj->rowid);
+        $db->query($sql);
+
+        dol_syslog("PasswordResetController::confirmReset - Password reset successful for user ID: " . $obj->rowid, LOG_DEBUG);
+
+        return [
+            ['message' => 'Password has been reset successfully'],
+            200
+        ];
+    }
+
+    /**
+     * Change password for authenticated user
+     *
+     * @param array|null $arr Request parameters containing 'current_password', 'new_password', 'user'
+     * @return array Response
+     */
+    public function changePassword($arr = null)
+    {
+        global $db;
+
+        dol_syslog("PasswordResetController::changePassword - Start", LOG_DEBUG);
+
+        // Get authenticated user from payload
+        $user = $arr['user'] ?? null;
+        if (empty($user) || !is_object($user)) {
+            return [
+                ['error' => 'Authentication required'],
+                401
+            ];
+        }
+
+        $currentPassword = $arr['current_password'] ?? '';
+        $newPassword = $arr['new_password'] ?? '';
+
+        // Validate required fields
+        if (empty($currentPassword) || empty($newPassword)) {
+            return [
+                ['error' => 'Current password and new password are required'],
+                400
+            ];
+        }
+
+        // Validate new password strength
+        $passwordValidation = $this->validatePasswordStrength($newPassword);
+        if (!$passwordValidation['valid']) {
+            return [
+                ['error' => $passwordValidation['message']],
+                400
+            ];
+        }
+
+        // Reload user to get current password hash
+        $userObj = new User($db);
+        $userObj->fetch($user->id);
+
+        // Verify current password
+        require_once DOL_DOCUMENT_ROOT . '/core/lib/security.lib.php';
+
+        $passwordOk = false;
+
+        // Check encrypted password
+        if (!empty($userObj->pass_indatabase_crypted)) {
+            $passwordOk = dol_verifyHash($currentPassword, $userObj->pass_indatabase_crypted);
+        }
+
+        if (!$passwordOk) {
+            dol_syslog("PasswordResetController::changePassword - Invalid current password for user ID: " . $user->id, LOG_WARNING);
+            return [
+                ['error' => 'Current password is incorrect'],
+                403
+            ];
+        }
+
+        // Update password
+        $result = $userObj->setPassword($userObj, $newPassword);
+
+        if ($result < 0) {
+            dol_syslog("PasswordResetController::changePassword - Failed to set password: " . $userObj->error, LOG_ERR);
+            return [
+                ['error' => 'Failed to update password'],
+                500
+            ];
+        }
+
+        dol_syslog("PasswordResetController::changePassword - Password changed for user ID: " . $user->id, LOG_DEBUG);
+
+        return [
+            ['message' => 'Password changed successfully'],
+            200
+        ];
+    }
+
+    /**
+     * Validate password strength
+     *
+     * @param string $password Password to validate
+     * @return array ['valid' => bool, 'message' => string]
+     */
+    private function validatePasswordStrength(string $password): array
+    {
+        // Minimum length
+        $minLength = getDolGlobalInt('USER_PASSWORD_MIN_LENGTH', 8);
+        if (strlen($password) < $minLength) {
+            return [
+                'valid' => false,
+                'message' => "Password must be at least $minLength characters long"
+            ];
+        }
+
+        // Check for required character types if configured
+        if (getDolGlobalInt('USER_PASSWORD_NEED_LETTER', 0) && !preg_match('/[a-zA-Z]/', $password)) {
+            return [
+                'valid' => false,
+                'message' => 'Password must contain at least one letter'
+            ];
+        }
+
+        if (getDolGlobalInt('USER_PASSWORD_NEED_DIGIT', 0) && !preg_match('/[0-9]/', $password)) {
+            return [
+                'valid' => false,
+                'message' => 'Password must contain at least one digit'
+            ];
+        }
+
+        if (getDolGlobalInt('USER_PASSWORD_NEED_SPECIAL', 0) && !preg_match('/[^a-zA-Z0-9]/', $password)) {
+            return [
+                'valid' => false,
+                'message' => 'Password must contain at least one special character'
+            ];
+        }
+
+        if (getDolGlobalInt('USER_PASSWORD_NEED_UPPERCASE', 0) && !preg_match('/[A-Z]/', $password)) {
+            return [
+                'valid' => false,
+                'message' => 'Password must contain at least one uppercase letter'
+            ];
+        }
+
+        if (getDolGlobalInt('USER_PASSWORD_NEED_LOWERCASE', 0) && !preg_match('/[a-z]/', $password)) {
+            return [
+                'valid' => false,
+                'message' => 'Password must contain at least one lowercase letter'
+            ];
+        }
+
+        return ['valid' => true, 'message' => ''];
+    }
 }

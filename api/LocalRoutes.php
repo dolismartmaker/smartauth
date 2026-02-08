@@ -19,7 +19,8 @@
 
 use SmartAuth\Api\RouteController as Route;
 use SmartAuth\Api\AuthController;
-use SmartAuth\Api\SmartFileControler;
+use SmartAuth\Api\PasswordResetController;
+use SmartAuth\Api\SmartFileController;
 use SmartAuth\Api\SyncController;
 
 // ========== Auth Routes ========== //
@@ -37,10 +38,24 @@ Route::post('logout', AuthController::class, 'logout', true);
 // Device registration (protected)
 Route::post('device', AuthController::class, 'device', true);
 
+// ========== Password Routes ========== //
+
+// Request password reset (unprotected)
+Route::post('password/reset', PasswordResetController::class, 'requestReset');
+
+// Confirm password reset with token (unprotected)
+Route::post('password/confirm', PasswordResetController::class, 'confirmReset');
+
+// Change password for authenticated user (protected)
+Route::post('password/change', PasswordResetController::class, 'changePassword', true);
+
 // ========== File Routes ========== //
 
-// File download (protected)
-Route::get('file/{id}', SmartFileControler::class, 'download', true);
+// File download by ECM share hash - base64 JSON response (protected)
+Route::get('file/{hash}', SmartFileController::class, 'download', true);
+
+// File download by ECM share hash - binary stream (protected)
+Route::get('file/{hash}/binary', SmartFileController::class, 'downloadBinary', true);
 
 // ========== Sync Routes ========== //
 
