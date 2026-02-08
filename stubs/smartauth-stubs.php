@@ -1659,9 +1659,12 @@ namespace SmartAuth\Api {
         {
         }
     }
-    class SmartFileControler
+    class SmartFileController
     {
         public function download($arr = null)
+        {
+        }
+        public function downloadBinary($arr = null)
         {
         }
     }
