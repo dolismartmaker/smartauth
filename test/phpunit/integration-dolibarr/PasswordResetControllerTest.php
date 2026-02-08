@@ -272,4 +272,240 @@ class PasswordResetControllerTest extends DolibarrRealTestCase
         $this->assertFalse($result['valid']);
         $this->assertNull($result['token']);
     }
+
+    // ==================== confirmReset() tests ====================
+
+    /**
+     * Test confirmReset with missing fields returns 400
+     */
+    public function testConfirmResetWithMissingFieldsReturns400(): void
+    {
+        $result = $this->controller->confirmReset([]);
+
+        $this->assertEquals(400, $result[1]);
+        $this->assertArrayHasKey('error', $result[0]);
+    }
+
+    /**
+     * Test confirmReset with invalid email format returns 400
+     */
+    public function testConfirmResetWithInvalidEmailReturns400(): void
+    {
+        $result = $this->controller->confirmReset([
+            'email' => 'not-valid',
+            'token' => 'sometoken',
+            'password' => 'newpassword123'
+        ]);
+
+        $this->assertEquals(400, $result[1]);
+        $this->assertStringContainsString('email', strtolower($result[0]['error']));
+    }
+
+    /**
+     * Test confirmReset with expired token returns 410
+     */
+    public function testConfirmResetWithExpiredTokenReturns410(): void
+    {
+        $expiredToken = base64_encode('randompart|' . (time() - 3600));
+
+        $result = $this->controller->confirmReset([
+            'email' => 'test@example.com',
+            'token' => $expiredToken,
+            'password' => 'newpassword123'
+        ]);
+
+        $this->assertEquals(410, $result[1]);
+        $this->assertStringContainsString('expired', strtolower($result[0]['error']));
+    }
+
+    /**
+     * Test confirmReset with invalid token format returns 400
+     */
+    public function testConfirmResetWithInvalidTokenFormatReturns400(): void
+    {
+        $result = $this->controller->confirmReset([
+            'email' => 'test@example.com',
+            'token' => '!!!invalid!!!',
+            'password' => 'newpassword123'
+        ]);
+
+        $this->assertEquals(400, $result[1]);
+    }
+
+    /**
+     * Test confirmReset with non-existent user returns 400
+     */
+    public function testConfirmResetWithNonExistentUserReturns400(): void
+    {
+        $validToken = base64_encode('randompart|' . (time() + 3600));
+
+        $result = $this->controller->confirmReset([
+            'email' => 'nonexistent@example.com',
+            'token' => $validToken,
+            'password' => 'newpassword123'
+        ]);
+
+        $this->assertEquals(400, $result[1]);
+    }
+
+    /**
+     * Test confirmReset with wrong token returns 400
+     */
+    public function testConfirmResetWithWrongTokenReturns400(): void
+    {
+        // Create user with a token
+        $testUser = $this->createTestUser([
+            'email' => 'wrongtoken@example.com',
+            'statut' => 1
+        ]);
+
+        $storedToken = base64_encode('storedtoken|' . (time() + 3600));
+        $this->db->query("UPDATE " . MAIN_DB_PREFIX . "user SET pass_temp = '" . $this->db->escape($storedToken) . "' WHERE rowid = " . (int) $testUser->id);
+
+        // Try with different token
+        $wrongToken = base64_encode('wrongtoken|' . (time() + 3600));
+
+        $result = $this->controller->confirmReset([
+            'email' => 'wrongtoken@example.com',
+            'token' => $wrongToken,
+            'password' => 'newpassword123'
+        ]);
+
+        $this->assertEquals(400, $result[1]);
+    }
+
+    /**
+     * Test confirmReset with valid token updates password
+     */
+    public function testConfirmResetWithValidTokenUpdatesPassword(): void
+    {
+        // Create user
+        $testUser = $this->createTestUser([
+            'email' => 'validreset@example.com',
+            'statut' => 1,
+            'pass' => 'oldpassword'
+        ]);
+
+        // Set reset token
+        $token = base64_encode('validtoken123|' . (time() + 3600));
+        $this->db->query("UPDATE " . MAIN_DB_PREFIX . "user SET pass_temp = '" . $this->db->escape($token) . "' WHERE rowid = " . (int) $testUser->id);
+
+        $result = $this->controller->confirmReset([
+            'email' => 'validreset@example.com',
+            'token' => $token,
+            'password' => 'newpassword123'
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertStringContainsString('success', strtolower($result[0]['message']));
+
+        // Verify token was cleared
+        $sql = "SELECT pass_temp FROM " . MAIN_DB_PREFIX . "user WHERE rowid = " . (int) $testUser->id;
+        $resql = $this->db->query($sql);
+        $obj = $this->db->fetch_object($resql);
+        $this->assertEmpty($obj->pass_temp);
+    }
+
+    /**
+     * Test confirmReset with short password returns 400
+     */
+    public function testConfirmResetWithShortPasswordReturns400(): void
+    {
+        $token = base64_encode('randompart|' . (time() + 3600));
+
+        $result = $this->controller->confirmReset([
+            'email' => 'test@example.com',
+            'token' => $token,
+            'password' => 'short'
+        ]);
+
+        $this->assertEquals(400, $result[1]);
+        $this->assertStringContainsString('password', strtolower($result[0]['error']));
+    }
+
+    // ==================== changePassword() tests ====================
+
+    /**
+     * Test changePassword without authenticated user returns 401
+     */
+    public function testChangePasswordWithoutUserReturns401(): void
+    {
+        $result = $this->controller->changePassword([
+            'current_password' => 'oldpass',
+            'new_password' => 'newpass123'
+        ]);
+
+        $this->assertEquals(401, $result[1]);
+    }
+
+    /**
+     * Test changePassword with missing fields returns 400
+     */
+    public function testChangePasswordWithMissingFieldsReturns400(): void
+    {
+        $result = $this->controller->changePassword([
+            'user' => $this->testUser
+        ]);
+
+        $this->assertEquals(400, $result[1]);
+    }
+
+    /**
+     * Test changePassword with short new password returns 400
+     */
+    public function testChangePasswordWithShortNewPasswordReturns400(): void
+    {
+        $result = $this->controller->changePassword([
+            'user' => $this->testUser,
+            'current_password' => 'currentpass',
+            'new_password' => 'short'
+        ]);
+
+        $this->assertEquals(400, $result[1]);
+        $this->assertStringContainsString('password', strtolower($result[0]['error']));
+    }
+
+    /**
+     * Test changePassword with wrong current password returns 403
+     */
+    public function testChangePasswordWithWrongCurrentPasswordReturns403(): void
+    {
+        // Create user with known password
+        $testUser = $this->createTestUser([
+            'email' => 'changepass@example.com',
+            'statut' => 1,
+            'pass' => 'correctpassword'
+        ]);
+
+        $result = $this->controller->changePassword([
+            'user' => $testUser,
+            'current_password' => 'wrongpassword',
+            'new_password' => 'newpassword123'
+        ]);
+
+        $this->assertEquals(403, $result[1]);
+        $this->assertStringContainsString('incorrect', strtolower($result[0]['error']));
+    }
+
+    /**
+     * Test changePassword with correct current password succeeds
+     */
+    public function testChangePasswordWithCorrectCurrentPasswordSucceeds(): void
+    {
+        // Create user with known password
+        $testUser = $this->createTestUser([
+            'email' => 'changepass2@example.com',
+            'statut' => 1,
+            'pass' => 'correctpassword'
+        ]);
+
+        $result = $this->controller->changePassword([
+            'user' => $testUser,
+            'current_password' => 'correctpassword',
+            'new_password' => 'newpassword123'
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertStringContainsString('success', strtolower($result[0]['message']));
+    }
 }

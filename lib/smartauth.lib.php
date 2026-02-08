@@ -44,6 +44,11 @@ function smartauthAdminPrepareHead()
 	$head[$h][2] = 'settings';
 	$h++;
 
+	$head[$h][0] = dol_buildpath("/smartauth/admin/smartauth_oauth_setup.php", 1);
+	$head[$h][1] = $langs->trans("SmartAuthOAuthSetup");
+	$head[$h][2] = 'oauth';
+	$h++;
+
 	/*
 	$head[$h][0] = dol_buildpath("/smartauth/admin/myobject_extrafields.php", 1);
 	$head[$h][1] = $langs->trans("ExtraFields");

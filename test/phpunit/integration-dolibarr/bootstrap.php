@@ -217,3 +217,8 @@ require_once __DIR__ . '/../../../api/RouteCache.php';
 
 // Load test base class
 require_once __DIR__ . '/DolibarrRealTestCase.php';
+
+// Load OAuth2 test base class if OAuth2 directory exists
+if (is_dir(__DIR__ . '/OAuth2')) {
+    require_once __DIR__ . '/OAuth2/OAuthTestCase.php';
+}

@@ -51,6 +51,10 @@ if (!function_exists('dol_now')) {
 if (!function_exists('getDolGlobalInt')) {
     function getDolGlobalInt($key, $default = 0)
     {
+        global $conf;
+        if (isset($conf->global->$key)) {
+            return (int) $conf->global->$key;
+        }
         return $default;
     }
 }
@@ -59,6 +63,10 @@ if (!function_exists('getDolGlobalInt')) {
 if (!function_exists('getDolGlobalString')) {
     function getDolGlobalString($key, $default = '')
     {
+        global $conf;
+        if (isset($conf->global->$key)) {
+            return (string) $conf->global->$key;
+        }
         return $default;
     }
 }

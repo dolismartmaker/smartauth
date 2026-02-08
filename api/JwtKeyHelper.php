@@ -204,4 +204,288 @@ class JwtKeyHelper
     {
         return strtoupper(trim($moduleName)) . '_JWT_KEY';
     }
+
+    // =========================================================================
+    // RSA Key Management for OAuth2/OIDC (RS256)
+    // =========================================================================
+
+    /**
+     * RSA key size in bits
+     */
+    const RSA_KEY_BITS = 2048;
+
+    /**
+     * Configuration key names for RSA keys
+     */
+    const RSA_PRIVATE_KEY_CONFIG = 'SMARTAUTH_OAUTH_RSA_PRIVATE_KEY';
+    const RSA_PUBLIC_KEY_CONFIG = 'SMARTAUTH_OAUTH_RSA_PUBLIC_KEY';
+    const RSA_KEY_ID_CONFIG = 'SMARTAUTH_OAUTH_RSA_KID';
+
+    /**
+     * Get or generate RSA private key for OAuth2/OIDC
+     *
+     * @return string PEM-encoded private key
+     * @throws \RuntimeException If key generation fails
+     */
+    public static function getRsaPrivateKey(): string
+    {
+        global $db;
+
+        $privateKey = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
+
+        if (empty($privateKey)) {
+            // Generate new RSA key pair
+            self::generateRsaKeyPair();
+            $privateKey = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
+
+            if (empty($privateKey)) {
+                throw new \RuntimeException('Failed to generate or retrieve RSA private key');
+            }
+        }
+
+        return $privateKey;
+    }
+
+    /**
+     * Get RSA public key for OAuth2/OIDC
+     *
+     * @return string PEM-encoded public key
+     * @throws \RuntimeException If key retrieval fails
+     */
+    public static function getRsaPublicKey(): string
+    {
+        global $db;
+
+        $publicKey = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
+
+        if (empty($publicKey)) {
+            // Generate new RSA key pair
+            self::generateRsaKeyPair();
+            $publicKey = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
+
+            if (empty($publicKey)) {
+                throw new \RuntimeException('Failed to generate or retrieve RSA public key');
+            }
+        }
+
+        return $publicKey;
+    }
+
+    /**
+     * Get the Key ID (kid) for the current RSA key
+     *
+     * @return string Key ID
+     */
+    public static function getRsaKeyId(): string
+    {
+        $kid = getDolGlobalString(self::RSA_KEY_ID_CONFIG, '');
+
+        if (empty($kid)) {
+            // Generate key pair which will also create kid
+            self::generateRsaKeyPair();
+            $kid = getDolGlobalString(self::RSA_KEY_ID_CONFIG, '');
+
+            if (empty($kid)) {
+                // Fallback kid if generation failed
+                return 'smartauth-' . date('Y');
+            }
+        }
+
+        return $kid;
+    }
+
+    /**
+     * Generate a new RSA key pair and store in database
+     *
+     * @return bool Success
+     * @throws \RuntimeException If OpenSSL extension is not available
+     */
+    public static function generateRsaKeyPair(): bool
+    {
+        global $db, $conf;
+
+        if (!extension_loaded('openssl')) {
+            throw new \RuntimeException('OpenSSL extension is required for RSA key generation');
+        }
+
+        // Generate RSA key pair
+        $config = [
+            'private_key_bits' => self::RSA_KEY_BITS,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        ];
+
+        $keyResource = openssl_pkey_new($config);
+        if ($keyResource === false) {
+            dol_syslog('SmartAuth JwtKeyHelper: Failed to generate RSA key pair: ' . openssl_error_string(), LOG_ERR);
+            return false;
+        }
+
+        // Extract private key
+        $privateKeyPem = '';
+        if (!openssl_pkey_export($keyResource, $privateKeyPem)) {
+            dol_syslog('SmartAuth JwtKeyHelper: Failed to export RSA private key: ' . openssl_error_string(), LOG_ERR);
+            return false;
+        }
+
+        // Extract public key
+        $keyDetails = openssl_pkey_get_details($keyResource);
+        if ($keyDetails === false) {
+            dol_syslog('SmartAuth JwtKeyHelper: Failed to get RSA key details: ' . openssl_error_string(), LOG_ERR);
+            return false;
+        }
+        $publicKeyPem = $keyDetails['key'];
+
+        // Generate Key ID based on public key hash
+        $kid = 'smartauth-' . substr(hash('sha256', $publicKeyPem), 0, 8);
+
+        // Store keys in database
+        $success = true;
+
+        if (function_exists('dolibarr_set_const')) {
+            $success = $success && (dolibarr_set_const($db, self::RSA_PRIVATE_KEY_CONFIG, $privateKeyPem, 'chaine', 0, 'RSA private key for OAuth2/OIDC', 0) > 0);
+            $success = $success && (dolibarr_set_const($db, self::RSA_PUBLIC_KEY_CONFIG, $publicKeyPem, 'chaine', 0, 'RSA public key for OAuth2/OIDC', 0) > 0);
+            $success = $success && (dolibarr_set_const($db, self::RSA_KEY_ID_CONFIG, $kid, 'chaine', 0, 'RSA Key ID for OAuth2/OIDC', 0) > 0);
+        } else {
+            $success = $success && self::storeKey($db, self::RSA_PRIVATE_KEY_CONFIG, $privateKeyPem);
+            $success = $success && self::storeKey($db, self::RSA_PUBLIC_KEY_CONFIG, $publicKeyPem);
+            $success = $success && self::storeKey($db, self::RSA_KEY_ID_CONFIG, $kid);
+        }
+
+        if ($success) {
+            // Update conf cache
+            if (isset($conf->global)) {
+                $conf->global->{self::RSA_PRIVATE_KEY_CONFIG} = $privateKeyPem;
+                $conf->global->{self::RSA_PUBLIC_KEY_CONFIG} = $publicKeyPem;
+                $conf->global->{self::RSA_KEY_ID_CONFIG} = $kid;
+            }
+
+            dol_syslog('SmartAuth JwtKeyHelper: Generated new RSA key pair with kid=' . $kid, LOG_INFO);
+        } else {
+            dol_syslog('SmartAuth JwtKeyHelper: Failed to store RSA key pair', LOG_ERR);
+        }
+
+        return $success;
+    }
+
+    /**
+     * Get JWKS (JSON Web Key Set) containing public key(s)
+     *
+     * @return array JWKS structure with 'keys' array
+     */
+    public static function getJwks(): array
+    {
+        $publicKeyPem = self::getRsaPublicKey();
+        $kid = self::getRsaKeyId();
+
+        // Parse public key to extract modulus and exponent
+        $keyResource = openssl_pkey_get_public($publicKeyPem);
+        if ($keyResource === false) {
+            dol_syslog('SmartAuth JwtKeyHelper: Failed to parse public key for JWKS', LOG_ERR);
+            return ['keys' => []];
+        }
+
+        $keyDetails = openssl_pkey_get_details($keyResource);
+        if ($keyDetails === false || $keyDetails['type'] !== OPENSSL_KEYTYPE_RSA) {
+            dol_syslog('SmartAuth JwtKeyHelper: Invalid key type for JWKS', LOG_ERR);
+            return ['keys' => []];
+        }
+
+        // Convert binary modulus and exponent to base64url
+        $n = self::base64UrlEncode($keyDetails['rsa']['n']);
+        $e = self::base64UrlEncode($keyDetails['rsa']['e']);
+
+        return [
+            'keys' => [
+                [
+                    'kty' => 'RSA',
+                    'alg' => 'RS256',
+                    'use' => 'sig',
+                    'kid' => $kid,
+                    'n' => $n,
+                    'e' => $e
+                ]
+            ]
+        ];
+    }
+
+    /**
+     * Rotate RSA key pair
+     *
+     * WARNING: This will invalidate all existing OAuth2 tokens.
+     * Use with caution, typically only for security incidents.
+     *
+     * @return bool Success
+     */
+    public static function rotateRsaKeyPair(): bool
+    {
+        global $db, $conf;
+
+        // Clear existing keys from conf cache
+        if (isset($conf->global)) {
+            unset($conf->global->{self::RSA_PRIVATE_KEY_CONFIG});
+            unset($conf->global->{self::RSA_PUBLIC_KEY_CONFIG});
+            unset($conf->global->{self::RSA_KEY_ID_CONFIG});
+        }
+
+        // Delete from database
+        if (function_exists('dolibarr_del_const')) {
+            dolibarr_del_const($db, self::RSA_PRIVATE_KEY_CONFIG, 0);
+            dolibarr_del_const($db, self::RSA_PUBLIC_KEY_CONFIG, 0);
+            dolibarr_del_const($db, self::RSA_KEY_ID_CONFIG, 0);
+        } else {
+            $sql = "DELETE FROM " . MAIN_DB_PREFIX . "const WHERE name IN ('" .
+                $db->escape(self::RSA_PRIVATE_KEY_CONFIG) . "', '" .
+                $db->escape(self::RSA_PUBLIC_KEY_CONFIG) . "', '" .
+                $db->escape(self::RSA_KEY_ID_CONFIG) . "')";
+            $db->query($sql);
+        }
+
+        // Generate new key pair
+        $result = self::generateRsaKeyPair();
+
+        if ($result) {
+            dol_syslog('SmartAuth JwtKeyHelper: RSA key pair rotated successfully', LOG_WARNING);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check if RSA key pair exists
+     *
+     * @return bool True if both private and public keys exist
+     */
+    public static function hasRsaKeyPair(): bool
+    {
+        $privateKey = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
+        $publicKey = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
+
+        return !empty($privateKey) && !empty($publicKey);
+    }
+
+    /**
+     * Encode data to base64url format (RFC 4648)
+     *
+     * @param string $data Binary data to encode
+     * @return string Base64url encoded string
+     */
+    public static function base64UrlEncode(string $data): string
+    {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+
+    /**
+     * Decode base64url encoded data (RFC 4648)
+     *
+     * @param string $data Base64url encoded string
+     * @return string Decoded binary data
+     */
+    public static function base64UrlDecode(string $data): string
+    {
+        $remainder = strlen($data) % 4;
+        if ($remainder) {
+            $data .= str_repeat('=', 4 - $remainder);
+        }
+        return base64_decode(strtr($data, '-_', '+/'));
+    }
 }
