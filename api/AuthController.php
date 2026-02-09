@@ -269,6 +269,7 @@ class AuthController
 	 * @apiSuccess {String} token_type Token type (Bearer)
 	 * @apiSuccess {Object[]} [devices_choice] List of known devices for this user (if device is new)
 	 * @apiSuccess {Number} rememberMe Remember me flag
+	 * @apiSuccess {Boolean} must_change_password True if user must change password (first login or temp password)
 	 *
 	 * @apiSuccessExample {json} Success-Response:
 	 * HTTP/1.1 200 OK
@@ -282,7 +283,8 @@ class AuthController
 	 *     "expires_in": 3600,
 	 *     "token_type": "Bearer",
 	 *     "devices_choice": null,
-	 *     "rememberMe": 0
+	 *     "rememberMe": 0,
+	 *     "must_change_password": false
 	 * }
 	 *
 	 * @apiError (401) AccessDenied Invalid credentials
@@ -447,6 +449,16 @@ class AuthController
 		if (empty($tmpuser->email)) {
 			$userlogin = $tmpuser->login;
 		}
+
+		// Check if user must change password
+		$mustChangePassword = false;
+
+		// First login: datepreviouslogin is null
+		if (empty($tmpuser->datepreviouslogin)) {
+			$mustChangePassword = true;
+			dol_syslog("smartauth : first login detected for user " . $tmpuser->id . ", password change required", LOG_DEBUG);
+		}
+
 		$ret = [
 			'user' => $userlogin,
 			'userid' => $tmpuser->id,
@@ -457,7 +469,8 @@ class AuthController
 			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
 			'token_type' => 'Bearer',
 			'devices_choice' => $devices_choice,
-			'rememberMe' => $rememberme
+			'rememberMe' => $rememberme,
+			'must_change_password' => $mustChangePassword
 		];
 		return ([$ret, 200]);
 	}
