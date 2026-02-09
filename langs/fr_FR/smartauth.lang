@@ -115,3 +115,102 @@ Expired=Expiré
 SetupGeoIPForSmartAuth = Télécharger et initialiser GeoIP
 SmartAuthDevicesMenu = Périphériques
 SetupGeoIPForSmartAuthFileIsPresent = Le fichier %s est installé !
+
+#
+# OAuth Server
+#
+SmartAuthOAuthSetup=Serveur OAuth
+SmartAuthOAuthSetupDesc=Configuration du serveur OAuth2/OIDC. Activez ce mode pour utiliser SmartAuth comme Identity Provider (IdP) central pour le SSO.
+SmartAuthOAuthActivation=Activation
+SmartAuthOAuthEnabled=Activer le serveur OAuth/OIDC
+SmartAuthOAuthIssuer=URL de l'issuer
+SmartAuthOAuthIssuerHelp=Laissez vide pour utiliser la valeur auto-detectee : %s
+SmartAuthOAuthTokenSettings=Parametres des tokens
+SmartAuthOAuthAccessTTL=Duree access token (secondes)
+SmartAuthOAuthRefreshTTL=Duree refresh token (secondes)
+SmartAuthOAuthCodeTTL=Duree code autorisation (secondes)
+SmartAuthOAuthDefaultValue=defaut : %s
+SmartAuthOAuthSecurity=Securite
+SmartAuthOAuthRequirePKCE=PKCE obligatoire pour clients publics
+SmartAuthOAuthRequirePKCEHelp=Recommande pour les applications mobiles et SPA (Single Page Applications)
+SmartAuthOAuthConsentRemember=Memoriser les consentements
+SmartAuthOAuthConsentRememberHelp=Evite de redemander le consentement a chaque connexion
+SmartAuthOAuthEndpoints=Endpoints OIDC
+SmartAuthOAuthNotEnabled=Le serveur OAuth n'est pas activé. Activez-le pour voir les endpoints disponibles.
+
+#
+# OAuth Clients
+#
+OAuthClients=Clients OAuth
+OAuthClientsList=Liste des clients OAuth
+OAuthClientCard=Fiche client OAuth
+NewOAuthClient=Nouveau client
+ClientId=Client ID
+ClientSecret=Client Secret
+RedirectURIs=URIs de redirection
+RedirectURIsHelp=Une URI par ligne. Doit être une URL valide (https://...).
+AllowedScopes=Scopes autorisés
+AllowedGrants=Grant types autorisés
+ConfidentialClient=Client confidentiel
+ConfidentialClientHelp=Application serveur avec secret
+PublicClient=Client public (PKCE)
+PublicClientHelp=Application mobile ou SPA sans secret
+RequirePKCE=PKCE obligatoire
+RequirePKCEHelp=Recommandé pour tous les clients
+ClientType=Type de client
+ClientTypeCannotChange=Ne peut pas être modifié après création
+AccessTokenLifetime=Durée access token
+RefreshTokenLifetime=Durée refresh token
+RegenerateSecret=Régénérer le secret
+ConfirmRegenerateSecret=Êtes-vous sûr de vouloir régénérer le secret ? L'ancien secret sera immédiatement invalidé.
+ActiveTokens=Tokens actifs
+LastTokenIssued=Dernier token émis
+OAuthClientEnabled=Client OAuth activé
+OAuthClientDisabled=Client OAuth désactivé
+OAuthClientDeleted=Client OAuth supprimé
+OAuthClientCreated=Client OAuth créé avec succès
+OAuthClientUpdated=Client OAuth mis à jour avec succès
+OAuthClientSecretRegenerated=Secret client régénéré avec succès
+DeleteOAuthClient=Supprimer le client OAuth
+ConfirmDeleteOAuthClient=Êtes-vous sûr de vouloir supprimer le client OAuth "%s" ? Tous les tokens associés seront révoqués.
+ImportantClientSecretWarning=Important : Sauvegardez votre secret client
+ClientSecretDisplayOnce=Le secret client est affiché une seule fois. Il ne pourra pas être récupéré ultérieurement.
+CopySecretNow=Copiez et sauvegardez ce secret dans un endroit sécurisé maintenant.
+SecretStoredHashed=Secret stocké de manière chiffrée
+ErrorInvalidRedirectURI=URI de redirection invalide : %s
+Copied=Copié !
+Copy=Copier
+
+# Scopes
+ScopeOpenID=Requis pour OpenID Connect
+ScopeProfile=Profil utilisateur (nom, etc.)
+ScopeEmail=Adresse email
+ScopeGroups=Groupes utilisateur
+ScopeOfflineAccess=Accès hors ligne (refresh token)
+
+# Grant Types
+GrantAuthorizationCode=Authorization Code (apps web)
+GrantRefreshToken=Refresh Token
+GrantClientCredentials=Client Credentials (machine-to-machine)
+
+# Dolibarr Integration
+SmartAuthDolibarrIntegration=Integration Dolibarr
+SmartAuthDolibarrIntegrationDesc=Configurez Dolibarr pour utiliser SmartAuth comme fournisseur d'authentification OAuth.
+SmartAuthDolibarrClientExists=Le client OAuth Dolibarr est configure
+SmartAuthDolibarrClientNotExists=Le client OAuth Dolibarr n'est pas configure
+SmartAuthDolibarrCreateClient=Creer le client Dolibarr
+SmartAuthDolibarrClientCreated=Client OAuth Dolibarr cree avec succes
+SmartAuthDolibarrClientAlreadyExists=Le client OAuth Dolibarr existe deja
+SmartAuthDolibarrClientError=Erreur lors de la creation du client OAuth Dolibarr
+SmartAuthDolibarrTestConnection=Tester la connexion
+SmartAuthDolibarrTestSuccess=Connexion reussie ! SmartAuth est accessible.
+SmartAuthDolibarrTestFailed=Echec de la connexion : %s
+SmartAuthDolibarrConfig=Configuration pour Dolibarr
+SmartAuthDolibarrConfigDesc=Ajoutez ces parametres a votre installation Dolibarr :
+SmartAuthDolibarrConfPhp=Configuration conf.php
+SmartAuthDolibarrConstants=Constantes Dolibarr a configurer
+SmartAuthDolibarrRedirectUri=URI de redirection
+SmartAuthDolibarrRedirectUriHelp=Mettez a jour cette URI pour correspondre a l'URL de votre Dolibarr
+SmartAuthDolibarrInstallDoc=Documentation d'installation
+SmartAuthDolibarrCopyFile=Copiez le fichier d'authentification dans Dolibarr
+SmartAuthDolibarrFilePath=Fichier a copier
