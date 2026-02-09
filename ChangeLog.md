@@ -1,11 +1,15 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 1.1.2 -- 20260201
+## 2.0.0 -- 20260209
+
+Full oAuth2 identity provider solution
+
+## 1.1.2 -- 20260201
 
 Add more tools for offline mode
 Add LocalRoute system
 
-## 1.1.0 -- 20260123
+## 1.1.0 -- 20260123
 
 Major version
 Auto build cache router and auto detect invalidate cache if routes changed
