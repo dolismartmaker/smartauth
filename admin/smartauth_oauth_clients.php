@@ -201,7 +201,7 @@ if ($search_status !== '' && $search_status >= 0) {
 }
 
 // Count total
-$sqlforcount = preg_replace('/^SELECT[^]+FROM/Ui', 'SELECT COUNT(*) as nbtotalofrecords FROM', $sql);
+$sqlforcount = preg_replace('/^SELECT[\s\S]+?FROM/Ui', 'SELECT COUNT(*) as nbtotalofrecords FROM', $sql);
 $resql = $db->query($sqlforcount);
 $nbtotalofrecords = 0;
 if ($resql) {
