@@ -132,9 +132,9 @@ class UserinfoController
     private function extractBearerToken(): ?string
     {
         // Debug: log all authorization-related headers
-        // dol_syslog('SmartAuth UserinfoController::extractBearerToken - REQUEST_METHOD=' . ($_SERVER['REQUEST_METHOD'] ?? 'null'), LOG_DEBUG);
-        // dol_syslog('SmartAuth UserinfoController::extractBearerToken - HTTP_AUTHORIZATION=' . (isset($_SERVER['HTTP_AUTHORIZATION']) ? 'present (len=' . strlen($_SERVER['HTTP_AUTHORIZATION']) . ')' : 'missing'), LOG_DEBUG);
-        // dol_syslog('SmartAuth UserinfoController::extractBearerToken - REDIRECT_HTTP_AUTHORIZATION=' . (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION']) ? 'present' : 'missing'), LOG_DEBUG);
+        dol_syslog('SmartAuth UserinfoController::extractBearerToken - REQUEST_METHOD=' . ($_SERVER['REQUEST_METHOD'] ?? 'null'), LOG_DEBUG);
+        dol_syslog('SmartAuth UserinfoController::extractBearerToken - HTTP_AUTHORIZATION=' . (isset($_SERVER['HTTP_AUTHORIZATION']) ? 'present (len=' . strlen($_SERVER['HTTP_AUTHORIZATION']) . ')' : 'missing'), LOG_DEBUG);
+        dol_syslog('SmartAuth UserinfoController::extractBearerToken - REDIRECT_HTTP_AUTHORIZATION=' . (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION']) ? 'present' : 'missing'), LOG_DEBUG);
 
         // Try Authorization header first
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
@@ -142,13 +142,13 @@ class UserinfoController
         // Apache may use different variable
         if (empty($authHeader) && !empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
             $authHeader = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
-            // dol_syslog('SmartAuth UserinfoController::extractBearerToken - using REDIRECT_HTTP_AUTHORIZATION', LOG_DEBUG);
+            dol_syslog('SmartAuth UserinfoController::extractBearerToken - using REDIRECT_HTTP_AUTHORIZATION', LOG_DEBUG);
         }
 
         // Debug: log header value (masked)
         if (!empty($authHeader)) {
             $maskedHeader = substr($authHeader, 0, 15) . '...' . substr($authHeader, -10);
-            // dol_syslog('SmartAuth UserinfoController::extractBearerToken - authHeader=' . $maskedHeader, LOG_DEBUG);
+            dol_syslog('SmartAuth UserinfoController::extractBearerToken - authHeader=' . $maskedHeader, LOG_DEBUG);
         } else {
             dol_syslog('SmartAuth UserinfoController::extractBearerToken - authHeader is empty', LOG_DEBUG);
         }
@@ -157,7 +157,7 @@ class UserinfoController
         if (!empty($authHeader) && stripos($authHeader, 'Bearer ') === 0) {
             $token = trim(substr($authHeader, 7));
             if (!empty($token)) {
-                // dol_syslog('SmartAuth UserinfoController::extractBearerToken - Bearer token extracted (len=' . strlen($token) . ')', LOG_DEBUG);
+                dol_syslog('SmartAuth UserinfoController::extractBearerToken - Bearer token extracted (len=' . strlen($token) . ')', LOG_DEBUG);
                 return $token;
             }
             dol_syslog('SmartAuth UserinfoController::extractBearerToken - Bearer prefix found but token empty', LOG_DEBUG);
@@ -166,11 +166,11 @@ class UserinfoController
         // Fallback: check POST body for access_token (RFC 6750 Section 2.2)
         if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-            // dol_syslog('SmartAuth UserinfoController::extractBearerToken - POST Content-Type=' . $contentType, LOG_DEBUG);
+            dol_syslog('SmartAuth UserinfoController::extractBearerToken - POST Content-Type=' . $contentType, LOG_DEBUG);
             if (strpos($contentType, 'application/x-www-form-urlencoded') !== false) {
                 $accessToken = $_POST['access_token'] ?? null;
                 if (!empty($accessToken)) {
-                    // dol_syslog('SmartAuth UserinfoController::extractBearerToken - access_token from POST body (len=' . strlen($accessToken) . ')', LOG_DEBUG);
+                    dol_syslog('SmartAuth UserinfoController::extractBearerToken - access_token from POST body (len=' . strlen($accessToken) . ')', LOG_DEBUG);
                     return $accessToken;
                 }
                 dol_syslog('SmartAuth UserinfoController::extractBearerToken - POST body has no access_token', LOG_DEBUG);

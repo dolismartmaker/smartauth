@@ -32,7 +32,9 @@
 
 namespace SmartAuth\Api\OAuth2;
 
-require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
+dol_include_once('/smartauth/class/smartauthoauthconsent.class.php');
+dol_include_once('/smartauth/class/smartauthoauthcode.class.php');
 
 class AuthorizationController
 {
@@ -308,8 +310,6 @@ class AuthorizationController
             return null;
         }
 
-        require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthclient.class.php';
-
         $client = new \SmartAuthOAuthClient($this->db);
         $result = $client->fetch(0, null, $clientId);
 
@@ -445,8 +445,6 @@ class AuthorizationController
             return false;
         }
 
-        require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthconsent.class.php';
-
         $consent = new \SmartAuthOAuthConsent($this->db);
         $result = $consent->fetchByClientAndUser($clientId, $userId);
 
@@ -468,9 +466,6 @@ class AuthorizationController
      */
     private function saveConsent(int $userId, int $clientId, array $scopes): void
     {
-        require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthconsent.class.php';
-        require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
-
         $user = new \User($this->db);
         $user->fetch($userId);
 
@@ -560,9 +555,6 @@ class AuthorizationController
         ?string $codeChallengeMethod,
         ?string $nonce
     ): void {
-        require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthcode.class.php';
-        require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
-
         // Generate authorization code
         $plainCode = \SmartAuthOAuthCode::generateCode();
         $codeHash = \SmartAuthOAuthCode::hashCode($plainCode);

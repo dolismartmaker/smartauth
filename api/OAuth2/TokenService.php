@@ -29,9 +29,8 @@
 
 namespace SmartAuth\Api\OAuth2;
 
-require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthtoken.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/api/JwtKeyHelper.php';
+dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
+dol_include_once('/smartauth/api/JwtKeyHelper.php');
 
 use SmartAuth\Api\JwtKeyHelper;
 

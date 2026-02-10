@@ -36,10 +36,9 @@
 
 namespace SmartAuth\Api\OAuth2;
 
-require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthclient.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthcode.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthtoken.class.php';
+dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
+dol_include_once('/smartauth/class/smartauthoauthcode.class.php');
+dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
 
 class TokenController
 {
