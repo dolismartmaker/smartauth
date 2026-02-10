@@ -21,6 +21,7 @@ use SmartAuth\Api\RouteController as Route;
 use SmartAuth\Api\AuthController;
 use SmartAuth\Api\PasswordResetController;
 use SmartAuth\Api\SmartFileController;
+use SmartAuth\Api\SmartTempFileController;
 use SmartAuth\Api\SyncController;
 
 // ========== Auth Routes ========== //
@@ -56,6 +57,17 @@ Route::get('file/{hash}', SmartFileController::class, 'download', true);
 
 // File download by ECM share hash - binary stream (protected)
 Route::get('file/{hash}/binary', SmartFileController::class, 'downloadBinary', true);
+
+// ========== Temp File Routes ========== //
+
+// Temporary file download - base64 JSON response (protected)
+Route::get('temp-file/{token}', SmartTempFileController::class, 'download', true);
+
+// Temporary file download - binary stream (protected)
+Route::get('temp-file/{token}/binary', SmartTempFileController::class, 'downloadBinary', true);
+
+// Temporary file deletion (protected)
+Route::delete('temp-file/{token}', SmartTempFileController::class, 'delete', true);
 
 // ========== Sync Routes ========== //
 
