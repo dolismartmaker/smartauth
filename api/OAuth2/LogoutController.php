@@ -330,7 +330,7 @@ class LogoutController
         $issuer = OAuthConfig::getIssuer();
 
         // Include the logout template
-        include DOL_DOCUMENT_ROOT . '/custom/smartauth/tpl/logout.tpl.php';
+        dol_include_once('/smartauth/tpl/logout.tpl.php');
         exit;
     }
 }
