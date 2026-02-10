@@ -15,7 +15,7 @@
 
 namespace SmartAuth\Tests\IntegrationDolibarr\OAuth2;
 
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/api/OAuth2/RevocationController.php';
+dol_include_once('/smartauth/api/OAuth2/RevocationController.php');
 
 use SmartAuth\Api\OAuth2\RevocationController;
 

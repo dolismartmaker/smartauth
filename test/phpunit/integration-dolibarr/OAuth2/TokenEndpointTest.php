@@ -16,7 +16,7 @@
 
 namespace SmartAuth\Tests\IntegrationDolibarr\OAuth2;
 
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/api/OAuth2/TokenController.php';
+dol_include_once('/smartauth/api/OAuth2/TokenController.php');
 
 use SmartAuth\Api\OAuth2\TokenController;
 use SmartAuth\Api\OAuth2\ScopeManager;

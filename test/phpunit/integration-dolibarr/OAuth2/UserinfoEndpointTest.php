@@ -13,7 +13,7 @@
 
 namespace SmartAuth\Tests\IntegrationDolibarr\OAuth2;
 
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/api/OAuth2/UserinfoController.php';
+dol_include_once('/smartauth/api/OAuth2/UserinfoController.php');
 
 use SmartAuth\Api\OAuth2\UserinfoController;
 use SmartAuth\Api\OAuth2\ScopeManager;

@@ -14,14 +14,14 @@ use SmartAuth\Api\OAuth2\PKCEHelper;
 use SmartAuth\Api\OAuth2\TokenService;
 use SmartAuth\Api\OAuth2\OAuthConfig;
 
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthclient.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthcode.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthtoken.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/class/smartauthoauthconsent.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/api/OAuth2/PKCEHelper.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/api/OAuth2/ScopeManager.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/api/OAuth2/OAuthConfig.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartauth/api/OAuth2/TokenService.php';
+dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
+dol_include_once('/smartauth/class/smartauthoauthcode.class.php');
+dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
+dol_include_once('/smartauth/class/smartauthoauthconsent.class.php');
+dol_include_once('/smartauth/api/OAuth2/PKCEHelper.php');
+dol_include_once('/smartauth/api/OAuth2/ScopeManager.php');
+dol_include_once('/smartauth/api/OAuth2/OAuthConfig.php');
+dol_include_once('/smartauth/api/OAuth2/TokenService.php');
 
 abstract class OAuthTestCase extends DolibarrRealTestCase
 {
