@@ -4,6 +4,10 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Pass Authorization header to PHP (required for Bearer tokens in CGI/FastCGI mode)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
     # Handle HTTPS redirect (uncomment in production)
     # RewriteCond %{HTTPS} off
     # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
