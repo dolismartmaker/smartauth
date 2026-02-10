@@ -1,5 +1,9 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.1 -- 20260210
+
+oAuth2 server working with wordpress client as POC
+
 ## 2.0.0 -- 20260209
 
 Full oAuth2 identity provider solution
