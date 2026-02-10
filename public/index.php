@@ -129,11 +129,20 @@ dol_include_once('/smartauth/api/OAuth2/LoginController.php');
 dol_include_once('/smartauth/api/OAuth2/PKCEHelper.php');
 dol_include_once('/smartauth/api/OAuth2/ScopeManager.php');
 dol_include_once('/smartauth/api/OAuth2/AuthorizationController.php');
+dol_include_once('/smartauth/api/OAuth2/TokenService.php');
+dol_include_once('/smartauth/api/OAuth2/TokenController.php');
+dol_include_once('/smartauth/api/OAuth2/UserinfoController.php');
+dol_include_once('/smartauth/api/OAuth2/RevocationController.php');
+dol_include_once('/smartauth/api/OAuth2/LogoutController.php');
 
 use SmartAuth\Api\OAuth2\OAuthConfig;
 use SmartAuth\Api\OAuth2\DiscoveryController;
 use SmartAuth\Api\OAuth2\LoginController;
 use SmartAuth\Api\OAuth2\AuthorizationController;
+use SmartAuth\Api\OAuth2\TokenController;
+use SmartAuth\Api\OAuth2\UserinfoController;
+use SmartAuth\Api\OAuth2\RevocationController;
+use SmartAuth\Api\OAuth2\LogoutController;
 
 // ============================================================================
 // Check if OAuth is enabled
@@ -198,11 +207,27 @@ if (!$handled && strpos($requestPath, '/oauth/') === 0) {
             break;
 
         case 'token':
+            $tokenController = new TokenController($db);
+            $tokenController->handleToken();
+            $handled = true;
+            break;
+
         case 'userinfo':
+            $userinfoController = new UserinfoController($db);
+            $userinfoController->handleUserinfo();
+            $handled = true;
+            break;
+
         case 'revoke':
+            $revocationController = new RevocationController($db);
+            $revocationController->handleRevoke();
+            $handled = true;
+            break;
+
         case 'logout':
-            // Placeholder for future implementation
-            sendJsonError('not_implemented', 'This endpoint is not yet implemented', 501);
+            $logoutController = new LogoutController($db);
+            $logoutController->handleLogout();
+            $handled = true;
             break;
 
         default:
