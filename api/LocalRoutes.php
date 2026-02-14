@@ -23,6 +23,7 @@ use SmartAuth\Api\PasswordResetController;
 use SmartAuth\Api\SmartFileController;
 use SmartAuth\Api\SmartTempFileController;
 use SmartAuth\Api\SyncController;
+use SmartAuth\Api\PwaController;
 
 // ========== Auth Routes ========== //
 
@@ -88,3 +89,11 @@ Route::get('sync/conflicts', SyncController::class, 'conflicts', true);
 
 // Sync conflict resolution
 Route::post('sync/conflicts/{id}/resolve', SyncController::class, 'resolveConflict', true);
+
+// ========== PWA Routes ========== //
+
+// PWA manifest (unprotected - needed before login)
+Route::get('manifest', PwaController::class, 'manifest');
+
+// PWA icons (unprotected)
+Route::get('icon/{size}', PwaController::class, 'icon');
