@@ -93,7 +93,7 @@ Route::post('sync/conflicts/{id}/resolve', SyncController::class, 'resolveConfli
 // ========== PWA Routes ========== //
 
 // PWA manifest (unprotected - needed before login)
-Route::get('manifest', PwaController::class, 'manifest');
+Route::get('manifest.webmanifest', PwaController::class, 'manifest');
 
 // PWA icons (unprotected)
 Route::get('icon/{size}', PwaController::class, 'icon');
