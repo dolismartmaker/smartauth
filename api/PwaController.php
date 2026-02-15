@@ -25,7 +25,7 @@ class PwaController
 
     /**
      * Serve dynamic PWA manifest
-     * Route: GET /manifest
+     * Route: GET /manifest.webmanifest
      *
      * @param array|null $payload Request payload
      * @return void
