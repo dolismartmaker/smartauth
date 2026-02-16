@@ -62,7 +62,7 @@ class RouteCache
     {
         self::$moduleName = strtolower($moduleName);
         self::$cachedRoutes = null;
-        dol_syslog("RouteCache: Initialized for module " . self::$moduleName, LOG_DEBUG);
+        SmartAuthLogger::debug("RouteCache: Initialized for module " . self::$moduleName);
     }
 
     /**
@@ -117,7 +117,7 @@ class RouteCache
         $cacheFile = self::getCacheFilePath();
 
         if (empty($cacheFile) || !file_exists($cacheFile)) {
-            dol_syslog("RouteCache: Cache file does not exist for " . self::$moduleName, LOG_DEBUG);
+            SmartAuthLogger::debug("RouteCache: Cache file does not exist for " . self::$moduleName);
             return false;
         }
 
@@ -130,7 +130,7 @@ class RouteCache
         $currentVersion = self::getCurrentVersion();
 
         if ($cachedVersion !== $currentVersion) {
-            dol_syslog("RouteCache: Version mismatch (cached=$cachedVersion, current=$currentVersion)", LOG_DEBUG);
+            SmartAuthLogger::debug("RouteCache: Version mismatch (cached=$cachedVersion, current=$currentVersion)");
             return false;
         }
 
@@ -138,7 +138,7 @@ class RouteCache
         $sourceFile = $cached['source_file'] ?? '';
         if (!empty($sourceFile) && file_exists($sourceFile)) {
             if (filemtime($sourceFile) > filemtime($cacheFile)) {
-                dol_syslog("RouteCache: Source file modified, cache invalidated", LOG_DEBUG);
+                SmartAuthLogger::debug("RouteCache: Source file modified, cache invalidated");
                 return false;
             }
         }
@@ -149,14 +149,14 @@ class RouteCache
 
         // If the list of files changed, invalidate
         if (array_keys($cachedLocalFiles) !== array_keys($currentLocalFiles)) {
-            dol_syslog("RouteCache: Local routes files list changed, cache invalidated", LOG_DEBUG);
+            SmartAuthLogger::debug("RouteCache: Local routes files list changed, cache invalidated");
             return false;
         }
 
         // If any file was modified, invalidate
         foreach ($currentLocalFiles as $file => $mtime) {
             if (!isset($cachedLocalFiles[$file]) || $cachedLocalFiles[$file] < $mtime) {
-                dol_syslog("RouteCache: Local routes file modified: $file", LOG_DEBUG);
+                SmartAuthLogger::debug("RouteCache: Local routes file modified: $file");
                 return false;
             }
         }
@@ -232,7 +232,7 @@ class RouteCache
         // Capture the source file that defines routes
         self::$sourceFile = $_SERVER['SCRIPT_FILENAME'];
 
-        dol_syslog("RouteCache: Started registration mode", LOG_DEBUG);
+        SmartAuthLogger::debug("RouteCache: Started registration mode");
     }
 
     /**
@@ -296,7 +296,7 @@ class RouteCache
 
         foreach ($files as $file => $mtime) {
             try {
-                dol_syslog("RouteCache: Including local routes from $file", LOG_DEBUG);
+                SmartAuthLogger::debug("RouteCache: Including local routes from $file");
                 include_once $file;
             } catch (\Exception $e) {
                 dol_syslog("RouteCache: Error including $file: " . $e->getMessage(), LOG_ERR);
@@ -434,7 +434,7 @@ class RouteCache
         }
 
         self::$cachedRoutes = $cached['routes'];
-        dol_syslog("RouteCache: Loaded cache with version " . $cached['version'], LOG_DEBUG);
+        SmartAuthLogger::debug("RouteCache: Loaded cache with version " . $cached['version']);
         return true;
     }
 

@@ -62,6 +62,8 @@ Datelastused=View the
 Dateeol=Expiry date
 IpAddr=IP address
 SMARTAUTH_TOKEN_EOL_DAYS=Time (in days) after which a token expires
+SMARTAUTH_DEBUG=Enable debug mode
+SMARTAUTH_DEBUGTooltip=Enables SmartAuth debug logs in Dolibarr log file (dolibarr.log). Useful for diagnosing authentication, token or PWA issues.
 SMARTAUTH_TRUSTED_PROXIES=Trusted proxy IPs
 SMARTAUTH_TRUSTED_PROXIESTooltip=Comma-separated list of trusted proxy IP addresses (e.g., 10.0.0.1,172.17.0.1). When a request comes from one of these IPs, the X-Forwarded-For header will be trusted to determine the real client IP. Private IPs (127.x, 10.x, 172.16-31.x, 192.168.x) are trusted by default. Leave empty if you don't use a reverse proxy with a public IP.
 #

@@ -150,7 +150,7 @@ class RateLimiter
         if ($resql) {
             $deleted = $this->db->affected_rows($resql);
             if ($deleted > 0) {
-                dol_syslog("RateLimiter: cleaned $deleted old entries", LOG_DEBUG);
+                SmartAuthLogger::debug("RateLimiter: cleaned $deleted old entries");
             }
             return $deleted;
         }

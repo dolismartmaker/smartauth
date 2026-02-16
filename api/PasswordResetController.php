@@ -57,7 +57,7 @@ class PasswordResetController
         global $db, $conf, $langs, $mysoc;
         $langs->loadLangs(array("main", "users", "other"));
 
-        dol_syslog("PasswordResetController::requestReset - Start", LOG_DEBUG);
+        SmartAuthLogger::debug("PasswordResetController::requestReset - Start");
 
         $email = trim($arr['email'] ?? '');
 
@@ -137,11 +137,11 @@ class PasswordResetController
                 // Send email
                 $this->sendResetEmail($userObj, $token);
 
-                dol_syslog("PasswordResetController::requestReset - Reset email sent to user ID: " . $userId, LOG_DEBUG);
+                SmartAuthLogger::debug("PasswordResetController::requestReset - Reset email sent to user ID: " . $userId);
             }
         } else {
             // Log but don't reveal if email exists
-            dol_syslog("PasswordResetController::requestReset - No user found for email: " . $email, LOG_DEBUG);
+            SmartAuthLogger::debug("PasswordResetController::requestReset - No user found for email: " . $email);
         }
 
         // Always return success to prevent email enumeration
@@ -257,7 +257,7 @@ class PasswordResetController
         $result = $mail->sendfile();
 
         if ($result) {
-            dol_syslog("PasswordResetController::sendResetEmail - Email sent successfully to: " . $user->email, LOG_DEBUG);
+            SmartAuthLogger::debug("PasswordResetController::sendResetEmail - Email sent successfully to: " . $user->email);
         } else {
             dol_syslog("PasswordResetController::sendResetEmail - Failed to send email to: " . $user->email . " - Error: " . $mail->error, LOG_ERR);
         }
@@ -275,7 +275,7 @@ class PasswordResetController
     {
         global $db, $conf, $langs;
 
-        dol_syslog("PasswordResetController::confirmReset - Start", LOG_DEBUG);
+        SmartAuthLogger::debug("PasswordResetController::confirmReset - Start");
 
         $email = trim($arr['email'] ?? '');
         $token = trim($arr['token'] ?? '');
@@ -372,7 +372,7 @@ class PasswordResetController
         $sql .= " WHERE rowid = " . ((int) $obj->rowid);
         $db->query($sql);
 
-        dol_syslog("PasswordResetController::confirmReset - Password reset successful for user ID: " . $obj->rowid, LOG_DEBUG);
+        SmartAuthLogger::debug("PasswordResetController::confirmReset - Password reset successful for user ID: " . $obj->rowid);
 
         return [
             ['message' => 'Password has been reset successfully'],
@@ -390,7 +390,7 @@ class PasswordResetController
     {
         global $db;
 
-        dol_syslog("PasswordResetController::changePassword - Start", LOG_DEBUG);
+        SmartAuthLogger::debug("PasswordResetController::changePassword - Start");
 
         // Get authenticated user from payload
         $user = $arr['user'] ?? null;
@@ -454,7 +454,7 @@ class PasswordResetController
             ];
         }
 
-        dol_syslog("PasswordResetController::changePassword - Password changed for user ID: " . $user->id, LOG_DEBUG);
+        SmartAuthLogger::debug("PasswordResetController::changePassword - Password changed for user ID: " . $user->id);
 
         return [
             ['message' => 'Password changed successfully'],

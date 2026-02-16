@@ -401,7 +401,7 @@ class AuthController
 		$tmpuser = new User($db);
 		$resuser = $tmpuser->fetch(0, $login);
 		if ($resuser < 0) {
-			dol_syslog("smartauth : AuthController::login : fetch by login failed, trying email", LOG_DEBUG);
+			SmartAuthLogger::debug("smartauth : AuthController::login : fetch by login failed, trying email");
 			$resuser = $tmpuser->fetch(0, '', '', 0, -1, $login);
 			if ($resuser < 0) {
 				dol_syslog("smartauth : AuthController::login : fetch by email also failed", LOG_WARNING);
@@ -456,7 +456,7 @@ class AuthController
 		// First login: datepreviouslogin is null
 		if (empty($tmpuser->datepreviouslogin)) {
 			$mustChangePassword = true;
-			dol_syslog("smartauth : first login detected for user " . $tmpuser->id . ", password change required", LOG_DEBUG);
+			SmartAuthLogger::debug("smartauth : first login detected for user " . $tmpuser->id . ", password change required");
 		}
 
 		$ret = [
@@ -590,7 +590,7 @@ class AuthController
 					$result = $device->update($user);
 					$message = "update device name : success";
 					if ($result) {
-						dol_syslog("smartauth::AuthController : device update ok call validate", LOG_DEBUG);
+						SmartAuthLogger::debug("smartauth::AuthController : device update ok call validate");
 						$message = "";
 						$device->validate($user);
 					}
@@ -598,19 +598,19 @@ class AuthController
 						'message' => $message,
 					];
 				} else {
-					dol_syslog("smartauth::AuthController : success but device name is empty", LOG_DEBUG);
+					SmartAuthLogger::debug("smartauth::AuthController : success but device name is empty");
 					$ret = [
 						'message' => "success but device name is empty",
 					];
 				}
 			} else {
-				dol_syslog("smartauth::AuthController : success same device", LOG_DEBUG);
+				SmartAuthLogger::debug("smartauth::AuthController : success same device");
 				$ret = [
 					'message' => "success, same device",
 				];
 			}
 		} else {
-			dol_syslog("smartauth::AuthController : device user choice an existing device current_uuid=$current_uuid and new_uuid=$new_uuid", LOG_DEBUG);
+			SmartAuthLogger::debug("smartauth::AuthController : device user choice an existing device current_uuid=$current_uuid and new_uuid=$new_uuid");
 			//user choosed an other key ... need to delete current key and make a new one
 			$user = $payload['user'];
 
@@ -1023,7 +1023,7 @@ class AuthController
 			dol_syslog("smartauth : _getSalt2 debug HTTP_X_DEVICEID : " . $device_uuid);
 
 			if (!empty($device_uuid)) {
-				dol_syslog("smartauth : using X-DEVICEID header (hash format) for salt2", LOG_DEBUG);
+				SmartAuthLogger::debug("smartauth : using X-DEVICEID header (hash format) for salt2");
 				return substr(hash('sha256', $device_uuid), 0, 16);
 			}
 
@@ -1034,7 +1034,7 @@ class AuthController
 			return substr(hash('sha256', $userAgent), 0, 16);
 		} else {
 			dol_syslog("smartauth : _getSalt2 debug deviceid is set from function arg value : " . $device_uuid);
-			dol_syslog("smartauth : using deviceid from function arg (hash format) for salt2", LOG_DEBUG);
+			SmartAuthLogger::debug("smartauth : using deviceid from function arg (hash format) for salt2");
 			return substr(hash('sha256', $device_uuid), 0, 16);
 		}
 	}
@@ -1543,7 +1543,7 @@ class AuthController
 			$ret = [];
 		}
 
-		dol_syslog('_getAllDevicesForUser returns ' . json_encode($ret), LOG_DEBUG);
+		SmartAuthLogger::debug('_getAllDevicesForUser returns ' . json_encode($ret));
 		return $ret;
 	}
 
@@ -1718,9 +1718,9 @@ class AuthController
 		// Debug logging for signature verification
 		$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
 		$httpDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? '';
-		dol_syslog("smartauth : _decodeJWT DEBUG: token_id=$token_id, salt=" . substr($token_data->salt, 0, 8) . "..., salt2=$salt2", LOG_DEBUG);
-		dol_syslog("smartauth : _decodeJWT DEBUG: HTTP_X_DEVICEID=" . ($httpDeviceId ?: '(empty)') . ", User-Agent=" . substr($userAgent, 0, 50) . "...", LOG_DEBUG);
-		dol_syslog("smartauth : _decodeJWT DEBUG: expected salt2 from UA=" . substr(hash('sha256', $userAgent), 0, 16), LOG_DEBUG);
+		SmartAuthLogger::debug("smartauth : _decodeJWT DEBUG: token_id=$token_id, salt=" . substr($token_data->salt, 0, 8) . "..., salt2=$salt2");
+		SmartAuthLogger::debug("smartauth : _decodeJWT DEBUG: HTTP_X_DEVICEID=" . ($httpDeviceId ?: '(empty)') . ", User-Agent=" . substr($userAgent, 0, 50) . "...");
+		SmartAuthLogger::debug("smartauth : _decodeJWT DEBUG: expected salt2 from UA=" . substr(hash('sha256', $userAgent), 0, 16));
 
 		$decoded = null;
 		try {
@@ -1769,8 +1769,8 @@ class AuthController
 		if (empty($device_uuid)) {
 			$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
 			$device_uuid = $userAgent; // Will be hashed by _getSalt2()
-			dol_syslog("smartauth : generateTokenForAuthenticatedUser: using User-Agent as device_uuid: " . substr($userAgent, 0, 50) . "...", LOG_DEBUG);
-			dol_syslog("smartauth : generateTokenForAuthenticatedUser: salt2 will be: " . substr(hash('sha256', $userAgent), 0, 16), LOG_DEBUG);
+			SmartAuthLogger::debug("smartauth : generateTokenForAuthenticatedUser: using User-Agent as device_uuid: " . substr($userAgent, 0, 50) . "...");
+			SmartAuthLogger::debug("smartauth : generateTokenForAuthenticatedUser: salt2 will be: " . substr(hash('sha256', $userAgent), 0, 16));
 		}
 
 		// Create token family

@@ -34,25 +34,34 @@ class PwaController
     {
         global $conf;
 
+        SmartAuthLogger::debug(__METHOD__ . ' START');
+
         $moduleName = RouteCache::getModuleName();
+        SmartAuthLogger::debug(__METHOD__ . ' moduleName=' . var_export($moduleName, true));
         if (empty($moduleName)) {
+            SmartAuthLogger::debug(__METHOD__ . ' ERROR: Module not initialized');
             $this->sendErrorResponse(500, 'Module not initialized');
             return;
         }
 
         $constPrefix = strtoupper($moduleName);
+        SmartAuthLogger::debug(__METHOD__ . ' constPrefix=' . $constPrefix);
 
         // Get app name: custom > company name > module name
         $appName = getDolGlobalString($constPrefix . '_PWA_NAME');
+        SmartAuthLogger::debug(__METHOD__ . ' ' . $constPrefix . '_PWA_NAME=' . var_export($appName, true));
         if (empty($appName)) {
             $appName = getDolGlobalString('MAIN_INFO_SOCIETE_NOM');
+            SmartAuthLogger::debug(__METHOD__ . ' fallback MAIN_INFO_SOCIETE_NOM=' . var_export($appName, true));
         }
         if (empty($appName)) {
             $appName = ucfirst($moduleName);
+            SmartAuthLogger::debug(__METHOD__ . ' fallback moduleName=' . $appName);
         }
 
         // Short name (max 12 chars for home screen)
         $shortName = mb_substr($appName, 0, 12);
+        SmartAuthLogger::debug(__METHOD__ . ' appName=' . $appName . ' shortName=' . $shortName);
 
         $manifest = [
             'name' => $appName,
@@ -87,23 +96,35 @@ class PwaController
     {
         global $conf;
 
+        SmartAuthLogger::debug(__METHOD__ . ' START payload=' . var_export($payload, true));
+
         $moduleName = RouteCache::getModuleName();
+        SmartAuthLogger::debug(__METHOD__ . ' moduleName=' . var_export($moduleName, true));
         if (empty($moduleName)) {
+            SmartAuthLogger::debug(__METHOD__ . ' ERROR: Module not initialized');
             $this->sendErrorResponse(500, 'Module not initialized');
             return;
         }
 
         $size = (int) ($payload['size'] ?? 512);
+        SmartAuthLogger::debug(__METHOD__ . ' requested size=' . $size);
 
         // Validate size
         if (!in_array($size, self::ALLOWED_SIZES)) {
+            SmartAuthLogger::debug(__METHOD__ . ' size ' . $size . ' not in ALLOWED_SIZES, defaulting to 512');
             $size = 512;
         }
 
         // 1. Try custom icon (uploaded via admin)
+        SmartAuthLogger::debug(__METHOD__ . ' conf->' . $moduleName . ' exists=' . (!empty($conf->{$moduleName}) ? 'yes' : 'no'));
+        if (!empty($conf->{$moduleName})) {
+            SmartAuthLogger::debug(__METHOD__ . ' conf->' . $moduleName . '->dir_output=' . var_export($conf->{$moduleName}->dir_output ?? null, true));
+        }
         if (!empty($conf->{$moduleName}) && !empty($conf->{$moduleName}->dir_output)) {
             $customIconPath = $conf->{$moduleName}->dir_output . '/pwa/icon_' . $size . '.png';
+            SmartAuthLogger::debug(__METHOD__ . ' checking customIconPath=' . $customIconPath . ' exists=' . (file_exists($customIconPath) ? 'yes' : 'no'));
             if (file_exists($customIconPath)) {
+                SmartAuthLogger::debug(__METHOD__ . ' FOUND custom icon, serving');
                 $this->sendFileResponse($customIconPath);
                 return;
             }
@@ -111,12 +132,15 @@ class PwaController
 
         // 2. Fallback to default icon (shipped with module via SmartBoot)
         $defaultIconPath = DOL_DOCUMENT_ROOT . '/custom/' . $moduleName . '/pwa/images/pwa-' . $size . 'x' . $size . '.png';
+        SmartAuthLogger::debug(__METHOD__ . ' checking defaultIconPath=' . $defaultIconPath . ' exists=' . (file_exists($defaultIconPath) ? 'yes' : 'no'));
         if (file_exists($defaultIconPath)) {
+            SmartAuthLogger::debug(__METHOD__ . ' FOUND default icon, serving');
             $this->sendFileResponse($defaultIconPath);
             return;
         }
 
         // 3. Last resort: generate placeholder
+        SmartAuthLogger::debug(__METHOD__ . ' NO icon found, generating placeholder');
         $this->generatePlaceholderIcon($size, $moduleName);
     }
 
@@ -128,6 +152,7 @@ class PwaController
      */
     private function sendFileResponse(string $filePath): void
     {
+        SmartAuthLogger::debug(__METHOD__ . ' serving file=' . $filePath . ' size=' . filesize($filePath) . ' bytes');
         $this->closeDb();
         header('Content-Type: image/png');
         header('Cache-Control: public, max-age=86400');
@@ -145,6 +170,7 @@ class PwaController
      */
     private function sendErrorResponse(int $code, string $message): void
     {
+        SmartAuthLogger::debug(__METHOD__ . ' code=' . $code . ' message=' . $message);
         $this->closeDb();
         http_response_code($code);
         header('Content-Type: application/json');
@@ -161,10 +187,12 @@ class PwaController
      */
     private function generatePlaceholderIcon(int $size, string $moduleName): void
     {
+        SmartAuthLogger::debug(__METHOD__ . ' START size=' . $size . ' moduleName=' . $moduleName);
         $this->closeDb();
 
         // Check if GD is available
         if (!function_exists('imagecreatetruecolor')) {
+            SmartAuthLogger::debug(__METHOD__ . ' GD not available, serving 1x1 transparent PNG');
             // Serve a 1x1 transparent PNG as fallback
             header('Content-Type: image/png');
             header('Cache-Control: public, max-age=3600');
@@ -172,9 +200,11 @@ class PwaController
             echo base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
             exit;
         }
+        SmartAuthLogger::debug(__METHOD__ . ' GD available');
 
         $img = imagecreatetruecolor($size, $size);
         if ($img === false) {
+            SmartAuthLogger::debug(__METHOD__ . ' ERROR: imagecreatetruecolor failed');
             $this->sendErrorResponse(500, 'Failed to create image');
             return;
         }
@@ -186,15 +216,18 @@ class PwaController
         // Add module initials
         $text = strtoupper(substr($moduleName, 0, 3));
         $fontSize = (int) ($size / 4);
+        SmartAuthLogger::debug(__METHOD__ . ' text=' . $text . ' fontSize=' . $fontSize);
 
         // Try to use a font, fallback to built-in
         $fontPath = DOL_DOCUMENT_ROOT . '/theme/common/fonts/DejaVuSans.ttf';
+        SmartAuthLogger::debug(__METHOD__ . ' fontPath=' . $fontPath . ' exists=' . (file_exists($fontPath) ? 'yes' : 'no') . ' imagettftext=' . (function_exists('imagettftext') ? 'yes' : 'no'));
         if (file_exists($fontPath) && function_exists('imagettftext')) {
             $bbox = imagettfbbox($fontSize, 0, $fontPath, $text);
             if ($bbox !== false) {
                 $x = (int) (($size - ($bbox[2] - $bbox[0])) / 2);
                 $y = (int) (($size + ($bbox[1] - $bbox[7])) / 2);
                 imagettftext($img, $fontSize, 0, $x, $y, $white, $fontPath, $text);
+                SmartAuthLogger::debug(__METHOD__ . ' used TTF font');
             }
         } else {
             // Use built-in font as fallback
@@ -203,8 +236,10 @@ class PwaController
             $x = (int) (($size - $fontWidth) / 2);
             $y = (int) (($size - $fontHeight) / 2);
             imagestring($img, 5, $x, $y, $text, $white);
+            SmartAuthLogger::debug(__METHOD__ . ' used built-in font');
         }
 
+        SmartAuthLogger::debug(__METHOD__ . ' serving generated placeholder');
         header('Content-Type: image/png');
         header('Cache-Control: public, max-age=3600');
         imagepng($img);

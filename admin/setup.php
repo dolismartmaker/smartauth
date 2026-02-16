@@ -109,6 +109,8 @@ $item->defaultFieldValue = '30';
 
 $item = $formSetup->newItem('SMARTAUTH_DEFAULT_USER')->setAsSelectUser();
 
+$item = $formSetup->newItem('SMARTAUTH_DEBUG')->setAsYesNo();
+
 $item = $formSetup->newItem('SMARTAUTH_COLLECT_LOGS')->setAsYesNo();
 
 $item = $formSetup->newItem('SMARTAUTH_CLEAN_LOGS')->setAsYesNo();
