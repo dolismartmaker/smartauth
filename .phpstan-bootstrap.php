@@ -1,5 +1,10 @@
 <?php
 
+// Load Composer autoloader to register project classes before stubs
+if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+    require_once __DIR__ . '/vendor/autoload.php';
+}
+
 //include('/home/erics/dev/dolibarr/dolibarr-git/build/phpstan/bootstrap.php');
 
 /*
