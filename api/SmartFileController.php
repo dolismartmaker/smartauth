@@ -206,10 +206,26 @@ class SmartFileController
         // Encode path for filesystem
         $fullpath_osencoded = dol_osencode($fullpath);
 
-        // Check file exists
+        // Check file exists - with fallback for external modules
         if (!file_exists($fullpath_osencoded)) {
-            dol_syslog("smartauth::SmartFileController - File does not exist on disk: $fullpath", LOG_WARNING);
+            // Fallback: try to build path directly from module's multidir_output
+            // This handles external modules where dol_check_secure_access_document
+            // may build an incorrect path
+            $fallbackPath = null;
+            if (!empty($conf->$modulepart->multidir_output[$entity])) {
+                $fallbackPath = $conf->$modulepart->multidir_output[$entity] . '/' . $original_file;
+            } elseif (!empty($conf->$modulepart->dir_output)) {
+                $fallbackPath = $conf->$modulepart->dir_output . '/' . $original_file;
+            }
+
+            if ($fallbackPath && file_exists(dol_osencode($fallbackPath))) {
+                dol_syslog("smartauth::SmartFileController - Using fallback path for external module: $fallbackPath");
+                $fullpath = $fallbackPath;
+                $fullpath_osencoded = dol_osencode($fullpath);
+            } else {
+                dol_syslog("smartauth::SmartFileController - File does not exist on disk: $fullpath" . ($fallbackPath ? " (fallback tried: $fallbackPath)" : ""), LOG_WARNING);
             return ['error' => 'File not found on disk', 'status' => 404];
+            }
         }
 
         // Get file info

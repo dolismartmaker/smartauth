@@ -23,6 +23,7 @@ use SmartAuth\Api\PasswordResetController;
 use SmartAuth\Api\SmartFileController;
 use SmartAuth\Api\SmartTempFileController;
 use SmartAuth\Api\SyncController;
+use SmartAuth\Api\ObjectDocumentController;
 use SmartAuth\Api\PwaController;
 
 // ========== Auth Routes ========== //
@@ -89,6 +90,17 @@ Route::get('sync/conflicts', SyncController::class, 'conflicts', true);
 
 // Sync conflict resolution
 Route::post('sync/conflicts/{id}/resolve', SyncController::class, 'resolveConflict', true);
+
+// ========== Object Document Routes ========== //
+
+// List documents for an object (for offline sync)
+Route::get('object/{type}/{id}/documents', ObjectDocumentController::class, 'index', true);
+
+// Download a document (base64 JSON response)
+Route::get('object/{type}/{id}/document/{path}', ObjectDocumentController::class, 'download', true);
+
+// Download a document (binary stream)
+Route::get('object/{type}/{id}/document/{path}/binary', ObjectDocumentController::class, 'downloadBinary', true);
 
 // ========== PWA Routes ========== //
 

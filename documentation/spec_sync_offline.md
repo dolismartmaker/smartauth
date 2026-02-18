@@ -19,6 +19,7 @@
 | Détection conflits tms | Dans SyncController | ✅ Implémenté | Comparaison tms + données champ par champ |
 | Verrouillage optimiste | Dans SyncController | ✅ Implémenté | SELECT FOR UPDATE avec retry |
 | Objets simples | Config SyncController | ✅ Implémenté | thirdparty, contact, product |
+| **Documents/Blobs** | `api/ObjectDocumentController.php` | ✅ Implémenté | List + download docs pour product, thirdparty, project, intervention |
 | Hooks objets sync | - | ⏳ Prévu Phase 2 | smartmaker_registerSyncableObjects |
 | Objets composites | - | ⏳ Prévu Phase 2 | Factures, commandes avec lignes |
 | Client JavaScript | - | 🔜 À documenter | Documentation frontend à générer |
@@ -38,6 +39,9 @@
    - `GET /sync/status?client_uuid=...` - État de la sync
    - `GET /sync/conflicts?client_uuid=...` - Lister les conflits
    - `POST /sync/conflicts/{id}/resolve` - Résoudre un conflit
+   - `GET /object/{type}/{id}/documents` - Lister les documents d'un objet
+   - `GET /object/{type}/{id}/document/{path}` - Télécharger un document (base64)
+   - `GET /object/{type}/{id}/document/{path}/binary` - Télécharger un document (binaire)
 
 ---
 
@@ -1738,7 +1742,6 @@ En cas de problème :
 | Tombstones 30 jours | Client offline > 30j peut manquer suppressions | Warning à la reconnexion |
 | Safari legacy (< iOS 17) | Limite 1 Go, prompt utilisateur | Message d'avertissement |
 | Safari mode privé | IndexedDB indisponible | Détection + message erreur |
-| Pas de sync binaire | Documents/fichiers non synchronisés | Prévu v2 |
 | Conflit tri-directionnel | 3+ clients modifient simultanément | Résolution séquentielle |
 
 ---
@@ -1763,10 +1766,307 @@ En cas de problème :
 
 ### v2.0
 
-- [ ] Sync des fichiers/documents
+- [x] Sync des fichiers/documents (ObjectDocumentController)
 - [ ] Sync sélective par champ
 - [ ] Mode "lecture seule" offline
 - [ ] Multi-instance sync (plusieurs Dolibarr)
+
+---
+
+## 15. Synchronisation des documents (Blobs)
+
+### 15.1 Objectif
+
+Permettre aux applications clientes de télécharger les fichiers attachés aux objets Dolibarr
+(notices techniques produits, photos, PDF, etc.) pour un accès hors ligne.
+
+### 15.2 Architecture
+
+**Approche hybride recommandée :**
+
+| Type de fichier | Stockage client | Raison |
+|-----------------|-----------------|--------|
+| Images | Cache API (Workbox) | Mise en cache automatique via Service Worker |
+| PDFs / documents | IndexedDB (Blob) | Lien explicite avec l'objet, requêtable |
+
+### 15.3 API SmartAuth - ObjectDocumentController
+
+SmartAuth fournit un controller générique pour lister et télécharger les documents
+attachés aux objets Dolibarr.
+
+#### Types d'objets supportés
+
+| Type | Module Dolibarr | Répertoire documents |
+|------|-----------------|---------------------|
+| `product` | product | `documents/produit/{ref}/` |
+| `thirdparty` | societe | `documents/societe/{name}/` |
+| `project` | projet | `documents/projet/{ref}/` |
+| `intervention` | ficheinter | `documents/ficheinter/{ref}/` |
+
+#### Extension par les modules
+
+Les modules peuvent enregistrer des types supplémentaires via :
+
+```php
+use SmartAuth\Api\ObjectDocumentController;
+
+ObjectDocumentController::registerObjectType('myobject', [
+    'class' => 'MyObject',
+    'file' => '/custom/mymodule/class/myobject.class.php',
+    'module' => 'mymodule',
+    'modulepart' => 'mymodule',
+    'subdir_method' => 'getMyObjectSubdir',
+]);
+```
+
+### 15.4 Endpoints
+
+#### GET /object/{type}/{id}/documents
+
+Liste les documents attachés à un objet. Retourne uniquement les métadonnées (pas le contenu).
+
+**Paramètres URL :**
+- `type` : Type d'objet (product, thirdparty, project, intervention)
+- `id` : ID de l'objet (rowid)
+
+**Paramètres query :**
+- `since` : (optionnel) Timestamp ISO - ne retourne que les fichiers modifiés après cette date
+
+**Réponse 200 :**
+
+```json
+{
+    "documents": [
+        {
+            "id": "a1b2c3d4",
+            "object_id": 15,
+            "filename": "notice_technique_XR500.pdf",
+            "relative_path": "notice_technique_XR500.pdf",
+            "mime_type": "application/pdf",
+            "size": 245000,
+            "updated_at": "2026-02-18T10:30:00+00:00",
+            "type": "pdf"
+        },
+        {
+            "id": "e5f6g7h8",
+            "object_id": 15,
+            "filename": "photo_produit.jpg",
+            "relative_path": "photos/photo_produit.jpg",
+            "mime_type": "image/jpeg",
+            "size": 156000,
+            "updated_at": "2026-02-15T14:00:00+00:00",
+            "type": "image"
+        }
+    ],
+    "server_time": "2026-02-18T14:00:00+00:00"
+}
+```
+
+#### GET /object/{type}/{id}/document/{path}
+
+Télécharge un document (réponse JSON avec contenu base64).
+
+**Paramètres URL :**
+- `type` : Type d'objet
+- `id` : ID de l'objet
+- `path` : Chemin relatif du document (URL-encoded)
+
+**Réponse 200 :**
+
+```json
+{
+    "filename": "notice_technique_XR500.pdf",
+    "content-type": "application/pdf",
+    "filesize": 245000,
+    "content": "JVBERi0xLjQKJ...",
+    "encoding": "base64"
+}
+```
+
+**Limite :** Fichiers de 50 Mo maximum en mode base64.
+
+#### GET /object/{type}/{id}/document/{path}/binary
+
+Télécharge un document en flux binaire (plus efficace pour les gros fichiers).
+
+**Headers réponse :**
+```
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="notice_technique_XR500.pdf"
+Content-Length: 245000
+```
+
+### 15.5 Intégration avec le sync client
+
+#### Workflow recommandé
+
+```
+1. PULL des métadonnées documents
+   GET /object/product/{id}/documents?since={last_sync}
+
+2. Comparaison avec IndexedDB local
+   - Nouveaux documents : à télécharger
+   - Documents mis à jour (updated_at > local) : à re-télécharger
+   - Documents absents de la réponse : à supprimer localement
+
+3. Téléchargement des documents
+   GET /object/product/{id}/document/{path}
+   → Stocker le Blob dans IndexedDB
+
+4. Mise à jour de last_sync pour les documents
+```
+
+#### Schéma IndexedDB recommandé
+
+```javascript
+// Nouveau store pour les documents
+productDocuments: {
+    keyPath: 'local_id',
+    autoIncrement: true,
+    indexes: [
+        { name: 'product_id', keyPath: 'product_id' },
+        { name: 'product_id_type', keyPath: ['product_id', 'type'] },
+        { name: 'server_id', keyPath: 'server_id' },
+        { name: 'synced_at', keyPath: 'synced_at' }
+    ]
+}
+
+// Structure d'un enregistrement
+{
+    local_id: 1,              // Auto-increment PK
+    product_id: 15,           // FK vers products store
+    server_id: "a1b2c3d4",    // ID retourné par l'API
+    type: "pdf",              // "image" | "pdf" | "other"
+    filename: "notice.pdf",
+    relative_path: "notice.pdf",
+    mime_type: "application/pdf",
+    blob: Blob,               // Le contenu du fichier
+    size: 245000,
+    synced_at: "2026-02-18T14:00:00Z",
+    server_updated_at: "2026-02-18T10:30:00Z"
+}
+```
+
+#### Exemple d'implémentation client
+
+```javascript
+async function syncProductDocuments(productId, lastSync) {
+    // 1. Récupérer les métadonnées
+    const params = lastSync ? `?since=${lastSync}` : '';
+    const response = await api.get(`/object/product/${productId}/documents${params}`);
+    const serverDocs = response.documents;
+
+    // 2. Récupérer les documents locaux
+    const localDocs = await db.productDocuments
+        .where('product_id').equals(productId)
+        .toArray();
+    const localById = new Map(localDocs.map(d => [d.server_id, d]));
+
+    // 3. Identifier les documents à télécharger
+    const toDownload = [];
+    const serverIds = new Set();
+
+    for (const doc of serverDocs) {
+        serverIds.add(doc.id);
+        const local = localById.get(doc.id);
+
+        if (!local || new Date(doc.updated_at) > new Date(local.server_updated_at)) {
+            toDownload.push(doc);
+        }
+    }
+
+    // 4. Télécharger les nouveaux/mis à jour
+    for (const doc of toDownload) {
+        const fileResponse = await fetch(
+            `${API_BASE}/object/product/${productId}/document/${encodeURIComponent(doc.relative_path)}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const json = await fileResponse.json();
+        const blob = base64ToBlob(json.content, json['content-type']);
+
+        const local = localById.get(doc.id);
+        await db.productDocuments.put({
+            ...(local ? { local_id: local.local_id } : {}),
+            product_id: productId,
+            server_id: doc.id,
+            type: doc.type,
+            filename: doc.filename,
+            relative_path: doc.relative_path,
+            mime_type: doc.mime_type,
+            blob: blob,
+            size: doc.size,
+            synced_at: new Date().toISOString(),
+            server_updated_at: doc.updated_at
+        });
+    }
+
+    // 5. Supprimer les documents qui n'existent plus sur le serveur
+    // (seulement si on a fait un sync complet, pas incrémental)
+    if (!lastSync) {
+        for (const local of localDocs) {
+            if (!serverIds.has(local.server_id)) {
+                await db.productDocuments.delete(local.local_id);
+            }
+        }
+    }
+}
+
+function base64ToBlob(base64, mimeType) {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+}
+```
+
+### 15.6 Gestion du stockage
+
+#### Monitoring du quota
+
+```javascript
+async function getStorageInfo() {
+    const estimate = await navigator.storage.estimate();
+    const docsSize = await getDocumentsTotalSize();
+
+    return {
+        quotaTotal: estimate.quota,
+        quotaUsed: estimate.usage,
+        documentsSize: docsSize,
+        documentsPercent: Math.round((docsSize / estimate.usage) * 100)
+    };
+}
+
+async function getDocumentsTotalSize() {
+    const docs = await db.productDocuments.toArray();
+    return docs.reduce((sum, d) => sum + d.size, 0);
+}
+```
+
+#### Stratégies de purge
+
+| Stratégie | Description | Quand l'utiliser |
+|-----------|-------------|------------------|
+| Tout purger | Supprimer tous les documents en cache | Reset complet |
+| Par ancienneté | Supprimer les documents non accédés depuis N jours | Maintenance régulière |
+| Par produit | Supprimer les documents des produits non utilisés | Catalogues volumineux |
+
+### 15.7 Permissions
+
+Les endpoints respectent les permissions Dolibarr :
+
+- L'utilisateur doit avoir le droit `read` ou `lire` sur le module concerné
+- Le filtrage par entity (multi-société) est appliqué
+- Aucune vérification de permissions au niveau fichier individuel (si l'utilisateur peut voir l'objet, il peut voir ses documents)
+
+### 15.8 Sécurité
+
+- **Path traversal** : Les chemins sont validés pour empêcher les attaques `../`
+- **Authentification** : JWT obligatoire sur tous les endpoints
+- **Types de fichiers** : Seuls les fichiers dans le répertoire documents de l'objet sont accessibles
+- **Taille** : Limite de 50 Mo pour le mode base64 (pas de limite pour le mode binaire)
 
 ---
 

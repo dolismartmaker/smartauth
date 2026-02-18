@@ -36,6 +36,24 @@ trait dmTrait
 	private $_cacheDesc;
 
 	/**
+	 * Mapping from Dolibarr element to category type(s)
+	 * Some elements can have multiple category types (e.g. societe can be customer and/or supplier)
+	 */
+	private static $MAP_ELEMENT_TO_CATEGORY_TYPE = [
+		'product'       => ['product'],
+		'societe'       => ['customer', 'supplier'],
+		'contact'       => ['contact'],
+		'member'        => ['member'],
+		'user'          => ['user'],
+		'project'       => ['project'],
+		'bank_account'  => ['bank_account'],
+		'warehouse'     => ['warehouse'],
+		'actioncomm'    => ['actioncomm'],
+		'ticket'        => ['ticket'],
+		'knowledgerecord' => ['knowledgemanagement'],
+	];
+
+	/**
 	 * object constructor
 	 */
 	public function __construct()
@@ -348,6 +366,12 @@ trait dmTrait
 			}
 			//for debug get full line raw data
 			// $mapped->rawlines = $obj->lines;
+		}
+
+		// Automatically add categories if the object supports them
+		$categories = $this->getCategoriesForObject($obj);
+		if ($categories !== null) {
+			$mapped->categories = $categories;
 		}
 
 		// dol_syslog("fieldFilterValueSmartPhoto mapped is " . json_encode($mapped));
@@ -672,5 +696,53 @@ trait dmTrait
 		// }
 		// imgBase64 = 'data:image/' . $type . ';base64,' . base64_encode(file_get_contents(img));
 		// return imgBase64;
+	}
+
+	/**
+	 * Get all categories associated with a Dolibarr object
+	 *
+	 * @param   \CommonObject  $object  Dolibarr object (Product, Societe, Contact, etc.)
+	 *
+	 * @return  array|null  Array of category data or null if object doesn't support categories
+	 */
+	public function getCategoriesForObject($object)
+	{
+		if (empty($object->id) || empty($object->element)) {
+			return null;
+		}
+
+		$element = $object->element;
+
+		// Check if this element type supports categories
+		if (!isset(self::$MAP_ELEMENT_TO_CATEGORY_TYPE[$element])) {
+			return null;
+		}
+
+		require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
+
+		$categoryTypes = self::$MAP_ELEMENT_TO_CATEGORY_TYPE[$element];
+		$allCategories = [];
+		$categorie = new \Categorie($this->_db);
+
+		foreach ($categoryTypes as $catType) {
+			$cats = $categorie->containing($object->id, $catType, 'object');
+			if (is_array($cats)) {
+				foreach ($cats as $cat) {
+					// Avoid duplicates (e.g. societe with same category as customer and supplier)
+					if (!isset($allCategories[$cat->id])) {
+						$allCategories[$cat->id] = [
+							'id'          => (int) $cat->id,
+							'label'       => $cat->label,
+							'description' => $cat->description ?? '',
+							'color'       => $cat->color ?? '',
+							'parent'      => !empty($cat->fk_parent) ? (int) $cat->fk_parent : null,
+							'type'        => $catType,
+						];
+					}
+				}
+			}
+		}
+
+		return array_values($allCategories);
 	}
 }
