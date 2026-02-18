@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.2 -- 20260218
+
+dynamic manifest file - you can choose your icon and name (install app icon on desktop)
+new offline sync system for binary files (pdf / others)
+
 ## 2.0.1 -- 20260210
 
 oAuth2 server working with wordpress client as POC
