@@ -87,6 +87,15 @@ class SyncController
                 'priority' => 'medium',
                 'default_enabled' => true,
             ],
+            'category' => [
+                'class' => 'Categorie',
+                'file' => DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php',
+                'table' => 'categorie',
+                'label' => 'Categories',
+                'module' => 'categorie',
+                'priority' => 'low',
+                'default_enabled' => true,
+            ],
         ];
 
         // Load additional objects via hooks
