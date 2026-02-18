@@ -8,7 +8,7 @@ parameters:
 		analyse:
 			- /home/gitlab-runner/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
 			- /home/gitlab-runner/caprel-stubs
-		scan:
+		analyseAndScan:
 			- /home/gitlab-runner/caprel-stubs/smartauth/
 	bootstrapFiles:
 		- .phpstan-bootstrap.php
