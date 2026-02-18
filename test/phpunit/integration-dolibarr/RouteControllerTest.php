@@ -1419,10 +1419,13 @@ class RouteControllerTest extends DolibarrRealTestCase
 
         // Should return array with null user and entity
         $this->assertIsArray($result);
-        $this->assertCount(4, $result); // Returns 4 elements for public routes
+        $this->assertCount(6, $result); // Returns 6 elements: [user, entity, token_id, buyer, family_id, device_id]
         $this->assertNull($result[0]); // user
         $this->assertNull($result[1]); // entity
         $this->assertNull($result[2]); // token_id
+        $this->assertInstanceOf(\Societe::class, $result[3]); // buyer (empty Societe object)
+        $this->assertNull($result[4]); // family_id
+        $this->assertNull($result[5]); // device_id
     }
 
     /**
