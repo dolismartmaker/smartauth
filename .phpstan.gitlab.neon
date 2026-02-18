@@ -3,8 +3,7 @@ includes:
 parameters:
 	scanDirectories:
 		- /home/gitlab-runner/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
-		# caprel-stubs/smartauth excluded - use real files from project
-		- /home/gitlab-runner/caprel-stubs/smartcommon
+		- /home/gitlab-runner/caprel-stubs
 	excludePaths:
 		analyse:
 			- /home/gitlab-runner/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
