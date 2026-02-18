@@ -33,6 +33,8 @@
             <directory>vendor</directory>
             <directory>test</directory>
             <file>api/tools.php</file>
+            <file>api/LocalRoutes.php</file>
+            <file>api/RedisRateLimiter.php</file>
         </exclude>
         <report>
             <html outputDirectory=".phpunit.cache/coverage-html"/>
