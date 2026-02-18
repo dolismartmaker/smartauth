@@ -3,13 +3,12 @@ includes:
 parameters:
 	scanDirectories:
 		- /home/gitlab-runner/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
-		- /home/gitlab-runner/caprel-stubs
+		# caprel-stubs/smartauth excluded - use real files from project
+		- /home/gitlab-runner/caprel-stubs/smartcommon
 	excludePaths:
 		analyse:
 			- /home/gitlab-runner/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
 			- /home/gitlab-runner/caprel-stubs
-		analyseAndScan:
-			- /home/gitlab-runner/caprel-stubs/smartauth/
 	bootstrapFiles:
 		- .phpstan-bootstrap.php
 	tmpDir: /tmp/dolibarr-%env.DOLIBARR_VERSION%
