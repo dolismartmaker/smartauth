@@ -39,9 +39,12 @@ namespace SmartAuth\Api\OAuth2;
 dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/class/smartauthoauthcode.class.php');
 dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
+dol_include_once('/smartauth/api/OAuth2/ResponseTrait.php');
+dol_include_once('/smartauth/api/OAuth2/ResponseException.php');
 
 class TokenController
 {
+    use ResponseTrait;
     /**
      * Database connection
      * @var \DoliDB
@@ -502,49 +505,6 @@ class TokenController
         dol_syslog('SmartAuth TokenController: Tokens generated successfully', LOG_INFO);
 
         $this->sendJsonResponse($response);
-    }
-
-    /**
-     * Send JSON response
-     *
-     * @param array $data Response data
-     * @param int $status HTTP status code
-     * @return void
-     */
-    private function sendJsonResponse(array $data, int $status = 200): void
-    {
-        http_response_code($status);
-        header('Content-Type: application/json;charset=UTF-8');
-        header('Cache-Control: no-store');
-        header('Pragma: no-cache');
-
-        echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    /**
-     * Send OAuth error response
-     *
-     * @param string $error Error code (RFC 6749)
-     * @param string $description Human-readable description
-     * @param int $status HTTP status code
-     * @return void
-     */
-    private function sendError(string $error, string $description, int $status = 400): void
-    {
-        dol_syslog('SmartAuth TokenController: Error ' . $error . ': ' . $description, LOG_INFO);
-
-        $response = [
-            'error' => $error,
-            'error_description' => $description,
-        ];
-
-        // Add WWW-Authenticate header for 401
-        if ($status === 401) {
-            header('WWW-Authenticate: Basic realm="SmartAuth OAuth2"');
-        }
-
-        $this->sendJsonResponse($response, $status);
     }
 
     /**

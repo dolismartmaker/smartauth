@@ -34,9 +34,12 @@ namespace SmartAuth\Api\OAuth2;
 
 dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
+dol_include_once('/smartauth/api/OAuth2/ResponseTrait.php');
+dol_include_once('/smartauth/api/OAuth2/ResponseException.php');
 
 class RevocationController
 {
+    use ResponseTrait;
     /**
      * Database connection
      * @var \DoliDB
@@ -110,7 +113,7 @@ class RevocationController
 
         // Per RFC 7009, always return 200 OK with empty body
         dol_syslog('SmartAuth RevocationController: Revocation request processed', LOG_INFO);
-        $this->sendSuccessResponse();
+        $this->sendEmptyResponse();
     }
 
     /**
@@ -345,51 +348,5 @@ class RevocationController
         parse_str($input, $params);
 
         return array_merge($_POST, $params);
-    }
-
-    /**
-     * Send success response (empty body, 200 OK)
-     *
-     * @return void
-     */
-    private function sendSuccessResponse(): void
-    {
-        http_response_code(200);
-        header('Content-Type: application/json;charset=UTF-8');
-        header('Cache-Control: no-store');
-        header('Pragma: no-cache');
-
-        // RFC 7009 does not require a response body, but returning empty JSON is cleaner
-        echo '{}';
-        exit;
-    }
-
-    /**
-     * Send OAuth error response
-     *
-     * Note: Per RFC 7009, most errors should still return 200 OK.
-     * Only use this for protocol-level errors (wrong method, missing token param).
-     *
-     * @param string $error Error code
-     * @param string $description Human-readable description
-     * @param int $status HTTP status code
-     * @return void
-     */
-    private function sendError(string $error, string $description, int $status = 400): void
-    {
-        dol_syslog('SmartAuth RevocationController: Error ' . $error . ': ' . $description, LOG_INFO);
-
-        http_response_code($status);
-        header('Content-Type: application/json;charset=UTF-8');
-        header('Cache-Control: no-store');
-        header('Pragma: no-cache');
-
-        $response = [
-            'error' => $error,
-            'error_description' => $description,
-        ];
-
-        echo json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        exit;
     }
 }

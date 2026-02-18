@@ -31,9 +31,13 @@
 namespace SmartAuth\Api\OAuth2;
 
 require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+dol_include_once('/smartauth/api/OAuth2/ResponseTrait.php');
+dol_include_once('/smartauth/api/OAuth2/ResponseException.php');
 
 class UserinfoController
 {
+    use ResponseTrait;
+
     /**
      * Database connection
      * @var \DoliDB
@@ -76,21 +80,21 @@ class UserinfoController
         // Extract Bearer token
         $token = $this->extractBearerToken();
         if ($token === null) {
-            $this->sendError('invalid_token', 'Missing or invalid Bearer token', 401);
+            $this->sendBearerError('invalid_token', 'Missing or invalid Bearer token', 401);
             return;
         }
 
         // Validate access token
         $payload = $this->tokenService->validateAccessToken($token);
         if ($payload === null) {
-            $this->sendError('invalid_token', 'Access token is invalid or expired', 401);
+            $this->sendBearerError('invalid_token', 'Access token is invalid or expired', 401);
             return;
         }
 
         // Get user ID from token
         $userId = (int) ($payload['sub'] ?? 0);
         if ($userId <= 0) {
-            $this->sendError('invalid_token', 'Token does not contain valid user identifier', 401);
+            $this->sendBearerError('invalid_token', 'Token does not contain valid user identifier', 401);
             return;
         }
 
@@ -98,13 +102,13 @@ class UserinfoController
         $user = new \User($this->db);
         $result = $user->fetch($userId);
         if ($result <= 0) {
-            $this->sendError('invalid_token', 'User not found', 401);
+            $this->sendBearerError('invalid_token', 'User not found', 401);
             return;
         }
 
         // Check user is active
         if ($user->statut != 1) {
-            $this->sendError('invalid_token', 'User account is disabled', 401);
+            $this->sendBearerError('invalid_token', 'User account is disabled', 401);
             return;
         }
 
@@ -346,59 +350,5 @@ class UserinfoController
         }
 
         return $mapping;
-    }
-
-    /**
-     * Send JSON response
-     *
-     * @param array $data Response data
-     * @param int $status HTTP status code
-     * @return void
-     */
-    private function sendJsonResponse(array $data, int $status = 200): void
-    {
-        http_response_code($status);
-        header('Content-Type: application/json;charset=UTF-8');
-        header('Cache-Control: no-store');
-        header('Pragma: no-cache');
-
-        echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    /**
-     * Send OAuth error response
-     *
-     * Per RFC 6750, returns error in WWW-Authenticate header for 401 responses.
-     *
-     * @param string $error Error code
-     * @param string $description Human-readable description
-     * @param int $status HTTP status code
-     * @return void
-     */
-    private function sendError(string $error, string $description, int $status = 400): void
-    {
-        dol_syslog('SmartAuth UserinfoController: Error ' . $error . ': ' . $description, LOG_INFO);
-
-        http_response_code($status);
-        header('Content-Type: application/json;charset=UTF-8');
-        header('Cache-Control: no-store');
-        header('Pragma: no-cache');
-
-        // Add WWW-Authenticate header for 401 (RFC 6750 Section 3)
-        if ($status === 401) {
-            $wwwAuth = 'Bearer realm="SmartAuth"';
-            $wwwAuth .= ', error="' . $error . '"';
-            $wwwAuth .= ', error_description="' . addslashes($description) . '"';
-            header('WWW-Authenticate: ' . $wwwAuth);
-        }
-
-        $response = [
-            'error' => $error,
-            'error_description' => $description,
-        ];
-
-        echo json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        exit;
     }
 }
