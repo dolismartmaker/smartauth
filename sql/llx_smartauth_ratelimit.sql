@@ -3,7 +3,6 @@ CREATE TABLE llx_smartauth_ratelimit (
     identifier varchar(255) NOT NULL,
     action varchar(50) NOT NULL,
     attempt_time integer NOT NULL,
-    success tinyint(1) DEFAULT 0,
-    INDEX idx_identifier_action_time (identifier, action, attempt_time)
+    success tinyint(1) DEFAULT 0
 ) ENGINE=innodb;
 
