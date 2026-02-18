@@ -4,6 +4,5 @@
 CREATE TABLE llx_smartauth_jti_used (
     jti VARCHAR(32) NOT NULL PRIMARY KEY,
     used_at INTEGER NOT NULL,
-    token_id INTEGER DEFAULT NULL,
-    INDEX idx_used_at (used_at)
+    token_id INTEGER DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
