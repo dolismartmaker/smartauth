@@ -31,6 +31,7 @@ class dmWarehouse extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Entrepot';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

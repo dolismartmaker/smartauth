@@ -31,6 +31,7 @@ class dmAgendaEvent extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'ActionComm';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

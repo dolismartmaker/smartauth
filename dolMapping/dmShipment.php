@@ -32,6 +32,7 @@ class dmShipment extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Expedition';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

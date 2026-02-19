@@ -31,6 +31,7 @@ class dmCategory extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Categorie';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

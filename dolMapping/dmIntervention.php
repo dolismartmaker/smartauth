@@ -32,6 +32,7 @@ class dmIntervention extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Fichinter';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

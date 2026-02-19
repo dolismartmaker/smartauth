@@ -32,6 +32,7 @@ class dmProposal extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Propal';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

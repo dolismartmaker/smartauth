@@ -31,6 +31,7 @@ class dmDonation extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Don';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

@@ -25,6 +25,12 @@ class dmHelper
 {
 	private $listOfForeignKeys = [];
 
+	/** @var int Maximum depth for FK resolution to prevent infinite recursion */
+	private static $FK_MAX_DEPTH = 2;
+
+	/** @var int Current recursion depth for FK resolution */
+	private static $fkRecursionDepth = 0;
+
 	//dolibarr < - > application mapping for main attributes
 	private $_mappingAttributes = [
 		'name' 				=> 'name',
@@ -101,13 +107,24 @@ class dmHelper
 		$ret = [];
 		$tab = explode(":", $str);
 		if (isset($tab[2])) {
+			// Prevent infinite recursion on circular FK references
+			if (self::$fkRecursionDepth >= self::$FK_MAX_DEPTH) {
+				$ret = ['type' => 'integer'];
+				return $ret;
+			}
+
 			$dolmapclass = __NAMESPACE__ . "\\dm" . $tab[1];
 			// dol_syslog("propertiesFilter >>> _customFilterAttributeTypeInteger try to call $dolmapclass");
 			if (class_exists($dolmapclass, true)) {
 				include_once(DOL_DOCUMENT_ROOT . '/' . $tab[2]);
-				$dm = new $dolmapclass();
-				$ret = $dm->objectDesc();
-				$ret->type = $dm->objectType();
+				self::$fkRecursionDepth++;
+				try {
+					$dm = new $dolmapclass();
+					$ret = $dm->objectDesc();
+					$ret->type = $dm->objectType();
+				} finally {
+					self::$fkRecursionDepth--;
+				}
 			}
 		}
 		return $ret;
@@ -184,12 +201,14 @@ class dmHelper
 		//special cases
 		//varchar(w) -> varchar
 		//double(x,y) -> double
-		if (strpos($ret['type'], "(")) {
-			preg_match("/(\w+)\((\w+)\)/", $ret['type'], $st);
-			$ret['type'] = $st[1];
-			$ret['max'] = $st[2];
+		if (strpos($ret['type'], "(") !== false) {
+			if (preg_match("/(\w+)\(([^)]+)\)/", $ret['type'], $st) && isset($st[1])) {
+				$ret['type'] = $st[1];
+				$ret['max'] = $st[2];
+			}
 		} else {
 			switch ($ret['type']) {
+				case "int":
 				case "integer":
 					$ret['type'] = "int";
 					break;
@@ -348,8 +367,10 @@ class dmHelper
 				} else {
 					if ($localDebug) dol_syslog("       propertiesFilter at least use front key name ...");
 					//use front key name from correspondance table mapping
-					$frontkey = $this->_mappingAttributes[$key];
-					$ret[$frontkey] = $val;
+					if (isset($this->_mappingAttributes[$key])) {
+						$frontkey = $this->_mappingAttributes[$key];
+						$ret[$frontkey] = $val;
+					}
 				}
 			}
 		}

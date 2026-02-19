@@ -32,6 +32,7 @@ class dmContract extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Contrat';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

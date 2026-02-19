@@ -30,8 +30,13 @@ class RefreshTokenMonitoring
     {
         $since = time() - ($days * 86400);
 
+        // Use database-agnostic date conversion
+        $dateExpr = $db->type === 'sqlite3'
+            ? "date(last_refresh_at, 'unixepoch')"
+            : "DATE(FROM_UNIXTIME(last_refresh_at))";
+
         $sql = "SELECT
-                    DATE(FROM_UNIXTIME(last_refresh_at)) as refresh_date,
+                    $dateExpr as refresh_date,
                     COUNT(*) as refresh_count,
                     COUNT(CASE WHEN revoked = 1 THEN 1 END) as revoked_count
                 FROM " . MAIN_DB_PREFIX . "smartauth_token_family
@@ -42,12 +47,14 @@ class RefreshTokenMonitoring
         $resql = $db->query($sql);
         $stats = [];
 
-        while ($obj = $db->fetch_object($resql)) {
-            $stats[] = [
-                'date' => $obj->refresh_date,
-                'refreshes' => (int) $obj->refresh_count,
-                'revocations' => (int) $obj->revoked_count
-            ];
+        if ($resql) {
+            while ($obj = $db->fetch_object($resql)) {
+                $stats[] = [
+                    'date' => $obj->refresh_date,
+                    'refreshes' => (int) $obj->refresh_count,
+                    'revocations' => (int) $obj->revoked_count
+                ];
+            }
         }
 
         return $stats;
@@ -68,13 +75,15 @@ class RefreshTokenMonitoring
                 AND refresh_count > 10";
 
         $resql = $db->query($sql);
-        $obj = $db->fetch_object($resql);
-        if ($obj->count > 0) {
-            $alerts[] = [
-                'type' => 'excessive_refresh',
-                'severity' => 'medium',
-                'message' => 'Unusual refresh pattern detected'
-            ];
+        if ($resql) {
+            $obj = $db->fetch_object($resql);
+            if ($obj && $obj->count > 0) {
+                $alerts[] = [
+                    'type' => 'excessive_refresh',
+                    'severity' => 'medium',
+                    'message' => 'Unusual refresh pattern detected'
+                ];
+            }
         }
 
         // Alert 2: Multiple families from different IPs
@@ -85,13 +94,15 @@ class RefreshTokenMonitoring
                 AND token_type = 'refresh'";
 
         $resql = $db->query($sql);
-        $obj = $db->fetch_object($resql);
-        if ($obj->ip_count > 3) {
-            $alerts[] = [
-                'type' => 'multiple_locations',
-                'severity' => 'high',
-                'message' => 'Login from multiple locations simultaneously'
-            ];
+        if ($resql) {
+            $obj = $db->fetch_object($resql);
+            if ($obj && $obj->ip_count > 3) {
+                $alerts[] = [
+                    'type' => 'multiple_locations',
+                    'severity' => 'high',
+                    'message' => 'Login from multiple locations simultaneously'
+                ];
+            }
         }
 
         return $alerts;

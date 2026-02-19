@@ -35,6 +35,12 @@ trait dmTrait
 	private $listOfForeignKeys = [];
 	private $_cacheDesc;
 
+	/** @var int Maximum depth for FK resolution to prevent infinite recursion */
+	private static $FK_MAX_DEPTH = 2;
+
+	/** @var int Current recursion depth for FK resolution */
+	private static $fkRecursionDepth = 0;
+
 	/**
 	 * Mapping from Dolibarr element to category type(s)
 	 * Some elements can have multiple category types (e.g. societe can be customer and/or supplier)
@@ -73,7 +79,8 @@ trait dmTrait
 		//ex: dmSmartinter or dmSociete
 		$this->_dolmapclassname = static::class;
 		//ex: Smartinter or Societe
-		$this->_dolobjectclassname = preg_replace('/.*\\\\dm/', '', static::class);
+		$this->_dolobjectclassname = $this->dolibarrClassName
+			?? preg_replace('/.*\\\\dm/', '', static::class);
 
 		// dol_syslog(get_class($this) . " is booting, call _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname . ", mappping=" . get_class($this->_dolmapping));
 		$this->_cacheDesc = $this->_objectDesc();
@@ -571,6 +578,12 @@ trait dmTrait
 	public function exportData($name, $objectid)
 	{
 		global $conf, $langs;
+
+		// Prevent infinite recursion on circular FK references
+		if (self::$fkRecursionDepth >= self::$FK_MAX_DEPTH) {
+			return $objectid; // Return just ID at max depth
+		}
+
 		//dol_syslog("#######Call exportData for $name / $objectid / " . $this->listOfForeignKeys[$name]);
 		// dol_syslog("#######Call exportData for $name / $objectid / " . getEntity('societe'));
 		$InfoFieldList = explode(":", $this->listOfForeignKeys[$name]);
@@ -585,7 +598,12 @@ trait dmTrait
 				$mapobject = new $dolmappingclass();
 				$res = $tmpobject->fetch($objectid);
 				if ($res) {
-					return $mapobject->exportMappedData($tmpobject);
+					self::$fkRecursionDepth++;
+					try {
+						return $mapobject->exportMappedData($tmpobject);
+					} finally {
+						self::$fkRecursionDepth--;
+					}
 				}
 			}
 		}

@@ -32,6 +32,7 @@ use SmartAuth\Api\JwtKeyHelper;
 
 class DiscoveryController
 {
+    use ResponseTrait;
     /**
      * Handle OpenID Configuration request
      *
@@ -92,29 +93,4 @@ class DiscoveryController
         }
     }
 
-    /**
-     * Send JSON response with appropriate headers
-     *
-     * @param array $data Response data
-     * @param int $statusCode HTTP status code
-     * @return void
-     */
-    private function sendJsonResponse(array $data, int $statusCode = 200): void
-    {
-        // Set HTTP status code
-        http_response_code($statusCode);
-
-        // Set response headers
-        header('Content-Type: application/json; charset=utf-8');
-        header('Cache-Control: public, max-age=3600'); // Cache for 1 hour
-        header('X-Content-Type-Options: nosniff');
-
-        // CORS headers for discovery endpoints (public access)
-        header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Methods: GET, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type');
-
-        // Output JSON
-        echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-    }
 }

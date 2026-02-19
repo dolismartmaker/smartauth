@@ -21,9 +21,11 @@
 namespace SmartAuth\DolibarrMapping;
 
 require_once DOL_DOCUMENT_ROOT . '/reception/class/reception.class.php';
+require_once DOL_DOCUMENT_ROOT . '/fourn/class/fournisseur.commande.dispatch.class.php';
 
 /**
  * Mapping for Dolibarr Reception -> API Reception
+ * Note: Reception lines use CommandeFournisseurDispatch class in Dolibarr
  */
 class dmReception extends dmBase
 {
@@ -67,8 +69,8 @@ class dmReception extends dmBase
 		'billed'            => 'billed',
 	];
 
-	// Configuration for lines support
-	protected $parentClassNameForLines = 'ReceptionLine';
+	// Configuration for lines support - Reception uses CommandeFournisseurDispatch for lines
+	protected $parentClassNameForLines = 'CommandeFournisseurDispatch';
 	protected $parentLabelForLines = 'ReceptionLines';
 
 	// Dolibarr field => Front field for lines

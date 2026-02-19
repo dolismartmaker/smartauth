@@ -32,6 +32,7 @@ class dmSupplierInvoice extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'FactureFournisseur';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

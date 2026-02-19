@@ -31,6 +31,7 @@ class dmThirdparty extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Societe';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

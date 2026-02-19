@@ -31,6 +31,7 @@ class dmMember extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Adherent';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

@@ -439,21 +439,13 @@ class SmartAuthDevices extends \CommonObject
 
 			// Rename directory if dir was a temporary ref
 			if (preg_match('/^[\(]?PROV/i', (string) $this->ref)) {
-				// Now we rename also files into index
+				// Now we rename also files into index (ecm_files table is optional)
 				$sql = 'UPDATE ' . MAIN_DB_PREFIX . "ecm_files set filename = CONCAT('" . $this->db->escape($this->newref) . "', SUBSTR(filename, " . (strlen($this->ref) + 1) . ")), filepath = 'smartauthdevices/" . $this->db->escape($this->newref) . "'";
 				$sql .= " WHERE filename LIKE '" . $this->db->escape($this->ref) . "%' AND filepath = 'smartauthdevices/" . $this->db->escape($this->ref) . "' and entity = " . $conf->entity;
-				$resql = $this->db->query($sql);
-				if (!$resql) {
-					$error++;
-					$this->error = $this->db->lasterror();
-				}
+				$this->db->query($sql); // Non-blocking: ecm_files table may not exist
 				$sql = 'UPDATE ' . MAIN_DB_PREFIX . "ecm_files set filepath = 'smartauthdevices/" . $this->db->escape($this->newref) . "'";
 				$sql .= " WHERE filepath = 'smartauthdevices/" . $this->db->escape($this->ref) . "' and entity = " . $conf->entity;
-				$resql = $this->db->query($sql);
-				if (!$resql) {
-					$error++;
-					$this->error = $this->db->lasterror();
-				}
+				$this->db->query($sql); // Non-blocking: ecm_files table may not exist
 
 				// We rename directory ($this->ref = old ref, $num = new ref) in order not to lose the attachments
 				$oldref = dol_sanitizeFileName($this->ref);
@@ -789,7 +781,7 @@ class SmartAuthDevices extends \CommonObject
 	 */
 	public function getNextNumRef()
 	{
-		global $langs, $conf, $db;
+		global $langs, $conf;
 
 		$prefix = "SMAUTHD";
 
@@ -799,16 +791,16 @@ class SmartAuthDevices extends \CommonObject
 		// Use database-agnostic syntax: SUBSTR works in both MySQL and SQLite
 		$sql = "SELECT MAX(CAST(SUBSTR(ref, " . $posindice . ") AS INTEGER)) as max";
 		$sql .= " FROM " . MAIN_DB_PREFIX . $this->table_element;
-		$sql .= " WHERE ref LIKE '" . $db->escape($prefix) . "-%'";
+		$sql .= " WHERE ref LIKE '" . $this->db->escape($prefix) . "-%'";
 		if ($this->ismultientitymanaged == 1) {
 			$sql .= " AND entity = " . $conf->entity;
 		} elseif ($this->ismultientitymanaged == 2) {
 			// TODO
 		}
 
-		$resql = $db->query($sql);
+		$resql = $this->db->query($sql);
 		if ($resql) {
-			$obj = $db->fetch_object($resql);
+			$obj = $this->db->fetch_object($resql);
 			if ($obj) {
 				$max = intval($obj->max);
 			} else {

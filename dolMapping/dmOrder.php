@@ -32,6 +32,7 @@ class dmOrder extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Commande';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
