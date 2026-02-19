@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.3 -- 20260219
+
+better tests coverage, fix bugs thanks to tests
+fix mapping object for dolibarr like Thirdparty / Societe
+
 ## 2.0.2 -- 20260218
 
 dynamic manifest file - you can choose your icon and name (install app icon on desktop)
