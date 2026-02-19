@@ -11,6 +11,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *
  * Launches PHP built-in server with dolibarr-integration-sqlite bootstrap
  * and makes real HTTP requests to test headers, status codes, and responses.
+ *
+ * @requires PHP >= 8.2
  */
 abstract class HttpTestCase extends TestCase
 {

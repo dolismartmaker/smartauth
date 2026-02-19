@@ -8,6 +8,7 @@ namespace SmartAuth\Tests\Http;
  * Tests real HTTP responses including headers, status codes, and body content.
  * Uses PHP built-in server with dolibarr-integration-sqlite.
  *
+ * @requires PHP >= 8.2
  * @covers \SmartAuth\Api\PwaController
  */
 class PwaControllerHttpTest extends HttpTestCase

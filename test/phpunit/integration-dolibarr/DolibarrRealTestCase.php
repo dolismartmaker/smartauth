@@ -11,6 +11,8 @@ use Societe;
  * Base class for integration tests with real Dolibarr environment
  *
  * Uses cap-rel/dolibarr-integration-sqlite for a complete Dolibarr installation
+ *
+ * @requires PHP >= 8.2
  */
 abstract class DolibarrRealTestCase extends TestCase
 {

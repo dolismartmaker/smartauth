@@ -6,11 +6,11 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^9.6",
-        "symfony/http-client": "^7.4",
-        "cap-rel/dolibarr-integration-sqlite": "@dev"
+        "symfony/http-client": "^5.4 || ^6.4 || ^7.4"
     },
     "suggest": {
-        "cap-rel/dolibarr-integration-sqlite": "For integration tests with real Dolibarr (requires PHP 8.2+)"
+        "cap-rel/dolibarr-integration-sqlite": "For integration tests with real Dolibarr (requires PHP 8.2+)",
+        "symfony/http-client": "For HTTP functional tests"
     },
     "autoload": {
         "psr-4": {
