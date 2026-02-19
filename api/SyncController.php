@@ -64,6 +64,7 @@ class SyncController
                 'class' => 'Societe',
                 'file' => DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php',
                 'table' => 'societe',
+                'element' => 'societe',
                 'label' => 'ThirdParties',
                 'module' => 'societe',
                 'priority' => 'high',
@@ -73,6 +74,7 @@ class SyncController
                 'class' => 'Contact',
                 'file' => DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php',
                 'table' => 'socpeople',
+                'element' => 'contact',
                 'label' => 'Contacts',
                 'module' => 'societe',
                 'priority' => 'high',
@@ -82,6 +84,7 @@ class SyncController
                 'class' => 'Product',
                 'file' => DOL_DOCUMENT_ROOT . '/product/class/product.class.php',
                 'table' => 'product',
+                'element' => 'product',
                 'label' => 'Products',
                 'module' => 'product',
                 'priority' => 'medium',
@@ -91,6 +94,7 @@ class SyncController
                 'class' => 'Categorie',
                 'file' => DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php',
                 'table' => 'categorie',
+                'element' => 'categorie',
                 'label' => 'Categories',
                 'module' => 'categorie',
                 'priority' => 'low',
@@ -300,10 +304,12 @@ class SyncController
         $sql .= " ORDER BY tms ASC";
         $sql .= " LIMIT 1000"; // Pagination for large datasets
 
+        $withFiles = !empty($payload['with_files']);
+
         $resql = $this->db->query($sql);
         if ($resql) {
             while ($obj = $this->db->fetch_object($resql)) {
-                $result['updated'][] = $this->formatObjectForSync($obj, $object_type);
+                $result['updated'][] = $this->formatObjectForSync($obj, $object_type, $withFiles);
             }
         }
 
@@ -721,7 +727,7 @@ class SyncController
     /**
      * Format object for sync response
      */
-    private function formatObjectForSync($obj, $object_type)
+    private function formatObjectForSync($obj, $object_type, $withFiles = false)
     {
         // Convert to array and include tms
         $data = (array) $obj;
@@ -735,6 +741,20 @@ class SyncController
         if (isset($data['rowid'])) {
             $data['id'] = (int) $data['rowid'];
             unset($data['rowid']);
+        }
+
+        // Add linked files count from ECM
+        $config = $this->syncableObjects[$object_type] ?? [];
+        $element = $config['element'] ?? '';
+        $objectId = $data['id'] ?? 0;
+        if (!empty($element) && $objectId > 0) {
+            if ($withFiles) {
+                $files = $this->fetchLinkedFiles($objectId, $element);
+                $data['nb_linked_files'] = count($files);
+                $data['linked_files'] = $files;
+            } else {
+                $data['nb_linked_files'] = $this->countLinkedFiles($objectId, $element);
+            }
         }
 
         return $data;
@@ -1080,5 +1100,72 @@ class SyncController
         $sql .= "'" . $this->db->idate(dol_now()) . "')";
 
         $this->db->query($sql);
+    }
+
+    /**
+     * Count files linked to an object via ECM
+     *
+     * @param int    $objectId Object ID
+     * @param string $element  Dolibarr table_element value
+     * @return int
+     */
+    private function countLinkedFiles($objectId, $element)
+    {
+        global $conf;
+
+        $sql = "SELECT COUNT(*) as nb FROM " . MAIN_DB_PREFIX . "ecm_files";
+        $sql .= " WHERE src_object_type = '" . $this->db->escape($element) . "'";
+        $sql .= " AND src_object_id = " . (int) $objectId;
+        $sql .= " AND entity = " . (int) $conf->entity;
+
+        $resql = $this->db->query($sql);
+        if ($resql && $row = $this->db->fetch_object($resql)) {
+            return (int) $row->nb;
+        }
+        return 0;
+    }
+
+    /**
+     * Fetch linked files metadata from ECM
+     *
+     * @param int    $objectId Object ID
+     * @param string $element  Dolibarr table_element value
+     * @return array
+     */
+    private function fetchLinkedFiles($objectId, $element)
+    {
+        global $conf;
+
+        $files = [];
+        $sql = "SELECT rowid, filename, filepath, date_c, gen_or_uploaded, share, description, keywords";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "ecm_files";
+        $sql .= " WHERE src_object_type = '" . $this->db->escape($element) . "'";
+        $sql .= " AND src_object_id = " . (int) $objectId;
+        $sql .= " AND entity = " . (int) $conf->entity;
+        $sql .= " ORDER BY position ASC, date_c ASC";
+
+        $resql = $this->db->query($sql);
+        if ($resql) {
+            while ($fileObj = $this->db->fetch_object($resql)) {
+                $file = [
+                    'id' => (int) $fileObj->rowid,
+                    'filename' => $fileObj->filename,
+                    'path' => $fileObj->filepath,
+                    'date' => $fileObj->date_c,
+                    'type' => $fileObj->gen_or_uploaded,
+                    'share' => $fileObj->share ?: null,
+                ];
+                if (!empty($fileObj->description)) {
+                    $file['description'] = $fileObj->description;
+                }
+                if (!empty($fileObj->keywords)) {
+                    $file['keywords'] = $fileObj->keywords;
+                }
+                $files[] = $file;
+            }
+            $this->db->free($resql);
+        }
+
+        return $files;
     }
 }

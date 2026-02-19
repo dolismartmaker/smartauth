@@ -35,6 +35,9 @@ trait dmTrait
 	private $listOfForeignKeys = [];
 	private $_cacheDesc;
 
+	/** @var bool Whether to include full linked files list in export */
+	public $withFiles = false;
+
 	/** @var int Maximum depth for FK resolution to prevent infinite recursion */
 	private static $FK_MAX_DEPTH = 2;
 
@@ -379,6 +382,19 @@ trait dmTrait
 		$categories = $this->getCategoriesForObject($obj);
 		if ($categories !== null) {
 			$mapped->categories = $categories;
+		}
+
+		// Automatically add linked files count (and full list if requested)
+		$linkedObjId = $obj->id ?? $obj->rowid ?? 0;
+		$linkedElement = $obj->table_element ?? $obj->element ?? '';
+		if (!empty($linkedObjId) && !empty($linkedElement)) {
+			if ($this->withFiles) {
+				$linkedFiles = $this->getLinkedFilesList($obj);
+				$mapped->nb_linked_files = count($linkedFiles);
+				$mapped->linked_files = $linkedFiles;
+			} else {
+				$mapped->nb_linked_files = $this->getLinkedFilesCount($obj);
+			}
 		}
 
 		// dol_syslog("fieldFilterValueSmartPhoto mapped is " . json_encode($mapped));
@@ -762,5 +778,91 @@ trait dmTrait
 		}
 
 		return array_values($allCategories);
+	}
+
+	/**
+	 * Count files linked to a Dolibarr object via ECM
+	 *
+	 * Uses llx_ecm_files with src_object_type + src_object_id (modern Dolibarr approach).
+	 *
+	 * @param   object  $obj  Dolibarr object with id and table_element/element properties
+	 *
+	 * @return  int  Number of linked files
+	 */
+	public function getLinkedFilesCount($obj)
+	{
+		global $conf;
+
+		$objectId = $obj->id ?? $obj->rowid ?? 0;
+		$element = $obj->table_element ?? $obj->element ?? '';
+
+		if (empty($objectId) || empty($element)) {
+			return 0;
+		}
+
+		$sql = "SELECT COUNT(*) as nb FROM " . $this->_db->prefix() . "ecm_files";
+		$sql .= " WHERE src_object_type = '" . $this->_db->escape($element) . "'";
+		$sql .= " AND src_object_id = " . (int) $objectId;
+		$sql .= " AND entity = " . (int) $conf->entity;
+
+		$resql = $this->_db->query($sql);
+		if ($resql && $row = $this->_db->fetch_object($resql)) {
+			return (int) $row->nb;
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Get list of files linked to a Dolibarr object via ECM
+	 *
+	 * Returns metadata from llx_ecm_files including share token for download URLs.
+	 *
+	 * @param   object  $obj  Dolibarr object with id and table_element/element properties
+	 *
+	 * @return  array  List of file metadata arrays
+	 */
+	public function getLinkedFilesList($obj)
+	{
+		global $conf;
+
+		$objectId = $obj->id ?? $obj->rowid ?? 0;
+		$element = $obj->table_element ?? $obj->element ?? '';
+
+		if (empty($objectId) || empty($element)) {
+			return [];
+		}
+
+		$sql = "SELECT rowid, filename, filepath, date_c, gen_or_uploaded, share, description, keywords";
+		$sql .= " FROM " . $this->_db->prefix() . "ecm_files";
+		$sql .= " WHERE src_object_type = '" . $this->_db->escape($element) . "'";
+		$sql .= " AND src_object_id = " . (int) $objectId;
+		$sql .= " AND entity = " . (int) $conf->entity;
+		$sql .= " ORDER BY position ASC, date_c ASC";
+
+		$files = [];
+		$resql = $this->_db->query($sql);
+		if ($resql) {
+			while ($fileObj = $this->_db->fetch_object($resql)) {
+				$file = [
+					'id' => (int) $fileObj->rowid,
+					'filename' => $fileObj->filename,
+					'path' => $fileObj->filepath,
+					'date' => $fileObj->date_c,
+					'type' => $fileObj->gen_or_uploaded,
+					'share' => $fileObj->share ?: null,
+				];
+				if (!empty($fileObj->description)) {
+					$file['description'] = $fileObj->description;
+				}
+				if (!empty($fileObj->keywords)) {
+					$file['keywords'] = $fileObj->keywords;
+				}
+				$files[] = $file;
+			}
+			$this->_db->free($resql);
+		}
+
+		return $files;
 	}
 }
