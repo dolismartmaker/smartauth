@@ -1,13 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="test/phpunit/http/bootstrap.php"
          colors="true"
+         verbose="true"
          stopOnFailure="false"
-         cacheDirectory=".phpunit.cache/http">
+         cacheResult="true"
+         cacheResultFile=".phpunit.cache/http-test-results.xml">
+
     <testsuites>
-        <testsuite name="HTTP Integration Tests">
+        <testsuite name="http">
             <directory>test/phpunit/http</directory>
         </testsuite>
     </testsuites>
+
+    <coverage>
+        <include>
+            <directory suffix=".php">api</directory>
+        </include>
+        <exclude>
+            <directory>vendor</directory>
+            <directory>test</directory>
+        </exclude>
+        <report>
+            <html outputDirectory=".phpunit.cache/coverage-http-html"/>
+            <text outputFile="php://stdout"/>
+        </report>
+    </coverage>
+
+    <php>
+        <ini name="error_reporting" value="-1"/>
+        <ini name="display_errors" value="On"/>
+    </php>
 </phpunit>
