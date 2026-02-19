@@ -757,7 +757,72 @@ class SyncController
             }
         }
 
+        // Add categories for all object types that support them
+        if (!empty($element) && $objectId > 0) {
+            $categories = $this->getObjectCategories($objectId, $element);
+            if (!empty($categories)) {
+                $data['categories'] = $categories;
+            }
+        }
         return $data;
+    }
+
+    /**
+     * Mapping from Dolibarr element to category configuration
+     * - table: category link table suffix (llx_categorie_{table})
+     * - fk: foreign key column name in the link table
+     *
+     * @var array
+     */
+    private static $categoryConfig = [
+        'product' => ['table' => 'product', 'fk' => 'fk_product'],
+        'societe' => ['table' => 'societe', 'fk' => 'fk_soc'],
+        'contact' => ['table' => 'contact', 'fk' => 'fk_socpeople'],
+        'projet' => ['table' => 'project', 'fk' => 'fk_project'],
+        'project' => ['table' => 'project', 'fk' => 'fk_project'],
+        'member' => ['table' => 'member', 'fk' => 'fk_member'],
+        'user' => ['table' => 'user', 'fk' => 'fk_user'],
+        'bank_account' => ['table' => 'account', 'fk' => 'fk_account'],
+        'warehouse' => ['table' => 'warehouse', 'fk' => 'fk_warehouse'],
+        'actioncomm' => ['table' => 'actioncomm', 'fk' => 'fk_actioncomm'],
+        'ticket' => ['table' => 'ticket', 'fk' => 'fk_ticket'],
+    ];
+
+    /**
+     * Get categories linked to any Dolibarr object
+     *
+     * @param int    $objectId Object ID
+     * @param string $element  Dolibarr element type (product, societe, contact, etc.)
+     * @return array Array of category objects with id, label, color
+     */
+    private function getObjectCategories($objectId, $element)
+    {
+        $categories = [];
+
+        // Get the category config for this element
+        $config = self::$categoryConfig[$element] ?? null;
+        if (!$config) {
+            return $categories;
+        }
+
+        $sql = "SELECT c.rowid, c.label, c.color";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "categorie_" . $config['table'] . " cp";
+        $sql .= " JOIN " . MAIN_DB_PREFIX . "categorie c ON c.rowid = cp.fk_categorie";
+        $sql .= " WHERE cp." . $config['fk'] . " = " . (int) $objectId;
+
+        $resql = $this->db->query($sql);
+        if ($resql) {
+            while ($cat = $this->db->fetch_object($resql)) {
+                $categories[] = [
+                    'id' => (int) $cat->rowid,
+                    'label' => $cat->label,
+                    'color' => $cat->color ?: null,
+                ];
+            }
+            $this->db->free($resql);
+        }
+
+        return $categories;
     }
 
     /**
