@@ -20,10 +20,14 @@ class SyncControllerTest extends TestCase
 
     protected function setUp(): void
     {
-        global $db, $hookmanager;
+        global $db, $conf, $hookmanager;
 
         $this->mockDb = new MockDatabase();
         $db = $this->mockDb;
+
+        // Mock conf with entity
+        $conf = new \stdClass();
+        $conf->entity = 1;
 
         // Mock hookmanager
         $hookmanager = null;
@@ -36,8 +40,9 @@ class SyncControllerTest extends TestCase
 
     protected function tearDown(): void
     {
-        global $db;
+        global $db, $conf;
         $db = null;
+        $conf = null;
     }
 
     /**
