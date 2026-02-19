@@ -2231,4 +2231,301 @@ class DmTraitTest extends DolibarrRealTestCase
         $this->assertNotNull($cache);
         $this->assertIsObject($cache);
     }
+
+    // =========================================================================
+    // Linked files (ECM) tests
+    // =========================================================================
+
+    /**
+     * Insert a test ECM file linked to an object
+     *
+     * @return int Inserted row ID
+     */
+    private function insertEcmFile(int $objectId, string $element, array $data = []): int
+    {
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "ecm_files";
+        $sql .= " (label, entity, filename, filepath, src_object_type, src_object_id,";
+        $sql .= " date_c, gen_or_uploaded, share, description, keywords, position)";
+        $sql .= " VALUES (";
+        $sql .= "'" . $this->db->escape($data['label'] ?? md5(uniqid())) . "', ";
+        $sql .= (int) ($data['entity'] ?? 1) . ", ";
+        $sql .= "'" . $this->db->escape($data['filename'] ?? 'test_' . uniqid() . '.pdf') . "', ";
+        $sql .= "'" . $this->db->escape($data['filepath'] ?? $element . '/' . $objectId) . "', ";
+        $sql .= "'" . $this->db->escape($element) . "', ";
+        $sql .= (int) $objectId . ", ";
+        $sql .= "'" . $this->db->escape($data['date_c'] ?? date('Y-m-d H:i:s')) . "', ";
+        $sql .= "'" . $this->db->escape($data['gen_or_uploaded'] ?? 'uploaded') . "', ";
+        $sql .= isset($data['share']) ? "'" . $this->db->escape($data['share']) . "'" : "NULL";
+        $sql .= ", ";
+        $sql .= isset($data['description']) ? "'" . $this->db->escape($data['description']) . "'" : "NULL";
+        $sql .= ", ";
+        $sql .= isset($data['keywords']) ? "'" . $this->db->escape($data['keywords']) . "'" : "NULL";
+        $sql .= ", ";
+        $sql .= (int) ($data['position'] ?? 0);
+        $sql .= ")";
+
+        $result = $this->db->query($sql);
+        $this->assertNotFalse($result, "Failed to insert ECM file: " . $this->db->lasterror());
+
+        return $this->db->last_insert_id(MAIN_DB_PREFIX . 'ecm_files');
+    }
+
+    private function cleanEcmFiles(): void
+    {
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "ecm_files");
+    }
+
+    public function testGetLinkedFilesCountReturnsZeroForNewObject(): void
+    {
+        $this->cleanEcmFiles();
+
+        $obj = new stdClass();
+        $obj->id = 999;
+        $obj->table_element = 'societe';
+
+        $this->assertSame(0, $this->mapper->getLinkedFilesCount($obj));
+    }
+
+    public function testGetLinkedFilesCountReturnsCorrectCount(): void
+    {
+        $this->cleanEcmFiles();
+
+        $societe = $this->createTestSociete();
+
+        $this->insertEcmFile($societe->id, 'societe', ['filename' => 'doc1.pdf']);
+        $this->insertEcmFile($societe->id, 'societe', ['filename' => 'doc2.pdf']);
+        $this->insertEcmFile($societe->id, 'societe', ['filename' => 'photo.jpg']);
+
+        $obj = new stdClass();
+        $obj->id = $societe->id;
+        $obj->table_element = 'societe';
+
+        $this->assertSame(3, $this->mapper->getLinkedFilesCount($obj));
+    }
+
+    public function testGetLinkedFilesCountReturnsZeroForObjectWithoutElement(): void
+    {
+        $this->cleanEcmFiles();
+
+        $obj = new stdClass();
+        $obj->id = 123;
+        // No table_element or element
+
+        $this->assertSame(0, $this->mapper->getLinkedFilesCount($obj));
+    }
+
+    public function testGetLinkedFilesListReturnsEmptyForNewObject(): void
+    {
+        $this->cleanEcmFiles();
+
+        $obj = new stdClass();
+        $obj->id = 999;
+        $obj->table_element = 'societe';
+
+        $files = $this->mapper->getLinkedFilesList($obj);
+        $this->assertIsArray($files);
+        $this->assertEmpty($files);
+    }
+
+    public function testGetLinkedFilesListReturnsCorrectStructure(): void
+    {
+        $this->cleanEcmFiles();
+
+        $societe = $this->createTestSociete();
+
+        $ecmId = $this->insertEcmFile($societe->id, 'societe', [
+            'filename' => 'facture.pdf',
+            'filepath' => 'societe/' . $societe->id,
+            'gen_or_uploaded' => 'uploaded',
+            'share' => 'abc123token',
+            'description' => 'A test invoice',
+            'keywords' => 'invoice,test',
+            'date_c' => '2025-06-15 10:30:00',
+        ]);
+
+        $obj = new stdClass();
+        $obj->id = $societe->id;
+        $obj->table_element = 'societe';
+
+        $files = $this->mapper->getLinkedFilesList($obj);
+
+        $this->assertCount(1, $files);
+
+        $file = $files[0];
+        $this->assertEquals($ecmId, $file['id']);
+        $this->assertEquals('facture.pdf', $file['filename']);
+        $this->assertEquals('societe/' . $societe->id, $file['path']);
+        $this->assertEquals('2025-06-15 10:30:00', $file['date']);
+        $this->assertEquals('uploaded', $file['type']);
+        $this->assertEquals('abc123token', $file['share']);
+        $this->assertEquals('A test invoice', $file['description']);
+        $this->assertEquals('invoice,test', $file['keywords']);
+    }
+
+    public function testGetLinkedFilesListOmitsNullDescriptionAndKeywords(): void
+    {
+        $this->cleanEcmFiles();
+
+        $societe = $this->createTestSociete();
+
+        $this->insertEcmFile($societe->id, 'societe', [
+            'filename' => 'simple.pdf',
+            // No description, no keywords
+        ]);
+
+        $obj = new stdClass();
+        $obj->id = $societe->id;
+        $obj->table_element = 'societe';
+
+        $files = $this->mapper->getLinkedFilesList($obj);
+
+        $this->assertCount(1, $files);
+        $this->assertArrayNotHasKey('description', $files[0]);
+        $this->assertArrayNotHasKey('keywords', $files[0]);
+    }
+
+    public function testLinkedFilesRespectEntityFilter(): void
+    {
+        $this->cleanEcmFiles();
+
+        $societe = $this->createTestSociete();
+
+        // File in entity 1 (current)
+        $this->insertEcmFile($societe->id, 'societe', [
+            'filename' => 'entity1.pdf',
+            'entity' => 1,
+        ]);
+
+        // File in entity 2 (other)
+        $this->insertEcmFile($societe->id, 'societe', [
+            'filename' => 'entity2.pdf',
+            'entity' => 2,
+        ]);
+
+        $obj = new stdClass();
+        $obj->id = $societe->id;
+        $obj->table_element = 'societe';
+
+        $count = $this->mapper->getLinkedFilesCount($obj);
+        $this->assertSame(1, $count, 'Should only count files from current entity');
+
+        $files = $this->mapper->getLinkedFilesList($obj);
+        $this->assertCount(1, $files);
+        $this->assertEquals('entity1.pdf', $files[0]['filename']);
+    }
+
+    public function testExportMappedDataIncludesNbLinkedFilesZero(): void
+    {
+        $this->cleanEcmFiles();
+
+        $obj = new stdClass();
+        $obj->rowid = 1;
+        $obj->id = 1;
+        $obj->nom = 'Test';
+        $obj->address = '';
+        $obj->array_options = [];
+        $obj->table_element = 'societe';
+        $obj->element = 'societe';
+
+        $result = $this->mapper->exposeExportMappedData($obj);
+
+        $this->assertTrue(property_exists($result, 'nb_linked_files'), 'nb_linked_files should be present');
+        $this->assertSame(0, $result->nb_linked_files);
+        $this->assertFalse(property_exists($result, 'linked_files'), 'linked_files should NOT be present when withFiles is false');
+    }
+
+    public function testExportMappedDataIncludesNbLinkedFilesWithEcmFiles(): void
+    {
+        $this->cleanEcmFiles();
+
+        $societe = $this->createTestSociete();
+
+        $this->insertEcmFile($societe->id, 'societe', ['filename' => 'a.pdf']);
+        $this->insertEcmFile($societe->id, 'societe', ['filename' => 'b.pdf']);
+
+        $obj = new stdClass();
+        $obj->rowid = $societe->id;
+        $obj->id = $societe->id;
+        $obj->nom = $societe->name;
+        $obj->address = '';
+        $obj->array_options = [];
+        $obj->table_element = 'societe';
+        $obj->element = 'societe';
+
+        $result = $this->mapper->exposeExportMappedData($obj);
+
+        $this->assertSame(2, $result->nb_linked_files);
+        $this->assertFalse(property_exists($result, 'linked_files'));
+    }
+
+    public function testExportMappedDataWithFilesIncludesLinkedFilesList(): void
+    {
+        $this->cleanEcmFiles();
+
+        $societe = $this->createTestSociete();
+
+        $this->insertEcmFile($societe->id, 'societe', [
+            'filename' => 'invoice.pdf',
+            'share' => 'sharetoken123',
+        ]);
+
+        $obj = new stdClass();
+        $obj->rowid = $societe->id;
+        $obj->id = $societe->id;
+        $obj->nom = $societe->name;
+        $obj->address = '';
+        $obj->array_options = [];
+        $obj->table_element = 'societe';
+        $obj->element = 'societe';
+
+        $this->mapper->withFiles = true;
+        $result = $this->mapper->exposeExportMappedData($obj);
+        $this->mapper->withFiles = false;
+
+        $this->assertSame(1, $result->nb_linked_files);
+        $this->assertTrue(property_exists($result, 'linked_files'));
+        $this->assertIsArray($result->linked_files);
+        $this->assertCount(1, $result->linked_files);
+        $this->assertEquals('invoice.pdf', $result->linked_files[0]['filename']);
+        $this->assertEquals('sharetoken123', $result->linked_files[0]['share']);
+    }
+
+    public function testExportMappedDataWithFilesEmptyWhenNoFiles(): void
+    {
+        $this->cleanEcmFiles();
+
+        $obj = new stdClass();
+        $obj->rowid = 1;
+        $obj->id = 1;
+        $obj->nom = 'Test';
+        $obj->address = '';
+        $obj->array_options = [];
+        $obj->table_element = 'societe';
+        $obj->element = 'societe';
+
+        $this->mapper->withFiles = true;
+        $result = $this->mapper->exposeExportMappedData($obj);
+        $this->mapper->withFiles = false;
+
+        $this->assertSame(0, $result->nb_linked_files);
+        $this->assertTrue(property_exists($result, 'linked_files'));
+        $this->assertEmpty($result->linked_files);
+    }
+
+    public function testExportMappedDataWithoutElementSkipsLinkedFiles(): void
+    {
+        $this->cleanEcmFiles();
+
+        // Object without table_element/element -- linked files block should be skipped
+        $obj = new stdClass();
+        $obj->rowid = 1;
+        $obj->id = 1;
+        $obj->nom = 'Test';
+        $obj->address = '';
+        $obj->array_options = [];
+
+        $result = $this->mapper->exposeExportMappedData($obj);
+
+        $this->assertFalse(property_exists($result, 'nb_linked_files'));
+    }
 }

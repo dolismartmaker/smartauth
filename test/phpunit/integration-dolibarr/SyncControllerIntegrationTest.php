@@ -622,4 +622,153 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         $this->assertEquals(404, $result[1]);
     }
+
+    // =========================================================================
+    // Linked files (ECM) in pull tests
+    // =========================================================================
+
+    /**
+     * Insert a test ECM file linked to an object
+     */
+    private function insertEcmFile(int $objectId, string $element, array $data = []): int
+    {
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "ecm_files";
+        $sql .= " (label, entity, filename, filepath, src_object_type, src_object_id,";
+        $sql .= " date_c, gen_or_uploaded, share, description, keywords, position)";
+        $sql .= " VALUES (";
+        $sql .= "'" . $this->db->escape($data['label'] ?? md5(uniqid())) . "', ";
+        $sql .= (int) ($data['entity'] ?? 1) . ", ";
+        $sql .= "'" . $this->db->escape($data['filename'] ?? 'test_' . uniqid() . '.pdf') . "', ";
+        $sql .= "'" . $this->db->escape($data['filepath'] ?? $element . '/' . $objectId) . "', ";
+        $sql .= "'" . $this->db->escape($element) . "', ";
+        $sql .= (int) $objectId . ", ";
+        $sql .= "'" . $this->db->escape($data['date_c'] ?? date('Y-m-d H:i:s')) . "', ";
+        $sql .= "'" . $this->db->escape($data['gen_or_uploaded'] ?? 'uploaded') . "', ";
+        $sql .= isset($data['share']) ? "'" . $this->db->escape($data['share']) . "'" : "NULL";
+        $sql .= ", ";
+        $sql .= isset($data['description']) ? "'" . $this->db->escape($data['description']) . "'" : "NULL";
+        $sql .= ", ";
+        $sql .= isset($data['keywords']) ? "'" . $this->db->escape($data['keywords']) . "'" : "NULL";
+        $sql .= ", ";
+        $sql .= (int) ($data['position'] ?? 0);
+        $sql .= ")";
+
+        $result = $this->db->query($sql);
+        $this->assertNotFalse($result, "Failed to insert ECM file: " . $this->db->lasterror());
+
+        return $this->db->last_insert_id(MAIN_DB_PREFIX . 'ecm_files');
+    }
+
+    private function cleanEcmFiles(): void
+    {
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "ecm_files");
+    }
+
+    /**
+     * Test that pull response includes nb_linked_files for each object
+     */
+    public function testPullIncludesNbLinkedFiles(): void
+    {
+        $this->cleanEcmFiles();
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        // Create a societe with linked files
+        $societe = $this->createTestSociete(['name' => 'Company With Files']);
+        $this->insertEcmFile($societe->id, 'societe', ['filename' => 'doc1.pdf']);
+        $this->insertEcmFile($societe->id, 'societe', ['filename' => 'doc2.pdf']);
+
+        // Create another societe without files
+        $societe2 = $this->createTestSociete(['name' => 'Company Without Files']);
+
+        $result = $this->controller->pull([
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty'
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertNotEmpty($result[0]['updated']);
+
+        // Find both companies in results
+        $withFiles = null;
+        $withoutFiles = null;
+        foreach ($result[0]['updated'] as $obj) {
+            if (($obj['id'] ?? null) == $societe->id) {
+                $withFiles = $obj;
+            }
+            if (($obj['id'] ?? null) == $societe2->id) {
+                $withoutFiles = $obj;
+            }
+        }
+
+        $this->assertNotNull($withFiles, 'Company with files should be in pull results');
+        $this->assertArrayHasKey('nb_linked_files', $withFiles);
+        $this->assertEquals(2, $withFiles['nb_linked_files']);
+        $this->assertArrayNotHasKey('linked_files', $withFiles, 'linked_files should not be present without with_files param');
+
+        $this->assertNotNull($withoutFiles, 'Company without files should be in pull results');
+        $this->assertArrayHasKey('nb_linked_files', $withoutFiles);
+        $this->assertEquals(0, $withoutFiles['nb_linked_files']);
+    }
+
+    /**
+     * Test that pull with with_files=1 includes the full file list
+     */
+    public function testPullWithFilesIncludesLinkedFilesList(): void
+    {
+        $this->cleanEcmFiles();
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $societe = $this->createTestSociete(['name' => 'Company For File List']);
+        $this->insertEcmFile($societe->id, 'societe', [
+            'filename' => 'invoice.pdf',
+            'share' => 'token123',
+            'gen_or_uploaded' => 'generated',
+        ]);
+
+        $result = $this->controller->pull([
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'with_files' => '1',
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+
+        $found = null;
+        foreach ($result[0]['updated'] as $obj) {
+            if (($obj['id'] ?? null) == $societe->id) {
+                $found = $obj;
+                break;
+            }
+        }
+
+        $this->assertNotNull($found, 'Company should be in pull results');
+        $this->assertArrayHasKey('nb_linked_files', $found);
+        $this->assertEquals(1, $found['nb_linked_files']);
+        $this->assertArrayHasKey('linked_files', $found);
+        $this->assertIsArray($found['linked_files']);
+        $this->assertCount(1, $found['linked_files']);
+        $this->assertEquals('invoice.pdf', $found['linked_files'][0]['filename']);
+        $this->assertEquals('token123', $found['linked_files'][0]['share']);
+        $this->assertEquals('generated', $found['linked_files'][0]['type']);
+    }
+
+    /**
+     * Test that syncableObjects all have element key
+     */
+    public function testSyncableObjectsAllHaveElementKey(): void
+    {
+        $reflection = new \ReflectionClass($this->controller);
+        $prop = $reflection->getProperty('syncableObjects');
+        $prop->setAccessible(true);
+        $objects = $prop->getValue($this->controller);
+
+        foreach ($objects as $type => $config) {
+            $this->assertArrayHasKey('element', $config, "syncableObject '$type' should have 'element' key");
+            $this->assertNotEmpty($config['element'], "syncableObject '$type' element should not be empty");
+        }
+    }
 }
