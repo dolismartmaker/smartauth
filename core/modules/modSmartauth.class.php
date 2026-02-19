@@ -72,7 +72,7 @@ class modSmartauth extends DolibarrModules
 		$this->editor_url = 'https://cap-rel.fr/';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.0.4';
+		$this->version = '2.0.5';
 		// Url to the file with your last numberversion of this module
 		$this->url_last_version = "https://cap-rel.fr/dolibarr/ver.php?m=" . $this->rights_class . "&v=" . $this->version;
 
