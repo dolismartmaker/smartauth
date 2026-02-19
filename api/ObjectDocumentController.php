@@ -85,6 +85,13 @@ class ObjectDocumentController
             'modulepart' => 'ficheinter',
             'subdir_method' => 'getInterventionSubdir',
         ],
+        'category' => [
+            'class' => 'Categorie',
+            'file' => '/categories/class/categorie.class.php',
+            'module' => 'categorie',
+            'modulepart' => 'categorie',
+            'subdir_method' => 'getCategorySubdir',
+        ],
     ];
 
     /**
@@ -519,6 +526,23 @@ class ObjectDocumentController
     private function getInterventionSubdir($fichinter)
     {
         return dol_sanitizeFileName($fichinter->ref);
+    }
+
+    /**
+     * Get subdirectory for a category
+     * Categories use get_exdir() pattern with level=2
+     * Path format: X/Y/ID where X and Y are based on ID digits
+     *
+     * @param object $category Categorie object
+     * @return string Subdirectory path
+     */
+    private function getCategorySubdir($category)
+    {
+        // Replicate get_exdir($id, 2, 0, 0, $object, 'category') behavior
+        $id = (int) $category->id;
+        $num = substr("000" . $id, -2);
+        $path = substr($num, 1, 1) . '/' . substr($num, 0, 1);
+        return $path . '/' . $id;
     }
 
     /**
