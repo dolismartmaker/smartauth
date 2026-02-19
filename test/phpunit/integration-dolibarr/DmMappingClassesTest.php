@@ -249,6 +249,65 @@ class DmMappingClassesTest extends DolibarrRealTestCase
     }
 
     /**
+     * Test that dmMapping classes reference valid Dolibarr classes
+     *
+     * This test verifies that dolibarrClassName (explicit or derived) matches
+     * an existing Dolibarr class. It would have caught the bug where dmThirdparty
+     * tried to instantiate 'Thirdparty' instead of 'Societe'.
+     *
+     * @dataProvider objectClassProvider
+     */
+    public function testObjectClassReferencesValidDolibarrClass(string $className): void
+    {
+        $fullClassName = 'SmartAuth\\DolibarrMapping\\' . $className;
+        $reflection = new ReflectionClass($fullClassName);
+
+        // Get the dolibarrClassName that will be used by boot()
+        $expectedDolibarrClass = null;
+        if ($reflection->hasProperty('dolibarrClassName')) {
+            $prop = $reflection->getProperty('dolibarrClassName');
+            $prop->setAccessible(true);
+            $instance = $reflection->newInstanceWithoutConstructor();
+            $expectedDolibarrClass = $prop->getValue($instance);
+        }
+
+        // If no explicit dolibarrClassName, it will be derived from class name
+        if ($expectedDolibarrClass === null) {
+            $expectedDolibarrClass = preg_replace('/.*\\\\dm/', '', $fullClassName);
+        }
+
+        // Verify the Dolibarr class exists
+        $this->assertTrue(
+            class_exists($expectedDolibarrClass),
+            "$className expects Dolibarr class '$expectedDolibarrClass' which does not exist. " .
+            "Add 'protected \$dolibarrClassName = \"RealClassName\";' to fix this."
+        );
+    }
+
+    /**
+     * Test that dmMapping object classes can be instantiated
+     *
+     * This test verifies that object classes can be instantiated without errors.
+     * Recursion depth limiting in dmTrait::exportData() prevents segfaults
+     * from circular FK references.
+     *
+     * @dataProvider objectClassProvider
+     * @group slow
+     */
+    public function testObjectClassCanBeInstantiated(string $className): void
+    {
+        $fullClassName = 'SmartAuth\\DolibarrMapping\\' . $className;
+
+        $instance = new $fullClassName();
+
+        $this->assertInstanceOf(
+            'SmartAuth\\DolibarrMapping\\dmBase',
+            $instance,
+            "$className should be an instance of dmBase"
+        );
+    }
+
+    /**
      * Test that dictionary classes have code field
      *
      * @dataProvider dictionaryClassProvider

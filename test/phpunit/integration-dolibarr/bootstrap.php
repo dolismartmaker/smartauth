@@ -195,6 +195,53 @@ foreach ($requiredTables as $table) {
     }
 }
 
+// Create sync tables manually (SQLite-compatible syntax)
+// These may not be created by _load_tables() due to MySQL-specific syntax
+$syncTables = [
+    "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_clients (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        fk_device INTEGER NOT NULL,
+        client_uuid VARCHAR(64) NOT NULL,
+        last_sync_at DATETIME DEFAULT NULL,
+        sync_scope TEXT DEFAULT NULL,
+        app_version VARCHAR(32) DEFAULT NULL,
+        date_creation DATETIME NOT NULL,
+        tms TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status INTEGER DEFAULT 1 NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_events (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        fk_client INTEGER NOT NULL,
+        event_type VARCHAR(32) NOT NULL,
+        table_name VARCHAR(64) DEFAULT NULL,
+        object_id INTEGER DEFAULT NULL,
+        event_data TEXT DEFAULT NULL,
+        date_creation DATETIME NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_conflicts (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        fk_client INTEGER NOT NULL,
+        object_type VARCHAR(64) NOT NULL,
+        object_id INTEGER NOT NULL,
+        client_data TEXT NOT NULL,
+        server_data TEXT NOT NULL,
+        resolution_strategy VARCHAR(32) DEFAULT NULL,
+        resolved_at DATETIME DEFAULT NULL,
+        date_creation DATETIME NOT NULL,
+        status INTEGER DEFAULT 0 NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS llx_smartauth_sync_tombstones (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        object_type VARCHAR(64) NOT NULL,
+        object_id INTEGER NOT NULL,
+        deleted_at DATETIME NOT NULL,
+        deleted_by INTEGER DEFAULT NULL
+    )"
+];
+foreach ($syncTables as $sql) {
+    $db->query($sql);
+}
+
 // Initialize SmartAuth module configuration in $conf
 if (!isset($conf->smartauth)) {
     $conf->smartauth = new stdClass();

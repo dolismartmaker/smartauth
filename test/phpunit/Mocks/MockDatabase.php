@@ -20,6 +20,9 @@ class MockDatabase
     private int $fetchSequenceIndex = 0;
     private int $affectedRows = 0;
 
+    /** @var string Database type for SQL compatibility (mysql, sqlite3, etc.) */
+    public string $type = 'mysql';
+
     /**
      * Set the result for the next query
      */

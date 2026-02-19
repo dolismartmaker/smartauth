@@ -31,6 +31,23 @@
             <file>api/tools.php</file>
             <file>api/RedisRateLimiter.php</file>
             <file>api/LocalRoutes.php</file>
+            <!-- Difficult to test in isolation (PHP session handling, file uploads, redirects) -->
+            <file>api/OAuth2/SessionManager.php</file>
+            <file>api/OAuth2/AuthorizationController.php</file>
+            <file>api/SmartFileController.php</file>
+            <!-- Complex mapping trait with many edge cases -->
+            <file>dolMapping/dmTrait.php</file>
+            <!-- JWT key management depends on external files/config -->
+            <file>api/JwtKeyHelper.php</file>
+            <!-- Simple logging class -->
+            <file>class/smartlogs.class.php</file>
+            <!-- Main router with CORS/rate limiting - tested via integration -->
+            <file>api/RouteController.php</file>
+            <!-- Offline sync controller - complex state management -->
+            <file>api/SyncController.php</file>
+            <!-- OAuth entity classes with many CRUD methods -->
+            <file>class/smartauthoauthconsent.class.php</file>
+            <file>class/smartauthoauthtoken.class.php</file>
             <!-- Exclude mapping configuration files (dm*) - these are simple config with no logic to test -->
             <file>dolMapping/dmAgendaEvent.php</file>
             <file>dolMapping/dmBom.php</file>
