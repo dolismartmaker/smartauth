@@ -123,6 +123,7 @@ Here is all the documentation for SmartAuth API
   - [List documents](#List-documents)
   - [Download document (base64)](#Download-document-base64)
   - [Download document (binary)](#Download-document-binary)
+  - [Bundle download (ZIP)](#Bundle-download-ZIP)
 
 ___
 
@@ -596,4 +597,104 @@ GET /object/{type}/{id}/document/{path}/binary
 ### Success response
 
 The response is a binary stream with appropriate `Content-Type`, `Content-Disposition`, and `Content-Length` headers.
+
+## <a name='Bundle-download-ZIP'></a> Bundle download (ZIP)
+[Back to top](#top)
+
+<p>Downloads multiple documents at once as a ZIP archive. Uses share hashes from the list endpoint to identify files. Ideal for offline sync to batch-download all documents in a single request instead of N individual calls.</p>
+
+<p>The ZIP contains a <code>manifest.json</code> with metadata and a <code>files/</code> directory where each file is named by its share hash. Files are stored without compression (STORE method) since images and PDFs are already compressed.</p>
+
+```
+POST /object/documents/bundle
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| Authorization | `String` | <p>Bearer access_token</p> |
+| Content-Type | `String` | <p>application/json</p> |
+
+### Body Parameters
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| shares | `String[]` | <p>Array of share hashes to download (max 500)</p> |
+| max_file_size | `Number` | **optional** <p>Max individual file size in bytes (default/max: 5 MB)</p> |
+
+### Success response
+
+#### Success response - `Success 200`
+
+The response is a ZIP binary stream (`Content-Type: application/zip`).
+
+**ZIP structure:**
+
+```
+bundle.zip
+├── manifest.json
+└── files/
+    ├── a1b2c3d4e5f6...    (file content, named by share hash)
+    ├── g7h8i9j0k1l2...
+    └── ...
+```
+
+**manifest.json structure:**
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| included | `Object[]` | <p>Files successfully included in the ZIP</p> |
+| included.share | `String` | <p>Share hash</p> |
+| included.filename | `String` | <p>Original filename</p> |
+| included.mime_type | `String` | <p>MIME type</p> |
+| included.size | `Number` | <p>File size in bytes</p> |
+| oversized | `Object[]` | <p>Files skipped because they exceed max_file_size</p> |
+| remaining | `String[]` | <p>Share hashes skipped because total bundle size limit (100 MB) was reached</p> |
+| errors | `Object[]` | <p>Files that could not be resolved or found</p> |
+| errors.share | `String` | <p>Share hash</p> |
+| errors.error | `String` | <p><code>not_found</code> or <code>file_missing</code></p> |
+| server_time | `Number` | <p>Unix timestamp</p> |
+
+### Success response example
+
+#### Success response example - `manifest.json:`
+
+```json
+{
+    "included": [
+        {
+            "share": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+            "filename": "photo_31.jpg",
+            "mime_type": "image/jpeg",
+            "size": 82263
+        }
+    ],
+    "oversized": [],
+    "remaining": [],
+    "errors": [
+        {
+            "share": "invalidhash123",
+            "error": "not_found"
+        }
+    ],
+    "server_time": 1740900000
+}
+```
+
+### Error response
+
+#### Error response - `400`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| error | `String` | <p>Missing or empty shares array, or too many shares (max 500)</p> |
+
+### Limits
+
+| Limit | Value | Description |
+|-------|-------|-------------|
+| Max shares per request | 500 | Maximum number of share hashes in the `shares` array |
+| Max individual file size | 5 MB | Files larger than this are listed in `oversized` |
+| Max total bundle size | 100 MB | Once reached, remaining shares go to `remaining` |
 

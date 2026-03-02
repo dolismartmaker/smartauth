@@ -44,6 +44,7 @@
    - `GET /object/{type}/{id}/document/binary?q={share_hash}` - Télécharger un document binaire via share hash (recommandé)
    - `GET /object/{type}/{id}/document/{path}` - Télécharger un document via chemin (legacy, noms simples sans sous-répertoires)
    - `GET /object/{type}/{id}/document/{path}/binary` - Télécharger un document binaire via chemin (legacy)
+   - `POST /object/documents/bundle` - Télécharger plusieurs documents en un seul ZIP via share hashes
 
 ---
 
@@ -1927,6 +1928,77 @@ ne supporte pas les `/` dans l'URL).
 - `id` : ID de l'objet
 - `path` : Nom du fichier (URL-encoded, sans sous-répertoire)
 
+#### Téléchargement groupé (bundle ZIP)
+
+**`POST /object/documents/bundle`**
+
+Télécharge plusieurs documents en une seule requête sous forme d'archive ZIP.
+Optimisé pour la synchronisation offline : au lieu de N requêtes individuelles,
+le client envoie la liste des share hashes et reçoit un ZIP contenant tous les fichiers.
+
+**Body JSON :**
+
+```json
+{
+    "shares": ["a1b2c3d4...", "e5f6g7h8...", "..."],
+    "max_file_size": 5242880
+}
+```
+
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `shares` | `string[]` | Liste des share hashes à télécharger (max 500) |
+| `max_file_size` | `int` | (optionnel) Taille max par fichier en octets (défaut/max : 5 Mo) |
+
+**Réponse** : flux binaire ZIP (`Content-Type: application/zip`)
+
+**Structure du ZIP :**
+
+```
+bundle.zip
+├── manifest.json          # Métadonnées et statut de chaque fichier
+└── files/
+    ├── a1b2c3d4...        # Fichier nommé par son share hash
+    ├── e5f6g7h8...
+    └── ...
+```
+
+Les fichiers sont stockés sans compression (méthode STORE) car les images et PDF
+sont déjà compressés.
+
+**manifest.json :**
+
+```json
+{
+    "included": [
+        {"share": "a1b2c3d4...", "filename": "photo.jpg", "mime_type": "image/jpeg", "size": 82263}
+    ],
+    "oversized": [
+        {"share": "x9y8z7w6...", "filename": "video.mp4", "mime_type": "video/mp4", "size": 52428800}
+    ],
+    "remaining": ["hash1...", "hash2..."],
+    "errors": [
+        {"share": "invalid...", "error": "not_found"}
+    ],
+    "server_time": 1740900000
+}
+```
+
+| Champ | Description |
+|-------|-------------|
+| `included` | Fichiers inclus dans le ZIP avec métadonnées |
+| `oversized` | Fichiers ignorés car dépassant `max_file_size` (à télécharger individuellement) |
+| `remaining` | Hashes ignorés car la limite totale du bundle (100 Mo) a été atteinte |
+| `errors` | Hashes non résolus (`not_found`) ou fichiers physiquement absents (`file_missing`) |
+
+**Limites :**
+
+| Limite | Valeur | Description |
+|--------|--------|-------------|
+| Shares par requête | 500 | Nombre max de share hashes dans le body |
+| Taille par fichier | 5 Mo | Fichiers plus gros vont dans `oversized` |
+| Taille totale du ZIP | 100 Mo | Au-delà, les hashes restants vont dans `remaining` |
+
 ### 15.5 Intégration avec le sync client
 
 #### Workflow recommandé
@@ -1941,9 +2013,13 @@ ne supporte pas les `/` dans l'URL).
    - Documents mis à jour (updated_at > local) : à re-télécharger
    - Documents absents de la réponse : à supprimer localement
 
-3. Téléchargement des documents via share hash
-   GET /object/product/{id}/document?q={share_hash}
-   → Stocker le Blob dans IndexedDB
+3. Téléchargement des documents
+   Option A (groupé, recommandé) :
+     POST /object/documents/bundle  { shares: [...] }
+     → Dézipper, stocker chaque fichier dans IndexedDB
+   Option B (individuel, fallback pour fichiers > 5 Mo) :
+     GET /object/product/{id}/document?q={share_hash}
+     → Stocker le Blob dans IndexedDB
 
 4. Mise à jour de last_sync pour les documents
 ```
@@ -2011,32 +2087,77 @@ async function syncObjectDocuments(objectType, objectId, lastSync) {
         }
     }
 
-    // 4. Télécharger les nouveaux/mis à jour via share hash
-    for (const doc of toDownload) {
-        const fileResponse = await fetch(
-            `${API_BASE}/object/${objectType}/${objectId}/document?q=${doc.share}`,
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const json = await fileResponse.json();
-        const blob = base64ToBlob(json.content, json['content-type']);
+    // 4. Télécharger les nouveaux/mis à jour
+    if (toDownload.length > 0) {
+        // Séparer petits fichiers (bundle) et gros fichiers (individuels)
+        const BUNDLE_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+        const forBundle = toDownload.filter(d => d.size <= BUNDLE_MAX_FILE_SIZE);
+        const forIndividual = toDownload.filter(d => d.size > BUNDLE_MAX_FILE_SIZE);
 
-        const local = localById.get(doc.id);
-        await db.objectDocuments.put({
-            ...(local ? { local_id: local.local_id } : {}),
-            object_type: objectType,
-            object_id: objectId,
-            server_id: doc.id,
-            ecm_id: doc.ecm_id,
-            share: doc.share,
-            type: doc.type,
-            filename: doc.filename,
-            relative_path: doc.relative_path,
-            mime_type: doc.mime_type,
-            blob: blob,
-            size: doc.size,
-            synced_at: new Date().toISOString(),
-            server_updated_at: doc.updated_at
-        });
+        // 4a. Bundle ZIP pour les petits fichiers
+        if (forBundle.length > 0) {
+            const shares = forBundle.map(d => d.share);
+            const zipResponse = await fetch(`${API_BASE}/object/documents/bundle`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ shares }),
+            });
+            const zipBlob = await zipResponse.blob();
+            const zip = await JSZip.loadAsync(zipBlob);
+            const manifest = JSON.parse(await zip.file('manifest.json').async('text'));
+
+            // Stocker chaque fichier inclus
+            for (const meta of manifest.included) {
+                const fileData = await zip.file(`files/${meta.share}`).async('blob');
+                const doc = forBundle.find(d => d.share === meta.share);
+                const local = localById.get(doc.id);
+                await db.objectDocuments.put({
+                    ...(local ? { local_id: local.local_id } : {}),
+                    object_type: objectType,
+                    object_id: objectId,
+                    server_id: doc.id,
+                    ecm_id: doc.ecm_id,
+                    share: doc.share,
+                    type: doc.type,
+                    filename: doc.filename,
+                    relative_path: doc.relative_path,
+                    mime_type: meta.mime_type,
+                    blob: fileData,
+                    size: meta.size,
+                    synced_at: new Date().toISOString(),
+                    server_updated_at: doc.updated_at,
+                });
+            }
+        }
+
+        // 4b. Téléchargement individuel pour les gros fichiers
+        for (const doc of forIndividual) {
+            const fileResponse = await fetch(
+                `${API_BASE}/object/${objectType}/${objectId}/document/binary?q=${doc.share}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const blob = await fileResponse.blob();
+            const local = localById.get(doc.id);
+            await db.objectDocuments.put({
+                ...(local ? { local_id: local.local_id } : {}),
+                object_type: objectType,
+                object_id: objectId,
+                server_id: doc.id,
+                ecm_id: doc.ecm_id,
+                share: doc.share,
+                type: doc.type,
+                filename: doc.filename,
+                relative_path: doc.relative_path,
+                mime_type: doc.mime_type,
+                blob: blob,
+                size: doc.size,
+                synced_at: new Date().toISOString(),
+                server_updated_at: doc.updated_at,
+            });
+        }
     }
 
     // 5. Supprimer les documents qui n'existent plus sur le serveur

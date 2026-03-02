@@ -97,6 +97,9 @@ Route::post('sync/conflicts/{id}/resolve', SyncController::class, 'resolveConfli
 Route::get('object/documents/{type}/{doctypes}', ObjectDocumentController::class, 'batchIndex', true);
 Route::get('object/documents/{type}/{doctypes}/since/{timestamp}', ObjectDocumentController::class, 'batchIndex', true);
 
+// Bundle download: multiple documents as a single ZIP archive (share hash authorization)
+Route::post('object/documents/bundle', ObjectDocumentController::class, 'bundle', true);
+
 // List documents for a single object (for offline sync)
 Route::get('object/{type}/{id}/documents', ObjectDocumentController::class, 'index', true);
 

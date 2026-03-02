@@ -34,6 +34,11 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
 
 class ObjectDocumentController
 {
+    // Bundle size limits
+    private const BUNDLE_MAX_FILE_SIZE = 5242880;       // 5 MB per individual file
+    private const BUNDLE_MAX_TOTAL_SIZE = 104857600;    // 100 MB total per bundle
+    private const BUNDLE_MAX_SHARES = 500;              // Max shares per request
+
     /**
      * Mapping of object types to their document configuration.
      *
@@ -764,6 +769,53 @@ class ObjectDocumentController
     }
 
     /**
+     * Batch resolve multiple share hashes to file paths via ecm_files (single SQL query).
+     *
+     * @param array $shares Array of share hash strings
+     * @return array Map of share => ['filepath', 'filename', 'ecm_id', 'src_object_type', 'src_object_id']
+     */
+    private function resolveShareHashes($shares)
+    {
+        global $db;
+
+        if (empty($shares)) {
+            return [];
+        }
+
+        $placeholders = [];
+        foreach ($shares as $s) {
+            $s = trim((string) $s);
+            if (!empty($s)) {
+                $placeholders[] = "'" . $db->escape($s) . "'";
+            }
+        }
+        if (empty($placeholders)) {
+            return [];
+        }
+
+        $sql = "SELECT rowid, share, filepath, filename, src_object_type, src_object_id";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "ecm_files";
+        $sql .= " WHERE share IN (" . implode(',', $placeholders) . ")";
+
+        $results = [];
+        $resql = $db->query($sql);
+        if ($resql) {
+            while ($obj = $db->fetch_object($resql)) {
+                $results[$obj->share] = [
+                    'filepath' => $obj->filepath,
+                    'filename' => $obj->filename,
+                    'ecm_id' => (int) $obj->rowid,
+                    'src_object_type' => $obj->src_object_type ?? '',
+                    'src_object_id' => (int) ($obj->src_object_id ?? 0),
+                ];
+            }
+            $db->free($resql);
+        }
+
+        return $results;
+    }
+
+    /**
      * Determine document type from MIME type
      *
      * @param string $mimeType MIME type
@@ -929,6 +981,166 @@ class ObjectDocumentController
             'unavailable_ids' => $unavailableIds,
             'server_time' => time(),
         ], 200];
+    }
+
+    /**
+     * @api {post} /object/documents/bundle Download multiple documents as a ZIP bundle
+     * @apiName BundleDownloadDocuments
+     * @apiGroup ObjectDocument
+     * @apiVersion 1.0.0
+     *
+     * @apiDescription Downloads multiple documents in a single ZIP archive (uncompressed STORE).
+     * Authorization is based on ECM share hashes: if the client has the share hash
+     * (obtained from batchIndex or index), it can download the file.
+     *
+     * Files exceeding max_file_size are listed as oversized (download individually).
+     * If total size exceeds the bundle limit, remaining shares are returned for pagination.
+     *
+     * @apiHeader {String} Authorization Bearer access_token
+     *
+     * @apiBody {String[]} shares Array of ECM share hashes to include
+     * @apiBody {Number} [max_file_size] Max individual file size in bytes (capped at server limit)
+     *
+     * @apiSuccess {File} ZIP archive containing manifest.json + files/{share}
+     */
+    public function bundle($payload)
+    {
+        global $db;
+
+        dol_syslog("smartauth::ObjectDocumentController::bundle");
+
+        // Authentication
+        $user = $payload['user'] ?? null;
+        if (empty($user) || !is_object($user)) {
+            return [['error' => 'Authentication required'], 401];
+        }
+
+        // Parse request body
+        $shares = $payload['shares'] ?? [];
+        if (!is_array($shares) || empty($shares)) {
+            return [['error' => 'Missing or empty shares array'], 400];
+        }
+        if (count($shares) > self::BUNDLE_MAX_SHARES) {
+            return [['error' => 'Too many shares (max ' . self::BUNDLE_MAX_SHARES . ')'], 400];
+        }
+
+        $maxFileSize = isset($payload['max_file_size'])
+            ? min((int) $payload['max_file_size'], self::BUNDLE_MAX_FILE_SIZE)
+            : self::BUNDLE_MAX_FILE_SIZE;
+
+        // Batch resolve all share hashes in one SQL query
+        $resolved = $this->resolveShareHashes($shares);
+
+        $included = [];
+        $oversized = [];
+        $remaining = [];
+        $errors = [];
+        $filesToAdd = [];
+        $totalSize = 0;
+
+        foreach ($shares as $share) {
+            $share = trim((string) $share);
+            if (empty($share)) {
+                continue;
+            }
+
+            if (!isset($resolved[$share])) {
+                $errors[] = ['share' => $share, 'error' => 'not_found'];
+                continue;
+            }
+
+            $ecm = $resolved[$share];
+            $fullPath = DOL_DATA_ROOT . '/' . $ecm['filepath'] . '/' . $ecm['filename'];
+            $fullPathEncoded = dol_osencode($fullPath);
+
+            if (!file_exists($fullPathEncoded)) {
+                $errors[] = ['share' => $share, 'error' => 'file_missing'];
+                continue;
+            }
+
+            $filesize = filesize($fullPathEncoded);
+            $filename = preg_replace('/\.noexe$/i', '', $ecm['filename']);
+            $mimeType = dol_mimetype($filename);
+
+            $meta = [
+                'share' => $share,
+                'filename' => $filename,
+                'mime_type' => $mimeType,
+                'size' => (int) $filesize,
+            ];
+
+            // Skip oversized files
+            if ($filesize > $maxFileSize) {
+                $oversized[] = $meta;
+                continue;
+            }
+
+            // Check total bundle size limit
+            if ($totalSize + $filesize > self::BUNDLE_MAX_TOTAL_SIZE) {
+                $remaining[] = $share;
+                continue;
+            }
+
+            $totalSize += $filesize;
+            $included[] = $meta;
+            $filesToAdd[] = [
+                'share' => $share,
+                'path' => $fullPathEncoded,
+            ];
+        }
+
+        // Create ZIP archive
+        $tmpFile = tempnam(sys_get_temp_dir(), 'smartauth_bundle_');
+        if ($tmpFile === false) {
+            return [['error' => 'Failed to create temp file'], 500];
+        }
+
+        $zip = new \ZipArchive();
+        if ($zip->open($tmpFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            @unlink($tmpFile);
+            return [['error' => 'Failed to create ZIP archive'], 500];
+        }
+
+        // Add manifest
+        $manifest = [
+            'included' => $included,
+            'oversized' => $oversized,
+            'remaining' => $remaining,
+            'errors' => $errors,
+            'server_time' => time(),
+        ];
+        $zip->addFromString('manifest.json', json_encode($manifest, JSON_UNESCAPED_UNICODE));
+
+        // Add files with STORE method (no compression - images/PDFs are already compressed)
+        foreach ($filesToAdd as $fileInfo) {
+            $entryName = 'files/' . $fileInfo['share'];
+            $zip->addFile($fileInfo['path'], $entryName);
+            $zip->setCompressionName($entryName, \ZipArchive::CM_STORE);
+        }
+
+        $zip->close();
+
+        // Stream ZIP response
+        $zipSize = filesize($tmpFile);
+        $docCount = count($included);
+        $overCount = count($oversized);
+        $remCount = count($remaining);
+        dol_syslog("smartauth::ObjectDocumentController::bundle - ZIP: {$docCount} files, {$overCount} oversized, {$remCount} remaining, {$zipSize} bytes");
+
+        // Close DB before streaming
+        if (is_object($db)) {
+            $db->close();
+        }
+
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="bundle.zip"');
+        header('Content-Length: ' . $zipSize);
+        header('Cache-Control: private, max-age=0, must-revalidate');
+
+        readfileLowMemory($tmpFile);
+        @unlink($tmpFile);
+
+        exit;
     }
 
     /**
