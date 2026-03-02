@@ -93,7 +93,11 @@ Route::post('sync/conflicts/{id}/resolve', SyncController::class, 'resolveConfli
 
 // ========== Object Document Routes ========== //
 
-// List documents for an object (for offline sync)
+// Batch list documents for all objects of a type (for offline sync, WAF-friendly path-only)
+Route::get('object/documents/{type}/{doctypes}', ObjectDocumentController::class, 'batchIndex', true);
+Route::get('object/documents/{type}/{doctypes}/since/{timestamp}', ObjectDocumentController::class, 'batchIndex', true);
+
+// List documents for a single object (for offline sync)
 Route::get('object/{type}/{id}/documents', ObjectDocumentController::class, 'index', true);
 
 // Download a document via share hash: ?q=<share_hash> (recommended)

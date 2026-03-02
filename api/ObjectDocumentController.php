@@ -65,6 +65,7 @@ class ObjectDocumentController
             'file' => '/product/class/product.class.php',
             'module' => 'product',
             'modulepart' => 'produit',
+            'table_element' => 'product',
             'subdir_method' => 'getProductSubdir',
         ],
         'thirdparty' => [
@@ -72,6 +73,7 @@ class ObjectDocumentController
             'file' => '/societe/class/societe.class.php',
             'module' => 'societe',
             'modulepart' => 'societe',
+            'table_element' => 'societe',
             'subdir_method' => 'getThirdpartySubdir',
         ],
         'project' => [
@@ -79,6 +81,7 @@ class ObjectDocumentController
             'file' => '/projet/class/project.class.php',
             'module' => 'projet',
             'modulepart' => 'projet',
+            'table_element' => 'projet',
             'subdir_method' => 'getProjectSubdir',
         ],
         'intervention' => [
@@ -86,6 +89,7 @@ class ObjectDocumentController
             'file' => '/fichinter/class/fichinter.class.php',
             'module' => 'ficheinter',
             'modulepart' => 'ficheinter',
+            'table_element' => 'fichinter',
             'subdir_method' => 'getInterventionSubdir',
         ],
         'category' => [
@@ -93,6 +97,7 @@ class ObjectDocumentController
             'file' => '/categories/class/categorie.class.php',
             'module' => 'categorie',
             'modulepart' => 'categorie',
+            'table_element' => 'categorie',
             'subdir_method' => 'getCategorySubdir',
         ],
     ];
@@ -773,6 +778,397 @@ class ObjectDocumentController
             return 'pdf';
         }
         return 'other';
+    }
+
+    /**
+     * @api {get} /object/documents/{type}/{doctypes} Batch list documents for all objects of a type
+     * @api {get} /object/documents/{type}/{doctypes}/since/{timestamp} Batch list with incremental sync
+     * @apiName BatchListObjectDocuments
+     * @apiGroup ObjectDocument
+     * @apiVersion 1.0.0
+     *
+     * @apiDescription Lists all documents across ALL objects of a given type in a single call.
+     * Used by offline sync to efficiently pull document metadata without N individual requests.
+     * Path-only parameters (no query strings) for WAF compatibility.
+     *
+     * @apiHeader {String} Authorization Bearer access_token
+     *
+     * @apiParam {String} type Object type (product, thirdparty, project, intervention, category)
+     * @apiParam {String} doctypes Comma-separated document types to include (image,pdf,other)
+     * @apiParam {Number} [timestamp] Unix timestamp for incremental sync (only files modified after)
+     *
+     * @apiSuccess {Object[]} documents List of documents across all objects
+     * @apiSuccess {Number} documents.object_id Parent object ID
+     * @apiSuccess {String} documents.id Stable document ID (hash)
+     * @apiSuccess {String} documents.share ECM share hash for download
+     * @apiSuccess {String} documents.filename File name
+     * @apiSuccess {String} documents.relative_path Path relative to object directory
+     * @apiSuccess {String} documents.mime_type MIME type
+     * @apiSuccess {Number} documents.size File size in bytes
+     * @apiSuccess {Number} documents.updated_at Last modification unix timestamp
+     * @apiSuccess {String} documents.type image|pdf|other
+     * @apiSuccess {Number[]} unavailable_ids Object IDs no longer accessible (for cleanup)
+     * @apiSuccess {Number} server_time Current server unix timestamp
+     */
+    public function batchIndex($payload)
+    {
+        global $db, $conf;
+
+        dol_syslog("smartauth::ObjectDocumentController::batchIndex");
+
+        // Authentication
+        $user = $payload['user'] ?? null;
+        if (empty($user) || !is_object($user)) {
+            return [['error' => 'Authentication required'], 401];
+        }
+
+        // Validate object type
+        $type = InputSanitizer::sanitizeAlphanumeric($payload['type'] ?? '', 32);
+        if (empty($type) || !isset(self::$objectTypeConfig[$type])) {
+            return [['error' => 'Invalid object type. Supported: ' . implode(', ', array_keys(self::$objectTypeConfig))], 400];
+        }
+
+        $config = self::$objectTypeConfig[$type];
+
+        // Check module is enabled
+        if (!isModEnabled($config['module'])) {
+            return [['error' => 'Module not enabled: ' . $config['module']], 403];
+        }
+
+        // Check permissions
+        if (!$user->hasRight($config['module'], 'read') && !$user->hasRight($config['module'], 'lire')) {
+            dol_syslog("smartauth::ObjectDocumentController::batchIndex - Access denied for user {$user->id} on module {$config['module']}", LOG_WARNING);
+            return [['error' => 'Access denied'], 403];
+        }
+
+        // Parse document types from path segment (e.g., "image,pdf")
+        $doctypesParam = $payload['doctypes'] ?? 'image,pdf,other';
+        $doctypes = array_map('trim', explode(',', $doctypesParam));
+
+        // Parse optional since timestamp from path segment
+        $since = isset($payload['timestamp']) ? (int) $payload['timestamp'] : 0;
+
+        // Resolve table_element for ECM queries
+        $tableElement = $config['table_element'] ?? $this->resolveTableElement($config, $db);
+
+        // 1. Get accessible objects with their subdirectories (optimized SQL per type)
+        $objects = $this->getBatchAccessibleObjects($type, $config, $db, $conf);
+
+        // 2. Load all ECM entries for this object type in one query
+        $ecmIndexed = $this->loadEcmFilesForObjectType($tableElement, $db, $conf);
+
+        // 3. Get base document directory for this object type
+        $baseDir = $this->getBatchBaseDir($config, $conf);
+
+        $documents = [];
+        $accessibleIds = [];
+
+        foreach ($objects as $obj) {
+            $accessibleIds[] = $obj['id'];
+
+            $docDir = $baseDir . '/' . $obj['subdir'];
+            if (!is_dir($docDir)) {
+                continue;
+            }
+
+            $files = dol_dir_list($docDir, 'files', 1, '', array('(\.meta|_preview.*\.png)$', '^\.'), 'date', SORT_DESC, 1);
+
+            foreach ($files as $file) {
+                // Skip files not modified since last sync
+                if ($since > 0 && $file['date'] <= $since) {
+                    continue;
+                }
+
+                $relativePath = str_replace($docDir . '/', '', $file['fullname']);
+                $docId = substr(md5($type . '_' . $obj['id'] . '_' . $relativePath), 0, 8);
+
+                $mimeType = dol_mimetype($file['name']);
+                $docType = $this->getDocumentType($mimeType);
+
+                // Filter by requested document types
+                if (!in_array($docType, $doctypes)) {
+                    continue;
+                }
+
+                // Create a lightweight proxy for ensureEcmEntry (only needs table_element and id)
+                $objProxy = new \stdClass();
+                $objProxy->table_element = $tableElement;
+                $objProxy->id = $obj['id'];
+
+                $ecmData = $this->ensureEcmEntry(
+                    $file, $relativePath, $docDir, $objProxy, $user, $ecmIndexed
+                );
+
+                $documents[] = [
+                    'object_id' => $obj['id'],
+                    'id' => $docId,
+                    'share' => $ecmData['share'],
+                    'filename' => $file['name'],
+                    'relative_path' => $relativePath,
+                    'mime_type' => $mimeType,
+                    'size' => (int) $file['size'],
+                    'updated_at' => (int) $file['date'],
+                    'type' => $docType,
+                ];
+            }
+        }
+
+        // 4. For incremental sync, identify objects that are no longer accessible
+        $unavailableIds = [];
+        if ($since > 0) {
+            $unavailableIds = $this->getBatchUnavailableIds($type, $since, $db, $conf);
+        }
+
+        $docCount = count($documents);
+        $objCount = count($accessibleIds);
+        $unavailCount = count($unavailableIds);
+        dol_syslog("smartauth::ObjectDocumentController::batchIndex - Found $docCount documents for $objCount $type objects, $unavailCount unavailable");
+
+        return [[
+            'documents' => $documents,
+            'unavailable_ids' => $unavailableIds,
+            'server_time' => time(),
+        ], 200];
+    }
+
+    /**
+     * Get all accessible objects of a type with their document subdirectories.
+     * Uses optimized SQL per type to avoid N individual fetches.
+     *
+     * @param string $type Object type key
+     * @param array $config Object type configuration
+     * @param object $db Database handler
+     * @param object $conf Dolibarr configuration
+     * @return array List of ['id' => int, 'subdir' => string]
+     */
+    private function getBatchAccessibleObjects($type, $config, $db, $conf)
+    {
+        $objects = [];
+
+        switch ($type) {
+            case 'product':
+                $sql = "SELECT p.rowid, p.ref";
+                $sql .= " FROM " . MAIN_DB_PREFIX . "product as p";
+                $sql .= " WHERE p.tosell = 1";
+                $sql .= " AND p.fk_product_type IN (0, 1)";
+                $sql .= " AND p.entity IN (" . getEntity('product') . ")";
+                $sql .= " ORDER BY p.rowid ASC";
+                $resql = $db->query($sql);
+                if ($resql) {
+                    while ($obj = $db->fetch_object($resql)) {
+                        $objects[] = [
+                            'id' => (int) $obj->rowid,
+                            'subdir' => dol_sanitizeFileName($obj->ref),
+                        ];
+                    }
+                    $db->free($resql);
+                }
+                break;
+
+            case 'category':
+                $sql = "SELECT c.rowid";
+                $sql .= " FROM " . MAIN_DB_PREFIX . "categorie as c";
+                $sql .= " WHERE c.entity IN (" . getEntity('categorie') . ")";
+                $sql .= " ORDER BY c.rowid ASC";
+                $resql = $db->query($sql);
+                if ($resql) {
+                    while ($obj = $db->fetch_object($resql)) {
+                        $id = (int) $obj->rowid;
+                        $objects[] = [
+                            'id' => $id,
+                            'subdir' => $this->computeCategorySubdir($id),
+                        ];
+                    }
+                    $db->free($resql);
+                }
+                break;
+
+            case 'thirdparty':
+                $sql = "SELECT s.rowid, s.nom";
+                $sql .= " FROM " . MAIN_DB_PREFIX . "societe as s";
+                $sql .= " WHERE s.status = 1";
+                $sql .= " AND s.entity IN (" . getEntity('societe') . ")";
+                $sql .= " ORDER BY s.rowid ASC";
+                $resql = $db->query($sql);
+                if ($resql) {
+                    while ($obj = $db->fetch_object($resql)) {
+                        $objects[] = [
+                            'id' => (int) $obj->rowid,
+                            'subdir' => dol_sanitizeFileName($obj->nom),
+                        ];
+                    }
+                    $db->free($resql);
+                }
+                break;
+
+            case 'project':
+            case 'intervention':
+                require_once DOL_DOCUMENT_ROOT . $config['file'];
+                $className = $config['class'];
+                $tmpObj = new $className($db);
+                $tableName = $tmpObj->table_element;
+
+                $sql = "SELECT rowid, ref";
+                $sql .= " FROM " . MAIN_DB_PREFIX . $db->escape($tableName);
+                $sql .= " WHERE entity IN (" . getEntity($tableName) . ")";
+                $sql .= " ORDER BY rowid ASC";
+                $resql = $db->query($sql);
+                if ($resql) {
+                    while ($obj = $db->fetch_object($resql)) {
+                        $objects[] = [
+                            'id' => (int) $obj->rowid,
+                            'subdir' => dol_sanitizeFileName($obj->ref),
+                        ];
+                    }
+                    $db->free($resql);
+                }
+                break;
+
+            default:
+                // External types registered via registerObjectType(): fetch individually
+                require_once DOL_DOCUMENT_ROOT . $config['file'];
+                $className = $config['class'];
+                $tmpObj = new $className($db);
+                $tableName = $tmpObj->table_element;
+
+                $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . $db->escape($tableName);
+                $sql .= " WHERE entity IN (" . getEntity($tableName) . ")";
+                $sql .= " ORDER BY rowid ASC";
+                $resql = $db->query($sql);
+                if ($resql) {
+                    while ($objRow = $db->fetch_object($resql)) {
+                        $fetchObj = new $className($db);
+                        if ($fetchObj->fetch($objRow->rowid) > 0) {
+                            $subdirMethod = $config['subdir_method'];
+                            $objects[] = [
+                                'id' => (int) $objRow->rowid,
+                                'subdir' => $this->$subdirMethod($fetchObj),
+                            ];
+                        }
+                    }
+                    $db->free($resql);
+                }
+                break;
+        }
+
+        return $objects;
+    }
+
+    /**
+     * Get object IDs that are no longer accessible (for incremental sync cleanup).
+     * Type-specific logic: products with tosell=0, etc.
+     *
+     * @param string $type Object type key
+     * @param int $since Unix timestamp
+     * @param object $db Database handler
+     * @param object $conf Dolibarr configuration
+     * @return array List of object IDs
+     */
+    private function getBatchUnavailableIds($type, $since, $db, $conf)
+    {
+        $ids = [];
+
+        switch ($type) {
+            case 'product':
+                $sql = "SELECT p.rowid";
+                $sql .= " FROM " . MAIN_DB_PREFIX . "product as p";
+                $sql .= " WHERE p.tosell = 0";
+                $sql .= " AND p.fk_product_type IN (0, 1)";
+                $sql .= " AND p.entity IN (" . getEntity('product') . ")";
+                $sql .= " AND UNIX_TIMESTAMP(p.tms) > " . (int) $since;
+                $resql = $db->query($sql);
+                if ($resql) {
+                    while ($obj = $db->fetch_object($resql)) {
+                        $ids[] = (int) $obj->rowid;
+                    }
+                    $db->free($resql);
+                }
+                break;
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Load all ecm_files entries for an object type in batch (single query).
+     *
+     * @param string $tableElement Dolibarr table_element value
+     * @param object $db Database handler
+     * @param object $conf Dolibarr configuration
+     * @return array Map of "filepath/filename" => ['ecm_id' => int, 'share' => string]
+     */
+    private function loadEcmFilesForObjectType($tableElement, $db, $conf)
+    {
+        $indexed = [];
+
+        $sql = "SELECT rowid, share, filename, filepath";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "ecm_files";
+        $sql .= " WHERE src_object_type = '" . $db->escape($tableElement) . "'";
+        $sql .= " AND entity = " . (int) $conf->entity;
+
+        $resql = $db->query($sql);
+        if ($resql) {
+            while ($obj = $db->fetch_object($resql)) {
+                $key = $obj->filepath . '/' . $obj->filename;
+                $indexed[$key] = [
+                    'ecm_id' => (int) $obj->rowid,
+                    'share' => $obj->share ?? '',
+                ];
+            }
+            $db->free($resql);
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * Get base document directory for an object type (without subdir).
+     *
+     * @param array $config Object type configuration
+     * @param object $conf Dolibarr configuration
+     * @return string Base directory path
+     */
+    private function getBatchBaseDir($config, $conf)
+    {
+        $modulepart = $config['modulepart'];
+        $entity = $conf->entity ?? 1;
+
+        if (!empty($conf->$modulepart->multidir_output[$entity])) {
+            return $conf->$modulepart->multidir_output[$entity];
+        }
+        if (!empty($conf->$modulepart->dir_output)) {
+            return $conf->$modulepart->dir_output;
+        }
+        return DOL_DATA_ROOT . '/' . $modulepart;
+    }
+
+    /**
+     * Compute category subdirectory from ID (without needing full object).
+     * Replicates get_exdir($id, 2, 0, 0, $object, 'category') behavior.
+     *
+     * @param int $categoryId Category ID
+     * @return string Subdirectory path (e.g., "5/0/15")
+     */
+    private function computeCategorySubdir($categoryId)
+    {
+        $num = substr("000" . $categoryId, -2);
+        return substr($num, 1, 1) . '/' . substr($num, 0, 1) . '/' . $categoryId;
+    }
+
+    /**
+     * Resolve table_element for an object type by instantiating its class.
+     * Used as fallback when table_element is not in the config.
+     *
+     * @param array $config Object type configuration
+     * @param object $db Database handler
+     * @return string The table_element value
+     */
+    private function resolveTableElement($config, $db)
+    {
+        require_once DOL_DOCUMENT_ROOT . $config['file'];
+        $className = $config['class'];
+        $tmpObj = new $className($db);
+        return $tmpObj->table_element ?? '';
     }
 
     /**
