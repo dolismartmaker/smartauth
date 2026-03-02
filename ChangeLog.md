@@ -1,9 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 2.0.6 -- 20260302
+## 2.0.7 -- 20260302
 
 use hash share for downloads
 add entries into ecm database if missing
+add batch queries on documents index
 
 ## 2.0.5 -- 20260219
 

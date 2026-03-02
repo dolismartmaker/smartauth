@@ -2386,11 +2386,11 @@ describe('usePushNotifications', () => {
 
 | Composant | Tests unitaires | Tests intégration | Couverture cible |
 |-----------|-----------------|-------------------|------------------|
-| PushController | ✓ | ✓ | 90% |
-| VapidKeyHelper | ✓ | - | 80% |
-| PushNotificationService | ✓ | ✓ | 85% |
-| usePushNotifications | ✓ | - | 80% |
-| Service Worker | - | ✓ (E2E) | 70% |
+| PushController | Oui | Oui | 90% |
+| VapidKeyHelper | Oui | - | 80% |
+| PushNotificationService | Oui | Oui | 85% |
+| usePushNotifications | Oui | - | 80% |
+| Service Worker | - | Oui (E2E) | 70% |
 
 ### 11.6 Commandes de test
 
@@ -2431,11 +2431,11 @@ composer test -- --coverage-html coverage/ --filter Push
 
 | Navigateur | Push API | Service Worker | Notes |
 |------------|----------|----------------|-------|
-| Chrome 50+ | ✓ | ✓ | Via FCM |
-| Firefox 44+ | ✓ | ✓ | Via Mozilla autopush |
-| Safari 16+ | ✓ | ✓ | Via APNs (iOS 16.4+) |
-| Edge 17+ | ✓ | ✓ | Via FCM |
-| Opera 37+ | ✓ | ✓ | Via FCM |
+| Chrome 50+ | Oui | Oui | Via FCM |
+| Firefox 44+ | Oui | Oui | Via Mozilla autopush |
+| Safari 16+ | Oui | Oui | Via APNs (iOS 16.4+) |
+| Edge 17+ | Oui | Oui | Via FCM |
+| Opera 37+ | Oui | Oui | Via FCM |
 
 ### C. Ressources
 

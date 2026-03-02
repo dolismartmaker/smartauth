@@ -13,16 +13,16 @@
 
 | Composant | Fichier | Statut | Notes |
 |-----------|---------|--------|-------|
-| Tables SQL sync | `sql/update_010.sql` | ✅ Implémenté | Tables: sync_clients, sync_tombstones, sync_conflicts, sync_events |
-| SyncController | `api/SyncController.php` | ✅ Implémenté | Endpoints: register, pull, push, status, conflicts, resolve |
-| Routes sync | `api/sync_routes.php` | ✅ Implémenté | Toutes routes protégées (JWT requis) |
-| Détection conflits tms | Dans SyncController | ✅ Implémenté | Comparaison tms + données champ par champ |
-| Verrouillage optimiste | Dans SyncController | ✅ Implémenté | SELECT FOR UPDATE avec retry |
-| Objets simples | Config SyncController | ✅ Implémenté | thirdparty, contact, product |
-| **Documents/Blobs** | `api/ObjectDocumentController.php` | ✅ Implémenté | List + download docs pour product, thirdparty, project, intervention |
-| Hooks objets sync | - | ⏳ Prévu Phase 2 | smartmaker_registerSyncableObjects |
-| Objets composites | - | ⏳ Prévu Phase 2 | Factures, commandes avec lignes |
-| Client JavaScript | - | 🔜 À documenter | Documentation frontend à générer |
+| Tables SQL sync | `sql/update_010.sql` | Implémenté | Tables: sync_clients, sync_tombstones, sync_conflicts, sync_events |
+| SyncController | `api/SyncController.php` | Implémenté | Endpoints: register, pull, push, status, conflicts, resolve |
+| Routes sync | `api/sync_routes.php` | Implémenté | Toutes routes protégées (JWT requis) |
+| Détection conflits tms | Dans SyncController | Implémenté | Comparaison tms + données champ par champ |
+| Verrouillage optimiste | Dans SyncController | Implémenté | SELECT FOR UPDATE avec retry |
+| Objets simples | Config SyncController | Implémenté | thirdparty, contact, product |
+| **Documents/Blobs** | `api/ObjectDocumentController.php` | Implémenté | List + download docs pour product, thirdparty, project, intervention, category. Intégration ECM avec share hash |
+| Hooks objets sync | - | Prévu Phase 2 | smartmaker_registerSyncableObjects |
+| Objets composites | - | Prévu Phase 2 | Factures, commandes avec lignes |
+| Client JavaScript | - | À documenter | Documentation frontend à générer |
 
 ### Pour utiliser la sync API
 
@@ -39,9 +39,11 @@
    - `GET /sync/status?client_uuid=...` - État de la sync
    - `GET /sync/conflicts?client_uuid=...` - Lister les conflits
    - `POST /sync/conflicts/{id}/resolve` - Résoudre un conflit
-   - `GET /object/{type}/{id}/documents` - Lister les documents d'un objet
-   - `GET /object/{type}/{id}/document/{path}` - Télécharger un document (base64)
-   - `GET /object/{type}/{id}/document/{path}/binary` - Télécharger un document (binaire)
+   - `GET /object/{type}/{id}/documents` - Lister les documents d'un objet (inclut `ecm_id` et `share` hash)
+   - `GET /object/{type}/{id}/document?q={share_hash}` - Télécharger un document via share hash (recommandé)
+   - `GET /object/{type}/{id}/document/binary?q={share_hash}` - Télécharger un document binaire via share hash (recommandé)
+   - `GET /object/{type}/{id}/document/{path}` - Télécharger un document via chemin (legacy, noms simples sans sous-répertoires)
+   - `GET /object/{type}/{id}/document/{path}/binary` - Télécharger un document binaire via chemin (legacy)
 
 ---
 
@@ -1766,7 +1768,7 @@ En cas de problème :
 
 ### v2.0
 
-- [x] Sync des fichiers/documents (ObjectDocumentController)
+- [x] Sync des fichiers/documents (ObjectDocumentController + intégration ECM share hash)
 - [ ] Sync sélective par champ
 - [ ] Mode "lecture seule" offline
 - [ ] Multi-instance sync (plusieurs Dolibarr)
@@ -1802,6 +1804,7 @@ attachés aux objets Dolibarr.
 | `thirdparty` | societe | `documents/societe/{name}/` |
 | `project` | projet | `documents/projet/{ref}/` |
 | `intervention` | ficheinter | `documents/ficheinter/{ref}/` |
+| `category` | categorie | `documents/categorie/{id}/` |
 
 #### Extension par les modules
 
@@ -1823,10 +1826,15 @@ ObjectDocumentController::registerObjectType('myobject', [
 
 #### GET /object/{type}/{id}/documents
 
-Liste les documents attachés à un objet. Retourne uniquement les métadonnées (pas le contenu).
+Liste les documents attachés à un objet. Retourne les métadonnées (pas le contenu),
+enrichies avec les informations ECM Dolibarr (`ecm_id`, `share` hash).
+
+Si une entrée `llx_ecm_files` n'existe pas pour un fichier, elle est automatiquement
+créée avec un share hash généré. Cela permet de « guérir » la base ECM Dolibarr
+au fur et à mesure.
 
 **Paramètres URL :**
-- `type` : Type d'objet (product, thirdparty, project, intervention)
+- `type` : Type d'objet (product, thirdparty, project, intervention, category)
 - `id` : ID de l'objet (rowid)
 
 **Paramètres query :**
@@ -1845,7 +1853,9 @@ Liste les documents attachés à un objet. Retourne uniquement les métadonnées
             "mime_type": "application/pdf",
             "size": 245000,
             "updated_at": "2026-02-18T10:30:00+00:00",
-            "type": "pdf"
+            "type": "pdf",
+            "ecm_id": 1234,
+            "share": "abc123def456ghi789jkl012mno345pq"
         },
         {
             "id": "e5f6g7h8",
@@ -1855,23 +1865,32 @@ Liste les documents attachés à un objet. Retourne uniquement les métadonnées
             "mime_type": "image/jpeg",
             "size": 156000,
             "updated_at": "2026-02-15T14:00:00+00:00",
-            "type": "image"
+            "type": "image",
+            "ecm_id": 1235,
+            "share": "rst678uvw901xyz234abc567def890ghi"
         }
     ],
     "server_time": "2026-02-18T14:00:00+00:00"
 }
 ```
 
-#### GET /object/{type}/{id}/document/{path}
+#### Téléchargement via share hash (recommandé)
 
-Télécharge un document (réponse JSON avec contenu base64).
+**`GET /object/{type}/{id}/document?q={share_hash}`** (base64)
+**`GET /object/{type}/{id}/document/binary?q={share_hash}`** (binaire)
+
+Le share hash est obtenu via le champ `share` retourné par l'endpoint `documents`.
+Ce mode est recommandé car il évite les problèmes d'encodage d'URL avec les
+chemins contenant des sous-répertoires (ex: `photos/photo_31.jpg`).
 
 **Paramètres URL :**
 - `type` : Type d'objet
 - `id` : ID de l'objet
-- `path` : Chemin relatif du document (URL-encoded)
 
-**Réponse 200 :**
+**Paramètres query :**
+- `q` : Share hash ECM du document (32 caractères)
+
+**Réponse 200 (base64) :**
 
 ```json
 {
@@ -1883,18 +1902,30 @@ Télécharge un document (réponse JSON avec contenu base64).
 }
 ```
 
-**Limite :** Fichiers de 50 Mo maximum en mode base64.
+**Réponse 200 (binaire) :**
 
-#### GET /object/{type}/{id}/document/{path}/binary
-
-Télécharge un document en flux binaire (plus efficace pour les gros fichiers).
-
-**Headers réponse :**
+Headers :
 ```
 Content-Type: application/pdf
 Content-Disposition: attachment; filename="notice_technique_XR500.pdf"
 Content-Length: 245000
 ```
+
+**Limite :** Fichiers de 50 Mo maximum en mode base64 (pas de limite en mode binaire).
+
+#### Téléchargement via chemin (legacy)
+
+**`GET /object/{type}/{id}/document/{path}`** (base64)
+**`GET /object/{type}/{id}/document/{path}/binary`** (binaire)
+
+Mode legacy pour compatibilité avec les modules existants. Fonctionne uniquement
+pour les noms de fichiers simples sans sous-répertoires (le placeholder `{path}`
+ne supporte pas les `/` dans l'URL).
+
+**Paramètres URL :**
+- `type` : Type d'objet
+- `id` : ID de l'objet
+- `path` : Nom du fichier (URL-encoded, sans sous-répertoire)
 
 ### 15.5 Intégration avec le sync client
 
@@ -1903,14 +1934,15 @@ Content-Length: 245000
 ```
 1. PULL des métadonnées documents
    GET /object/product/{id}/documents?since={last_sync}
+   → Réponse inclut ecm_id et share hash pour chaque document
 
 2. Comparaison avec IndexedDB local
    - Nouveaux documents : à télécharger
    - Documents mis à jour (updated_at > local) : à re-télécharger
    - Documents absents de la réponse : à supprimer localement
 
-3. Téléchargement des documents
-   GET /object/product/{id}/document/{path}
+3. Téléchargement des documents via share hash
+   GET /object/product/{id}/document?q={share_hash}
    → Stocker le Blob dans IndexedDB
 
 4. Mise à jour de last_sync pour les documents
@@ -1920,13 +1952,14 @@ Content-Length: 245000
 
 ```javascript
 // Nouveau store pour les documents
-productDocuments: {
+objectDocuments: {
     keyPath: 'local_id',
     autoIncrement: true,
     indexes: [
-        { name: 'product_id', keyPath: 'product_id' },
-        { name: 'product_id_type', keyPath: ['product_id', 'type'] },
+        { name: 'object_key', keyPath: ['object_type', 'object_id'] },
+        { name: 'object_type_file_type', keyPath: ['object_type', 'object_id', 'type'] },
         { name: 'server_id', keyPath: 'server_id' },
+        { name: 'share', keyPath: 'share' },
         { name: 'synced_at', keyPath: 'synced_at' }
     ]
 }
@@ -1934,8 +1967,11 @@ productDocuments: {
 // Structure d'un enregistrement
 {
     local_id: 1,              // Auto-increment PK
-    product_id: 15,           // FK vers products store
+    object_type: "product",   // Type d'objet Dolibarr
+    object_id: 15,            // ID de l'objet
     server_id: "a1b2c3d4",    // ID retourné par l'API
+    ecm_id: 1234,             // rowid dans llx_ecm_files
+    share: "abc123def456...", // Share hash ECM (pour téléchargement)
     type: "pdf",              // "image" | "pdf" | "other"
     filename: "notice.pdf",
     relative_path: "notice.pdf",
@@ -1950,15 +1986,15 @@ productDocuments: {
 #### Exemple d'implémentation client
 
 ```javascript
-async function syncProductDocuments(productId, lastSync) {
-    // 1. Récupérer les métadonnées
+async function syncObjectDocuments(objectType, objectId, lastSync) {
+    // 1. Récupérer les métadonnées (inclut share hash)
     const params = lastSync ? `?since=${lastSync}` : '';
-    const response = await api.get(`/object/product/${productId}/documents${params}`);
+    const response = await api.get(`/object/${objectType}/${objectId}/documents${params}`);
     const serverDocs = response.documents;
 
     // 2. Récupérer les documents locaux
-    const localDocs = await db.productDocuments
-        .where('product_id').equals(productId)
+    const localDocs = await db.objectDocuments
+        .where(['object_type', 'object_id']).equals([objectType, objectId])
         .toArray();
     const localById = new Map(localDocs.map(d => [d.server_id, d]));
 
@@ -1975,20 +2011,23 @@ async function syncProductDocuments(productId, lastSync) {
         }
     }
 
-    // 4. Télécharger les nouveaux/mis à jour
+    // 4. Télécharger les nouveaux/mis à jour via share hash
     for (const doc of toDownload) {
         const fileResponse = await fetch(
-            `${API_BASE}/object/product/${productId}/document/${encodeURIComponent(doc.relative_path)}`,
+            `${API_BASE}/object/${objectType}/${objectId}/document?q=${doc.share}`,
             { headers: { Authorization: `Bearer ${token}` } }
         );
         const json = await fileResponse.json();
         const blob = base64ToBlob(json.content, json['content-type']);
 
         const local = localById.get(doc.id);
-        await db.productDocuments.put({
+        await db.objectDocuments.put({
             ...(local ? { local_id: local.local_id } : {}),
-            product_id: productId,
+            object_type: objectType,
+            object_id: objectId,
             server_id: doc.id,
+            ecm_id: doc.ecm_id,
+            share: doc.share,
             type: doc.type,
             filename: doc.filename,
             relative_path: doc.relative_path,
@@ -2005,7 +2044,7 @@ async function syncProductDocuments(productId, lastSync) {
     if (!lastSync) {
         for (const local of localDocs) {
             if (!serverIds.has(local.server_id)) {
-                await db.productDocuments.delete(local.local_id);
+                await db.objectDocuments.delete(local.local_id);
             }
         }
     }
@@ -2063,10 +2102,12 @@ Les endpoints respectent les permissions Dolibarr :
 
 ### 15.8 Sécurité
 
-- **Path traversal** : Les chemins sont validés pour empêcher les attaques `../`
+- **Share hash** : Le mode recommandé utilise des hashes ECM opaques (32 caractères), évitant l'exposition des chemins de fichiers dans l'URL
+- **Path traversal** : En mode legacy, les chemins sont validés pour empêcher les attaques `../`
 - **Authentification** : JWT obligatoire sur tous les endpoints
 - **Types de fichiers** : Seuls les fichiers dans le répertoire documents de l'objet sont accessibles
 - **Taille** : Limite de 50 Mo pour le mode base64 (pas de limite pour le mode binaire)
+- **Auto-création ECM** : Les entrées `llx_ecm_files` créées automatiquement sont liées à l'objet source (`src_object_type`, `src_object_id`)
 
 ---
 
