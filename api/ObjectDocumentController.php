@@ -28,6 +28,9 @@
 namespace SmartAuth\Api;
 
 require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
+require_once DOL_DOCUMENT_ROOT . '/ecm/class/ecmfiles.class.php';
+require_once DOL_DOCUMENT_ROOT . '/core/lib/security.lib.php';
+require_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
 
 class ObjectDocumentController
 {
@@ -172,6 +175,9 @@ class ObjectDocumentController
         // List files recursively
         $files = dol_dir_list($docDir, 'files', 1, '', array('(\.meta|_preview.*\.png)$', '^\.'), 'date', SORT_DESC, 1);
 
+        // Load existing ecm_files entries for this object
+        $ecmIndexed = $this->loadEcmFilesForObject($object);
+
         $documents = [];
         foreach ($files as $file) {
             // Skip if filtered by date
@@ -187,8 +193,20 @@ class ObjectDocumentController
 
             $mimeType = dol_mimetype($file['name']);
 
+            // Find or create ecm_files entry
+            $ecmData = $this->ensureEcmEntry(
+                $file,
+                $relativePath,
+                $docDir,
+                $object,
+                $user,
+                $ecmIndexed
+            );
+
             $documents[] = [
                 'id' => $docId,
+                'ecm_id' => $ecmData['ecm_id'],
+                'share' => $ecmData['share'],
                 'object_id' => $objectId,
                 'filename' => $file['name'],
                 'relative_path' => $relativePath,
@@ -208,19 +226,24 @@ class ObjectDocumentController
     }
 
     /**
-     * @api {get} /object/{type}/{id}/document/{path} Download a document
+     * @api {get} /object/{type}/{id}/document/{path} Download a document (legacy path mode)
+     * @api {get} /object/{type}/{id}/document?q={share} Download a document (share hash mode)
      * @apiName DownloadObjectDocument
      * @apiGroup ObjectDocument
      * @apiVersion 1.0.0
      *
      * @apiDescription Downloads a document attached to a Dolibarr object.
-     * Returns base64-encoded content by default.
+     * Returns base64-encoded content.
+     * Two modes:
+     * - Legacy: path in URL segment (for simple filenames without subdirectories)
+     * - Share hash: ?q=share_hash (recommended, avoids URL encoding issues)
      *
      * @apiHeader {String} Authorization Bearer access_token
      *
-     * @apiParam {String} type Object type (product, thirdparty, project, intervention)
+     * @apiParam {String} type Object type (product, thirdparty, project, intervention, category)
      * @apiParam {Number} id Object ID (rowid)
-     * @apiParam {String} path Relative path to the document (URL-encoded)
+     * @apiParam {String} [path] Relative path to the document (URL segment, legacy mode)
+     * @apiQuery {String} [q] Share hash from ecm_files (recommended mode)
      *
      * @apiSuccess {String} filename File name
      * @apiSuccess {String} content-type MIME type
@@ -230,53 +253,22 @@ class ObjectDocumentController
      */
     public function download($payload)
     {
-        global $conf;
-
         dol_syslog("smartauth::ObjectDocumentController::download");
 
-        // Validate parameters
-        $validation = $this->validateObjectParams($payload);
-        if (isset($validation['error'])) {
-            return [$validation, $validation['status']];
+        // Resolve file path (share hash or legacy path)
+        $resolved = $this->resolveDocumentPath($payload, 'download');
+        if (isset($resolved['error'])) {
+            return [$resolved, $resolved['status']];
         }
 
-        $config = $validation['config'];
-        $object = $validation['object'];
-
-        // Get and validate path parameter
-        $relativePath = $payload['path'] ?? '';
-        if (empty($relativePath)) {
-            return [['error' => 'Missing path parameter'], 400];
-        }
-
-        // URL decode the path
-        $relativePath = urldecode($relativePath);
-
-        // Security: prevent path traversal
-        if (preg_match('/\.\./', $relativePath) || preg_match('/[<>|]/', $relativePath)) {
-            dol_syslog("smartauth::ObjectDocumentController::download - Path traversal attempt: $relativePath", LOG_WARNING);
-            return [['error' => 'Invalid path'], 400];
-        }
-
-        // Build full path
-        $docDir = $this->getObjectDocumentDir($config, $object, $conf);
-        $fullPath = $docDir . '/' . $relativePath;
-        $fullPathEncoded = dol_osencode($fullPath);
-
-        // Check file exists
-        if (!file_exists($fullPathEncoded)) {
-            dol_syslog("smartauth::ObjectDocumentController::download - File not found: $fullPath", LOG_WARNING);
-            return [['error' => 'File not found'], 404];
-        }
+        $fullPathEncoded = $resolved['full_path_encoded'];
+        $filename = $resolved['filename'];
 
         // Check it's a file, not a directory
         if (!is_file($fullPathEncoded)) {
             return [['error' => 'Not a file'], 400];
         }
 
-        // Get file info
-        $filename = basename($fullPath);
-        $filename = preg_replace('/\.noexe$/i', '', $filename);
         $mimeType = dol_mimetype($filename);
         $filesize = filesize($fullPathEncoded);
 
@@ -289,7 +281,7 @@ class ObjectDocumentController
 
         $content = file_get_contents($fullPathEncoded);
         if ($content === false) {
-            dol_syslog("smartauth::ObjectDocumentController::download - Failed to read file: $fullPath", LOG_ERR);
+            dol_syslog("smartauth::ObjectDocumentController::download - Failed to read file", LOG_ERR);
             return [['error' => 'Failed to read file'], 500];
         }
 
@@ -305,58 +297,31 @@ class ObjectDocumentController
     }
 
     /**
-     * @api {get} /object/{type}/{id}/document/{path}/binary Download a document (binary)
+     * @api {get} /object/{type}/{id}/document/{path}/binary Download a document binary (legacy)
+     * @api {get} /object/{type}/{id}/document/binary?q={share} Download a document binary (share hash)
      * @apiName DownloadObjectDocumentBinary
      * @apiGroup ObjectDocument
      * @apiVersion 1.0.0
      *
      * @apiDescription Downloads a document as binary stream.
      * More efficient for large files.
+     * Supports both legacy path mode and share hash mode (see download endpoint).
      */
     public function downloadBinary($payload)
     {
-        global $db, $conf;
+        global $db;
 
         dol_syslog("smartauth::ObjectDocumentController::downloadBinary");
 
-        // Validate parameters
-        $validation = $this->validateObjectParams($payload);
-        if (isset($validation['error'])) {
-            return [$validation, $validation['status']];
+        // Resolve file path (share hash or legacy path)
+        $resolved = $this->resolveDocumentPath($payload, 'downloadBinary');
+        if (isset($resolved['error'])) {
+            return [$resolved, $resolved['status']];
         }
 
-        $config = $validation['config'];
-        $object = $validation['object'];
+        $fullPathEncoded = $resolved['full_path_encoded'];
+        $filename = $resolved['filename'];
 
-        // Get and validate path parameter
-        $relativePath = $payload['path'] ?? '';
-        if (empty($relativePath)) {
-            return [['error' => 'Missing path parameter'], 400];
-        }
-
-        // URL decode the path
-        $relativePath = urldecode($relativePath);
-
-        // Security: prevent path traversal
-        if (preg_match('/\.\./', $relativePath) || preg_match('/[<>|]/', $relativePath)) {
-            dol_syslog("smartauth::ObjectDocumentController::downloadBinary - Path traversal attempt: $relativePath", LOG_WARNING);
-            return [['error' => 'Invalid path'], 400];
-        }
-
-        // Build full path
-        $docDir = $this->getObjectDocumentDir($config, $object, $conf);
-        $fullPath = $docDir . '/' . $relativePath;
-        $fullPathEncoded = dol_osencode($fullPath);
-
-        // Check file exists
-        if (!file_exists($fullPathEncoded)) {
-            dol_syslog("smartauth::ObjectDocumentController::downloadBinary - File not found: $fullPath", LOG_WARNING);
-            return [['error' => 'File not found'], 404];
-        }
-
-        // Get file info
-        $filename = basename($fullPath);
-        $filename = preg_replace('/\.noexe$/i', '', $filename);
         $mimeType = dol_mimetype($filename);
         $filesize = filesize($fullPathEncoded);
 
@@ -378,6 +343,87 @@ class ObjectDocumentController
         readfileLowMemory($fullPathEncoded);
 
         exit;
+    }
+
+    /**
+     * Resolve a document file path from payload.
+     *
+     * Supports two modes:
+     * 1. Share hash mode: ?q=<share_hash> - resolves via ecm_files table
+     * 2. Legacy path mode: {path} URL segment - resolves via object document directory
+     *
+     * @param array $payload Request payload
+     * @param string $caller Calling method name (for logs)
+     * @return array ['full_path_encoded' => string, 'filename' => string] or ['error' => string, 'status' => int]
+     */
+    private function resolveDocumentPath($payload, $caller)
+    {
+        global $conf;
+
+        // Mode 1: Share hash via ?q= query parameter
+        $shareHash = $payload['q'] ?? '';
+        if (!empty($shareHash)) {
+            $resolved = $this->resolveShareHash($shareHash);
+            if ($resolved === null) {
+                dol_syslog("smartauth::ObjectDocumentController::$caller - Share hash not found: $shareHash", LOG_WARNING);
+                return ['error' => 'Document not found', 'status' => 404];
+            }
+
+            $fullPath = DOL_DATA_ROOT . '/' . $resolved['filepath'] . '/' . $resolved['filename'];
+            $fullPathEncoded = dol_osencode($fullPath);
+
+            if (!file_exists($fullPathEncoded)) {
+                dol_syslog("smartauth::ObjectDocumentController::$caller - File from ecm not found on disk: $fullPath", LOG_WARNING);
+                return ['error' => 'File not found', 'status' => 404];
+            }
+
+            $filename = $resolved['filename'];
+            $filename = preg_replace('/\.noexe$/i', '', $filename);
+
+            return [
+                'full_path_encoded' => $fullPathEncoded,
+                'filename' => $filename,
+            ];
+        }
+
+        // Mode 2: Legacy path from URL segment
+        $validation = $this->validateObjectParams($payload);
+        if (isset($validation['error'])) {
+            return $validation;
+        }
+
+        $config = $validation['config'];
+        $object = $validation['object'];
+
+        $relativePath = $payload['path'] ?? '';
+        if (empty($relativePath)) {
+            return ['error' => 'Missing path or q parameter', 'status' => 400];
+        }
+
+        $relativePath = urldecode($relativePath);
+
+        // Security: prevent path traversal
+        if (preg_match('/\.\./', $relativePath) || preg_match('/[<>|]/', $relativePath)) {
+            dol_syslog("smartauth::ObjectDocumentController::$caller - Path traversal attempt: $relativePath", LOG_WARNING);
+            return ['error' => 'Invalid path', 'status' => 400];
+        }
+
+        $docDir = $this->getObjectDocumentDir($config, $object, $conf);
+        $fullPath = $docDir . '/' . $relativePath;
+        $fullPathEncoded = dol_osencode($fullPath);
+
+        if (!file_exists($fullPathEncoded)) {
+            dol_syslog("smartauth::ObjectDocumentController::$caller - File not found: $fullPath", LOG_WARNING);
+            return ['error' => 'File not found', 'status' => 404];
+        }
+
+        $filename = basename($fullPath);
+        $filename = preg_replace('/\.noexe$/i', '', $filename);
+
+        return [
+            'full_path_encoded' => $fullPathEncoded,
+            'filename' => $filename,
+        ];
     }
 
     /**
@@ -543,6 +589,173 @@ class ObjectDocumentController
         $num = substr("000" . $id, -2);
         $path = substr($num, 1, 1) . '/' . substr($num, 0, 1);
         return $path . '/' . $id;
+    }
+
+    /**
+     * Load existing ecm_files entries for an object, indexed by filename
+     *
+     * @param object $object The Dolibarr object
+     * @return array Map of filename => EcmFiles data
+     */
+    private function loadEcmFilesForObject($object)
+    {
+        global $db, $conf;
+
+        $indexed = [];
+        $objectType = $object->table_element ?? '';
+        if (empty($objectType)) {
+            return $indexed;
+        }
+
+        $sql = "SELECT rowid, share, filename, filepath";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "ecm_files";
+        $sql .= " WHERE src_object_type = '" . $db->escape($objectType) . "'";
+        $sql .= " AND src_object_id = " . (int) $object->id;
+        $sql .= " AND entity = " . (int) $conf->entity;
+
+        $resql = $db->query($sql);
+        if ($resql) {
+            while ($obj = $db->fetch_object($resql)) {
+                $key = $obj->filepath . '/' . $obj->filename;
+                $indexed[$key] = [
+                    'ecm_id' => (int) $obj->rowid,
+                    'share' => $obj->share ?? '',
+                ];
+            }
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * Find or create an ecm_files entry for a document file.
+     *
+     * If the file already has an ecm_files record, returns its data.
+     * Otherwise creates a new record with a share hash for download.
+     *
+     * @param array $file File info from dol_dir_list
+     * @param string $relativePath Path relative to object document directory
+     * @param string $docDir Object document directory
+     * @param object $object The Dolibarr object
+     * @param object $user Authenticated user
+     * @param array $ecmIndexed Existing ecm_files entries (by reference, updated on create)
+     * @return array ['ecm_id' => int, 'share' => string]
+     */
+    private function ensureEcmEntry($file, $relativePath, $docDir, $object, $user, &$ecmIndexed)
+    {
+        global $db, $conf;
+
+        // Build the filepath as Dolibarr stores it: relative to DOL_DATA_ROOT
+        $fullRelative = str_replace(DOL_DATA_ROOT . '/', '', $docDir . '/' . $relativePath);
+        $ecmFilepath = dirname($fullRelative);
+        $ecmFilename = basename($fullRelative);
+        $ecmKey = $ecmFilepath . '/' . $ecmFilename;
+
+        // Check if already loaded from object-based query
+        if (isset($ecmIndexed[$ecmKey])) {
+            $entry = $ecmIndexed[$ecmKey];
+            // Ensure share hash exists
+            if (empty($entry['share'])) {
+                $share = getRandomPassword(true);
+                $sql = "UPDATE " . MAIN_DB_PREFIX . "ecm_files";
+                $sql .= " SET share = '" . $db->escape($share) . "'";
+                $sql .= " WHERE rowid = " . (int) $entry['ecm_id'];
+                $db->query($sql);
+                $entry['share'] = $share;
+                $ecmIndexed[$ecmKey]['share'] = $share;
+            }
+            return $entry;
+        }
+
+        // Try to find by filepath/filename (may exist without src_object link)
+        $ecmFile = new \EcmFiles($db);
+        $result = $ecmFile->fetch(0, '', $ecmFilepath . '/' . $ecmFilename);
+
+        if ($result > 0) {
+            // Found by path, update src_object if missing
+            if (empty($ecmFile->src_object_type) || empty($ecmFile->src_object_id)) {
+                $sql = "UPDATE " . MAIN_DB_PREFIX . "ecm_files";
+                $sql .= " SET src_object_type = '" . $db->escape($object->table_element) . "'";
+                $sql .= ", src_object_id = " . (int) $object->id;
+                $sql .= " WHERE rowid = " . (int) $ecmFile->id;
+                $db->query($sql);
+            }
+            // Ensure share hash exists
+            if (empty($ecmFile->share)) {
+                $ecmFile->share = getRandomPassword(true);
+                $sql = "UPDATE " . MAIN_DB_PREFIX . "ecm_files";
+                $sql .= " SET share = '" . $db->escape($ecmFile->share) . "'";
+                $sql .= " WHERE rowid = " . (int) $ecmFile->id;
+                $db->query($sql);
+            }
+            $entry = [
+                'ecm_id' => (int) $ecmFile->id,
+                'share' => $ecmFile->share,
+            ];
+            $ecmIndexed[$ecmKey] = $entry;
+            return $entry;
+        }
+
+        // Create new ecm_files entry
+        $ecmFile = new \EcmFiles($db);
+        $ecmFile->filename = $ecmFilename;
+        $ecmFile->filepath = $ecmFilepath;
+        $ecmFile->fullpath_orig = $file['fullname'];
+        $ecmFile->entity = $conf->entity;
+        $ecmFile->src_object_type = $object->table_element;
+        $ecmFile->src_object_id = (int) $object->id;
+        $ecmFile->gen_or_uploaded = 'uploaded';
+        $ecmFile->share = getRandomPassword(true);
+        $ecmFile->date_c = dol_now();
+
+        // label = md5 hash of file content
+        $fullPathEncoded = dol_osencode($file['fullname']);
+        if (file_exists($fullPathEncoded)) {
+            $ecmFile->label = md5_file($fullPathEncoded);
+        }
+
+        $createResult = $ecmFile->create($user);
+        if ($createResult > 0) {
+            dol_syslog("smartauth::ObjectDocumentController::ensureEcmEntry - Created ecm_files entry id=" . $createResult . " for " . $ecmKey);
+            $entry = [
+                'ecm_id' => (int) $createResult,
+                'share' => $ecmFile->share,
+            ];
+        } else {
+            dol_syslog("smartauth::ObjectDocumentController::ensureEcmEntry - Failed to create ecm_files for " . $ecmKey . ": " . implode(', ', $ecmFile->errors), LOG_WARNING);
+            $entry = [
+                'ecm_id' => 0,
+                'share' => '',
+            ];
+        }
+        $ecmIndexed[$ecmKey] = $entry;
+        return $entry;
+    }
+
+    /**
+     * Resolve a share hash to a file path via ecm_files
+     *
+     * @param string $shareHash The share hash from ecm_files
+     * @return array|null ['filepath' => string, 'filename' => string, 'ecm_id' => int] or null
+     */
+    private function resolveShareHash($shareHash)
+    {
+        global $db;
+
+        $ecmFile = new \EcmFiles($db);
+        $result = $ecmFile->fetch(0, '', '', '', $shareHash);
+
+        if ($result <= 0 || empty($ecmFile->filepath) || empty($ecmFile->filename)) {
+            return null;
+        }
+
+        return [
+            'filepath' => $ecmFile->filepath,
+            'filename' => $ecmFile->filename,
+            'ecm_id' => (int) $ecmFile->id,
+            'src_object_type' => $ecmFile->src_object_type,
+            'src_object_id' => (int) $ecmFile->src_object_id,
+        ];
     }
 
     /**

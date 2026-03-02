@@ -119,6 +119,10 @@ Here is all the documentation for SmartAuth API
   - [Refresh tokens](#Refresh-tokens)
 - [Device](#Device)
   - [Manage device](#Manage-device)
+- [ObjectDocument](#ObjectDocument)
+  - [List documents](#List-documents)
+  - [Download document (base64)](#Download-document-base64)
+  - [Download document (binary)](#Download-document-binary)
 
 ___
 
@@ -409,4 +413,187 @@ HTTP/1.1 200 OK
     "message": "please use this new token"
 }
 ```
+
+# <a name='ObjectDocument'></a> ObjectDocument
+
+## <a name='List-documents'></a> List documents
+[Back to top](#top)
+
+<p>Lists all documents attached to a Dolibarr object. Returns metadata including the ECM share hash for downloading. If a file has no entry in <code>llx_ecm_files</code>, one is created automatically with a share hash.</p>
+
+```
+GET /object/{type}/{id}/documents
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| Authorization | `String` | <p>Bearer access_token</p> |
+
+### Parameters - `Parameter`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| type | `String` | <p>Object type: <code>product</code>, <code>thirdparty</code>, <code>project</code>, <code>intervention</code>, <code>category</code></p> |
+| id | `Number` | <p>Object ID (rowid)</p> |
+
+### Query Parameters
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| since | `String` | **optional** <p>ISO timestamp - only return files modified after this date</p> |
+
+### Success response
+
+#### Success response - `Success 200`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| documents | `Object[]` | <p>List of documents</p> |
+| documents.id | `String` | <p>Stable hash ID (md5 of type+id+path, 8 chars)</p> |
+| documents.ecm_id | `Number` | <p>Dolibarr ECM file ID (<code>llx_ecm_files.rowid</code>)</p> |
+| documents.share | `String` | <p>Share hash for download (use with <code>?q=</code>)</p> |
+| documents.object_id | `Number` | <p>Parent object ID</p> |
+| documents.filename | `String` | <p>File name</p> |
+| documents.relative_path | `String` | <p>Path relative to object directory</p> |
+| documents.mime_type | `String` | <p>MIME type</p> |
+| documents.size | `Number` | <p>File size in bytes</p> |
+| documents.updated_at | `String` | <p>Last modification date (ISO 8601)</p> |
+| documents.type | `String` | <p><code>image</code>, <code>pdf</code>, or <code>other</code></p> |
+| server_time | `String` | <p>Server time (ISO 8601)</p> |
+
+### Success response example
+
+#### Success response example - `Success-Response:`
+
+```json
+HTTP/1.1 200 OK
+{
+    "documents": [
+        {
+            "id": "41e2e5fd",
+            "ecm_id": 1234,
+            "share": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+            "object_id": 31,
+            "filename": "photo_31.jpg",
+            "relative_path": "photos/photo_31.jpg",
+            "mime_type": "image/jpeg",
+            "size": 82263,
+            "updated_at": "2026-03-02T09:23:09+01:00",
+            "type": "image"
+        }
+    ],
+    "server_time": "2026-03-02T09:29:16+01:00"
+}
+```
+
+## <a name='Download-document-base64'></a> Download document (base64)
+[Back to top](#top)
+
+<p>Downloads a document as base64-encoded JSON response. Two modes are available:</p>
+<ul>
+<li><strong>Share hash (recommended)</strong>: use <code>?q=share_hash</code> from the list response. Avoids URL encoding issues with subdirectory paths.</li>
+<li><strong>Legacy path</strong>: path in URL segment. Only works for simple filenames without subdirectories.</li>
+</ul>
+
+```
+GET /object/{type}/{id}/document?q={share_hash}
+GET /object/{type}/{id}/document/{path}
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| Authorization | `String` | <p>Bearer access_token</p> |
+
+### Parameters - `Parameter`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| type | `String` | <p>Object type</p> |
+| id | `Number` | <p>Object ID (rowid)</p> |
+| path | `String` | **optional** <p>Relative path (legacy mode, URL segment)</p> |
+
+### Query Parameters
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| q | `String` | **optional** <p>Share hash from <code>llx_ecm_files</code> (recommended mode)</p> |
+
+### Success response
+
+#### Success response - `Success 200`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| filename | `String` | <p>File name</p> |
+| content-type | `String` | <p>MIME type</p> |
+| filesize | `Number` | <p>File size in bytes</p> |
+| content | `String` | <p>Base64-encoded file content</p> |
+| encoding | `String` | <p>Always <code>base64</code></p> |
+
+### Success response example
+
+#### Success response example - `Success-Response:`
+
+```json
+HTTP/1.1 200 OK
+{
+    "filename": "photo_31.jpg",
+    "content-type": "image/jpeg",
+    "filesize": 82263,
+    "content": "/9j/4AAQSkZJRg...",
+    "encoding": "base64"
+}
+```
+
+### Error response
+
+#### Error response - `404`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| error | `String` | <p>Document not found (invalid share hash or missing file)</p> |
+
+#### Error response - `413`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| error | `String` | <p>File too large for base64 (>50MB), use binary mode</p> |
+
+## <a name='Download-document-binary'></a> Download document (binary)
+[Back to top](#top)
+
+<p>Downloads a document as a binary stream. More efficient for large files. Supports the same two modes as the base64 endpoint.</p>
+
+```
+GET /object/{type}/{id}/document/binary?q={share_hash}
+GET /object/{type}/{id}/document/{path}/binary
+```
+
+### Headers - `Header`
+
+| Name    | Type      | Description                          |
+|---------|-----------|--------------------------------------|
+| Authorization | `String` | <p>Bearer access_token</p> |
+
+### Parameters - `Parameter`
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| type | `String` | <p>Object type</p> |
+| id | `Number` | <p>Object ID (rowid)</p> |
+| path | `String` | **optional** <p>Relative path (legacy mode)</p> |
+
+### Query Parameters
+
+| Name     | Type       | Description                           |
+|----------|------------|---------------------------------------|
+| q | `String` | **optional** <p>Share hash from <code>llx_ecm_files</code> (recommended)</p> |
+
+### Success response
+
+The response is a binary stream with appropriate `Content-Type`, `Content-Disposition`, and `Content-Length` headers.
 

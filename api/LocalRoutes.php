@@ -96,10 +96,16 @@ Route::post('sync/conflicts/{id}/resolve', SyncController::class, 'resolveConfli
 // List documents for an object (for offline sync)
 Route::get('object/{type}/{id}/documents', ObjectDocumentController::class, 'index', true);
 
-// Download a document (base64 JSON response)
+// Download a document via share hash: ?q=<share_hash> (recommended)
+Route::get('object/{type}/{id}/document', ObjectDocumentController::class, 'download', true);
+
+// Download a document binary via share hash: ?q=<share_hash> (recommended)
+Route::get('object/{type}/{id}/document/binary', ObjectDocumentController::class, 'downloadBinary', true);
+
+// Download a document via path segment (legacy, for simple filenames without subdirectories)
 Route::get('object/{type}/{id}/document/{path}', ObjectDocumentController::class, 'download', true);
 
-// Download a document (binary stream)
+// Download a document binary via path segment (legacy)
 Route::get('object/{type}/{id}/document/{path}/binary', ObjectDocumentController::class, 'downloadBinary', true);
 
 // ========== PWA Routes ========== //
