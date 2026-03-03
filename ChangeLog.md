@@ -1,5 +1,9 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.8 -- 20260303
+
+add auth solution for m2m
+
 ## 2.0.7 -- 20260302
 
 use hash share for downloads
