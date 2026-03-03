@@ -137,6 +137,11 @@ abstract class OAuthTestCase extends DolibarrRealTestCase
         $client->refresh_token_lifetime = $data['refresh_token_lifetime'];
         $client->status = $data['status'];
 
+        // Set service user for client_credentials grant
+        if (!empty($data['fk_service_user'])) {
+            $client->fk_service_user = $data['fk_service_user'];
+        }
+
         // Set secret for confidential clients
         if (!empty($data['client_secret'])) {
             $client->setClientSecret($data['client_secret']);

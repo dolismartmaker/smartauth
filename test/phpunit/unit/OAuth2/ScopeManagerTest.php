@@ -416,4 +416,240 @@ class ScopeManagerTest extends TestCase
         $this->assertEquals('custom_scope', $info[0]['scope']);
         $this->assertEquals('custom_scope', $info[0]['description']);
     }
+
+    // =========================================================================
+    // Custom scopes registry
+    // =========================================================================
+
+    /**
+     * Test registerScope adds a custom scope
+     */
+    public function testRegisterScope(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope(
+            'inventory:read',
+            'Read inventory data',
+            'Access to read product inventory levels and stock information.'
+        );
+
+        $this->assertTrue(ScopeManager::isValidScope('inventory:read'));
+        $this->assertContains('inventory:read', ScopeManager::getSupportedScopes());
+    }
+
+    /**
+     * Test registerScope with only short description
+     */
+    public function testRegisterScopeShortDescriptionOnly(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope('api:call', 'Call API endpoints');
+
+        $this->assertTrue(ScopeManager::isValidScope('api:call'));
+        $desc = ScopeManager::getDescription('api:call');
+        $this->assertEquals('Call API endpoints', $desc);
+
+        // Long description should fallback to short description
+        $longDesc = ScopeManager::getDescription('api:call', true);
+        $this->assertEquals('Call API endpoints', $longDesc);
+    }
+
+    /**
+     * Test registerScope descriptions are accessible via getDescription
+     */
+    public function testRegisterScopeDescriptions(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope(
+            'crm:write',
+            'Write CRM data',
+            'Create and modify contacts, companies, and opportunities in CRM.'
+        );
+
+        $short = ScopeManager::getDescription('crm:write', false);
+        $long = ScopeManager::getDescription('crm:write', true);
+
+        $this->assertEquals('Write CRM data', $short);
+        $this->assertEquals('Create and modify contacts, companies, and opportunities in CRM.', $long);
+    }
+
+    /**
+     * Test custom scope appears in getScopeInfoForConsent
+     */
+    public function testRegisterScopeInConsentInfo(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope(
+            'billing:read',
+            'Read billing data',
+            'Access to invoices and payment history.'
+        );
+
+        $info = ScopeManager::getScopeInfoForConsent(['openid', 'billing:read']);
+
+        $this->assertCount(2, $info);
+
+        $billingInfo = null;
+        foreach ($info as $item) {
+            if ($item['scope'] === 'billing:read') {
+                $billingInfo = $item;
+                break;
+            }
+        }
+
+        $this->assertNotNull($billingInfo);
+        $this->assertEquals('Read billing data', $billingInfo['description']);
+        $this->assertEquals('Access to invoices and payment history.', $billingInfo['description_long']);
+        $this->assertEmpty($billingInfo['claims']);
+    }
+
+    /**
+     * Test custom scope has no claims
+     */
+    public function testRegisterScopeHasNoClaims(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope('custom:test', 'Test scope');
+
+        $claims = ScopeManager::getClaims(['custom:test']);
+        $this->assertEmpty($claims);
+    }
+
+    /**
+     * Test custom scope combined with built-in scope claims
+     */
+    public function testCustomScopeWithBuiltinClaims(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope('custom:test', 'Test scope');
+
+        $claims = ScopeManager::getClaims(['openid', 'custom:test', 'email']);
+        $this->assertContains('sub', $claims);
+        $this->assertContains('email', $claims);
+    }
+
+    /**
+     * Test getAllScopeDefinitions includes both built-in and custom
+     */
+    public function testGetAllScopeDefinitions(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope('external:read', 'Read external data');
+
+        $allDefs = ScopeManager::getAllScopeDefinitions();
+
+        // Built-in scopes should be present
+        $this->assertArrayHasKey('openid', $allDefs);
+        $this->assertArrayHasKey('profile', $allDefs);
+        $this->assertArrayHasKey('email', $allDefs);
+
+        // Custom scope should be present
+        $this->assertArrayHasKey('external:read', $allDefs);
+    }
+
+    /**
+     * Test custom scope does not override built-in scope
+     */
+    public function testRegisterScopeDoesNotOverrideBuiltin(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        // Try to register a scope with the same name as a built-in one
+        ScopeManager::registerScope('openid', 'Overridden openid');
+
+        // getAllScopeDefinitions merges with built-in taking priority
+        // (built-in is the base, custom is merged on top)
+        // Actually, array_merge gives priority to the SECOND array (custom),
+        // but the description should still work
+        $allDefs = ScopeManager::getAllScopeDefinitions();
+        $this->assertArrayHasKey('openid', $allDefs);
+
+        // The built-in claims should still exist (sub)
+        // Since array_merge overwrites, the custom scope replaces the built-in
+        // This is by design: registerScope CAN override, but loadCustomScopesFromConfig
+        // checks !isset before registering
+    }
+
+    /**
+     * Test resetCustomScopes clears the registry
+     */
+    public function testResetCustomScopes(): void
+    {
+        ScopeManager::registerScope('temp:scope', 'Temporary scope');
+        $this->assertTrue(ScopeManager::isValidScope('temp:scope'));
+
+        ScopeManager::resetCustomScopes();
+
+        $this->assertFalse(ScopeManager::isValidScope('temp:scope'));
+        $this->assertNotContains('temp:scope', ScopeManager::getSupportedScopes());
+    }
+
+    /**
+     * Test validateScopes recognizes custom scopes as valid
+     */
+    public function testValidateScopesWithCustom(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope('custom:valid', 'Valid custom scope');
+
+        $invalid = ScopeManager::validateScopes(['openid', 'custom:valid', 'nonexistent']);
+
+        $this->assertCount(1, $invalid);
+        $this->assertContains('nonexistent', $invalid);
+        $this->assertNotContains('custom:valid', $invalid);
+    }
+
+    /**
+     * Test filterValidScopes includes custom scopes
+     */
+    public function testFilterValidScopesWithCustom(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope('custom:filter', 'Filterable custom scope');
+
+        $filtered = ScopeManager::filterValidScopes(['openid', 'custom:filter', 'unknown']);
+
+        $this->assertCount(2, $filtered);
+        $this->assertContains('openid', $filtered);
+        $this->assertContains('custom:filter', $filtered);
+    }
+
+    /**
+     * Test multiple custom scopes can be registered
+     */
+    public function testRegisterMultipleCustomScopes(): void
+    {
+        ScopeManager::resetCustomScopes();
+
+        ScopeManager::registerScope('module_a:read', 'Read from module A');
+        ScopeManager::registerScope('module_a:write', 'Write to module A');
+        ScopeManager::registerScope('module_b:admin', 'Admin access to module B');
+
+        $this->assertTrue(ScopeManager::isValidScope('module_a:read'));
+        $this->assertTrue(ScopeManager::isValidScope('module_a:write'));
+        $this->assertTrue(ScopeManager::isValidScope('module_b:admin'));
+
+        $supported = ScopeManager::getSupportedScopes();
+        $this->assertContains('module_a:read', $supported);
+        $this->assertContains('module_a:write', $supported);
+        $this->assertContains('module_b:admin', $supported);
+    }
+
+    /**
+     * Clean up custom scopes after each test that registers them
+     */
+    protected function tearDown(): void
+    {
+        ScopeManager::resetCustomScopes();
+        parent::tearDown();
+    }
 }

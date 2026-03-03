@@ -110,6 +110,41 @@ return [
         'status' => 1,
     ],
 
+    // Confidential client for client_credentials grant (M2M)
+    'client_credentials' => [
+        'ref' => 'TEST-CC-001',
+        'client_id' => 'test-m2m-client',
+        'client_secret' => 'test-secret-m2m-12345',
+        'name' => 'Test M2M Client',
+        'description' => 'A confidential OAuth client for machine-to-machine testing',
+        'redirect_uris' => ['https://m2m.example.com/callback'],
+        'allowed_scopes' => ['openid', 'profile', 'email'],
+        'allowed_grants' => ['client_credentials'],
+        'is_confidential' => 1,
+        'require_pkce' => 0,
+        'access_token_lifetime' => 3600,
+        'refresh_token_lifetime' => 0,
+        'status' => 1,
+        'fk_service_user' => null, // Will be set dynamically in tests
+    ],
+
+    // Confidential client for client_credentials without service user
+    'client_credentials_no_user' => [
+        'ref' => 'TEST-CC-NOUSER-001',
+        'client_id' => 'test-m2m-nouser-client',
+        'client_secret' => 'test-secret-m2m-nouser-12345',
+        'name' => 'Test M2M Client (No Service User)',
+        'description' => 'A M2M client without fk_service_user configured',
+        'redirect_uris' => ['https://m2m-nouser.example.com/callback'],
+        'allowed_scopes' => ['openid', 'profile'],
+        'allowed_grants' => ['client_credentials'],
+        'is_confidential' => 1,
+        'require_pkce' => 0,
+        'access_token_lifetime' => 1800,
+        'refresh_token_lifetime' => 0,
+        'status' => 1,
+    ],
+
     // Nextcloud integration client
     'nextcloud' => [
         'ref' => 'NEXTCLOUD-001',

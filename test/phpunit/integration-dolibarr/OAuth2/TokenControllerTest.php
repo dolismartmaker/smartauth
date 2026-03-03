@@ -222,13 +222,13 @@ class TokenControllerTest extends OAuthTestCase
      */
     public function testUnsupportedGrantType(): void
     {
-        // Create client that allows client_credentials (not supported by server)
+        // Create client that allows device_code (not supported by server)
         $client = $this->createTestClientFromFixture('confidential', [
-            'allowed_grants' => ['authorization_code', 'refresh_token', 'client_credentials'],
+            'allowed_grants' => ['authorization_code', 'refresh_token', 'urn:ietf:params:oauth:grant-type:device_code'],
         ]);
 
         $response = $this->simulateTokenRequest(
-            ['grant_type' => 'client_credentials'],
+            ['grant_type' => 'urn:ietf:params:oauth:grant-type:device_code'],
             $client->client_id,
             'test-secret-confidential-12345'
         );
