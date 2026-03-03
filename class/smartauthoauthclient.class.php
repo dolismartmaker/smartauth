@@ -82,6 +82,7 @@ class SmartAuthOAuthClient extends CommonObject
         'require_pkce' => array('type' => 'integer', 'label' => 'RequirePKCE', 'enabled' => 1, 'position' => 110, 'notnull' => 1, 'visible' => 1, 'default' => 0, 'comment' => '1=PKCE required'),
         'access_token_lifetime' => array('type' => 'integer', 'label' => 'AccessTokenLifetime', 'enabled' => 1, 'position' => 120, 'notnull' => 1, 'visible' => 3, 'default' => 3600, 'comment' => 'Access token lifetime in seconds'),
         'refresh_token_lifetime' => array('type' => 'integer', 'label' => 'RefreshTokenLifetime', 'enabled' => 1, 'position' => 130, 'notnull' => 1, 'visible' => 3, 'default' => 2592000, 'comment' => 'Refresh token lifetime in seconds (30 days)'),
+        'fk_service_user' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'SmartAuthServiceUser', 'enabled' => 1, 'position' => 135, 'notnull' => 0, 'visible' => 3, 'foreignkey' => 'user.rowid', 'comment' => 'Service user for client_credentials grant (M2M)'),
         'status' => array('type' => 'integer', 'label' => 'Status', 'enabled' => 1, 'position' => 500, 'notnull' => 1, 'visible' => 1, 'default' => 1, 'index' => 1, 'arrayofkeyval' => array(0 => 'Disabled', 1 => 'Enabled')),
         'fk_user_author' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserAuthor', 'enabled' => 1, 'position' => 510, 'notnull' => 0, 'visible' => 0, 'foreignkey' => 'user.rowid', 'comment' => 'User who created'),
         'fk_user_modif' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserModif', 'enabled' => 1, 'position' => 520, 'notnull' => 0, 'visible' => 0, 'foreignkey' => 'user.rowid', 'comment' => 'User who last modified'),
@@ -159,6 +160,11 @@ class SmartAuthOAuthClient extends CommonObject
      * @var int Refresh token lifetime in seconds
      */
     public $refresh_token_lifetime;
+
+    /**
+     * @var int|null Service user ID for client_credentials grant (M2M)
+     */
+    public $fk_service_user;
 
     /**
      * @var int Status (0=disabled, 1=enabled)

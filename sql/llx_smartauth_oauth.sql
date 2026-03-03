@@ -45,6 +45,9 @@ CREATE TABLE llx_smartauth_oauth_clients (
     access_token_lifetime   INTEGER DEFAULT 3600,
     refresh_token_lifetime  INTEGER DEFAULT 2592000,
 
+    -- Service user for client_credentials grant (M2M)
+    fk_service_user         INTEGER NULL,
+
     -- Metadata
     status              TINYINT(1) DEFAULT 1,
     fk_user_author      INTEGER,

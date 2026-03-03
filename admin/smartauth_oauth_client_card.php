@@ -135,6 +135,10 @@ if ($action == 'add') {
 	}
 	$object->setAllowedGrantsArray($grants);
 
+	// Service user for client_credentials
+	$fk_service_user = GETPOST('fk_service_user', 'int');
+	$object->fk_service_user = $fk_service_user > 0 ? $fk_service_user : null;
+
 	// Generate ref from name
 	$object->ref = dol_sanitizeFileName(strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $object->name), 0, 20))) . '-' . dol_print_date(dol_now(), '%Y%m%d%H%M%S');
 
@@ -216,6 +220,10 @@ if ($action == 'update' && $id > 0) {
 		$grants = array('authorization_code', 'refresh_token');
 	}
 	$object->setAllowedGrantsArray($grants);
+
+	// Service user for client_credentials
+	$fk_service_user = GETPOST('fk_service_user', 'int');
+	$object->fk_service_user = $fk_service_user > 0 ? $fk_service_user : null;
 
 	// Validation
 	if (empty($object->name)) {
@@ -378,6 +386,15 @@ if ($action == 'create') {
 	}
 	print '</td></tr>';
 
+	// Service user (for client_credentials)
+	print '<tr><td>' . $langs->trans("SmartAuthServiceUser") . '</td>';
+	print '<td>';
+	$fkServiceUser = GETPOSTISSET('fk_service_user') ? GETPOST('fk_service_user', 'int') : 0;
+	print img_picto('', 'user', 'class="pictofixedwidth"');
+	print $form->select_dolusers($fkServiceUser, 'fk_service_user', 1, null, 0, '', '', 0, 0, 0, '', 0, '', 'minwidth200');
+	print '<br><span class="opacitymedium small">' . $langs->trans("SmartAuthServiceUserHelp") . '</span>';
+	print '</td></tr>';
+
 	// Require PKCE
 	print '<tr><td>' . $langs->trans("RequirePKCE") . '</td>';
 	print '<td>';
@@ -481,6 +498,14 @@ if ($action == 'edit' && $object->id > 0) {
 		print ' <label for="grant_' . $grant . '">' . $grant . '</label>';
 		print ' <span class="opacitymedium small">(' . $label . ')</span><br>';
 	}
+	print '</td></tr>';
+
+	// Service user (for client_credentials)
+	print '<tr><td>' . $langs->trans("SmartAuthServiceUser") . '</td>';
+	print '<td>';
+	print img_picto('', 'user', 'class="pictofixedwidth"');
+	print $form->select_dolusers($object->fk_service_user, 'fk_service_user', 1, null, 0, '', '', 0, 0, 0, '', 0, '', 'minwidth200');
+	print '<br><span class="opacitymedium small">' . $langs->trans("SmartAuthServiceUserHelp") . '</span>';
 	print '</td></tr>';
 
 	// Require PKCE
@@ -634,6 +659,18 @@ if ($object->id > 0 && empty($action) || ($action != 'edit' && $action != 'creat
 	$grants = $object->getAllowedGrantsArray();
 	foreach ($grants as $grant) {
 		print '<span class="badge badge-secondary marginrightonly">' . dol_escape_htmltag($grant) . '</span>';
+	}
+	print '</td></tr>';
+
+	// Service user (for client_credentials)
+	print '<tr><td>' . $langs->trans("SmartAuthServiceUser") . '</td>';
+	print '<td>';
+	if (!empty($object->fk_service_user)) {
+		$serviceUser = new User($db);
+		$serviceUser->fetch($object->fk_service_user);
+		print $serviceUser->getNomUrl(1);
+	} else {
+		print '<span class="opacitymedium">' . $langs->trans("Undefined") . '</span>';
 	}
 	print '</td></tr>';
 

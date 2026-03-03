@@ -35,6 +35,18 @@ namespace SmartAuth\Api\OAuth2;
 class ScopeManager
 {
     /**
+     * Runtime registry for custom scopes from external modules
+     * @var array
+     */
+    private static $customScopes = [];
+
+    /**
+     * Whether custom scopes have been loaded from Dolibarr config
+     * @var bool
+     */
+    private static $customScopesLoaded = false;
+
+    /**
      * Scope definitions with descriptions (French)
      */
     const SCOPE_DEFINITIONS = [
@@ -85,12 +97,13 @@ class ScopeManager
      */
     public static function getDescription(string $scope, bool $long = false): string
     {
-        if (!isset(self::SCOPE_DEFINITIONS[$scope])) {
+        $allDefs = self::getAllScopeDefinitions();
+        if (!isset($allDefs[$scope])) {
             return $scope;
         }
 
         $key = $long ? 'description_long' : 'description';
-        return self::SCOPE_DEFINITIONS[$scope][$key] ?? $scope;
+        return $allDefs[$scope][$key] ?? $scope;
     }
 
     /**
@@ -117,7 +130,8 @@ class ScopeManager
      */
     public static function isValidScope(string $scope): bool
     {
-        return isset(self::SCOPE_DEFINITIONS[$scope]);
+        $allDefs = self::getAllScopeDefinitions();
+        return isset($allDefs[$scope]);
     }
 
     /**
@@ -194,10 +208,11 @@ class ScopeManager
      */
     public static function getClaims(array $scopes): array
     {
+        $allDefs = self::getAllScopeDefinitions();
         $claims = [];
         foreach ($scopes as $scope) {
-            if (isset(self::SCOPE_DEFINITIONS[$scope]['claims'])) {
-                $claims = array_merge($claims, self::SCOPE_DEFINITIONS[$scope]['claims']);
+            if (isset($allDefs[$scope]['claims'])) {
+                $claims = array_merge($claims, $allDefs[$scope]['claims']);
             }
         }
         return array_values(array_unique($claims));
@@ -210,7 +225,7 @@ class ScopeManager
      */
     public static function getSupportedScopes(): array
     {
-        return array_keys(self::SCOPE_DEFINITIONS);
+        return array_keys(self::getAllScopeDefinitions());
     }
 
     /**
@@ -287,10 +302,11 @@ class ScopeManager
      */
     public static function getScopeInfoForConsent(array $scopes): array
     {
+        $allDefs = self::getAllScopeDefinitions();
         $info = [];
         foreach ($scopes as $scope) {
-            if (isset(self::SCOPE_DEFINITIONS[$scope])) {
-                $def = self::SCOPE_DEFINITIONS[$scope];
+            if (isset($allDefs[$scope])) {
+                $def = $allDefs[$scope];
                 $info[] = [
                     'scope' => $scope,
                     'description' => $def['description'],
@@ -307,5 +323,84 @@ class ScopeManager
             }
         }
         return $info;
+    }
+
+    /**
+     * Register a custom scope from an external module
+     *
+     * Called by modules during bootstrap or init to register their scopes.
+     * Custom scopes are treated identically to built-in scopes.
+     *
+     * @param string $scope         Scope identifier (e.g., 'externalprospect:write')
+     * @param string $description   Short description
+     * @param string $descriptionLong Long description
+     * @return void
+     */
+    public static function registerScope(string $scope, string $description, string $descriptionLong = ''): void
+    {
+        self::$customScopes[$scope] = [
+            'description' => $description,
+            'description_long' => $descriptionLong ?: $description,
+            'claims' => [],
+            'required_for_oidc' => false,
+        ];
+    }
+
+    /**
+     * Get all scope definitions (built-in + custom)
+     *
+     * @return array
+     */
+    public static function getAllScopeDefinitions(): array
+    {
+        self::loadCustomScopesFromConfig();
+        return array_merge(self::SCOPE_DEFINITIONS, self::$customScopes);
+    }
+
+    /**
+     * Load custom scopes from Dolibarr configuration
+     *
+     * Modules register their scopes via SMARTAUTH_CUSTOM_SCOPES constant.
+     * Format: JSON object {"scope_name": {"description": "...", "description_long": "..."}}
+     *
+     * @return void
+     */
+    public static function loadCustomScopesFromConfig(): void
+    {
+        if (self::$customScopesLoaded) {
+            return;
+        }
+        self::$customScopesLoaded = true;
+
+        if (!function_exists('getDolGlobalString')) {
+            return;
+        }
+
+        $json = getDolGlobalString('SMARTAUTH_CUSTOM_SCOPES', '');
+        if (!empty($json)) {
+            $decoded = json_decode($json, true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $scope => $info) {
+                    if (!isset(self::$customScopes[$scope])) {
+                        self::registerScope(
+                            $scope,
+                            $info['description'] ?? $scope,
+                            $info['description_long'] ?? ''
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Reset custom scopes registry (for testing purposes)
+     *
+     * @return void
+     */
+    public static function resetCustomScopes(): void
+    {
+        self::$customScopes = [];
+        self::$customScopesLoaded = false;
     }
 }

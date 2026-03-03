@@ -133,6 +133,10 @@ class TokenController
                 $this->handleRefreshToken($params);
                 break;
 
+            case 'client_credentials':
+                $this->handleClientCredentials($params);
+                break;
+
             default:
                 $this->sendError('unsupported_grant_type', 'Grant type not supported: ' . $grantType, 400);
                 break;
@@ -326,6 +330,106 @@ class TokenController
         dol_syslog('SmartAuth TokenController: Tokens refreshed for user ' . $tokenRecord->fk_user, LOG_INFO);
 
         $this->sendJsonResponse($response);
+    }
+
+    /**
+     * Handle client_credentials grant (RFC 6749 Section 4.4)
+     *
+     * Machine-to-machine authentication. No user interaction.
+     * Client authenticates with client_id + client_secret.
+     * Returns access token only (no refresh token, no ID token).
+     *
+     * @param array $params Request parameters
+     * @return void
+     */
+    private function handleClientCredentials(array $params): void
+    {
+        // Client must be confidential (has a secret)
+        if (!$this->client->isConfidential()) {
+            $this->sendError('unauthorized_client', 'Public clients cannot use client_credentials grant', 400);
+            return;
+        }
+
+        // Parse requested scopes (optional)
+        $requestedScope = trim($params['scope'] ?? '');
+        $clientAllowedScopes = $this->client->getAllowedScopesArray();
+
+        if (!empty($requestedScope)) {
+            $scopes = ScopeManager::parseScopes($requestedScope);
+
+            // All requested scopes must be in the client's allowed scopes
+            if (!ScopeManager::areAllScopesAllowed($scopes, $clientAllowedScopes)) {
+                $disallowed = ScopeManager::getDisallowedScopes($scopes, $clientAllowedScopes);
+                $this->sendError('invalid_scope', 'Scope not allowed: ' . implode(' ', $disallowed), 400);
+                return;
+            }
+        } else {
+            // No scope requested: use all client allowed scopes
+            $scopes = $clientAllowedScopes;
+        }
+
+        // Resolve service user
+        $serviceUserId = $this->resolveServiceUser();
+        if ($serviceUserId === null) {
+            $this->sendError('server_error', 'No service user configured for this client', 500);
+            return;
+        }
+
+        // Create access token with grant_type in extra claims
+        $accessToken = $this->tokenService->createAccessToken(
+            $serviceUserId,
+            $this->client->client_id,
+            $scopes,
+            $this->client->access_token_lifetime,
+            ['grant_type' => 'client_credentials']
+        );
+
+        // Store access token for revocation tracking (no parent refresh token)
+        $this->tokenService->storeAccessToken(
+            $accessToken['jti'],
+            $this->client->id,
+            $serviceUserId,
+            $scopes,
+            $accessToken['expires_at'],
+            null
+        );
+
+        // Build response: no refresh_token, no id_token (RFC 6749 Section 4.4.3)
+        $response = [
+            'access_token' => $accessToken['token'],
+            'token_type' => 'Bearer',
+            'expires_in' => $accessToken['expires_in'],
+            'scope' => implode(' ', $scopes),
+        ];
+
+        dol_syslog('SmartAuth TokenController: Client credentials token issued for client ' . $this->client->client_id . ' (service user ' . $serviceUserId . ')', LOG_INFO);
+
+        $this->sendJsonResponse($response);
+    }
+
+    /**
+     * Resolve the service user for client_credentials grant
+     *
+     * Priority:
+     * 1. fk_service_user on the client
+     * 2. SMARTAUTH_DEFAULT_USER global constant
+     *
+     * @return int|null User ID or null if not configured
+     */
+    private function resolveServiceUser(): ?int
+    {
+        // Check client-specific service user
+        if (!empty($this->client->fk_service_user)) {
+            return (int) $this->client->fk_service_user;
+        }
+
+        // Check global default
+        $defaultUser = getDolGlobalInt('SMARTAUTH_DEFAULT_USER', 0);
+        if ($defaultUser > 0) {
+            return $defaultUser;
+        }
+
+        return null;
     }
 
     /**

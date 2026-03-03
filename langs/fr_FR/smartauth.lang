@@ -194,6 +194,15 @@ ScopeOfflineAccess=Accès hors ligne (refresh token)
 GrantAuthorizationCode=Authorization Code (apps web)
 GrantRefreshToken=Refresh Token
 GrantClientCredentials=Client Credentials (machine-to-machine)
+GrantClientCredentialsHelp=Authentification machine-à-machine sans interaction utilisateur. Nécessite un client confidentiel avec un secret.
+
+# Client Credentials
+SmartAuthServiceUser=Utilisateur de service
+SmartAuthServiceUserHelp=Utilisateur Dolibarr utilisé comme contexte pour les appels machine-à-machine (client_credentials). Cet utilisateur détermine les permissions et l'entité pour les opérations effectuées par le client.
+SmartAuthServiceUserRequired=L'utilisateur de service est obligatoire pour le grant client_credentials
+SmartAuthNoServiceUser=Aucun utilisateur de service configuré pour ce client
+SmartAuthCustomScopes=Scopes personnalisés
+SmartAuthCustomScopesHelp=Scopes enregistrés par les modules externes
 
 # Dolibarr Integration
 SmartAuthDolibarrIntegration=Integration Dolibarr

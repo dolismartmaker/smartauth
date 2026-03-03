@@ -1110,6 +1110,7 @@ class ObjectDocumentController
             'server_time' => time(),
         ];
         $zip->addFromString('manifest.json', json_encode($manifest, JSON_UNESCAPED_UNICODE));
+        $zip->setCompressionName('manifest.json', \ZipArchive::CM_STORE);
 
         // Add files with STORE method (no compression - images/PDFs are already compressed)
         foreach ($filesToAdd as $fileInfo) {

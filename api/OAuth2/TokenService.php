@@ -59,9 +59,10 @@ class TokenService
      * @param string $clientId OAuth client ID (public identifier)
      * @param array $scopes Granted scopes
      * @param int|null $lifetime Token lifetime in seconds (null = use client/default)
+     * @param array $extraClaims Additional claims to include in the JWT payload
      * @return array ['token' => JWT string, 'jti' => JWT ID, 'expires_in' => seconds]
      */
-    public function createAccessToken(int $userId, string $clientId, array $scopes, ?int $lifetime = null): array
+    public function createAccessToken(int $userId, string $clientId, array $scopes, ?int $lifetime = null, array $extraClaims = []): array
     {
         $lifetime = $lifetime ?? OAuthConfig::getAccessTokenTTL();
         $now = time();
@@ -78,6 +79,11 @@ class TokenService
             'client_id' => $clientId,
             'scope' => implode(' ', $scopes),
         ];
+
+        // Merge extra claims (e.g. grant_type for client_credentials)
+        if (!empty($extraClaims)) {
+            $payload = array_merge($payload, $extraClaims);
+        }
 
         $jwt = $this->encodeJwt($payload);
 

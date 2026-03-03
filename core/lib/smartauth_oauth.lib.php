@@ -59,13 +59,26 @@ function smartauth_oauth_get_available_scopes()
 
 	$langs->load("smartauth@smartauth");
 
-	return array(
+	$scopes = array(
 		'openid' => $langs->trans('ScopeOpenID'),
 		'profile' => $langs->trans('ScopeProfile'),
 		'email' => $langs->trans('ScopeEmail'),
 		'groups' => $langs->trans('ScopeGroups'),
 		'offline_access' => $langs->trans('ScopeOfflineAccess'),
 	);
+
+	// Add custom scopes from ScopeManager registry
+	dol_include_once('/smartauth/api/OAuth2/ScopeManager.php');
+	if (class_exists('SmartAuth\Api\OAuth2\ScopeManager')) {
+		$allDefs = \SmartAuth\Api\OAuth2\ScopeManager::getAllScopeDefinitions();
+		foreach ($allDefs as $scope => $info) {
+			if (!isset($scopes[$scope])) {
+				$scopes[$scope] = $info['description'] ?? $scope;
+			}
+		}
+	}
+
+	return $scopes;
 }
 
 /**

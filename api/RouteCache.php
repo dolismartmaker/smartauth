@@ -242,10 +242,10 @@ class RouteCache
      * @param string $action URL pattern
      * @param string $class Controller class
      * @param string $function Controller method
-     * @param bool $protected Whether route requires auth
+     * @param bool|string $protected false=public, true=JWT auth, 'oauth2'=OAuth2 Bearer token
      * @return void
      */
-    public static function register(string $method, string $action, string $class, string $function, bool $protected): void
+    public static function register(string $method, string $action, string $class, string $function, $protected): void
     {
         if (!self::$registrationMode) {
             return;

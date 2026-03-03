@@ -82,7 +82,7 @@ class RouteController
 			return true;
 		}
 
-		list($user, $entity, $token_id, $buyer, $family_id, $device_id) = $authContext;
+		list($user, $entity, $token_id, $buyer, $family_id, $device_id, $oauthContext) = $authContext;
 
 		// Execute controller action
 		self::executeAction(
@@ -94,7 +94,8 @@ class RouteController
 			$token_id,
 			$buyer,
 			$family_id,
-			$device_id
+			$device_id,
+			$oauthContext
 		);
 
 		return true;
@@ -106,7 +107,7 @@ class RouteController
 	 * @param   string  $targetAction       URL pattern to match (e.g., '/users/{id}')
 	 * @param   string  $targetClass        Controller class name to instantiate
 	 * @param   string  $redirectFunction   Method name to call on the controller
-	 * @param   bool    $protected          Whether JWT authentication is required
+	 * @param   bool|string $protected      false=public, true=JWT auth, 'oauth2'=OAuth2 Bearer token
 	 *
 	 * @return  void
 	 */
@@ -126,7 +127,7 @@ class RouteController
 	 * @param   string  $targetAction       URL pattern to match (e.g., '/users')
 	 * @param   string  $targetClass        Controller class name to instantiate
 	 * @param   string  $redirectFunction   Method name to call on the controller
-	 * @param   bool    $protected          Whether JWT authentication is required
+	 * @param   bool|string $protected      false=public, true=JWT auth, 'oauth2'=OAuth2 Bearer token
 	 *
 	 * @return  void
 	 */
@@ -145,7 +146,7 @@ class RouteController
 	 * @param   string  $targetAction       URL pattern to match (e.g., '/users/{id}')
 	 * @param   string  $targetClass        Controller class name to instantiate
 	 * @param   string  $redirectFunction   Method name to call on the controller
-	 * @param   bool    $protected          Whether JWT authentication is required
+	 * @param   bool|string $protected      false=public, true=JWT auth, 'oauth2'=OAuth2 Bearer token
 	 *
 	 * @return  void
 	 */
@@ -164,7 +165,7 @@ class RouteController
 	 * @param   string  $targetAction       URL pattern to match (e.g., '/users/{id}')
 	 * @param   string  $targetClass        Controller class name to instantiate
 	 * @param   string  $redirectFunction   Method name to call on the controller
-	 * @param   bool    $protected          Whether JWT authentication is required
+	 * @param   bool|string $protected      false=public, true=JWT auth, 'oauth2'=OAuth2 Bearer token
 	 *
 	 * @return  void
 	 */
@@ -183,7 +184,7 @@ class RouteController
 	 * @param   string  $targetAction       URL pattern to match (e.g., '/users/{id}')
 	 * @param   string  $targetClass        Controller class name to instantiate
 	 * @param   string  $redirectFunction   Method name to call on the controller
-	 * @param   bool    $protected          Whether JWT authentication is required
+	 * @param   bool|string $protected      false=public, true=JWT auth, 'oauth2'=OAuth2 Bearer token
 	 *
 	 * @return  void
 	 */
@@ -211,7 +212,7 @@ class RouteController
 	 * @param   string  $targetAction       URL pattern with optional placeholders like '/users/{id}'
 	 * @param   string  $targetClass        Fully qualified controller class name
 	 * @param   string  $redirectFunction   Method name to invoke on controller
-	 * @param   bool    $protected          If true, requires valid JWT token
+	 * @param   bool|string $protected      false=public, true=JWT auth, 'oauth2'=OAuth2 Bearer token
 	 *
 	 * @return  void                        Outputs JSON response and exits
 	 */
@@ -545,23 +546,28 @@ class RouteController
 
 
 	/**
-	 * Handle JWT authentication and load user context
+	 * Handle authentication and load user context
 	 *
-	 * For protected routes:
+	 * For protected routes ($protected === true):
 	 * - Validates JWT token via AuthController::Check()
 	 * - Loads Dolibarr User object
 	 * - Sets entity context and reloads configuration
 	 * - Loads associated third-party (Societe) if exists
 	 *
-	 * For public routes:
+	 * For OAuth2 routes ($protected === 'oauth2'):
+	 * - Validates OAuth2 Bearer token (JWT)
+	 * - Loads service user context
+	 * - Returns OAuth2-specific metadata (client_id, scopes, grant_type)
+	 *
+	 * For public routes ($protected === false):
 	 * - Returns empty context (null user/entity)
 	 *
-	 * @param   bool        $protected  Whether authentication is required
-	 * @param   Database    $db         Dolibarr database connection
-	 * @param   Conf        $conf       Dolibarr configuration object
-	 * @param   Societe     $mysoc      Dolibarr company object
+	 * @param   bool|string $protected  false=public, true=JWT auth, 'oauth2'=OAuth2 Bearer token
+	 * @param   \DoliDB     $db         Dolibarr database connection
+	 * @param   \Conf       $conf       Dolibarr configuration object
+	 * @param   \Societe    $mysoc      Dolibarr company object
 	 *
-	 * @return  array|false             [User, entity, token_id, Societe] or false on auth error
+	 * @return  array|false             [User, entity, token_id, Societe, family_id, device_id, oauthContext] or false on auth error
 	 */
 	private static function handleAuthentication($protected, $db, $conf, $mysoc)
 	{
@@ -570,8 +576,13 @@ class RouteController
 		$token_id = null;
 		$buyer = new \Societe($db);
 
-		if (!$protected) {
-			return [$user, $entity, $token_id, $buyer, null, null];
+		if ($protected === false || $protected === 0) {
+			return [$user, $entity, $token_id, $buyer, null, null, null];
+		}
+
+		// OAuth2 Bearer token authentication
+		if ($protected === 'oauth2') {
+			return self::handleOAuth2Authentication($db, $conf, $mysoc);
 		}
 
 		$ac = new AuthController();
@@ -635,8 +646,115 @@ class RouteController
 		}
 
 		dol_syslog("Debug smartauth handleAuthentication return entity=$entity, token_id=$token_id");
-		return [$user, $entity, $token_id, $buyer, $family_id, $device_id];
+		return [$user, $entity, $token_id, $buyer, $family_id, $device_id, null];
 	}
+	/**
+	 * Handle OAuth2 Bearer token authentication
+	 *
+	 * Validates an OAuth2 access token (JWT) issued via any OAuth2 grant type.
+	 * Loads the associated client and service user context.
+	 *
+	 * @param   \DoliDB     $db     Dolibarr database connection
+	 * @param   \Conf       $conf   Dolibarr configuration object
+	 * @param   \Societe    $mysoc  Dolibarr company object
+	 *
+	 * @return  array|false         [User, entity, token_id, Societe, family_id, device_id, oauthContext] or false
+	 */
+	private static function handleOAuth2Authentication($db, $conf, $mysoc)
+	{
+		$buyer = new \Societe($db);
+
+		// Extract Bearer token from Authorization header
+		$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+		if (empty($authHeader) && function_exists('apache_request_headers')) {
+			$headers = apache_request_headers();
+			$authHeader = $headers['Authorization'] ?? '';
+		}
+
+		if (empty($authHeader) || strpos($authHeader, 'Bearer ') !== 0) {
+			self::insertLogs(null, 401, 'Missing OAuth2 Bearer token', null);
+			\json_reply('Authentication required: Bearer token expected', 401);
+			return false;
+		}
+
+		$jwt = substr($authHeader, 7);
+
+		// Validate JWT via TokenService
+		dol_include_once('/smartauth/api/OAuth2/TokenService.php');
+		dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
+
+		$tokenService = new \SmartAuth\Api\OAuth2\TokenService($db);
+		$payload = $tokenService->validateAccessToken($jwt);
+
+		if ($payload === null) {
+			self::insertLogs(null, 401, 'Invalid or expired OAuth2 token', null);
+			\json_reply('Invalid or expired token', 401);
+			return false;
+		}
+
+		// Extract OAuth2 metadata from JWT payload
+		$clientId = $payload['client_id'] ?? '';
+		$scopeString = $payload['scope'] ?? '';
+		$scopes = !empty($scopeString) ? explode(' ', $scopeString) : [];
+		$grantType = $payload['grant_type'] ?? 'authorization_code';
+		$userId = (int) ($payload['sub'] ?? 0);
+
+		// Load OAuth client and verify it's still active
+		$client = new \SmartAuthOAuthClient($db);
+		$result = $client->fetch(0, null, $clientId);
+		if ($result <= 0 || !$client->isEnabled()) {
+			self::insertLogs(null, 401, 'OAuth2 client not found or disabled', null);
+			\json_reply('Invalid client', 401);
+			return false;
+		}
+
+		// Load user
+		if ($userId <= 0) {
+			self::insertLogs(null, 401, 'Invalid user in OAuth2 token', null);
+			\json_reply('Invalid token: missing user', 401);
+			return false;
+		}
+
+		$user = new User($db);
+		$res = $user->fetch($userId);
+		if ($res <= 0) {
+			self::insertLogs(null, 401, 'OAuth2 user not found', null);
+			\json_reply('Authentication failed', 401);
+			return false;
+		}
+
+		// Set entity context
+		$entity = $client->entity;
+		$user->entity = $entity;
+		$_SESSION["dol_entity"] = $entity;
+		$conf->entity = $entity;
+		$conf->setValues($db);
+		$mysoc->setMysoc($conf);
+
+		// Load user permissions
+		$user->getrights('', 1);
+
+		// Load buyer if user is attached to a third-party
+		if (!empty($user->socid)) {
+			$res = $buyer->fetch($user->socid);
+			if (!$res) {
+				dol_syslog("Debug smartauth OAuth2: Failed to load buyer socid=" . $user->socid, LOG_ERR);
+			}
+		}
+
+		$oauthContext = [
+			'client_id' => $clientId,
+			'scopes' => $scopes,
+			'grant_type' => $grantType,
+		];
+
+		$jti = $payload['jti'] ?? null;
+
+		dol_syslog("Debug smartauth handleOAuth2Authentication: client=$clientId, user=" . $user->id . ", grant=$grantType");
+
+		return [$user, $entity, $jti, $buyer, null, null, $oauthContext];
+	}
+
 	/**
 	 * Execute the target controller method with proper error handling
 	 *
@@ -657,10 +775,11 @@ class RouteController
 	 * @param   Societe     $buyer              Third-party object
 	 * @param   int|null    $family_id          Token family
 	 * @param   int|null    $device_id          Device ID
+	 * @param   array|null  $oauthContext       OAuth2 context (client_id, scopes, grant_type) or null
 	 *
 	 * @return  void                            Outputs JSON and exits
 	 */
-	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id, $device_id)
+	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id, $device_id, $oauthContext = null)
 	{
 		dol_syslog("Debug smartauth executeAction: $targetClass, redirectFunction=$redirectFunction, token_id=$token_id, family_id=$family_id, device_id=$device_id");
 
@@ -693,6 +812,13 @@ class RouteController
 			'entity' => $entity,
 			'buyer' => $buyer,
 		];
+
+		// Add OAuth2 context if present
+		if (!empty($oauthContext)) {
+			$payload['oauth_client_id'] = $oauthContext['client_id'] ?? null;
+			$payload['oauth_scopes'] = $oauthContext['scopes'] ?? [];
+			$payload['oauth_grant_type'] = $oauthContext['grant_type'] ?? null;
+		}
 
 		// Flatten data into payload for easier access
 		foreach ($data as $key => $value) {
