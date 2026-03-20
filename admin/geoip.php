@@ -155,7 +155,7 @@ if ($action == 'download' || file_exists($dest)) {
     if (file_exists($dest)) {
         print '<p>' . $langs->trans('SetupGeoIPForSmartAuthFileIsPresent', $dest) . '</p>';
     } else {
-        print '<a class="button button-cancel" type="submit" href="' . $PHP_SELF . '?action=download">' . $langs->trans('SetupGeoIPForSmartAuth') . '</a>';
+        print '<a class="button button-cancel" type="submit" href="' . $_SERVER["PHP_SELF"] . '?action=download">' . $langs->trans('SetupGeoIPForSmartAuth') . '</a>';
     }
 }
 
