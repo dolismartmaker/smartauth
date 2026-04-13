@@ -1,5 +1,16 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.10 -- 20260413
+
+- Fix all includes to use dol_include_once()
+- Add Memcached cache flush on module activation/upgrade
+- Rewrite About page: module info, feedback form, donation box, useful links, changelog display
+- Add admin CSS (css/admin.css.php) for About page layout
+- Set $help_url to https://doc.cap-rel.fr/smartauth/
+- Normalize all dol_syslog() calls with consistent "SmartAuth" prefix
+- Add missing translation keys for en_US (dashboard, user tab, OAuth, GeoIP, about page)
+- Fix missing French accents in OAuth and Dolibarr Integration translation keys
+
 ## 2.0.8 -- 20260303
 
 add auth solution for m2m
