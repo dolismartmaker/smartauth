@@ -82,7 +82,7 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/date.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/company.lib.php';
 
 // load module libraries
-require_once __DIR__ . '/class/smartauthdevices.class.php';
+dol_include_once('/smartauth/class/smartauthdevices.class.php');
 
 // for other modules
 //dol_include_once('/othermodule/class/otherobject.class.php');
