@@ -71,6 +71,77 @@ SMARTAUTH_TRUSTED_PROXIESTooltip=Comma-separated list of trusted proxy IP addres
 #
 SmartAuthMainMenu=SmartAuth
 ListOfTokens=List of active tokens
+Smartauth=Smartauth
+SmartAuth=SmartAuth
+Auth=Auth
+ShowAuth=Show auth token
+ShowSmartAuthDevices=Show device
+SmartAuthDevices=SmartAuth Devices
+SmartAuthDevicess=SmartAuth Devices
+SmartAuthHereIsYourLastKeys=Here are your last API keys. Follow this link to see the <a href="%%s">complete list</a>
+SmartAuthAPILogs=API connection history
+ConfirmActionAuth=Are you sure you want to perform this action on this token?
+ConfirmActionSmartAuthDevices=Are you sure you want to perform this action on this device?
+DeleteAuth=Delete auth token
+DeleteSmartAuthDevices=Delete device
+
+#
+# Dashboard
+#
+SmartAuthDashboard=SmartAuth Dashboard
+ConnectedUsers=Connected users
+RateLimitHits=Rate limit blocks
+RefreshSuccessRate=Refresh success rate
+SecurityAlertsDetected=Security alerts detected
+TopUsers=Top users
+Devices=Devices
+LastActivity=Last activity
+ActiveNow=Active now
+ViewTokens=View tokens
+ViewDetails=View details
+QuickLinks=Quick links
+ViewAllTokens=View all tokens
+ViewLogs=View logs
+ManageTokens=Manage tokens
+RecentRateLimitBlocks=Recent rate limit blocks
+NoRecentBlocks=No recent blocks
+JustNow=Just now
+TokenFamiliesStats=Token families statistics
+ActiveFamilies=Active families
+RevokedFamilies=Revoked families
+AverageRefreshCount=Average refresh count
+ReplayAttacksDetected=Replay attacks detected
+
+#
+# User tab
+#
+TokenRevoked=Token successfully revoked
+ErrorRevokingToken=Error revoking token
+TokenNotFound=Token not found
+DeviceRenamed=Device renamed successfully
+RenameDevice=Rename device
+ViewHistory=View history
+RevokeToken=Revoke token
+ConfirmRevokeToken=Are you sure you want to revoke this token? The device will be disconnected.
+EnterDeviceName=Enter device name:
+TokenActivityHistory=Token activity history
+Endpoint=Endpoint
+NoHistory=No history available
+ErrorLoadingHistory=Error loading history
+
+#
+# GeoIP
+#
+SetupGeoIP=GeoIP Setup
+SetupGeoIPForSmartAuth=Download and initialize GeoIP
+SetupGeoIPForSmartAuthFileIsPresent=File %%s is installed!
+SmartauthGeoIPSetupPage=GeoIP configuration page
+
+#
+# Password Reset
+#
+PasswordResetRequest=Password Reset Request
+PasswordResetEmailBody=You have requested a password reset. Click the link below to set a new password:
 
 #
 # OAuth Server
@@ -148,6 +219,32 @@ ScopeOfflineAccess=Offline access (refresh token)
 GrantAuthorizationCode=Authorization Code (web apps)
 GrantRefreshToken=Refresh Token
 GrantClientCredentials=Client Credentials (machine-to-machine)
+
+# About page
+OnlineDocumentation=Online documentation
+AboutModuleInfo=Module information
+AboutUsefulLinks=Useful links
+AboutSAV=Support
+AboutForum=Forum
+AboutContact=Contact
+DolibarrMinVersion=Minimum Dolibarr version
+PHPMinVersion=Minimum PHP version
+SmartauthDoYouLikeModule=Do you like this module?
+SmartauthFeedbackIntro=Your feedback helps improve our modules. Share your experience and help other users discover this module!
+SmartauthYourRating=Your rating
+SmartauthYourFeedback=Your feedback
+SmartauthYourEmail=Your email
+SmartauthFeedbackPlaceholder=Tell us what you like, what could be improved...
+SmartauthSendFeedback=Send my feedback
+SmartauthFeedbackSent=Thank you for your feedback!
+SmartauthFeedbackSendError=Error sending feedback
+SmartauthBuyMeACoffee=Buy us a coffee
+SmartauthDonationText=This module required development and design time. If you find it useful and would like to support its development, consider buying us a coffee (or a little more). Every contribution helps keep the project alive and motivates us to add new features!
+SmartauthOfferCoffee=Buy a coffee ... or a little more
+
+# Client Credentials
+SmartAuthServiceUser=Service user
+SmartAuthServiceUserHelp=Dolibarr user used as context for machine-to-machine calls (client_credentials). This user determines permissions and entity for operations performed by the client.
 
 # Dolibarr Integration
 SmartAuthDolibarrIntegration=Dolibarr Integration

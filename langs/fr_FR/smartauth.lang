@@ -16,7 +16,7 @@
 #
 # Generic
 #
-SmartAuthMainMenu = 🚀 SmartAuth
+SmartAuthMainMenu = SmartAuth
 SmartAuthLogsMenu = Journaux (Logs)
 SmartAuthTokensMenu = Jetons
 ListOfTokens = Liste des jetons actifs
@@ -126,17 +126,17 @@ SmartAuthOAuthSetupDesc=Configuration du serveur OAuth2/OIDC. Activez ce mode po
 SmartAuthOAuthActivation=Activation
 SmartAuthOAuthEnabled=Activer le serveur OAuth/OIDC
 SmartAuthOAuthIssuer=URL de l'issuer
-SmartAuthOAuthIssuerHelp=Laissez vide pour utiliser la valeur auto-detectee : %s
-SmartAuthOAuthTokenSettings=Parametres des tokens
-SmartAuthOAuthAccessTTL=Duree access token (secondes)
-SmartAuthOAuthRefreshTTL=Duree refresh token (secondes)
-SmartAuthOAuthCodeTTL=Duree code autorisation (secondes)
-SmartAuthOAuthDefaultValue=defaut : %s
-SmartAuthOAuthSecurity=Securite
+SmartAuthOAuthIssuerHelp=Laissez vide pour utiliser la valeur auto-détectée : %s
+SmartAuthOAuthTokenSettings=Paramètres des tokens
+SmartAuthOAuthAccessTTL=Durée access token (secondes)
+SmartAuthOAuthRefreshTTL=Durée refresh token (secondes)
+SmartAuthOAuthCodeTTL=Durée code autorisation (secondes)
+SmartAuthOAuthDefaultValue=défaut : %s
+SmartAuthOAuthSecurity=Sécurité
 SmartAuthOAuthRequirePKCE=PKCE obligatoire pour clients publics
-SmartAuthOAuthRequirePKCEHelp=Recommande pour les applications mobiles et SPA (Single Page Applications)
-SmartAuthOAuthConsentRemember=Memoriser les consentements
-SmartAuthOAuthConsentRememberHelp=Evite de redemander le consentement a chaque connexion
+SmartAuthOAuthRequirePKCEHelp=Recommandé pour les applications mobiles et SPA (Single Page Applications)
+SmartAuthOAuthConsentRemember=Mémoriser les consentements
+SmartAuthOAuthConsentRememberHelp=Évite de redemander le consentement à chaque connexion
 SmartAuthOAuthEndpoints=Endpoints OIDC
 SmartAuthOAuthNotEnabled=Le serveur OAuth n'est pas activé. Activez-le pour voir les endpoints disponibles.
 
@@ -205,23 +205,45 @@ SmartAuthCustomScopes=Scopes personnalisés
 SmartAuthCustomScopesHelp=Scopes enregistrés par les modules externes
 
 # Dolibarr Integration
-SmartAuthDolibarrIntegration=Integration Dolibarr
+# About page
+OnlineDocumentation=Documentation en ligne
+AboutModuleInfo=Informations sur le module
+AboutUsefulLinks=Liens utiles
+AboutSAV=Support
+AboutForum=Forum
+AboutContact=Contact
+DolibarrMinVersion=Version minimale de Dolibarr
+PHPMinVersion=Version minimale de PHP
+SmartauthDoYouLikeModule=Vous aimez ce module ?
+SmartauthFeedbackIntro=Vos retours aident à améliorer nos modules. Partagez votre expérience et aidez d'autres utilisateurs à découvrir ce module !
+SmartauthYourRating=Votre note
+SmartauthYourFeedback=Votre avis
+SmartauthYourEmail=Votre email
+SmartauthFeedbackPlaceholder=Dites-nous ce que vous aimez, ce qui pourrait être amélioré...
+SmartauthSendFeedback=Envoyer mon avis
+SmartauthFeedbackSent=Merci pour votre retour !
+SmartauthFeedbackSendError=Erreur lors de l'envoi du retour
+SmartauthBuyMeACoffee=Offrez-nous un café
+SmartauthDonationText=Ce module nous a demandé du temps de développement et de conception. Si vous le trouvez utile et souhaitez soutenir son développement, pensez à nous offrir un café (ou un peu plus). Chaque contribution aide à maintenir le projet en vie et nous motive à ajouter de nouvelles fonctionnalités !
+SmartauthOfferCoffee=Offrir un café ... ou un peu plus
+
+SmartAuthDolibarrIntegration=Intégration Dolibarr
 SmartAuthDolibarrIntegrationDesc=Configurez Dolibarr pour utiliser SmartAuth comme fournisseur d'authentification OAuth.
-SmartAuthDolibarrClientExists=Le client OAuth Dolibarr est configure
-SmartAuthDolibarrClientNotExists=Le client OAuth Dolibarr n'est pas configure
-SmartAuthDolibarrCreateClient=Creer le client Dolibarr
-SmartAuthDolibarrClientCreated=Client OAuth Dolibarr cree avec succes
-SmartAuthDolibarrClientAlreadyExists=Le client OAuth Dolibarr existe deja
-SmartAuthDolibarrClientError=Erreur lors de la creation du client OAuth Dolibarr
+SmartAuthDolibarrClientExists=Le client OAuth Dolibarr est configuré
+SmartAuthDolibarrClientNotExists=Le client OAuth Dolibarr n'est pas configuré
+SmartAuthDolibarrCreateClient=Créer le client Dolibarr
+SmartAuthDolibarrClientCreated=Client OAuth Dolibarr créé avec succès
+SmartAuthDolibarrClientAlreadyExists=Le client OAuth Dolibarr existe déjà
+SmartAuthDolibarrClientError=Erreur lors de la création du client OAuth Dolibarr
 SmartAuthDolibarrTestConnection=Tester la connexion
-SmartAuthDolibarrTestSuccess=Connexion reussie ! SmartAuth est accessible.
-SmartAuthDolibarrTestFailed=Echec de la connexion : %s
+SmartAuthDolibarrTestSuccess=Connexion réussie ! SmartAuth est accessible.
+SmartAuthDolibarrTestFailed=Échec de la connexion : %s
 SmartAuthDolibarrConfig=Configuration pour Dolibarr
-SmartAuthDolibarrConfigDesc=Ajoutez ces parametres a votre installation Dolibarr :
+SmartAuthDolibarrConfigDesc=Ajoutez ces paramètres à votre installation Dolibarr :
 SmartAuthDolibarrConfPhp=Configuration conf.php
-SmartAuthDolibarrConstants=Constantes Dolibarr a configurer
+SmartAuthDolibarrConstants=Constantes Dolibarr à configurer
 SmartAuthDolibarrRedirectUri=URI de redirection
-SmartAuthDolibarrRedirectUriHelp=Mettez a jour cette URI pour correspondre a l'URL de votre Dolibarr
+SmartAuthDolibarrRedirectUriHelp=Mettez à jour cette URI pour correspondre à l'URL de votre Dolibarr
 SmartAuthDolibarrInstallDoc=Documentation d'installation
 SmartAuthDolibarrCopyFile=Copiez le fichier d'authentification dans Dolibarr
-SmartAuthDolibarrFilePath=Fichier a copier
+SmartAuthDolibarrFilePath=Fichier à copier
