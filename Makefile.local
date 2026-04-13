@@ -1,0 +1,7 @@
+bardevtemp:
+	rsync -avP --exclude-from .devexclude ./ z.cap-rel.fr:/srv/webs/bar.devtemp.fr/htdocs/custom/${MODULE}/
+
+prepoddmi:
+	rsync -avP --exclude-from .devexclude ./ osu49vh1o2gx@preprodmi973.on1.dolizen.fr:/home/jail/home/osu49vh1o2gx/dbnWCET24FpZ/htdocs/custom/${MODULE}/
+
+devall: bardevtemp prepoddmi

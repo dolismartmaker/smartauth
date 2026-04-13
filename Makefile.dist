@@ -4,15 +4,34 @@
 
 SHELL = bash
 MODULE = smartauth
+DOC_HOST     ?= doc.cap-rel.fr
+DOC_PATH     ?= /home/webs/doc.cap-rel.fr/marginaliamd/data/documents/$(MODULE)
+MARGINALIAMD ?= $(HOME)/dev/marginaliamd
 
 .DEFAULT_GOAL := help
+.PHONY: help zip deploy-doc screenshots phpstan
 
 help:
-	@echo 'Available commands:'
-	@echo -e 'zip \t\t — \t build zip file'
+	@echo ''
+	@echo 'Usage: make <target>'
+	@echo ''
+	@echo '  zip            —  create distributable zip archive'
+	@echo '  deploy-doc     —  publish user documentation to doc.cap-rel.fr'
+	@echo '  screenshots    —  collect missing screenshots interactively'
+	@echo '  phpstan        —  run static analysis with PHPStan'
+	@echo ''
 
 zip:
 	(php ./build/buildzip.php)
+
+deploy-doc:
+	rsync -avLP docs/users/ $(DOC_HOST):$(DOC_PATH)/
+
+screenshots:
+	php $(MARGINALIAMD)/cli/collect-screenshots.php docs/users/
+
+phpstan:
+	TMPDIR=$(HOME)/.cache/phpstan-tmp DOLIBARR_VERSION=18 php /usr/local/bin/phpstan.phar analyse -c .phpstan.local.neon --memory-limit=512M
 
 apidoc:
 	# apidoc -i api/ -o ./documentation -c api/apidoc.json -f ".*.php"
