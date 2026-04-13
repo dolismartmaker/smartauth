@@ -73,7 +73,7 @@ class RouteCache
     public static function getCacheFilePath(): string
     {
         if (empty(self::$moduleName)) {
-            dol_syslog("RouteCache: Module not initialized, call init() first", LOG_ERR);
+            dol_syslog("SmartAuth RouteCache: Module not initialized, call init() first", LOG_ERR);
             return '';
         }
         return DOL_DATA_ROOT . '/' . self::$moduleName . '/cache/routes.php';
@@ -110,7 +110,7 @@ class RouteCache
     public static function isCacheValid(): bool
     {
         if (empty(self::$moduleName)) {
-            dol_syslog("RouteCache: Module not initialized", LOG_ERR);
+            dol_syslog("SmartAuth RouteCache: Module not initialized", LOG_ERR);
             return false;
         }
 
@@ -213,7 +213,7 @@ class RouteCache
                 return $cached;
             }
         } catch (\Exception $e) {
-            dol_syslog("RouteCache: Error loading cache: " . $e->getMessage(), LOG_WARNING);
+            dol_syslog("SmartAuth RouteCache: Error loading cache: " . $e->getMessage(), LOG_WARNING);
         }
 
         return null;
@@ -299,7 +299,7 @@ class RouteCache
                 SmartAuthLogger::debug("RouteCache: Including local routes from $file");
                 include_once $file;
             } catch (\Exception $e) {
-                dol_syslog("RouteCache: Error including $file: " . $e->getMessage(), LOG_ERR);
+                dol_syslog("SmartAuth RouteCache: Error including $file: " . $e->getMessage(), LOG_ERR);
             }
         }
     }
@@ -315,12 +315,12 @@ class RouteCache
         $cacheFile = self::getCacheFilePath();
         $cacheDir = dirname($cacheFile);
 
-        dol_syslog("RouteCache: save to dir=$cacheDir filename=$cacheFile", LOG_ERR);
+        dol_syslog("SmartAuth RouteCache: save to dir=$cacheDir filename=$cacheFile", LOG_ERR);
 
         // Create cache directory if needed
         if (!is_dir($cacheDir)) {
             if (!mkdir($cacheDir, 0755, true)) {
-                dol_syslog("RouteCache: Failed to create cache directory: $cacheDir", LOG_ERR);
+                dol_syslog("SmartAuth RouteCache: Failed to create cache directory: $cacheDir", LOG_ERR);
                 return false;
             }
         }
@@ -349,7 +349,7 @@ class RouteCache
         $result = file_put_contents($cacheFile, $content, LOCK_EX);
 
         if ($result === false) {
-            dol_syslog("RouteCache: Failed to write cache file: $cacheFile", LOG_ERR);
+            dol_syslog("SmartAuth RouteCache: Failed to write cache file: $cacheFile", LOG_ERR);
             return false;
         }
 
@@ -358,7 +358,7 @@ class RouteCache
             opcache_invalidate($cacheFile, true);
         }
 
-        dol_syslog("RouteCache: Cache saved with " . count($routes) . " routes", LOG_INFO);
+        dol_syslog("SmartAuth RouteCache: Cache saved with " . count($routes) . " routes", LOG_INFO);
         return true;
     }
 
@@ -544,7 +544,7 @@ class RouteCache
         if (file_exists($cacheFile)) {
             $result = unlink($cacheFile);
             if ($result) {
-                dol_syslog("RouteCache: Cache cleared", LOG_INFO);
+                dol_syslog("SmartAuth RouteCache: Cache cleared", LOG_INFO);
                 self::$cachedRoutes = null;
             }
             return $result;

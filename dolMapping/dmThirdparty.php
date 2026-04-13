@@ -60,7 +60,7 @@ class dmThirdparty extends dmBase
 	{
 		$this->boot();
 
-		// dol_syslog("cacheDesc after is " . json_encode($this->_cacheDesc));
+		// dol_syslog("SmartAuth cacheDesc after is " . json_encode($this->_cacheDesc));
 	}
 
 
@@ -74,7 +74,7 @@ class dmThirdparty extends dmBase
 	public function fieldFilterValueLogo($societe)
 	{
 		global $conf;
-		// dol_syslog("##### dmHelper : call for fieldFilterValueLogo for " . $societe->logo);
+		// dol_syslog("SmartAuth ##### dmHelper : call for fieldFilterValueLogo for " . $societe->logo);
 		$dir     = $conf->societe->multidir_output[$societe->entity] . "/" . $societe->id . "/logos/thumbs";
 		$logo = $dir . '/' . $this->_miniLogoFileName($societe->logo);
 		$logoBase64 = "";
@@ -85,7 +85,7 @@ class dmThirdparty extends dmBase
 			$type = pathinfo($logo, PATHINFO_EXTENSION);
 		}
 		$logoBase64 = 'data:image/' . $type . ';base64,' . base64_encode(file_get_contents($logo));
-		// dol_syslog("##### dmHelper : returns " . strlen($logoBase64));
+		// dol_syslog("SmartAuth ##### dmHelper : returns " . strlen($logoBase64));
 		return $logoBase64;
 	}
 

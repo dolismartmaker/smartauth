@@ -395,6 +395,18 @@ class modSmartauth extends DolibarrModules
 		$this->remove($options);
 
 		$sql = array();
+
+		// Flush Memcached cache on module activation/upgrade
+		if (isModEnabled('memcached') && class_exists('Memcached')) {
+			$m = new Memcached();
+			$tmparray = explode(':', $conf->global->MEMCACHED_SERVER);
+			$result = $m->addServer($tmparray[0], $tmparray[1] ? $tmparray[1] : 11211);
+			if ($result) {
+				/* Invalidate all items in 1 second */
+				$m->flush(1);
+			}
+		}
+
 		return $this->_init($sql, $options);
 	}
 

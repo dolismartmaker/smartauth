@@ -44,7 +44,7 @@ function check_user_password_smartauthoauth($usertotest, $passwordtotest, $entit
 {
     global $db, $conf, $langs;
 
-    dol_syslog("functions_smartauthoauth::check_user_password_smartauthoauth start", LOG_DEBUG);
+    dol_syslog("SmartAuth functions_smartauthoauth::check_user_password_smartauthoauth start", LOG_DEBUG);
 
     // Bypass mode for initial setup or maintenance
     if (getDolGlobalInt('SMARTAUTH_OAUTH_BYPASS', 0)) {

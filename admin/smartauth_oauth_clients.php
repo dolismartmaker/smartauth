@@ -52,8 +52,8 @@ if (!$res) {
 
 require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.formcompany.class.php';
-require_once __DIR__ . '/../lib/smartauth.lib.php';
-require_once __DIR__ . '/../class/smartauthoauthclient.class.php';
+dol_include_once('/smartauth/lib/smartauth.lib.php');
+dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 
 // Load translation files
 $langs->loadLangs(array("admin", "smartauth@smartauth"));

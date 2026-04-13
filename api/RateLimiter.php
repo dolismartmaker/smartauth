@@ -74,7 +74,7 @@ class RateLimiter
         $resql = $this->db->query($sql);
         if (!$resql) {
             // If rate limit check fails, allow request (fail open)
-            dol_syslog("Rate limit check failed (fail-close): " . $this->db->lasterror(), LOG_WARNING);
+            dol_syslog("SmartAuth Rate limit check failed (fail-close): " . $this->db->lasterror(), LOG_WARNING);
             return ['allowed' => false, 'retry_after' => 60];
         }
 
@@ -87,7 +87,7 @@ class RateLimiter
 
         if ($attempt_count >= $max_attempts) {
             $retry_after = ($last_attempt + $window_seconds) - time();
-            dol_syslog("Rate limit exceeded for $identifier on $action", LOG_WARNING);
+            dol_syslog("SmartAuth Rate limit exceeded for $identifier on $action", LOG_WARNING);
             return ['allowed' => false, 'retry_after' => max(0, $retry_after)];
         }
 
@@ -108,7 +108,7 @@ class RateLimiter
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog("Failed to record rate limit attempt: " . $this->db->lasterror(), LOG_WARNING);
+            dol_syslog("SmartAuth Failed to record rate limit attempt: " . $this->db->lasterror(), LOG_WARNING);
         }
 
         return $resql;
@@ -155,7 +155,7 @@ class RateLimiter
             return $deleted;
         }
 
-        dol_syslog("RateLimiter: cleanup failed: " . $this->db->lasterror(), LOG_WARNING);
+        dol_syslog("SmartAuth RateLimiter: cleanup failed: " . $this->db->lasterror(), LOG_WARNING);
         return -1;
     }
 

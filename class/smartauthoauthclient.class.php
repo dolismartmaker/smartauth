@@ -330,7 +330,7 @@ class SmartAuthOAuthClient extends CommonObject
      */
     public function fetchAll($sortorder = '', $sortfield = '', $limit = 0, $offset = 0, array $filter = array(), $filtermode = 'AND')
     {
-        dol_syslog(__METHOD__, LOG_DEBUG);
+        dol_syslog("SmartAuth ".__METHOD__, LOG_DEBUG);
 
         $records = array();
 
@@ -384,7 +384,7 @@ class SmartAuthOAuthClient extends CommonObject
             return $records;
         } else {
             $this->errors[] = 'Error ' . $this->db->lasterror();
-            dol_syslog(__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
+            dol_syslog("SmartAuth ".__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
 
             return -1;
         }

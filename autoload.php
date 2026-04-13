@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
  * @return void
  */
 spl_autoload_register(function ($class) {
-	dol_syslog("use spl_autoload from smartAuth for $class");
+	dol_syslog("SmartAuth use spl_autoload from smartAuth for $class");
     $prefix = $base_dir = "";
 
     $map = [
@@ -91,7 +91,7 @@ spl_autoload_register(function ($class) {
 
     // if the file exists, require it
     if (file_exists($file)) {
-		dol_syslog("use spl_autoload from smartAuth::require $file");
+		dol_syslog("SmartAuth use spl_autoload from smartAuth::require $file");
         require $file;
     }
 });

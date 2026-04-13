@@ -93,7 +93,7 @@ class mod_auth_standard
                 $max = 0;
             }
         } else {
-            dol_syslog("mod_auth_standard::getNextValue error: " . $db->lasterror(), LOG_ERR);
+            dol_syslog("SmartAuth mod_auth_standard::getNextValue error: " . $db->lasterror(), LOG_ERR);
             return '';
         }
 
@@ -109,7 +109,7 @@ class mod_auth_standard
             $num = sprintf("%04d", $max + 1);
         }
 
-        dol_syslog("mod_auth_standard::getNextValue return " . $this->prefix . $yymm . "-" . $num);
+        dol_syslog("SmartAuth mod_auth_standard::getNextValue return " . $this->prefix . $yymm . "-" . $num);
         return $this->prefix . $yymm . "-" . $num;
     }
 }

@@ -103,7 +103,7 @@ class dmHelper
 	private function _customFilterAttributeTypeInteger($str)
 	{
 		global $db;
-		// dol_syslog("propertiesFilter > _customFilterAttributeTypeInteger call with $str");
+		// dol_syslog("SmartAuth propertiesFilter > _customFilterAttributeTypeInteger call with $str");
 		$ret = [];
 		$tab = explode(":", $str);
 		if (isset($tab[2])) {
@@ -114,7 +114,7 @@ class dmHelper
 			}
 
 			$dolmapclass = __NAMESPACE__ . "\\dm" . $tab[1];
-			// dol_syslog("propertiesFilter >>> _customFilterAttributeTypeInteger try to call $dolmapclass");
+			// dol_syslog("SmartAuth propertiesFilter >>> _customFilterAttributeTypeInteger try to call $dolmapclass");
 			if (class_exists($dolmapclass, true)) {
 				include_once(DOL_DOCUMENT_ROOT . '/' . $tab[2]);
 				self::$fkRecursionDepth++;
@@ -141,7 +141,7 @@ class dmHelper
 	{
 		$localDebug = false;
 
-		if ($localDebug) dol_syslog("propertiesFilter TODO > _customFilterAttributeTypeSellist call with $str");
+		if ($localDebug) dol_syslog("SmartAuth propertiesFilter TODO > _customFilterAttributeTypeSellist call with $str");
 		return [
 			'type' => 'sellist',
 			'todo' => 'todo'
@@ -169,9 +169,9 @@ class dmHelper
 				];
 			}
 		} else {
-			if ($localDebug) dol_syslog("propertiesFilter > _customFilterAttributeOptions input arr is not an array " . json_encode($arr));
+			if ($localDebug) dol_syslog("SmartAuth propertiesFilter > _customFilterAttributeOptions input arr is not an array " . json_encode($arr));
 		}
-		if ($localDebug) dol_syslog("propertiesFilter > _customFilterAttributeOptions return " . json_encode($ret));
+		if ($localDebug) dol_syslog("SmartAuth propertiesFilter > _customFilterAttributeOptions return " . json_encode($ret));
 		return $ret;
 	}
 
@@ -295,7 +295,7 @@ class dmHelper
 	{
 		$localDebug = false;
 
-		if ($localDebug) dol_syslog(("dmHelper : call for _customFilterAttributeContacts ..."));
+		if ($localDebug) dol_syslog(("SmartAuth dmHelper : call for _customFilterAttributeContacts ..."));
 	}
 
 	/**
@@ -317,8 +317,8 @@ class dmHelper
 		//TODO load langs for myself current object -- objective is to remove hardcoded samartinterventions
 		$langs->loadLangs(array('companies'));
 
-		if ($localDebug) dol_syslog("call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
-		// if($localDebug) dol_syslog("call propertiesFilter on $dolikey / $frontkey for parentOverride " . json_encode($parentOverride));
+		if ($localDebug) dol_syslog("SmartAuth call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
+		// if($localDebug) dol_syslog("SmartAuth call propertiesFilter on $dolikey / $frontkey for parentOverride " . json_encode($parentOverride));
 		$ret = [];
 		$type = $label = '';
 
@@ -330,33 +330,33 @@ class dmHelper
 
 		if (is_array($input)) {
 			foreach ($input as $key => $val) {
-				if ($localDebug) dol_syslog("       propertiesFilter apply on $key -> $val");
+				if ($localDebug) dol_syslog("SmartAuth        propertiesFilter apply on $key -> $val");
 				if (!in_array($key, array_keys($this->_mappingAttributes))) {
-					if ($localDebug) dol_syslog("       propertiesFilter not in array, continue");
+					if ($localDebug) dol_syslog("SmartAuth        propertiesFilter not in array, continue");
 					continue;
 				}
 				//use in priority settings from parentFieldsOverride
 				if ($useParentOverride && in_array($key, array_keys($parentOverride[$dolikey]))) {
-					if ($localDebug) dol_syslog("       propertiesFilter use parent override and key in parent override then parentOverride value to use is " . $parentOverride[$dolikey][$key] . ", instead of dolibarr default value = $val");
+					if ($localDebug) dol_syslog("SmartAuth        propertiesFilter use parent override and key in parent override then parentOverride value to use is " . $parentOverride[$dolikey][$key] . ", instead of dolibarr default value = $val");
 					$val = $parentOverride[$dolikey][$key];
 				}
 				if ($key == "label") {
 					$ret[$key] = $langs->transnoentities($val);
-					if ($localDebug) dol_syslog("       propertiesFilter on label, translated it to " . $ret[$key]);
+					if ($localDebug) dol_syslog("SmartAuth        propertiesFilter on label, translated it to " . $ret[$key]);
 					continue;
 				}
 				if ($key == "help") {
 					$ret[$key] = $langs->transnoentities($val);
-					if ($localDebug) dol_syslog("       propertiesFilter on help, translated it to " . $ret[$key]);
+					if ($localDebug) dol_syslog("SmartAuth        propertiesFilter on help, translated it to " . $ret[$key]);
 					continue;
 				}
 				//try to call a private function like _customFilterAttributeXXXXXXX (XXXX last part is dynamic)
 				$specialFilter = "_customFilterAttribute" . ucfirst($key);
 				if (is_callable([$this, $specialFilter])) {
-					if ($localDebug) dol_syslog("       propertiesFilter specialFilter is callable ...");
+					if ($localDebug) dol_syslog("SmartAuth        propertiesFilter specialFilter is callable ...");
 					$r = call_user_func([$this, $specialFilter], $val);
-					// if($localDebug) dol_syslog("call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));
-					// if($localDebug) dol_syslog("add _listOfForeignKeys $dolikey || $val");
+					// if($localDebug) dol_syslog("SmartAuth call propertiesFilter via customfilterattribute for $key:$val :: $specialFilter, returns " . json_encode($r));
+					// if($localDebug) dol_syslog("SmartAuth add _listOfForeignKeys $dolikey || $val");
 
 					if (isset($r->type) && !isset($this->listOfForeignKeys[$dolikey])) {
 						$this->listOfForeignKeys[$dolikey] = $val;
@@ -365,7 +365,7 @@ class dmHelper
 						$ret[$k] = $v;
 					}
 				} else {
-					if ($localDebug) dol_syslog("       propertiesFilter at least use front key name ...");
+					if ($localDebug) dol_syslog("SmartAuth        propertiesFilter at least use front key name ...");
 					//use front key name from correspondance table mapping
 					if (isset($this->_mappingAttributes[$key])) {
 						$frontkey = $this->_mappingAttributes[$key];
@@ -413,15 +413,15 @@ class dmHelper
 		global $langs;
 		$localDebug = false;
 
-		if ($localDebug) dol_syslog("dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey, extrafields=" . json_encode($extrafields));
+		if ($localDebug) dol_syslog("SmartAuth dmHelper generic extrafieldsFilter element=$objectElement, dolikey=$dolikey, frontkey=$frontkey, extrafields=" . json_encode($extrafields));
 		//TODO mapping + RO/RW
 		$ret = [];
 
 		foreach ($this->_mappingExtrafieldsAttributes as $dolattr => $appattr) {
 			$val = $extrafields->attributes[$objectElement][$dolattr][str_replace('options_', '', $dolikey)];
-			if ($localDebug) dol_syslog("  dmHelper dolikey=$dolikey, generic dolattr=$dolattr, appattr=$appattr, val=$val");
-			if ($localDebug) dol_syslog("  dmHelper dolikey=$dolikey, generic extrafieldsFilter search in extrafields->attributes[" . $objectElement . "][" . $dolattr . "][" . $dolikey . "]");
-			if ($localDebug) dol_syslog("  dmHelper dolikey=$dolikey, generic : " . json_encode($extrafields->attributes[$objectElement][$dolattr]));
+			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey, generic dolattr=$dolattr, appattr=$appattr, val=$val");
+			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey, generic extrafieldsFilter search in extrafields->attributes[" . $objectElement . "][" . $dolattr . "][" . $dolikey . "]");
+			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey, generic : " . json_encode($extrafields->attributes[$objectElement][$dolattr]));
 			// if(empty($val)) {
 			// 	continue;
 			// }
@@ -445,7 +445,7 @@ class dmHelper
 
 			//try to call a private function like _customFilterAttributeXXXXXXX (XXXX last part is dynamic)
 			$specialFilter = "_customFilterAttribute" . ucfirst($dolattr);
-			if ($localDebug) dol_syslog("  dmHelper dolikey=$dolikey generic extrafieldsFilter will call $specialFilter and val=$val");
+			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey generic extrafieldsFilter will call $specialFilter and val=$val");
 
 			if (is_callable([$this, $specialFilter])) {
 				$r = call_user_func([$this, $specialFilter], $val);
@@ -462,7 +462,7 @@ class dmHelper
 		//then we convert it into application type like doc :
 		//https://inligit.fr/cap-rel/dolibarr/plugin-smartinterventions/-/wikis/home
 		foreach ($this->smartNewObjectsTypes as $dolside => $appside) {
-			if ($localDebug) dol_syslog("extrafieldsFilter special new object type");
+			if ($localDebug) dol_syslog("SmartAuth extrafieldsFilter special new object type");
 			if (substr($dolikey, 0, strlen($dolside)) == $dolside) {
 				$ret['type'] = $appside;
 				$ret['visible'] = ["create", "update", "read"];

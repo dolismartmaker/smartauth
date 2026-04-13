@@ -249,7 +249,7 @@ class SmartAuth extends CommonObject
 	 */
 	public function fetchAll($sortorder = '', $sortfield = '', $limit = 0, $offset = 0, array $filter = array(), $filtermode = 'AND')
 	{
-		dol_syslog(__METHOD__, LOG_DEBUG);
+		dol_syslog("SmartAuth ".__METHOD__, LOG_DEBUG);
 
 		$records = array();
 
@@ -308,7 +308,7 @@ class SmartAuth extends CommonObject
 			return $records;
 		} else {
 			$this->errors[] = 'Error ' . $this->db->lasterror();
-			dol_syslog(__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
+			dol_syslog("SmartAuth ".__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
 
 			return -1;
 		}
@@ -375,7 +375,7 @@ class SmartAuth extends CommonObject
 
 		// Protection
 		if ($this->status == self::STATUS_VALIDATED) {
-			dol_syslog(get_class($this) . "::validate action abandonned: already validated", LOG_WARNING);
+			dol_syslog("SmartAuth ".get_class($this) . "::validate action abandonned: already validated", LOG_WARNING);
 			return 0;
 		}
 
@@ -383,7 +383,7 @@ class SmartAuth extends CommonObject
 		 || (getDolGlobalInt('MAIN_USE_ADVANCED_PERMS') && !empty($user->rights->smartauth->auth->auth_advance->validate))))
 		 {
 		 $this->error='NotEnoughPermissions';
-		 dol_syslog(get_class($this)."::valid ".$this->error, LOG_ERR);
+		 dol_syslog("SmartAuth ".get_class($this)."::valid ".$this->error, LOG_ERR);
 		 return -1;
 		 }*/
 
@@ -412,7 +412,7 @@ class SmartAuth extends CommonObject
 			}
 			$sql .= " WHERE rowid = " . ((int) $this->id);
 
-			dol_syslog(get_class($this) . "::validate()", LOG_DEBUG);
+			dol_syslog("SmartAuth ".get_class($this) . "::validate()", LOG_DEBUG);
 			$resql = $this->db->query($sql);
 			if (!$resql) {
 				dol_print_error($this->db);
@@ -457,10 +457,10 @@ class SmartAuth extends CommonObject
 				$dirsource = $conf->smartauth->dir_output . '/auth/' . $oldref;
 				$dirdest = $conf->smartauth->dir_output . '/auth/' . $newref;
 				if (!$error && file_exists($dirsource)) {
-					dol_syslog(get_class($this) . "::validate() rename dir " . $dirsource . " into " . $dirdest);
+					dol_syslog("SmartAuth ".get_class($this) . "::validate() rename dir " . $dirsource . " into " . $dirdest);
 
 					if (@rename($dirsource, $dirdest)) {
-						dol_syslog("Rename ok");
+						dol_syslog("SmartAuth Rename ok");
 						// Rename docs starting with $oldref with $newref
 						$listoffiles = dol_dir_list($conf->smartauth->dir_output . '/auth/' . $newref, 'files', 1, '^' . preg_quote($oldref, '/'));
 						foreach ($listoffiles as $fileentry) {
@@ -895,7 +895,7 @@ class SmartAuth extends CommonObject
 		$this->output = '';
 		$this->error = '';
 
-		dol_syslog(__METHOD__, LOG_DEBUG);
+		dol_syslog("SmartAuth ".__METHOD__, LOG_DEBUG);
 
 		$now = dol_now();
 

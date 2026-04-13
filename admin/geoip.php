@@ -58,7 +58,7 @@ global $langs, $user;
 
 // Libraries
 require_once DOL_DOCUMENT_ROOT . "/core/lib/admin.lib.php";
-require_once '../lib/smartauth.lib.php';
+dol_include_once('/smartauth/lib/smartauth.lib.php');
 //require_once "../class/myclass.class.php";
 
 // Translations

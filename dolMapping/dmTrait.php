@@ -85,7 +85,7 @@ trait dmTrait
 		$this->_dolobjectclassname = $this->dolibarrClassName
 			?? preg_replace('/.*\\\\dm/', '', static::class);
 
-		// dol_syslog(get_class($this) . " is booting, call _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname . ", mappping=" . get_class($this->_dolmapping));
+		// dol_syslog("SmartAuth ".get_class($this) . " is booting, call _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname . ", mappping=" . get_class($this->_dolmapping));
 		$this->_cacheDesc = $this->_objectDesc();
 	}
 
@@ -96,7 +96,7 @@ trait dmTrait
 	 */
 	public function objectDesc()
 	{
-		// dol_syslog(get_class($this) . " call : objectDesc " . json_encode($this->_cacheDesc));
+		// dol_syslog("SmartAuth ".get_class($this) . " call : objectDesc " . json_encode($this->_cacheDesc));
 		return $this->_cacheDesc;
 	}
 
@@ -113,32 +113,32 @@ trait dmTrait
 		global $langs;
 
 		$doliBaseClass = new $this->_dolobjectclassname($this->_db);
-		// dol_syslog(get_class($this) . " _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
+		// dol_syslog("SmartAuth ".get_class($this) . " _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname);
 
 
 		// $doliMapClass->fetch_optionals();
-		// dol_syslog(get_class($this) . " doliBaseClass is " . json_encode($doliBaseClass));
+		// dol_syslog("SmartAuth ".get_class($this) . " doliBaseClass is " . json_encode($doliBaseClass));
 		$obj = new \stdClass();
 
 		// to make order at the end
 		$reorder = [];
 
 		foreach ($this->listOfPublishedFields as $doliside => $appside) {
-			// dol_syslog(get_class($this) . " _objectDesc : $doliside => $appside for " . get_class($this->_dolmapping));
+			// dol_syslog("SmartAuth ".get_class($this) . " _objectDesc : $doliside => $appside for " . get_class($this->_dolmapping));
 			//note : foreign key detect, could be done thanks to dolibarr name plan (prefix fk_)
 			//but it's better to do it in propertiesFilter function
 			if (substr($doliside, 0, 8) == "options_") {
-				// dol_syslog(get_class($this) . " _objectDesc : do not call propertiesFilter for that extrafield");
+				// dol_syslog("SmartAuth ".get_class($this) . " _objectDesc : do not call propertiesFilter for that extrafield");
 				continue;
 			}
 			if (isset($this->_dolmapping) && !empty($this->_dolmapping)) {
-				// dol_syslog(get_class($this) . " _objectDesc : call propertiesFilter ...");
+				// dol_syslog("SmartAuth ".get_class($this) . " _objectDesc : call propertiesFilter ...");
 
 				// Get field definition from $fields array or generate from property
 				$fieldDef = $this->_getFieldDefinition($doliBaseClass, $doliside);
 				if ($fieldDef === null) {
 					// Field not found in $fields and not a property, skip it
-					dol_syslog(get_class($this) . " _objectDesc : field '$doliside' not found in " . get_class($doliBaseClass), LOG_WARNING);
+					dol_syslog("SmartAuth ".get_class($this) . " _objectDesc : field '$doliside' not found in " . get_class($doliBaseClass), LOG_WARNING);
 					continue;
 				}
 
@@ -160,7 +160,7 @@ trait dmTrait
 		//TODO CHECK
 		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields ?? '';
 		$listExtra = $extrafields->fetch_name_optionals_label($parentElementToUseForExtraFields);
-		// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter for element=" . $parentElementToUseForExtraFields . ", soit " . json_encode($listExtra));
+		// dol_syslog("SmartAuth ".get_class($this) . " _objectDesc : call extrafieldsFilter for element=" . $parentElementToUseForExtraFields . ", soit " . json_encode($listExtra));
 		foreach ($listExtra as $extrakey => $extralabel) {
 			//do we have to export that extrafield ?
 			if (!isset($this->listOfPublishedFields["options_" . $extrakey])) {
@@ -171,7 +171,7 @@ trait dmTrait
 			if (trim($appside == '')) {
 				$appside = $extrakey;
 			}
-			// dol_syslog(get_class($this) . " _objectDesc : call extrafieldsFilter ...");
+			// dol_syslog("SmartAuth ".get_class($this) . " _objectDesc : call extrafieldsFilter ...");
 			$obj->$appside = $this->_dolmapping->extrafieldsFilter($parentElementToUseForExtraFields, $extrakey, $appside, $extrafields);
 			$reorder[$obj->$appside['position']] = $appside;
 		}
@@ -190,13 +190,13 @@ trait dmTrait
 
 			$doliBaseLineClass = new $this->parentClassNameForLines($this->_db);
 			foreach ($this->listOfPublishedFieldsForLines as $doliside => $appside) {
-				// dol_syslog("call for _parentClassNameForLines 2 ... : " . json_encode($this->parentFieldsForLines[$doliside]));
+				// dol_syslog("SmartAuth call for _parentClassNameForLines 2 ... : " . json_encode($this->parentFieldsForLines[$doliside]));
 				if (substr($doliside, 0, 8) == "options_") {
 					continue;
 				}
 
 				if (isset($this->parentFieldsForLines[$doliside]) && !empty($this->parentFieldsForLines[$doliside])) {
-					// dol_syslog(get_class($this) . " _objectDesc : call propertiesFilterLine on line for $appside ...");
+					// dol_syslog("SmartAuth ".get_class($this) . " _objectDesc : call propertiesFilterLine on line for $appside ...");
 					$lines->config->{$appside} = $this->_dolmapping->propertiesFilter($this->parentFieldsForLines[$doliside], $doliside, $appside);
 				}
 			}
@@ -205,7 +205,7 @@ trait dmTrait
 		}
 
 		//order by "position" to help react front code ...
-		// dol_syslog("Check for properties positions : " . json_encode($reorder));
+		// dol_syslog("SmartAuth Check for properties positions : " . json_encode($reorder));
 		// ksort($reorder);
 		// $objsorted = new \stdClass();
 		// foreach($reorder as $k => $v) {
@@ -298,10 +298,10 @@ trait dmTrait
 	{
 		$this->_dolmapclassname = preg_replace('/.*DolibarrMapping/', '', get_class($obj));
 
-		// dol_syslog(" ###############exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
-		// dol_syslog(" ##########" . json_encode($obj));
-		// dol_syslog(" ######" . json_encode($this->listOfPublishedFields));
-		// dol_syslog(" ######" . json_encode($this->listOfPublishedFields));
+		// dol_syslog("SmartAuth  ###############exportMappedData for " . $this->_dolmapclassname . " id=" . $obj->id ?? " no id ");
+		// dol_syslog("SmartAuth  ##########" . json_encode($obj));
+		// dol_syslog("SmartAuth  ######" . json_encode($this->listOfPublishedFields));
+		// dol_syslog("SmartAuth  ######" . json_encode($this->listOfPublishedFields));
 
 		$mapped = new \stdClass;
 		foreach ($this->listOfPublishedFields as $doliside => $appside) {
@@ -321,12 +321,12 @@ trait dmTrait
 			}
 
 			// print json_encode($obj->array_options);//exit;
-			// dol_syslog("  ## doliside=" . $doliside . " and appside=" . $appside);
-			// dol_syslog("  ## value on dolibarr object =" . $obj->$doliside ?? 'null');
+			// dol_syslog("SmartAuth   ## doliside=" . $doliside . " and appside=" . $appside);
+			// dol_syslog("SmartAuth   ## value on dolibarr object =" . $obj->$doliside ?? 'null');
 			if (!empty($obj->$doliside)) {
 				//try to apply a function as data filter for example for logo to base64 encoded logo (Societe / dmSociete)
 				$user_function = "fieldFilterValue" . ucfirst($doliside);
-				// dol_syslog("Call user function $user_function on object " . get_class($this));
+				// dol_syslog("SmartAuth Call user function $user_function on object " . get_class($this));
 				if (is_callable([$this, $user_function])) {
 					$mapped->$appside = call_user_func([$this, $user_function], $obj, $obj->$doliside);
 					continue;
@@ -345,14 +345,14 @@ trait dmTrait
 			// print json_encode($obj->array_options);exit;
 			//extrafields
 			if (substr($doliside, 0, 8) == "options_") {
-				// dol_syslog("  ### special extrafields doliside=" . $doliside);
+				// dol_syslog("SmartAuth   ### special extrafields doliside=" . $doliside);
 				//new special types
 				foreach ($this->_dolmapping->smartNewObjectsTypes as $ntype => $notused) {
 					$verifType = substr($doliside, 8, strlen($ntype));
 					if ($verifType == $ntype) {
 						$user_function = "fieldFilterValue" . str_replace("_", "", ucfirst($ntype));
 						$mapped->$appside = call_user_func([$this, $user_function], $obj, $doliside);
-						// dol_syslog("  #### call $user_function for doliside=$doliside, appside=$appside returns " . json_encode($mapped->{$appside}));
+						// dol_syslog("SmartAuth   #### call $user_function for doliside=$doliside, appside=$appside returns " . json_encode($mapped->{$appside}));
 						continue 2;
 					}
 				}
@@ -397,7 +397,7 @@ trait dmTrait
 			}
 		}
 
-		// dol_syslog("fieldFilterValueSmartPhoto mapped is " . json_encode($mapped));
+		// dol_syslog("SmartAuth fieldFilterValueSmartPhoto mapped is " . json_encode($mapped));
 		return $mapped;
 	}
 
@@ -416,7 +416,7 @@ trait dmTrait
 	public function exportExtrafieldData($name, $objectid)
 	{
 		global $conf, $langs;
-		// dol_syslog("Ask exportExtrafieldData for name=$name, objectid=$objectid");
+		// dol_syslog("SmartAuth Ask exportExtrafieldData for name=$name, objectid=$objectid");
 
 		$doliMapClass = new $this->_dolmapclassname($this->_db);
 		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
@@ -430,7 +430,7 @@ trait dmTrait
 			$obj = $this->_db->fetch_object($resql);
 			$param = jsonOrUnserialize($obj->param);
 			//a:1:{s:7:"options";a:1:{s:44:"c_smartinterventions_status:label:code::code";N;}}
-			// dol_syslog("Ask exportExtrafieldData for $name, param is " . json_encode($param));
+			// dol_syslog("SmartAuth Ask exportExtrafieldData for $name, param is " . json_encode($param));
 
 			//TODO implement all dolibarr possibilites :-)
 			if (isset($param['options'])) {
@@ -440,7 +440,7 @@ trait dmTrait
 				if (strpos($param_list[0], 'class.php')) {
 					$classname = $InfoFieldList[0];
 					$classpath = $InfoFieldList[1];
-					// dol_syslog("#######classname=$classname, classpath=$classpath");
+					// dol_syslog("SmartAuth #######classname=$classname, classpath=$classpath");
 					if (!empty($classpath)) {
 						$res = dol_include_once($classpath);
 						if ($res && $classname && class_exists($classname)) {
@@ -455,7 +455,7 @@ trait dmTrait
 					}
 				}
 
-				// dol_syslog("************* " . json_encode($InfoFieldList));
+				// dol_syslog("SmartAuth ************* " . json_encode($InfoFieldList));
 
 				$parentField = '';
 				// 0 : tableName
@@ -468,7 +468,7 @@ trait dmTrait
 				// example c_smartinterventions_status:label:code::code
 
 				if (count($InfoFieldList) < 1) {
-					dol_syslog("exportExtrafieldData impossible due to data input " . $param_list[0]);
+					dol_syslog("SmartAuth exportExtrafieldData impossible due to data input " . $param_list[0]);
 					return $objectid;
 				}
 
@@ -503,9 +503,9 @@ trait dmTrait
 						$filter_categorie = true;
 					}
 				}
-				// dol_syslog("Ask exportExtrafieldData (1) for name=$name, objectid=$objectid");
+				// dol_syslog("SmartAuth Ask exportExtrafieldData (1) for name=$name, objectid=$objectid");
 
-				// dol_syslog("************* " . json_encode($keyList));
+				// dol_syslog("SmartAuth ************* " . json_encode($keyList));
 				if ($filter_categorie === false) {
 					$fields_label = explode('|', $labelFieldName);
 					if (is_array($fields_label)) {
@@ -514,7 +514,7 @@ trait dmTrait
 					}
 
 
-					// dol_syslog("Ask exportExtrafieldData (2) for name=$name, objectid=$objectid");
+					// dol_syslog("SmartAuth Ask exportExtrafieldData (2) for name=$name, objectid=$objectid");
 					$sqlwhere = '';
 					$sql = "SELECT " . $keyList;
 					$sql .= ' FROM ' . $this->_db->prefix() . $tableName;
@@ -539,7 +539,7 @@ trait dmTrait
 							$sql .= ' as main, ' . $this->_db->prefix() . $tableName . '_extrafields as extra';
 							$sqlwhere .= " WHERE extra.fk_object=main." . $keyFieldName . " AND " . $whereFieldOrExtra;
 						} else {
-							// dol_syslog("Ask exportExtrafieldData (5) where for name=$name, objectid=$objectid");
+							// dol_syslog("SmartAuth Ask exportExtrafieldData (5) where for name=$name, objectid=$objectid");
 							$sqlwhere .= " WHERE " . $whereFieldOrExtra;
 						}
 					} else {
@@ -552,14 +552,14 @@ trait dmTrait
 					$sql .= $sqlwhere;
 					//print $sql;
 
-					// dol_syslog("Ask exportExtrafieldData (3) for name=$name, objectid=$objectid :: where=$sqlwhere");
+					// dol_syslog("SmartAuth Ask exportExtrafieldData (3) for name=$name, objectid=$objectid :: where=$sqlwhere");
 					$resql = $this->_db->query($sql);
 					if ($resql) {
 						$obj = $this->_db->fetch_object($resql);
 						return $obj->{$labelFieldName};
 						$this->_db->free($resql);
 					} else {
-						dol_syslog('Error in request ' . $sql . ' ' . $this->_db->lasterror() . '. Check setup of extra parameters', \LOG_ERR);
+						dol_syslog('SmartAuth Error in request ' . $sql . ' ' . $this->_db->lasterror() . '. Check setup of extra parameters', \LOG_ERR);
 					}
 				} else {
 					require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
@@ -600,12 +600,12 @@ trait dmTrait
 			return $objectid; // Return just ID at max depth
 		}
 
-		//dol_syslog("#######Call exportData for $name / $objectid / " . $this->listOfForeignKeys[$name]);
-		// dol_syslog("#######Call exportData for $name / $objectid / " . getEntity('societe'));
+		//dol_syslog("SmartAuth #######Call exportData for $name / $objectid / " . $this->listOfForeignKeys[$name]);
+		// dol_syslog("SmartAuth #######Call exportData for $name / $objectid / " . getEntity('societe'));
 		$InfoFieldList = explode(":", $this->listOfForeignKeys[$name]);
 		$classname = $InfoFieldList[1];
 		$classpath = $InfoFieldList[2];
-		// dol_syslog("#######classname=$classname, classpath=$classpath");
+		// dol_syslog("SmartAuth #######classname=$classname, classpath=$classpath");
 		if (!empty($classpath)) {
 			$res = dol_include_once($classpath);
 			if ($res && $classname && class_exists($classname)) {
@@ -683,12 +683,12 @@ trait dmTrait
 	public function fieldFilterValueSmartPhoto($object, $doliside)
 	{
 		global $conf, $db;
-		// dol_syslog("dmHelper : call for fieldFilterValueSmartPhoto for $doliside"); // . json_encode($object));
+		// dol_syslog("SmartAuth dmHelper : call for fieldFilterValueSmartPhoto for $doliside"); // . json_encode($object));
 		list($dir, $element) = $this->getStoragePath($object);
-		// dol_syslog("dmHelper : call for fieldFilterValueSmartPhoto dir=$dir");
+		// dol_syslog("SmartAuth dmHelper : call for fieldFilterValueSmartPhoto dir=$dir");
 
 		$img = $dir . "/" . dol_sanitizeFileName($object->array_options[$doliside]);
-		// dol_syslog("dmHelper : call for fieldFilterValueSmartPhoto img=$img");
+		// dol_syslog("SmartAuth dmHelper : call for fieldFilterValueSmartPhoto img=$img");
 
 		$ret = new \stdClass;
 		$ret->filename = basename($img);
@@ -715,10 +715,10 @@ trait dmTrait
 			$ret->gps = "";
 			$ret->src = "";
 		} else {
-			dol_syslog("dmHelper : file not found " . json_encode($ecm), \LOG_WARNING);
+			dol_syslog("SmartAuth dmHelper : file not found " . json_encode($ecm), \LOG_WARNING);
 		}
 
-		// dol_syslog("dmHelper : call for fieldFilterValueSmartPhoto, return " . json_encode($ret));
+		// dol_syslog("SmartAuth dmHelper : call for fieldFilterValueSmartPhoto, return " . json_encode($ret));
 		return $ret;
 
 		//for example could be a base64 field

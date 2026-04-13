@@ -1427,7 +1427,7 @@ class ObjectDocumentController
         $required = ['class', 'file', 'module', 'modulepart', 'subdir_method'];
         foreach ($required as $key) {
             if (empty($config[$key])) {
-                dol_syslog("ObjectDocumentController::registerObjectType - Missing required key: $key for type: $type", LOG_WARNING);
+                dol_syslog("SmartAuth ObjectDocumentController::registerObjectType - Missing required key: $key for type: $type", LOG_WARNING);
                 return false;
             }
         }

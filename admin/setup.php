@@ -54,7 +54,7 @@ global $langs, $user;
 
 // Libraries
 require_once DOL_DOCUMENT_ROOT."/core/lib/admin.lib.php";
-require_once '../lib/smartauth.lib.php';
+dol_include_once('/smartauth/lib/smartauth.lib.php');
 //require_once "../class/myclass.class.php";
 
 // Translations
@@ -88,7 +88,7 @@ $useFormSetup = 1;
 if (!class_exists('FormSetup')) {
 	// For retrocompatibility Dolibarr < 16.0
 	if (floatval(DOL_VERSION) < 18.0 && !class_exists('FormSetup')) {
-		require_once __DIR__.'/../backport/v16/core/class/html.formsetup.class.php';
+		dol_include_once('/smartauth/backport/v16/core/class/html.formsetup.class.php');
 	} else {
 		require_once DOL_DOCUMENT_ROOT.'/core/class/html.formsetup.class.php';
 	}
@@ -257,11 +257,11 @@ if ($action == 'updateMask') {
 			return;
 		} else {
 			setEventMessages($module->error, null, 'errors');
-			dol_syslog($module->error, LOG_ERR);
+			dol_syslog("SmartAuth ".$module->error, LOG_ERR);
 		}
 	} else {
 		setEventMessages($langs->trans("ErrorModuleNotFound"), null, 'errors');
-		dol_syslog($langs->trans("ErrorModuleNotFound"), LOG_ERR);
+		dol_syslog("SmartAuth ".$langs->trans("ErrorModuleNotFound"), LOG_ERR);
 	}
 } elseif ($action == 'setmod') {
 	// TODO Check if numbering module chosen can be activated by calling method canBeActivated

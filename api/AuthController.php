@@ -77,7 +77,7 @@ class AuthController
 	public function index($arr = null)
 	{
 		global $mysoc;
-		dol_syslog("Debug smartauth::AuthController : index");
+		dol_syslog("SmartAuth Debug smartauth::AuthController : index");
 		$ret = [
 			'entities' => $this->_api_GetListOfEntities(),
 			'socname' => $mysoc->name,
@@ -138,7 +138,7 @@ class AuthController
 	public function refresh($arr = null)
 	{
 		global $db, $smartAuthAppID;
-		dol_syslog("Debug smartauth::AuthController : refresh");
+		dol_syslog("SmartAuth Debug smartauth::AuthController : refresh");
 
 		// Get refresh token from Authorization header
 		$refresh_token = self::_getBearerToken();
@@ -195,9 +195,9 @@ class AuthController
 
 		// Check token family (detect token replay attacks)
 		$family_check = $this->_checkTokenFamily($family_id, $decoded->user_id);
-		dol_syslog("_checkTokenFamily returns " . json_encode($family_check));
+		dol_syslog("SmartAuth _checkTokenFamily returns " . json_encode($family_check));
 		if (!$family_check['valid']) {
-			dol_syslog("Token family check failed: " . $family_check['reason'], LOG_WARNING);
+			dol_syslog("SmartAuth Token family check failed: " . $family_check['reason'], LOG_WARNING);
 			// SECURITY: Revoke entire token family on suspicious activity
 			$this->_revokeTokenFamily($family_id, 'suspicious activity');
 			return [['error' => 'Security violation detected. All sessions revoked.'], 401];
@@ -205,7 +205,7 @@ class AuthController
 
 		// Check max refresh count
 		if ($decoded->refresh_count >= SmartTokenConfig::MAX_REFRESH_COUNT) {
-			dol_syslog("Max refresh count exceeded for token " . $decoded->token_id, LOG_WARNING);
+			dol_syslog("SmartAuth Max refresh count exceeded for token " . $decoded->token_id, LOG_WARNING);
 			return [['error' => 'Maximum refresh limit reached. Please login again.'], 401];
 		}
 
@@ -231,7 +231,7 @@ class AuthController
 		// Update token family stats
 		$this->_updateTokenFamily($family_id, $decoded->refresh_count + 1);
 
-		dol_syslog("Token refreshed successfully for user $login");
+		dol_syslog("SmartAuth Token refreshed successfully for user $login");
 
 		return [[
 			'access_token' => $new_tokens['access_token'],
@@ -300,8 +300,8 @@ class AuthController
 	public function login($payload)
 	{
 		global $db, $conf, $mysoc;
-		dol_syslog("Debug smartauth::AuthController : login");
-		// dol_syslog("Debug smartauth : AuthController::login : data is " . json_encode($payload));
+		dol_syslog("SmartAuth Debug smartauth::AuthController : login");
+		// dol_syslog("SmartAuth Debug smartauth : AuthController::login : data is " . json_encode($payload));
 
 		$rateLimiter = new RateLimiter($db);
 		$ip = $this->get_client_ip();
@@ -325,7 +325,7 @@ class AuthController
 		);
 
 		if (!$ip_limit['allowed']) {
-			dol_syslog("Rate limit: IP $ip blocked", LOG_WARNING);
+			dol_syslog("SmartAuth Rate limit: IP $ip blocked", LOG_WARNING);
 			return [[
 				'error' => 'Too many attempts. Please try again later.',
 				'retry_after' => $ip_limit['retry_after']
@@ -342,7 +342,7 @@ class AuthController
 			);
 
 			if (!$login_limit['allowed']) {
-				dol_syslog("Rate limit: Username $login blocked", LOG_WARNING);
+				dol_syslog("SmartAuth Rate limit: Username $login blocked", LOG_WARNING);
 
 				// Record IP attempt anyway
 				$rateLimiter->recordAttempt($ip, 'login_ip', false);
@@ -375,17 +375,17 @@ class AuthController
 		$_SESSION["dol_entity"] = $entity;
 		// force current entity but maybe a TODO with transverse mode or ...
 		$conf->entity = $entity;
-		// dol_syslog("conf avant " . json_encode($conf->multicompany));
+		// dol_syslog("SmartAuth conf avant " . json_encode($conf->multicompany));
 		$conf->setValues($db);
 		$mysoc->setMysoc($conf);
-		// dol_syslog("conf apres " . json_encode($conf->multicompany));
+		// dol_syslog("SmartAuth conf apres " . json_encode($conf->multicompany));
 
 		$pass   = $payload['password'] ?? '';
 
 		//check if login / pass is ok
 		include_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
 		$login = checkLoginPassEntity($login, $pass, $entity, ['dolibarr'], 'api');		// Check credentials.
-		dol_syslog("Debug smartauth : AuthController::login : checklogin is " . json_encode($login));
+		dol_syslog("SmartAuth Debug smartauth : AuthController::login : checklogin is " . json_encode($login));
 		// SECURITY: Use generic error message to prevent user enumeration
 		// Detailed reason is logged server-side only
 		$genericAuthError = 'Invalid credentials';
@@ -435,13 +435,13 @@ class AuthController
 
 		$rememberme  = (int) $payload['rememberMe']  ?? 0;
 
-		dol_syslog("Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id); // full debug . ", " . json_encode($tmpuser));
+		dol_syslog("SmartAuth Debug smartauth : AuthController::login : return 200 with user=" . $tmpuser->id); // full debug . ", " . json_encode($tmpuser));
 		$userlogin = $tmpuser->email;
 
 		$device_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '') ?? '';
 		$name = $this->getDeviceName(null, $device_uuid);
 		$devices_choice = null;
-		dol_syslog("AuthController : device name is $name for uuid=$device_uuid");
+		dol_syslog("SmartAuth AuthController : device name is $name for uuid=$device_uuid");
 		if (empty($name)) {
 			$devices_choice = $this->_getAllDevicesForUser($tmpuser->id);
 		}
@@ -501,13 +501,13 @@ class AuthController
 	{
 		global $db;
 		$user = $payload['user'];
-		// dol_syslog("Debug smartauth::AuthController : logout for " . json_encode($payload));
+		// dol_syslog("SmartAuth Debug smartauth::AuthController : logout for " . json_encode($payload));
 		if (!empty($payload['family_id'])) {
-			dol_syslog("Debug smartauth::AuthController : logout for " . $user->id . ", tokenFamily id=" . $payload['family_id']);
+			dol_syslog("SmartAuth Debug smartauth::AuthController : logout for " . $user->id . ", tokenFamily id=" . $payload['family_id']);
 			$this->_revokeTokenFamily($payload['family_id'], 'logout');
 		}
 		// if (!empty($payload['token_id'])) {
-		// 	dol_syslog("Debug smartauth::AuthController : logout for " . $user->id . ", token id=" . $payload['token_id']);
+		// 	dol_syslog("SmartAuth Debug smartauth::AuthController : logout for " . $user->id . ", token id=" . $payload['token_id']);
 		// 	$this->_revokeToken($payload['token_id'], 'logout');
 		// }
 
@@ -564,7 +564,7 @@ class AuthController
 	public function device($payload = null)
 	{
 		global $db;
-		dol_syslog("Debug smartauth::AuthController : device"); // full debug, payload = " . json_encode($payload));
+		dol_syslog("SmartAuth Debug smartauth::AuthController : device"); // full debug, payload = " . json_encode($payload));
 
 		$result = "error";
 
@@ -718,7 +718,7 @@ class AuthController
 	public function newThirdpartKey($socid, $socmail, $entity = 1)
 	{
 		global $db, $smartAuthAppID;
-		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey");
+		dol_syslog("SmartAuth Debug smartauth : AuthController::_newThirdpartKey");
 
 		//remove all other token for that user and that app ?
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
@@ -746,7 +746,7 @@ class AuthController
 			$device_id
 		);
 
-		dol_syslog("Debug smartauth : AuthController::_newThirdpartKey return");
+		dol_syslog("SmartAuth Debug smartauth : AuthController::_newThirdpartKey return");
 		return $new_tokens;
 	}
 
@@ -772,7 +772,7 @@ class AuthController
 	private static function _getBearerToken()
 	{
 		$headers = self::_getAuthorizationHeader();
-		dol_syslog("Debug smartauth : _getBearerToken");
+		dol_syslog("SmartAuth Debug smartauth : _getBearerToken");
 
 		if (!empty($headers)) {
 			if (preg_match('/Bearer\s(\S+)/', $headers, $matches)) {
@@ -781,16 +781,16 @@ class AuthController
 				// Validate token format: must be "numeric_id|jwt_base64"
 				// JWT format: base64.base64.base64 (header.payload.signature)
 				if (!self::_validateBearerTokenFormat($token)) {
-					dol_syslog("Debug smartauth : _getBearerToken invalid token format", LOG_WARNING);
+					dol_syslog("SmartAuth Debug smartauth : _getBearerToken invalid token format", LOG_WARNING);
 					return null;
 				}
 
-				dol_syslog("Debug smartauth : _getBearerToken, valid format, return token");
+				dol_syslog("SmartAuth Debug smartauth : _getBearerToken, valid format, return token");
 				return $token;
 			}
 		}
 
-		dol_syslog("Debug smartauth : _getBearerToken empty headers, return null");
+		dol_syslog("SmartAuth Debug smartauth : _getBearerToken empty headers, return null");
 		return null;
 	}
 
@@ -951,7 +951,7 @@ class AuthController
 	{
 		global $conf;
 		if (isset($conf->cache['smartmakers']['clientIP'])) {
-			dol_syslog("get_client_ip from cache : " . $conf->cache['smartmakers']['clientIP']);
+			dol_syslog("SmartAuth get_client_ip from cache : " . $conf->cache['smartmakers']['clientIP']);
 			return $conf->cache['smartmakers']['clientIP'];
 		}
 		// Try Apache function first if available
@@ -973,7 +973,7 @@ class AuthController
 
 					if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
 						$conf->cache['smartmakers']['clientIP'] = $ip;
-						// dol_syslog("get_client_ip (1) use return $ip");
+						// dol_syslog("SmartAuth get_client_ip (1) use return $ip");
 						return $ip;
 					}
 				}
@@ -996,13 +996,13 @@ class AuthController
 
 				if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
 					$conf->cache['smartmakers']['clientIP'] = $ip;
-					// dol_syslog("get_client_ip (2) use return $ip");
+					// dol_syslog("SmartAuth get_client_ip (2) use return $ip");
 					return $ip;
 				}
 			}
 		}
 
-		// dol_syslog("get_client_ip use return 0.0.0.0");
+		// dol_syslog("SmartAuth get_client_ip use return 0.0.0.0");
 		return "0.0.0.0";
 	}
 
@@ -1233,12 +1233,12 @@ class AuthController
 
 		$resql = $db->query($sql);
 		if (!$resql) {
-			dol_syslog("Failed to create token: " . $db->lasterror(), LOG_ERR);
+			dol_syslog("SmartAuth Failed to create token: " . $db->lasterror(), LOG_ERR);
 			return null;
 		}
 
 		$token_id = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_auth");
-		dol_syslog("_generateToken id=$token_id");
+		dol_syslog("SmartAuth _generateToken id=$token_id");
 
 		// Generate unique JWT ID to prevent replay attacks
 		$jti = bin2hex(random_bytes(16));
@@ -1332,7 +1332,7 @@ class AuthController
 		$sql .= " WHERE family_id = " . (int) $family_id;
 		$db->query($sql);
 
-		dol_syslog("Token family $family_id revoked", LOG_INFO);
+		dol_syslog("SmartAuth Token family $family_id revoked", LOG_INFO);
 	}
 
 	/**
@@ -1591,7 +1591,7 @@ class AuthController
 
 			$resql = $db->query($sql);
 			if (!$resql) {
-				dol_syslog("Failed to create device: " . $db->lasterror(), LOG_ERR);
+				dol_syslog("SmartAuth Failed to create device: " . $db->lasterror(), LOG_ERR);
 				throw new Exception("Failed to create device: " . $db->lasterror());
 			}
 
@@ -1653,7 +1653,7 @@ class AuthController
 			json_reply('Access denied (token not found)', 401);
 		}
 		if (!is_numeric($token_id)) {
-			dol_syslog("Access denied, token not numeric", LOG_ERR);
+			dol_syslog("SmartAuth Access denied, token not numeric", LOG_ERR);
 			json_reply('Access denied (invalid token)', 401);
 			//or ??? return [['error' => 'Invalid token ID'], 401];
 		}
@@ -1698,7 +1698,7 @@ class AuthController
 		}
 
 		// Verify expiration
-		dol_syslog("Refresh token check eol : db=" . $db->jdate($token_data->date_eol) . ", now=" . dol_now());
+		dol_syslog("SmartAuth Refresh token check eol : db=" . $db->jdate($token_data->date_eol) . ", now=" . dol_now());
 		if ($db->jdate($token_data->date_eol) < dol_now()) {
 			dol_syslog("smartauth :Token expired. Please login again !", LOG_WARNING);
 			json_reply(['error' => 'Token expired. Please login again.'], 401);
@@ -1707,7 +1707,7 @@ class AuthController
 		// Verify refresh
 		// Check max refresh count
 		if ($token_data->refresh_count >= SmartTokenConfig::MAX_REFRESH_COUNT) {
-			dol_syslog("Max refresh count exceeded for token " . $token_data->token_id, LOG_WARNING);
+			dol_syslog("SmartAuth Max refresh count exceeded for token " . $token_data->token_id, LOG_WARNING);
 			json_reply(['error' => 'Invalid token type.'], 401);
 		}
 

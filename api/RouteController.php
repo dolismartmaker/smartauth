@@ -66,7 +66,7 @@ class RouteController
 			return false;
 		}
 
-		dol_syslog("Debug smartauth  Route matched (cached): method=$method, action=$action, target=" . $route['action']);
+		dol_syslog("SmartAuth Debug smartauth  Route matched (cached): method=$method, action=$action, target=" . $route['action']);
 
 		// Parse request data
 		$data = self::parseRequestData($method, $route['action']);
@@ -245,11 +245,11 @@ class RouteController
 
 		// Match action against target pattern
 		if (!self::matchAction($action, $targetAction)) {
-			// dol_syslog("Debug smartauth  Route does not match: $action != $targetAction");
+			// dol_syslog("SmartAuth Debug smartauth  Route does not match: $action != $targetAction");
 			return;
 		}
 
-		dol_syslog("Debug smartauth  Route matched: method=$method, action=$action, target=$targetAction");
+		dol_syslog("SmartAuth Debug smartauth  Route matched: method=$method, action=$action, target=$targetAction");
 
 		// Parse request data
 		$data = self::parseRequestData($method, $targetAction);
@@ -337,17 +337,17 @@ class RouteController
 
 		if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE' || $method === 'PATCH') {
 			$raw = file_get_contents('php://input');
-			dol_syslog("Debug smartauth parseRequestData: method=$method, raw_length=" . strlen($raw) . ", raw=" . substr($raw, 0, 500));
+			dol_syslog("SmartAuth Debug smartauth parseRequestData: method=$method, raw_length=" . strlen($raw) . ", raw=" . substr($raw, 0, 500));
 			if ($raw !== false && $raw !== '') {
 				$decoded = json_decode($raw, true);
 				if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
 					$data = $decoded;
-					dol_syslog("Debug smartauth parseRequestData: decoded data keys=" . implode(',', array_keys($data)));
+					dol_syslog("SmartAuth Debug smartauth parseRequestData: decoded data keys=" . implode(',', array_keys($data)));
 				} else {
-					dol_syslog("Debug smartauth  JSON decode error: " . json_last_error_msg(), LOG_WARNING);
+					dol_syslog("SmartAuth Debug smartauth  JSON decode error: " . json_last_error_msg(), LOG_WARNING);
 				}
 			} else {
-				dol_syslog("Debug smartauth parseRequestData: raw is empty or false");
+				dol_syslog("SmartAuth Debug smartauth parseRequestData: raw is empty or false");
 			}
 		} elseif ($method === 'GET') {
 			// Filter and sanitize GET parameters
@@ -412,11 +412,11 @@ class RouteController
 			// No specific schema: apply default sanitization to all fields
 			return InputSanitizer::sanitizeAll($data);
 		} catch (\InvalidArgumentException $e) {
-			dol_syslog("Debug smartauth sanitizeRequestData validation error: " . $e->getMessage(), LOG_WARNING);
+			dol_syslog("SmartAuth Debug smartauth sanitizeRequestData validation error: " . $e->getMessage(), LOG_WARNING);
 			// Return empty array on validation error - controller will handle missing required fields
 			return [];
 		} catch (Exception $e) {
-			dol_syslog("Debug smartauth sanitizeRequestData error: " . $e->getMessage(), LOG_ERR);
+			dol_syslog("SmartAuth Debug smartauth sanitizeRequestData error: " . $e->getMessage(), LOG_ERR);
 			// Fallback to default sanitization on unexpected errors
 			return InputSanitizer::sanitizeAll($data);
 		}
@@ -591,7 +591,7 @@ class RouteController
 		try {
 			$decoded = $ac->Check();
 		} catch (Exception $e) {
-			dol_syslog("Debug smartauth  Auth check failed: " . $e->getMessage(), LOG_WARNING);
+			dol_syslog("SmartAuth Debug smartauth  Auth check failed: " . $e->getMessage(), LOG_WARNING);
 			self::insertLogs(null, 401, 'Authentication failed', null);
 			\json_reply('Authentication required', 401);
 			return false;
@@ -614,12 +614,12 @@ class RouteController
 		$user = new User($db);
 		$res = $user->fetch(0, $login, 0, 0, $entity);
 		if ($res <= 0) {
-			dol_syslog("Debug smartauth  User not found: login=$login, entity=$entity");
+			dol_syslog("SmartAuth Debug smartauth  User not found: login=$login, entity=$entity");
 			self::insertLogs($token_id, 401, 'User not found', $entity);
 			\json_reply('Authentication failed', 401);
 			return false;
 		} else {
-			dol_syslog("Debug smartauth  User found: login=$login, entity=$entity, id=" . $user->id);
+			dol_syslog("SmartAuth Debug smartauth  User found: login=$login, entity=$entity, id=" . $user->id);
 		}
 
 		// Set user entity
@@ -638,14 +638,14 @@ class RouteController
 		if (!empty($user->socid)) {
 			$res = $buyer->fetch($user->socid);
 			if (!$res) {
-				dol_syslog("Debug smartauth  Failed to load buyer socid=" . $user->socid, LOG_ERR);
+				dol_syslog("SmartAuth Debug smartauth  Failed to load buyer socid=" . $user->socid, LOG_ERR);
 				self::insertLogs($token_id, 403, 'Buyer load error', $entity);
 				\json_reply('Access denied', 403);
 				return false;
 			}
 		}
 
-		dol_syslog("Debug smartauth handleAuthentication return entity=$entity, token_id=$token_id");
+		dol_syslog("SmartAuth Debug smartauth handleAuthentication return entity=$entity, token_id=$token_id");
 		return [$user, $entity, $token_id, $buyer, $family_id, $device_id, null];
 	}
 	/**
@@ -738,7 +738,7 @@ class RouteController
 		if (!empty($user->socid)) {
 			$res = $buyer->fetch($user->socid);
 			if (!$res) {
-				dol_syslog("Debug smartauth OAuth2: Failed to load buyer socid=" . $user->socid, LOG_ERR);
+				dol_syslog("SmartAuth Debug smartauth OAuth2: Failed to load buyer socid=" . $user->socid, LOG_ERR);
 			}
 		}
 
@@ -750,7 +750,7 @@ class RouteController
 
 		$jti = $payload['jti'] ?? null;
 
-		dol_syslog("Debug smartauth handleOAuth2Authentication: client=$clientId, user=" . $user->id . ", grant=$grantType");
+		dol_syslog("SmartAuth Debug smartauth handleOAuth2Authentication: client=$clientId, user=" . $user->id . ", grant=$grantType");
 
 		return [$user, $entity, $jti, $buyer, null, null, $oauthContext];
 	}
@@ -781,11 +781,11 @@ class RouteController
 	 */
 	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id, $device_id, $oauthContext = null)
 	{
-		dol_syslog("Debug smartauth executeAction: $targetClass, redirectFunction=$redirectFunction, token_id=$token_id, family_id=$family_id, device_id=$device_id");
+		dol_syslog("SmartAuth Debug smartauth executeAction: $targetClass, redirectFunction=$redirectFunction, token_id=$token_id, family_id=$family_id, device_id=$device_id");
 
 		// Validate class exists
 		if (!class_exists($targetClass)) {
-			dol_syslog("Debug smartauth  Class ($targetClass) not found", LOG_ERR);
+			dol_syslog("SmartAuth Debug smartauth  Class ($targetClass) not found", LOG_ERR);
 			self::insertLogs($token_id, 500, 'Internal error - Class not found', $entity);
 			\json_reply('Internal server error - Class not found', 500);
 			return;
@@ -795,7 +795,7 @@ class RouteController
 
 		// Validate method exists
 		if (!method_exists($class, $redirectFunction)) {
-			dol_syslog("Debug smartauth  Method not found: $targetClass::$redirectFunction", LOG_ERR);
+			dol_syslog("SmartAuth Debug smartauth  Method not found: $targetClass::$redirectFunction", LOG_ERR);
 			self::insertLogs($token_id, 500, 'Internal error', $entity);
 			\json_reply('Internal server error - Method not found', 500);
 			return;
@@ -833,7 +833,7 @@ class RouteController
 
 			// Validate response format
 			if (!is_array($result) || count($result) !== 2) {
-				dol_syslog("Debug smartauth  Invalid response format from $targetClass::$redirectFunction", LOG_ERR);
+				dol_syslog("SmartAuth Debug smartauth  Invalid response format from $targetClass::$redirectFunction", LOG_ERR);
 				self::insertLogs($token_id, 500, 'Internal error', $entity);
 				\json_reply('Internal server error - Invalid response format', 500);
 				return;
@@ -844,7 +844,7 @@ class RouteController
 			self::insertLogs($token_id, $code, $message, $entity);
 			\json_reply($message, $code);
 		} catch (Exception $e) {
-			dol_syslog("Debug smartauth  Exception in $targetClass::$redirectFunction: " . $e->getMessage(), LOG_ERR);
+			dol_syslog("SmartAuth Debug smartauth  Exception in $targetClass::$redirectFunction: " . $e->getMessage(), LOG_ERR);
 			self::insertLogs($token_id, 500, 'Exception: ' . $e->getMessage(), $entity);
 			\json_reply('Internal server error - Exception', 500);
 		}
@@ -877,7 +877,7 @@ class RouteController
 
 		// Check if logging is enabled
 		if (getDolGlobalString('SMARTAUTH_COLLECT_LOGS') == '') {
-			dol_syslog("Debug smartauth  do not collect logs");
+			dol_syslog("SmartAuth Debug smartauth  do not collect logs");
 			return;
 		}
 
@@ -946,10 +946,10 @@ class RouteController
 		try {
 			$resql = $db->query($sql);
 			if (!$resql) {
-				dol_syslog("Debug smartauth  Failed to insert log: " . $db->lasterror(), LOG_WARNING);
+				dol_syslog("SmartAuth Debug smartauth  Failed to insert log: " . $db->lasterror(), LOG_WARNING);
 			}
 		} catch (Exception $e) {
-			dol_syslog("Debug smartauth  Log insertion error: " . $e->getMessage(), LOG_WARNING);
+			dol_syslog("SmartAuth Debug smartauth  Log insertion error: " . $e->getMessage(), LOG_WARNING);
 		}
 	}
 
@@ -1122,7 +1122,7 @@ class RouteController
 			$lastWarning = getDolGlobalInt('SMARTAUTH_CORS_WARNING_TIME', 0);
 			if ((time() - $lastWarning) > 86400) {
 				dol_syslog(
-					"SECURITY WARNING: Cross-origin request detected from '$origin' but no CORS headers found. " .
+					"SmartAuth SECURITY WARNING: Cross-origin request detected from '$origin' but no CORS headers found. " .
 					"Ensure CORS is configured at server level (Apache/Nginx) for security.",
 					LOG_WARNING
 				);

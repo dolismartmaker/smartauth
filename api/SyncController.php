@@ -158,7 +158,7 @@ class SyncController
      */
     public function register($payload)
     {
-        dol_syslog("SyncController::register");
+        dol_syslog("SmartAuth SyncController::register");
 
         // Validate required fields
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
@@ -207,7 +207,7 @@ class SyncController
             $sql .= "1)";
 
             if (!$this->db->query($sql)) {
-                dol_syslog("SyncController::register - Insert failed: " . $this->db->lasterror(), LOG_ERR);
+                dol_syslog("SmartAuth SyncController::register - Insert failed: " . $this->db->lasterror(), LOG_ERR);
                 return [['error' => 'Failed to register client'], 500];
             }
 
@@ -260,7 +260,7 @@ class SyncController
      */
     public function pull($payload)
     {
-        dol_syslog("SyncController::pull");
+        dol_syslog("SmartAuth SyncController::pull");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
         if (empty($client_uuid)) {
@@ -366,7 +366,7 @@ class SyncController
     public function push($payload)
     {
         global $user;
-        dol_syslog("SyncController::push");
+        dol_syslog("SmartAuth SyncController::push");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
         if (empty($client_uuid)) {
@@ -457,7 +457,7 @@ class SyncController
                         ];
                 }
             } catch (\Exception $e) {
-                dol_syslog("SyncController::push - Exception: " . $e->getMessage(), LOG_ERR);
+                dol_syslog("SmartAuth SyncController::push - Exception: " . $e->getMessage(), LOG_ERR);
                 $result['errors'][] = [
                     'id' => $id ?: $temp_id,
                     'error' => $e->getMessage(),
@@ -500,7 +500,7 @@ class SyncController
      */
     public function status($payload)
     {
-        dol_syslog("SyncController::status");
+        dol_syslog("SmartAuth SyncController::status");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
         if (empty($client_uuid)) {
@@ -550,7 +550,7 @@ class SyncController
      */
     public function conflicts($payload)
     {
-        dol_syslog("SyncController::conflicts");
+        dol_syslog("SmartAuth SyncController::conflicts");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
         if (empty($client_uuid)) {
@@ -609,7 +609,7 @@ class SyncController
     public function resolveConflict($payload)
     {
         global $user;
-        dol_syslog("SyncController::resolveConflict");
+        dol_syslog("SmartAuth SyncController::resolveConflict");
 
         $conflict_id = (int) ($payload['id'] ?? 0);
         if ($conflict_id <= 0) {
