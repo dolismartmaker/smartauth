@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.12 -- 20260428
+
+ - Fix sanitizeRequestData : call loadExternalSchemas for external specs like photo uploads
+ - Add binary upload stuff
+
 ## 2.0.10 -- 20260413
 
 - Fix all includes to use dol_include_once()
