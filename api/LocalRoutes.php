@@ -25,6 +25,7 @@ use SmartAuth\Api\SmartTempFileController;
 use SmartAuth\Api\SyncController;
 use SmartAuth\Api\ObjectDocumentController;
 use SmartAuth\Api\PwaController;
+use SmartAuth\Api\UploadController;
 
 // ========== Auth Routes ========== //
 
@@ -70,6 +71,18 @@ Route::get('temp-file/{token}/binary', SmartTempFileController::class, 'download
 
 // Temporary file deletion (protected)
 Route::delete('temp-file/{token}', SmartTempFileController::class, 'delete', true);
+
+// ========== Binary Upload Routes ========== //
+
+// Generic binary upload endpoint for PWA modules.
+// POST a multipart/form-data body with a "file" or "files[]" field. The
+// staged upload returns an opaque upload_id that business modules then
+// reference from their own JSON payload (and consume server-side via
+// SmartAuth\Api\UploadHelper::consumeUpload). See ~/docs/UPLOAD_PWA.md.
+Route::post('upload', UploadController::class, 'store', true);
+
+// Cancel a staged upload before consumption (idempotent).
+Route::delete('upload/{upload_id}', UploadController::class, 'destroy', true);
 
 // ========== Sync Routes ========== //
 
