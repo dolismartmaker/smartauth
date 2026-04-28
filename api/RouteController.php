@@ -359,7 +359,7 @@ class RouteController
 		}
 
 		// Apply sanitization middleware
-		$data = self::sanitizeRequestData($data, $targetAction);
+		$data = self::sanitizeRequestData($data, $targetAction, $method);
 
 		return $data;
 	}
@@ -367,31 +367,71 @@ class RouteController
 	/**
 	 * Apply sanitization to request data
 	 *
-	 * Uses schema-based validation if a schema exists for the endpoint,
-	 * otherwise applies default sanitization to all fields.
+	 * Lookup order:
+	 *  1. External schemas registered by smartmaker modules via the
+	 *     `smartmaker_addValidationSchemas` hook, keyed `METHOD:targetAction`
+	 *     (e.g. `PUT:intervention/{id}`) inside `$schemas[<module>][...]`.
+	 *  2. Internal schemas mapped via ValidationSchemas::mapRouteToSchema().
+	 *  3. Default sanitization (sanitizeAll) when no schema matches.
 	 *
 	 * @param   array       $data           Raw request data
 	 * @param   string|null $targetAction   Route pattern for schema lookup
+	 * @param   string|null $method         HTTP method (used to scope external schema lookup)
 	 *
 	 * @return  array                       Sanitized data
 	 */
-	private static function sanitizeRequestData(array $data, $targetAction = null)
+	private static function sanitizeRequestData(array $data, $targetAction = null, $method = null)
 	{
 		if (empty($data)) {
 			return $data;
 		}
 
 		try {
-			// Try to get specific schema for this endpoint
-			$schemaName = $targetAction ? ValidationSchemas::mapRouteToSchema($targetAction) : 'default';
-			$schema = ValidationSchemas::getSchema($schemaName);
+			$schema = null;
+
+			// 1. External schemas: modules may register a schema for any
+			// route they own. Keyed by `METHOD:targetAction` (e.g.
+			// `PUT:intervention/{id}`). Without this lookup the smartmaker
+			// hook documented on ValidationSchemas::loadExternalSchemas()
+			// would never fire on real requests.
+			if ($targetAction !== null && $method !== null) {
+				$lookupKey = strtoupper($method) . ':' . ltrim($targetAction, '/');
+				$externalSchemas = ValidationSchemas::loadExternalSchemas();
+				foreach ($externalSchemas as $moduleSchemas) {
+					if (is_array($moduleSchemas) && isset($moduleSchemas[$lookupKey]) && is_array($moduleSchemas[$lookupKey])) {
+						$schema = $moduleSchemas[$lookupKey];
+						break;
+					}
+				}
+			}
+
+			// 2. Internal schema fallback (login, device, refresh, ...).
+			if ($schema === null) {
+				$schemaName = $targetAction ? ValidationSchemas::mapRouteToSchema($targetAction) : 'default';
+				$schema = ValidationSchemas::getSchema($schemaName);
+			}
 
 			if ($schema !== null && !empty($schema)) {
-				// Schema-based sanitization: validate known fields, sanitize unknown ones
+				// Schema-based sanitization: validate known fields, sanitize unknown ones.
 				$sanitized = [];
 
-				// First, apply schema to known fields
+				// Split exact keys from wildcard prefix keys. A schema entry like
+				// `'options_smartphoto_*'` declares rules for every input field
+				// whose name starts with `options_smartphoto_`. This is required
+				// for Dolibarr extrafield uploads where the field name is built
+				// from the extrafield key at runtime.
+				$exactRules = [];
+				$wildcardRules = [];
 				foreach ($schema as $field => $rules) {
+					if (is_string($field) && substr($field, -1) === '*') {
+						$wildcardRules[substr($field, 0, -1)] = $rules;
+					} else {
+						$exactRules[$field] = $rules;
+					}
+				}
+
+				// First, apply schema to known exact fields.
+				foreach ($exactRules as $field => $rules) {
 					if (array_key_exists($field, $data)) {
 						$sanitized[$field] = self::sanitizeField($data[$field], $rules, $field);
 					} elseif (isset($rules['default'])) {
@@ -399,9 +439,28 @@ class RouteController
 					}
 				}
 
-				// Then, sanitize any extra fields not in schema with default sanitization
+				// Then, walk every other input field. Wildcard prefixes win over
+				// the default sanitizer; unknown fields fall back to it.
+				// NOTE: `isset()` is used here (not `array_key_exists`) on
+				// purpose -- when a typed sanitizer returns null (e.g. EMAIL
+				// rejecting a non-email like 'sidemo-jean'), the historical
+				// behaviour is to fall back to the default sanitizer with the
+				// raw value. Switching to `array_key_exists` would silently
+				// break login payloads where `email` carries a username.
 				foreach ($data as $key => $value) {
-					if (!isset($sanitized[$key])) {
+					if (isset($sanitized[$key])) {
+						continue;
+					}
+					$matched = null;
+					foreach ($wildcardRules as $prefix => $rules) {
+						if (is_string($key) && strncmp($key, $prefix, strlen($prefix)) === 0) {
+							$matched = $rules;
+							break;
+						}
+					}
+					if ($matched !== null) {
+						$sanitized[$key] = self::sanitizeField($value, $matched, $key);
+					} else {
 						$sanitized[$key] = self::sanitizeUnknownField($key, $value);
 					}
 				}
