@@ -41,6 +41,18 @@ class RouteController
 	 */
 	public static function dispatch(): bool
 	{
+		try {
+			return self::dispatchInternal();
+		} catch (\JsonReplyEmittedError $e) {
+			// In PHPUNIT_RUNNING mode, json_reply() throws this Error instead
+			// of exit()ing, so the caller knows the response has already been
+			// emitted. Return true to signal the route was handled.
+			return true;
+		}
+	}
+
+	private static function dispatchInternal(): bool
+	{
 		global $conf, $db, $user, $buyer, $mysoc;
 		$user = $entity = $auth_socid = null;
 		$buyer = new \Societe($db);

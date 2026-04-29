@@ -21,6 +21,18 @@
 
 use SmartAuth\Api\RouteController;
 
+/**
+ * Thrown by json_reply() in PHPUNIT_RUNNING mode to abort the request flow
+ * after a response has been emitted, without exit() (which would roll back
+ * the SQLite transaction in tests).
+ *
+ * Extends \Error (not \Exception) so it bypasses all "catch (Exception)"
+ * blocks in controllers and reaches the outer router/test harness.
+ */
+class JsonReplyEmittedError extends \Error
+{
+}
+
 function json_reply($message, $code)
 {
 	// remove any string that could create an invalid JSON
@@ -42,8 +54,12 @@ function json_reply($message, $code)
 	// header("HTTP/1.1 " . $code);
 	print json_encode($message, JSON_PRETTY_PRINT);
 
-	// Skip exit() in PHPUnit test environment to allow tests to continue
+	// In production, exit() ends the request immediately. In PHPUNIT_RUNNING
+	// mode we cannot exit() because that would roll back the SQLite
+	// transaction the tests rely on; we throw an Error instead so the flow
+	// aborts cleanly through the router's outer catch.
 	if (!defined('PHPUNIT_RUNNING') || !PHPUNIT_RUNNING) {
 		exit;
 	}
+	throw new JsonReplyEmittedError('json_reply emitted (HTTP '.$code.')');
 }
