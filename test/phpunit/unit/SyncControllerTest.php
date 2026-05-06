@@ -103,7 +103,7 @@ class SyncControllerTest extends TestCase
     public function testRegisterWithoutDeviceIdReturns400(): void
     {
         $result = $this->controller->register([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
         ]);
 
         $this->assertIsArray($result);
@@ -124,7 +124,7 @@ class SyncControllerTest extends TestCase
             ->setQueryResult(true);         // INSERT event log
 
         $result = $this->controller->register([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'jwt_device_id' => 42,
             'app_version' => '1.0.0'
         ]);
@@ -154,7 +154,7 @@ class SyncControllerTest extends TestCase
             ->setQueryResult(true);  // INSERT event log
 
         $result = $this->controller->register([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'jwt_device_id' => 42,
             'app_version' => '2.0.0'
         ]);
@@ -186,7 +186,7 @@ class SyncControllerTest extends TestCase
     public function testPullWithInvalidObjectTypeReturns400(): void
     {
         $result = $this->controller->pull([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'object_type' => 'invalid_type'
         ]);
 
@@ -204,7 +204,7 @@ class SyncControllerTest extends TestCase
         $this->mockDb->setQueryResult(true, [], 0);
 
         $result = $this->controller->pull([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'object_type' => 'thirdparty'
         ]);
 
@@ -237,7 +237,7 @@ class SyncControllerTest extends TestCase
     public function testPushWithoutChangesReturns400(): void
     {
         $result = $this->controller->push([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'object_type' => 'thirdparty',
             'changes' => []
         ]);
@@ -255,7 +255,7 @@ class SyncControllerTest extends TestCase
         $this->mockDb->setQueryResult(true, [], 0);
 
         $result = $this->controller->push([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'object_type' => 'thirdparty',
             'changes' => [
                 ['action' => 'update', 'id' => 1, 'data' => ['nom' => 'Test']]
@@ -281,7 +281,7 @@ class SyncControllerTest extends TestCase
             ->setQueryResult(true);                        // Event log
 
         $result = $this->controller->push([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'object_type' => 'thirdparty',
             'changes' => [
                 ['action' => 'unknown_action', 'id' => 1, 'data' => []]
@@ -317,7 +317,7 @@ class SyncControllerTest extends TestCase
         $this->mockDb->setQueryResult(true, [], 0);
 
         $result = $this->controller->status([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
         ]);
 
         $this->assertIsArray($result);
@@ -331,7 +331,7 @@ class SyncControllerTest extends TestCase
     {
         $client = (object) [
             'rowid' => 1,
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'last_sync_at' => '2025-01-19 10:00:00',
             'sync_scope' => '{"thirdparty":true,"contact":true}',
             'status' => 1
@@ -344,7 +344,7 @@ class SyncControllerTest extends TestCase
             ->setQueryResult(true, [(array) $conflictCount]);
 
         $result = $this->controller->status([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
         ]);
 
         $this->assertIsArray($result);
@@ -397,7 +397,7 @@ class SyncControllerTest extends TestCase
             ->setQueryResult(true, [$conflict], 1);
 
         $result = $this->controller->conflicts([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000'
         ]);
 
         $this->assertIsArray($result);
@@ -656,13 +656,17 @@ class SyncControllerTest extends TestCase
 
         $client = [
             'rowid' => 1,
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'status' => 1
         ];
 
         $this->mockDb->setQueryResult(true, [$client], 1);
 
-        $result = $method->invoke($this->controller, '550e8400-e29b-41d4-a716-446655440000');
+        // Updated for M-11 of TODO-SECURITY-01: getClientByUUID now requires
+        // a user id (the device must belong to that user). The mock simply
+        // returns the rigged row regardless of the JOIN, so passing a
+        // non-zero user id is enough to satisfy the precondition.
+        $result = $method->invoke($this->controller, '550e8400-e29b-41d4-a716-446655440000', 42);
 
         $this->assertNotNull($result);
         $this->assertEquals(1, $result->rowid);
@@ -817,7 +821,7 @@ class SyncControllerTest extends TestCase
     {
         $client = (object) [
             'rowid' => 1,
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'last_sync_at' => null,
             'status' => 1
         ];
@@ -829,7 +833,7 @@ class SyncControllerTest extends TestCase
             ->setQueryResult(true);         // Event log
 
         $result = $this->controller->pull([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'object_type' => 'thirdparty',
             'last_sync_at' => '2025-01-15 00:00:00'
         ]);
@@ -851,7 +855,7 @@ class SyncControllerTest extends TestCase
             ->setQueryResult(true);         // Event log
 
         $result = $this->controller->register([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'jwt_device_id' => 42,
             'sync_scope' => ['thirdparty', 'product']
         ]);
@@ -872,7 +876,7 @@ class SyncControllerTest extends TestCase
             ->setQueryResult(false);        // INSERT fails
 
         $result = $this->controller->register([
-            'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
             'jwt_device_id' => 42
         ]);
 

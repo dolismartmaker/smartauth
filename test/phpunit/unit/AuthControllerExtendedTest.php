@@ -179,7 +179,9 @@ class AuthControllerExtendedTest extends TestCase
     // =============================================
 
     /**
-     * Test get_client_ip prioritizes CF-Connecting-IP
+     * Test get_client_ip rejects CF-Connecting-IP from an untrusted source
+     * (H-1 fix, TODO-SECURITY-01). Was previously a "prioritise" test which
+     * encoded the very vulnerability we patched.
      */
     public function testGetClientIpPrioritizesCFConnectingIP(): void
     {
@@ -189,7 +191,9 @@ class AuthControllerExtendedTest extends TestCase
         // Backup
         $backupCf = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? null;
         $backupXff = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
+        $backupRemote = $_SERVER['REMOTE_ADDR'] ?? null;
 
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.50'; // public, untrusted
         $_SERVER['HTTP_CF_CONNECTING_IP'] = '104.16.132.229';
         $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.195';
 
@@ -206,8 +210,14 @@ class AuthControllerExtendedTest extends TestCase
         } else {
             unset($_SERVER['HTTP_X_FORWARDED_FOR']);
         }
+        if ($backupRemote !== null) {
+            $_SERVER['REMOTE_ADDR'] = $backupRemote;
+        } else {
+            unset($_SERVER['REMOTE_ADDR']);
+        }
 
-        $this->assertEquals('104.16.132.229', $ip);
+        // H-1 fix: untrusted source -> headers ignored, REMOTE_ADDR is used
+        $this->assertEquals('203.0.113.50', $ip);
     }
 
     /**

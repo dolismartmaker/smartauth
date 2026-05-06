@@ -560,4 +560,114 @@ class InputSanitizerTest extends DolibarrRealTestCase
         $this->assertEquals('one', $result['1']);
         $this->assertEquals('two', $result['2']);
     }
+
+    /**
+     * Regression: sanitizeString must be idempotent.
+     *
+     * SmartAuth is a JSON API; HTML escaping belongs to the consumer (which
+     * knows the rendering context: HTML body, attribute, JS, URL...).
+     * Applying htmlspecialchars() at the API layer used to corrupt strings
+     * across PUT round-trips:
+     *   "L'École"
+     *     -> 1st save : L&apos;École
+     *     -> 2nd save : L&amp;apos;École
+     *     -> 3rd save : L&amp;amp;apos;École
+     * After the InputSanitizer fix (companion to TODO-SECURITY-01), the
+     * sanitizer no longer HTML-escapes, so saving the same value any number
+     * of times must yield the same output.
+     */
+    public function testSanitizeStringIsIdempotentForApostrophe(): void
+    {
+        $input = "L'École";
+        $once = InputSanitizer::sanitizeString($input);
+        $twice = InputSanitizer::sanitizeString($once);
+        $thrice = InputSanitizer::sanitizeString($twice);
+
+        $this->assertSame($input, $once, 'first pass must preserve apostrophe');
+        $this->assertSame($once, $twice, 'sanitizeString must be idempotent');
+        $this->assertSame($twice, $thrice, 'sanitizeString must be idempotent over many round-trips');
+
+        // Same expectation for the other characters htmlspecialchars used
+        // to mangle: " < > &.
+        $samples = [
+            'plain text',
+            'an "quote" inside',
+            "an 'apostrophe' inside",
+            'less <than',
+            'greater >than',
+            'amp & ersand',
+            'multi: <a href="x">L\'École & co</a>',
+        ];
+        foreach ($samples as $s) {
+            $first = InputSanitizer::sanitizeString($s);
+            $second = InputSanitizer::sanitizeString($first);
+            $this->assertSame(
+                $first,
+                $second,
+                'sanitizeString must be idempotent for: ' . $s
+            );
+            // No HTML entity should leak into the output (quotes / apos /
+            // amp / lt / gt remain raw - the caller is responsible for the
+            // contextual escape on render).
+            $this->assertDoesNotMatchRegularExpression(
+                '/&(amp|apos|quot|lt|gt|#0?39);/',
+                $first,
+                'sanitizeString must not introduce HTML entities for: ' . $s
+            );
+        }
+    }
+
+    /**
+     * Regression: sanitizeAll must also preserve apostrophes across passes.
+     *
+     * sanitizeAll is the entry point used by RouteController on every PUT
+     * body. This test covers the full round-trip path that the bug report
+     * documented.
+     */
+    public function testSanitizeAllPreservesApostropheAcrossRoundTrips(): void
+    {
+        $payload = [
+            'name' => "L'École",
+            'note' => "It's fine & it's safe",
+        ];
+        $first = InputSanitizer::sanitizeAll($payload);
+        $second = InputSanitizer::sanitizeAll($first);
+        $third = InputSanitizer::sanitizeAll($second);
+
+        $this->assertSame("L'École", $first['name']);
+        $this->assertSame($first, $second);
+        $this->assertSame($second, $third);
+    }
+
+    /**
+     * Defence in depth: sanitizeString still strips HTML tags.
+     *
+     * Removing the htmlspecialchars step does not relax the strip_tags
+     * step - inputs that look like HTML are still de-tagged. PHP's
+     * strip_tags() removes the markup but keeps the inner text content,
+     * which is fine because the API never renders back as HTML; the
+     * consumer is responsible for escaping its rendering context.
+     */
+    public function testSanitizeStringStillStripsHtmlTags(): void
+    {
+        $this->assertSame(
+            'alert(1)innocent text',
+            InputSanitizer::sanitizeString('<script>alert(1)</script>innocent text')
+        );
+        $this->assertSame(
+            'click me',
+            InputSanitizer::sanitizeString('<a href="x">click me</a>')
+        );
+
+        // Tag content remains as plain text; angle brackets are gone so
+        // a downstream HTML render that does not escape would not execute it.
+        $this->assertStringNotContainsString(
+            '<',
+            InputSanitizer::sanitizeString('<img src=x onerror=alert(1)>')
+        );
+        $this->assertStringNotContainsString(
+            '>',
+            InputSanitizer::sanitizeString('<img src=x onerror=alert(1)>')
+        );
+    }
 }
