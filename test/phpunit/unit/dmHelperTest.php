@@ -650,17 +650,22 @@ class dmHelperTest extends TestCase
     // =========================================================================
 
     /**
-     * Test _customFilterAttributeTypeSellist returns todo placeholder
+     * Test _customFilterAttributeTypeSellist returns the {select, options}
+     * shape now that the resolver replaces the historical TODO placeholder.
+     * `sometable` is alphanumeric so identifier validation passes; the SQL
+     * itself fails (table missing) and the resolver degrades gracefully to
+     * an empty options list -- exactly what the FkPicker expects.
      */
-    public function testCustomFilterAttributeTypeSellistReturnsPlaceholder(): void
+    public function testCustomFilterAttributeTypeSellistReturnsSelectShape(): void
     {
         $method = $this->getPrivateMethod('_customFilterAttributeTypeSellist');
 
         $result = $method->invoke($this->helper, 'sellist:sometable:somefield');
 
         $this->assertIsArray($result);
-        $this->assertEquals('sellist', $result['type']);
-        $this->assertEquals('todo', $result['todo']);
+        $this->assertSame('select', $result['type']);
+        $this->assertArrayHasKey('options', $result);
+        $this->assertSame([], $result['options']);
     }
 
     // =========================================================================

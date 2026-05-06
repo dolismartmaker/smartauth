@@ -289,12 +289,12 @@ class OAuthClassesTest extends DolibarrRealTestCase
         $this->assertTrue($code->verifyPkce($verifier));
         $this->assertFalse($code->verifyPkce('wrong_verifier'));
 
-        // Test plain method
+        // Plain method is rejected.
         $code2 = new SmartAuthOAuthCode($db);
         $code2->code_challenge = 'plain_challenge';
         $code2->code_challenge_method = 'plain';
 
-        $this->assertTrue($code2->verifyPkce('plain_challenge'));
+        $this->assertFalse($code2->verifyPkce('plain_challenge'), 'plain method must be rejected');
         $this->assertFalse($code2->verifyPkce('wrong_challenge'));
 
         // Test no PKCE

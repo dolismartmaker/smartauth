@@ -49,9 +49,11 @@ class PKCEFlowTest extends OAuthTestCase
     }
 
     /**
-     * Test complete PKCE flow with plain method
+     * Test that the legacy plain method is rejected.
+     * Even if a malicious or buggy caller stores an authorization code with
+     * code_challenge_method = 'plain', verifyPkce() must refuse to validate.
      */
-    public function testCompletePKCEFlowPlain(): void
+    public function testPKCEPlainMethodIsRejected(): void
     {
         $client = $this->createTestClient([
             'require_pkce' => 1,
@@ -59,24 +61,21 @@ class PKCEFlowTest extends OAuthTestCase
         ]);
         $user = $this->createTestUser();
 
-        // Generate PKCE with plain method
         $verifier = PKCEHelper::generateVerifier();
-        $challenge = PKCEHelper::generateChallenge($verifier, PKCEHelper::METHOD_PLAIN);
 
-        // For plain method, challenge equals verifier
-        $this->assertEquals($verifier, $challenge);
-
-        // Create authorization code with PKCE
+        // Force-store the auth code with the (now banned) plain method
         $codeData = $this->createAuthorizationCode($client, $user, [
             'scopes' => ['openid'],
-            'code_challenge' => $challenge,
+            'code_challenge' => $verifier,
             'code_challenge_method' => PKCEHelper::METHOD_PLAIN,
         ]);
 
         $code = $codeData['record'];
 
-        // Verify PKCE validation works
-        $this->assertTrue($code->verifyPkce($verifier));
+        $this->assertFalse(
+            $code->verifyPkce($verifier),
+            'plain method must be rejected even if the stored code carries it'
+        );
     }
 
     /**
@@ -273,14 +272,16 @@ class PKCEFlowTest extends OAuthTestCase
     }
 
     /**
-     * Test challenge validation for plain
+     * Test that the plain method is rejected by isValidChallenge
+     *.
      */
-    public function testChallengeValidationPlain(): void
+    public function testChallengeValidationPlainRejected(): void
     {
         $verifier = PKCEHelper::generateVerifier();
-        $challenge = PKCEHelper::generateChallenge($verifier, PKCEHelper::METHOD_PLAIN);
-
-        $this->assertTrue(PKCEHelper::isValidChallenge($challenge, PKCEHelper::METHOD_PLAIN));
+        $this->assertFalse(
+            PKCEHelper::isValidChallenge($verifier, PKCEHelper::METHOD_PLAIN),
+            'plain method must be rejected'
+        );
     }
 
     /**
@@ -345,12 +346,12 @@ class PKCEFlowTest extends OAuthTestCase
     }
 
     /**
-     * Test PKCE method validation
+     * Test PKCE method validation. Only S256 is accepted (CR-3 fix).
      */
     public function testPKCEMethodValidation(): void
     {
         $this->assertTrue(PKCEHelper::isValidMethod(PKCEHelper::METHOD_S256));
-        $this->assertTrue(PKCEHelper::isValidMethod(PKCEHelper::METHOD_PLAIN));
+        $this->assertFalse(PKCEHelper::isValidMethod(PKCEHelper::METHOD_PLAIN));
         $this->assertFalse(PKCEHelper::isValidMethod('SHA256'));
         $this->assertFalse(PKCEHelper::isValidMethod('s256')); // Case sensitive
         $this->assertFalse(PKCEHelper::isValidMethod(''));

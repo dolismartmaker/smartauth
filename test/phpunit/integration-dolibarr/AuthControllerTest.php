@@ -116,18 +116,28 @@ class AuthControllerTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test get_client_ip with CF-Connecting-IP header (Cloudflare)
+     * Test get_client_ip rejects CF-Connecting-IP from an untrusted source.
+     *
+     * Updated for H-1 fix (TODO-SECURITY-01): CF-Connecting-IP must NOT be
+     * honoured unless the immediate REMOTE_ADDR is in
+     * SMARTAUTH_TRUSTED_PROXIES. The previous behaviour (accept any
+     * CF-Connecting-IP value) was a rate-limit bypass.
      */
-    public function testGetClientIpWithCloudflare(): void
+    public function testGetClientIpIgnoresUntrustedCloudflareHeader(): void
     {
+        global $conf;
         $this->clearIpCache();
+        $conf->global->SMARTAUTH_TRUSTED_PROXIES = '';
 
+        // Public, untrusted REMOTE_ADDR + forged CF-Connecting-IP
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.50';
         $_SERVER['HTTP_CF_CONNECTING_IP'] = '198.51.100.42';
 
         $ip = AuthController::get_client_ip();
 
-        $this->assertEquals('198.51.100.42', $ip);
+        $this->assertEquals('203.0.113.50', $ip);
 
+        unset($_SERVER['HTTP_CF_CONNECTING_IP']);
         $this->clearIpCache();
     }
 
@@ -2913,19 +2923,22 @@ class AuthControllerTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test get_client_ip caches result
+     * Test get_client_ip is no longer cached across calls.
+     *
+     * Updated for H-1 fix (TODO-SECURITY-01): the local in-memory cache was
+     * dropped along with the vulnerable header parsing - subsequent calls
+     * now reflect the current request state. The contract guaranteed by the
+     * facade is that the same input always yields the same output.
      */
-    public function testGetClientIpCachesResult(): void
+    public function testGetClientIpReturnsConsistentValue(): void
     {
         global $conf;
 
         $this->clearIpCache();
-        $_SERVER['HTTP_CF_CONNECTING_IP'] = '198.51.100.99';
+        $_SERVER['REMOTE_ADDR'] = '198.51.100.99';
+        unset($_SERVER['HTTP_CF_CONNECTING_IP']);
 
         $ip1 = \SmartAuth\Api\AuthController::get_client_ip();
-
-        // Change header but should return cached value
-        $_SERVER['HTTP_CF_CONNECTING_IP'] = '203.0.113.99';
         $ip2 = \SmartAuth\Api\AuthController::get_client_ip();
 
         $this->assertEquals($ip1, $ip2);

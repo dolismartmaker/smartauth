@@ -129,9 +129,14 @@ class AuthControllerTest extends TestCase
     }
 
     /**
-     * Test get_client_ip returns cached value
+     * Test that get_client_ip no longer relies on the legacy in-memory cache.
+     *
+     * Updated for H-1 fix (TODO-SECURITY-01): the local cache was dropped to
+     * keep the implementation simple and security-auditable. The conf cache
+     * key must therefore be ignored (otherwise an attacker who can poison
+     * $conf could pin a victim's perceived IP).
      */
-    public function testGetClientIpReturnsCachedValue(): void
+    public function testGetClientIpDoesNotUseLegacyCache(): void
     {
         global $conf;
         if (!is_object($conf)) {
@@ -139,14 +144,18 @@ class AuthControllerTest extends TestCase
             $conf->cache = [];
             $conf->cache['smartmakers'] = [];
         }
+        // Poisoned cache value that should be ignored
         $conf->cache['smartmakers']['clientIP'] = '10.20.30.40';
+
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.77';
+        unset($_SERVER['HTTP_X_FORWARDED_FOR'], $_SERVER['HTTP_X_REAL_IP'], $_SERVER['HTTP_CF_CONNECTING_IP']);
 
         $ip = AuthController::get_client_ip();
 
-        $this->assertEquals('10.20.30.40', $ip);
+        $this->assertEquals('203.0.113.77', $ip);
+        $this->assertNotEquals('10.20.30.40', $ip);
 
-        // Cleanup
-        unset($conf->cache['smartmakers']['clientIP']);
+        unset($conf->cache['smartmakers']['clientIP'], $_SERVER['REMOTE_ADDR']);
     }
 
     /**
@@ -187,9 +196,16 @@ class AuthControllerTest extends TestCase
     }
 
     /**
-     * Test get_client_ip ignores private IP ranges in X-Forwarded-For
+     * Test get_client_ip honours XFF when REMOTE_ADDR is loopback.
+     *
+     * Updated for H-1 fix (TODO-SECURITY-01): the centralised resolver
+     * trusts forwarded headers when the immediate REMOTE_ADDR is in a
+     * private/loopback range (typical reverse-proxy setup) or in the
+     * SMARTAUTH_TRUSTED_PROXIES allow-list. The previous assertion (return
+     * 0.0.0.0 for all-private chains) was overly restrictive and is no
+     * longer guaranteed by the centralised implementation.
      */
-    public function testGetClientIpIgnoresPrivateRanges(): void
+    public function testGetClientIpHonoursForwardedHeaderFromLocalhost(): void
     {
         global $conf;
         if (!is_object($conf)) {
@@ -197,21 +213,16 @@ class AuthControllerTest extends TestCase
             $conf->cache = [];
             $conf->cache['smartmakers'] = [];
         }
-
-        // Clear cache
         unset($conf->cache['smartmakers']['clientIP']);
 
-        // Backup
         $backupXff = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
         $backupRemote = $_SERVER['REMOTE_ADDR'] ?? null;
 
-        // Private IP followed by public
-        $_SERVER['HTTP_X_FORWARDED_FOR'] = '192.168.1.1';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.42';
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 
         $ip = AuthController::get_client_ip();
 
-        // Restore
         if ($backupXff !== null) {
             $_SERVER['HTTP_X_FORWARDED_FOR'] = $backupXff;
         } else {
@@ -221,8 +232,7 @@ class AuthControllerTest extends TestCase
             $_SERVER['REMOTE_ADDR'] = $backupRemote;
         }
 
-        // Should return fallback since no valid public IP
-        $this->assertEquals('0.0.0.0', $ip);
+        $this->assertEquals('203.0.113.42', $ip);
     }
 
     /**
