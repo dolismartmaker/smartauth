@@ -104,6 +104,29 @@ class TokenController
             return;
         }
 
+        // Per-client_id rate limiting on /oauth/token.
+        // Each client_id gets a bucket so a single misbehaving / compromised
+        // client cannot brute-force its way through; failed attempts are
+        // recorded BEFORE authentication so an unauthenticated attacker
+        // probing client_secret gets rate-limited too.
+        $candidateClientId = trim((string) ($params['client_id'] ?? $_SERVER['PHP_AUTH_USER'] ?? ''));
+        $rateKey = $candidateClientId !== '' ? $candidateClientId : (\SmartAuth\Api\RouteController::get_client_ip());
+        if (class_exists('\\SmartAuth\\Api\\RateLimiter')) {
+            $rateLimiter = new \SmartAuth\Api\RateLimiter($this->db);
+            $rl = $rateLimiter->checkLimit(
+                $rateKey,
+                'oauth_token',
+                getDolGlobalInt('SMARTAUTH_OAUTH_TOKEN_RATELIMIT_MAX', 30),
+                getDolGlobalInt('SMARTAUTH_OAUTH_TOKEN_RATELIMIT_WINDOW', 300)
+            );
+            if (empty($rl['allowed'])) {
+                dol_syslog('SmartAuth TokenController: /oauth/token rate-limit hit for ' . \SmartAuth\Api\RateLimiter::maskIdentifier($rateKey), LOG_WARNING);
+                $this->sendError('temporarily_unavailable', 'Too many requests', 429);
+                return;
+            }
+            $rateLimiter->recordAttempt($rateKey, 'oauth_token');
+        }
+
         // Authenticate client
         $this->client = $this->authenticateClient($params);
         if ($this->client === null) {
@@ -202,6 +225,8 @@ class TokenController
         // Verify redirect_uri matches exactly
         if ($authCode->redirect_uri !== $redirectUri) {
             dol_syslog('SmartAuth TokenController: Redirect URI mismatch', LOG_WARNING);
+            // Burn the code - any failed exchange consumes it (M-13)
+            $authCode->markAsUsed();
             $this->sendError('invalid_grant', 'Redirect URI does not match', 400);
             return;
         }
@@ -211,9 +236,13 @@ class TokenController
         // accepts S256 since the CR-3 fix, and a missing method here means
         // the auth code was created before the fix - reject as invalid_grant
         // rather than silently falling back to plain.
+        // If any of these checks fail, mark the code as used so the
+        // attacker cannot retry with a different verifier
+        //.
         if (!empty($authCode->code_challenge)) {
             if (empty($codeVerifier)) {
                 dol_syslog('SmartAuth TokenController: Missing code_verifier', LOG_WARNING);
+                $authCode->markAsUsed();
                 $this->sendError('invalid_grant', 'Missing required parameter: code_verifier', 400);
                 return;
             }
@@ -221,12 +250,14 @@ class TokenController
             $storedMethod = $authCode->code_challenge_method ?? '';
             if (!PKCEHelper::isValidMethod($storedMethod)) {
                 dol_syslog('SmartAuth TokenController: stored PKCE method is not S256: ' . ($storedMethod ?: '(missing)'), LOG_WARNING);
+                $authCode->markAsUsed();
                 $this->sendError('invalid_grant', 'Unsupported code_challenge_method on the authorization code', 400);
                 return;
             }
 
             if (!PKCEHelper::validate($codeVerifier, $authCode->code_challenge, $storedMethod)) {
                 dol_syslog('SmartAuth TokenController: PKCE verification failed', LOG_WARNING);
+                $authCode->markAsUsed();
                 $this->sendError('invalid_grant', 'Code verifier does not match', 400);
                 return;
             }

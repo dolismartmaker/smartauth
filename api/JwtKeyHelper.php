@@ -582,38 +582,123 @@ class JwtKeyHelper
      */
     public static function getJwks(): array
     {
-        $publicKeyPem = self::getRsaPublicKey();
-        $kid = self::getRsaKeyId();
+        $keys = [];
 
-        // Parse public key to extract modulus and exponent
-        $keyResource = openssl_pkey_get_public($publicKeyPem);
+        // Current key
+        $currentPub = self::getRsaPublicKey();
+        $currentKid = self::getRsaKeyId();
+        $entry = self::pemToJwk($currentPub, $currentKid);
+        if ($entry !== null) {
+            $keys[] = $entry;
+        }
+
+        // Archived keys (rotated out but still trusted for in-flight tokens).
+        // Multi-kid support lets us rotate keys
+        // without invalidating every live access token.
+        foreach (self::listArchivedKids() as $archivedKid) {
+            if ($archivedKid === $currentKid) {
+                continue;
+            }
+            $pem = self::readArchivedPublicKey($archivedKid);
+            if ($pem === '') {
+                continue;
+            }
+            $jwk = self::pemToJwk($pem, $archivedKid);
+            if ($jwk !== null) {
+                $keys[] = $jwk;
+            }
+        }
+
+        return ['keys' => $keys];
+    }
+
+    /**
+     * Convert a PEM public key + kid into a JWK array entry.
+     *
+     * @return array|null JWK entry, or null if parsing failed
+     */
+    private static function pemToJwk(string $pem, string $kid): ?array
+    {
+        $keyResource = @openssl_pkey_get_public($pem);
         if ($keyResource === false) {
-            dol_syslog('SmartAuth JwtKeyHelper: Failed to parse public key for JWKS', LOG_ERR);
-            return ['keys' => []];
+            return null;
         }
-
-        $keyDetails = openssl_pkey_get_details($keyResource);
-        if ($keyDetails === false || $keyDetails['type'] !== OPENSSL_KEYTYPE_RSA) {
-            dol_syslog('SmartAuth JwtKeyHelper: Invalid key type for JWKS', LOG_ERR);
-            return ['keys' => []];
+        $details = @openssl_pkey_get_details($keyResource);
+        if ($details === false || $details['type'] !== OPENSSL_KEYTYPE_RSA) {
+            return null;
         }
-
-        // Convert binary modulus and exponent to base64url
-        $n = self::base64UrlEncode($keyDetails['rsa']['n']);
-        $e = self::base64UrlEncode($keyDetails['rsa']['e']);
-
         return [
-            'keys' => [
-                [
-                    'kty' => 'RSA',
-                    'alg' => 'RS256',
-                    'use' => 'sig',
-                    'kid' => $kid,
-                    'n' => $n,
-                    'e' => $e
-                ]
-            ]
+            'kty' => 'RSA',
+            'alg' => 'RS256',
+            'use' => 'sig',
+            'kid' => $kid,
+            'n' => self::base64UrlEncode($details['rsa']['n']),
+            'e' => self::base64UrlEncode($details['rsa']['e']),
         ];
+    }
+
+    /**
+     * Return the public key matching a given kid.
+     *
+     * Looks up:
+     *   1. The current key (filesystem or llx_const).
+     *   2. The archive directory for rotated keys (M-15).
+     *   3. Empty string when no match.
+     *
+     * @return string PEM-encoded public key, or '' if unknown
+     */
+    public static function getRsaPublicKeyByKid(string $kid): string
+    {
+        if ($kid === '') {
+            return '';
+        }
+
+        // Current key
+        $currentKid = self::getRsaKeyId();
+        if ($currentKid === $kid) {
+            return self::getRsaPublicKey();
+        }
+
+        // Archived
+        return self::readArchivedPublicKey($kid);
+    }
+
+    private static function getArchiveBaseDir(): string
+    {
+        $dir = self::getRsaKeyDir();
+        return $dir === '' ? '' : $dir . '/archive';
+    }
+
+    private static function readArchivedPublicKey(string $kid): string
+    {
+        $base = self::getArchiveBaseDir();
+        if ($base === '' || !preg_match('/^[A-Za-z0-9_\-]+$/', $kid)) {
+            return '';
+        }
+        $path = $base . '/' . $kid . '/public.pem';
+        if (!is_file($path) || !is_readable($path)) {
+            return '';
+        }
+        $content = @file_get_contents($path);
+        return is_string($content) ? $content : '';
+    }
+
+    private static function listArchivedKids(): array
+    {
+        $base = self::getArchiveBaseDir();
+        if ($base === '' || !is_dir($base)) {
+            return [];
+        }
+        $kids = [];
+        foreach (scandir($base) ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            if (preg_match('/^[A-Za-z0-9_\-]+$/', $entry) && is_dir($base . '/' . $entry)) {
+                $kids[] = $entry;
+            }
+        }
+        return $kids;
     }
 
     /**
@@ -628,11 +713,39 @@ class JwtKeyHelper
     {
         global $db, $conf;
 
+        // Multi-kid support: archive the
+        // current key under archive/{kid}/ before generating a new one
+        // so live tokens signed with the old key remain verifiable
+        // until they expire naturally.
+        $oldKid = self::getRsaKeyId();
+        $oldPub = self::getRsaPublicKey();
+        if ($oldKid !== '' && $oldPub !== '' && preg_match('/^[A-Za-z0-9_\-]+$/', $oldKid)) {
+            $archiveDir = self::getArchiveBaseDir() . '/' . $oldKid;
+            if (!is_dir($archiveDir)) {
+                @mkdir($archiveDir, 0700, true);
+            }
+            if (is_dir($archiveDir)) {
+                @file_put_contents($archiveDir . '/public.pem', $oldPub, LOCK_EX);
+                @chmod($archiveDir . '/public.pem', 0644);
+                dol_syslog('SmartAuth JwtKeyHelper: archived RSA public key for kid=' . $oldKid, LOG_INFO);
+            } else {
+                dol_syslog('SmartAuth JwtKeyHelper: failed to create archive dir for kid=' . $oldKid, LOG_WARNING);
+            }
+        }
+
         // Clear existing keys from conf cache
         if (isset($conf->global)) {
             unset($conf->global->{self::RSA_PRIVATE_KEY_CONFIG});
             unset($conf->global->{self::RSA_PUBLIC_KEY_CONFIG});
             unset($conf->global->{self::RSA_KEY_ID_CONFIG});
+        }
+
+        // Delete current key files (they're now archived)
+        $keyDir = self::getRsaKeyDir();
+        if ($keyDir !== '') {
+            @unlink($keyDir . '/private.pem');
+            @unlink($keyDir . '/public.pem');
+            @unlink($keyDir . '/kid');
         }
 
         // Delete from database
@@ -665,9 +778,12 @@ class JwtKeyHelper
      */
     public static function hasRsaKeyPair(): bool
     {
+        // Filesystem first, then llx_const fallback.
+        if (self::readPrivateKeyFile() !== '' && self::readPublicKeyFile() !== '') {
+            return true;
+        }
         $privateKey = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
         $publicKey = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
-
         return !empty($privateKey) && !empty($publicKey);
     }
 

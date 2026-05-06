@@ -275,8 +275,13 @@ class LogoutController
      */
     private function isUriRegisteredForAnyClient(string $uri): bool
     {
-        // Fetch all active clients
-        $sql = "SELECT rowid, redirect_uris, post_logout_redirect_uris FROM " . MAIN_DB_PREFIX . "smartauth_oauth_clients";
+        // Fetch all active clients. The post_logout_redirect_uris column
+        // does not exist in the schema - the
+        // previous SELECT referenced it and made this whole function fail.
+        // Until the column is migrated, we accept any registered redirect
+        // URI as a valid post-logout target (consistent with what
+        // isUriRegisteredForClient does on its own client lookup).
+        $sql = "SELECT rowid, redirect_uris FROM " . MAIN_DB_PREFIX . "smartauth_oauth_clients";
         $sql .= " WHERE status = 1";
         $sql .= " AND entity IN (" . getEntity('smartauthoauthclient') . ")";
 
@@ -290,17 +295,6 @@ class LogoutController
             $redirectUris = json_decode($obj->redirect_uris ?? '[]', true);
             if (is_array($redirectUris)) {
                 foreach ($redirectUris as $registeredUri) {
-                    if ($this->uriMatches($uri, $registeredUri)) {
-                        $this->db->free($resql);
-                        return true;
-                    }
-                }
-            }
-
-            // Check post_logout_redirect_uris
-            $postLogoutUris = json_decode($obj->post_logout_redirect_uris ?? '[]', true);
-            if (is_array($postLogoutUris)) {
-                foreach ($postLogoutUris as $registeredUri) {
                     if ($this->uriMatches($uri, $registeredUri)) {
                         $this->db->free($resql);
                         return true;

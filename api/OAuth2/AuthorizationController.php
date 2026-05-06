@@ -125,6 +125,19 @@ class AuthorizationController
         $prompt = $params['prompt'] ?? null;
         $nonce = $params['nonce'] ?? null;
 
+        // M-14 of TODO-SECURITY-01: state must be present (CSRF defence
+        // for the redirect flow) and length-limited to keep the redirect
+        // URL bounded.
+        if (!is_string($state) || $state === '' || strlen($state) > 512) {
+            // Cannot reliably redirect yet (the redirect_uri may itself
+            // be invalid) - show an error page.
+            $this->showErrorPage(
+                'invalid_request',
+                'Parametre state requis (max 512 caracteres) pour proteger contre le CSRF.'
+            );
+            return;
+        }
+
         // Step 1: Validate client_id (before any redirect is possible)
         $this->client = $this->validateClient($clientId);
         if ($this->client === null) {
@@ -373,11 +386,29 @@ class AuthorizationController
             return false;
         }
 
-        // Must be HTTPS in production (allow HTTP for localhost)
-        $isLocalhost = in_array($parsed['host'], ['localhost', '127.0.0.1', '::1']);
-        if (!$isLocalhost && $parsed['scheme'] !== 'https') {
-            dol_syslog('SmartAuth AuthorizationController: Non-HTTPS redirect URI rejected: ' . $uri, LOG_WARNING);
-            return false;
+        // M-21 of TODO-SECURITY-01: in production, only HTTPS is acceptable
+        // for redirect_uri. Loopback addresses keep their HTTP exception
+        // (RFC 8252 §7.3) but only when SMARTAUTH_OAUTH_ALLOW_LOOPBACK_HTTP
+        // is on. Custom schemes (e.g. mobile app deeplinks like myapp://)
+        // are still accepted - they are out-of-scope for the HTTPS rule.
+        $scheme = strtolower($parsed['scheme']);
+        $allowLoopback = (int) getDolGlobalInt('SMARTAUTH_OAUTH_ALLOW_LOOPBACK_HTTP', 1) === 1;
+        $isLoopbackHost = in_array(strtolower($parsed['host']), ['localhost', '127.0.0.1', '::1'], true);
+
+        if ($scheme === 'http') {
+            if (!$isLoopbackHost || !$allowLoopback) {
+                dol_syslog('SmartAuth AuthorizationController: Non-HTTPS redirect URI rejected: ' . $uri, LOG_WARNING);
+                return false;
+            }
+        } elseif ($scheme !== 'https' && strpos($scheme, '.') === false && strpos($scheme, '-') === false && strlen($scheme) > 1) {
+            // Reject scheme-less / suspicious schemes like 'javascript', 'data', 'file', 'gopher'.
+            $blocked = ['javascript', 'data', 'file', 'gopher', 'ftp'];
+            if (in_array($scheme, $blocked, true)) {
+                dol_syslog('SmartAuth AuthorizationController: Blocked scheme in redirect URI: ' . $uri, LOG_WARNING);
+                return false;
+            }
+            // Other custom schemes (myapp://...) are allowed - the next
+            // line still gates on the client's registered list.
         }
 
         // Check against registered URIs (exact match required)

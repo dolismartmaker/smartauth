@@ -94,6 +94,17 @@ class HookHelper
      * @param array $claims     Current claims (will be passed by reference and possibly mutated)
      * @return array Modified claims (or original on error)
      */
+    /**
+     * Reserved JWT claim names that hook handlers must never overwrite.
+     * Letting a hook rewrite iss / aud / sub / exp / iat / nbf / jti would
+     * let a misbehaving module forge tokens for other clients or users
+     *.
+     */
+    private const RESERVED_CLAIMS = [
+        'iss', 'sub', 'aud', 'exp', 'iat', 'nbf', 'jti', 'auth_time',
+        'at_hash', 'nonce', 'token_type', 'grant_type',
+    ];
+
     public static function runClaimsHook(array $parameters, array $claims): array
     {
         global $hookmanager;
@@ -120,6 +131,27 @@ class HookHelper
         if (!is_array($modified)) {
             dol_syslog('SmartAuth HookHelper: Hook ' . $hookName . ' returned non-array claims, keeping standard claims', LOG_WARNING);
             return $claims;
+        }
+
+        // Restore reserved claims from the original payload so a hook
+        // cannot rewrite them (M-18). Hooks may add user-defined claims
+        // freely; identity / lifetime / audience claims are server-owned.
+        foreach (self::RESERVED_CLAIMS as $reserved) {
+            if (array_key_exists($reserved, $claims)) {
+                if (!array_key_exists($reserved, $modified) || $modified[$reserved] !== $claims[$reserved]) {
+                    if (array_key_exists($reserved, $modified) && $modified[$reserved] !== $claims[$reserved]) {
+                        dol_syslog('SmartAuth HookHelper: Hook attempted to overwrite reserved claim "' . $reserved . '" - ignored', LOG_WARNING);
+                    }
+                    $modified[$reserved] = $claims[$reserved];
+                }
+            } else {
+                // Hook tried to inject a reserved claim that wasn't in the
+                // original payload - drop it.
+                if (array_key_exists($reserved, $modified)) {
+                    dol_syslog('SmartAuth HookHelper: Hook attempted to inject reserved claim "' . $reserved . '" - dropped', LOG_WARNING);
+                    unset($modified[$reserved]);
+                }
+            }
         }
 
         return $modified;

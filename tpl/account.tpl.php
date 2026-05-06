@@ -162,13 +162,34 @@ $formatDate = function ($timestamp) {
             <?php endif; ?>
         </section>
 
+        <?php
+        // Sanitiser used for hook-provided HTML. Per M-8 of TODO-SECURITY-01,
+        // a misbehaving module must not be able to inject <script>, on*=
+        // handlers or javascript: URLs into the /account page.
+        $sanitiseSectionHtml = static function ($html): string {
+            if (!is_string($html)) {
+                return '';
+            }
+            if (function_exists('dol_string_onlythesehtmltags')) {
+                return (string) dol_string_onlythesehtmltags($html);
+            }
+            $html = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $html);
+            $html = preg_replace('#<(iframe|object|embed|style|link|meta)\b[^>]*>.*?</\1>#is', '', $html);
+            $html = preg_replace('#<(iframe|object|embed|style|link|meta)\b[^>]*/?>#i', '', $html);
+            $html = preg_replace('#\s(on\w+)\s*=\s*"[^"]*"#i', '', $html);
+            $html = preg_replace("#\\s(on\\w+)\\s*=\\s*'[^']*'#i", '', $html);
+            $html = preg_replace('#\s(on\w+)\s*=\s*[^\s>]+#i', '', $html);
+            $html = preg_replace('#javascript\s*:#i', '', $html);
+            return (string) $html;
+        };
+        ?>
         <?php foreach ($extraSections as $section): ?>
             <?php if (!empty($section['html'])): ?>
             <section class="account-section account-section-extra">
                 <?php if (!empty($section['title'])): ?>
                     <h2><?= $h($section['title']) ?></h2>
                 <?php endif; ?>
-                <?= $section['html'] ?>
+                <?= $sanitiseSectionHtml($section['html']) ?>
             </section>
             <?php endif; ?>
         <?php endforeach; ?>

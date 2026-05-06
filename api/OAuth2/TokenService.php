@@ -640,10 +640,18 @@ class TokenService
             return null;
         }
 
-        // Verify signature
+        // Verify signature. The header.kid tells us which key signed the
+        // token; we look it up by kid (current or archived) so rotation
+        // does not invalidate live tokens.
         $dataToVerify = $headerEncoded . '.' . $payloadEncoded;
         $signature = JwtKeyHelper::base64UrlDecode($signatureEncoded);
-        $publicKey = JwtKeyHelper::getRsaPublicKey();
+        $publicKey = '';
+        if (!empty($header['kid'])) {
+            $publicKey = JwtKeyHelper::getRsaPublicKeyByKid((string) $header['kid']);
+        }
+        if ($publicKey === '') {
+            $publicKey = JwtKeyHelper::getRsaPublicKey();
+        }
 
         $valid = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA256);
         if ($valid !== 1) {
