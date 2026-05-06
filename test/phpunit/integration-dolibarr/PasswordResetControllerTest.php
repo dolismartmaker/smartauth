@@ -103,16 +103,16 @@ class PasswordResetControllerTest extends DolibarrRealTestCase
 
         $this->assertEquals(200, $result[1]);
 
-        // Verify token was stored in pass_temp
+        // Verify a token hash was stored in pass_temp.
+        // Since M-2 of TODO-SECURITY-01, pass_temp holds hash('sha256', $token)
+        // (64-char hex) instead of the plain token, so the only thing we
+        // can assert from the test is the presence of a 64-char hex value.
         $sql = "SELECT pass_temp FROM " . MAIN_DB_PREFIX . "user WHERE rowid = " . (int) $testUser->id;
         $resql = $this->db->query($sql);
         $obj = $this->db->fetch_object($resql);
 
         $this->assertNotEmpty($obj->pass_temp);
-
-        // Verify token is valid format
-        $tokenValidation = PasswordResetController::validateToken($obj->pass_temp);
-        $this->assertTrue($tokenValidation['valid']);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', (string) $obj->pass_temp);
     }
 
     /**
@@ -386,9 +386,13 @@ class PasswordResetControllerTest extends DolibarrRealTestCase
             'pass' => 'oldpassword'
         ]);
 
-        // Set reset token
+        // Set reset token. Since M-2 of TODO-SECURITY-01, pass_temp stores
+        // hash('sha256', $token) - the plain token only ever travels in
+        // the email - so the test must seed the hash and present the plain
+        // token to confirmReset.
         $token = base64_encode('validtoken123|' . (time() + 3600));
-        $this->db->query("UPDATE " . MAIN_DB_PREFIX . "user SET pass_temp = '" . $this->db->escape($token) . "' WHERE rowid = " . (int) $testUser->id);
+        $hash = hash('sha256', $token);
+        $this->db->query("UPDATE " . MAIN_DB_PREFIX . "user SET pass_temp = '" . $this->db->escape($hash) . "' WHERE rowid = " . (int) $testUser->id);
 
         $result = $this->controller->confirmReset([
             'email' => 'validreset@example.com',

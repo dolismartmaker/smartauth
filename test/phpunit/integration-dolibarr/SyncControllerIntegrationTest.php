@@ -71,20 +71,22 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
      */
     private function createSyncTestDevice(): int
     {
-        $uuid = $this->generateUUID();
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
-        $sql .= " (fk_user, uuid_device, device_name, app_version, last_used, date_creation, status)";
+        $sql .= " (ref, fk_user_creat, uuid, label, date_creation, status, entity)";
         $sql .= " VALUES (";
+        $sql .= "'TEST-DEV-" . uniqid() . "', ";
         $sql .= (int) $this->testUser->id . ", ";
-        $sql .= "'" . $this->db->escape($uuid) . "', ";
+        $sql .= "'" . $this->db->escape($this->generateUUID()) . "', ";
         $sql .= "'Test Device', ";
-        $sql .= "'1.0.0', ";
         $sql .= "'" . $this->db->idate(time()) . "', ";
-        $sql .= "'" . $this->db->idate(time()) . "', ";
+        $sql .= "1, ";
         $sql .= "1)";
 
-        $this->db->query($sql);
-        return $this->db->last_insert_id(MAIN_DB_PREFIX . 'smartauth_devices');
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            throw new \RuntimeException('Failed to insert sync test device: ' . $this->db->lasterror());
+        }
+        return (int) $this->db->last_insert_id(MAIN_DB_PREFIX . 'smartauth_devices');
     }
 
     /**
@@ -93,7 +95,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
     private function registerSyncClient(int $deviceId): int
     {
         $result = $this->controller->register([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'jwt_device_id' => $deviceId,
             'app_version' => '1.0.0'
         ]);
@@ -114,7 +116,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $deviceId = $this->createSyncTestDevice();
 
         $result = $this->controller->register([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'jwt_device_id' => $deviceId,
             'app_version' => '1.0.0',
             'sync_scope' => ['thirdparty', 'contact']
@@ -147,7 +149,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // First registration
         $result1 = $this->controller->register([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'jwt_device_id' => $deviceId,
             'app_version' => '1.0.0'
         ]);
@@ -156,7 +158,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // Second registration with same UUID
         $result2 = $this->controller->register([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'jwt_device_id' => $deviceId,
             'app_version' => '2.0.0'
         ]);
@@ -184,7 +186,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $this->registerSyncClient($deviceId);
 
         $result = $this->controller->pull([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'object_type' => 'thirdparty'
         ]);
 
@@ -208,7 +210,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         ]);
 
         $result = $this->controller->pull([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'object_type' => 'thirdparty'
         ]);
 
@@ -244,7 +246,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $futureTime = date('c', strtotime('+1 hour'));
 
         $result = $this->controller->pull([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'object_type' => 'thirdparty',
             'last_sync_at' => $futureTime
         ]);
@@ -268,7 +270,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $this->db->query($sql);
 
         $result = $this->controller->pull([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'object_type' => 'thirdparty'
         ]);
 
@@ -290,7 +292,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $this->registerSyncClient($deviceId);
 
         $result = $this->controller->status([
-            'client_uuid' => $this->testClientUUID
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID
         ]);
 
         $this->assertEquals(200, $result[1]);
@@ -321,7 +323,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         }
 
         $result = $this->controller->status([
-            'client_uuid' => $this->testClientUUID
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID
         ]);
 
         $this->assertEquals(200, $result[1]);
@@ -341,7 +343,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $this->registerSyncClient($deviceId);
 
         $result = $this->controller->conflicts([
-            'client_uuid' => $this->testClientUUID
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID
         ]);
 
         $this->assertEquals(200, $result[1]);
@@ -368,7 +370,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $this->db->query($sql);
 
         $result = $this->controller->conflicts([
-            'client_uuid' => $this->testClientUUID
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID
         ]);
 
         $this->assertEquals(200, $result[1]);
@@ -540,7 +542,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // Pull operation
         $this->controller->pull([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'object_type' => 'thirdparty'
         ]);
 
@@ -552,7 +554,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // Status operation (no event logged for status)
         $this->controller->status([
-            'client_uuid' => $this->testClientUUID
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID
         ]);
 
         // Total should be 2 (register + pull)
@@ -575,7 +577,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $this->registerSyncClient($deviceId);
 
         $result = $this->controller->pull([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'object_type' => 'invalid_type'
         ]);
 
@@ -599,13 +601,13 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // Status
         $statusResult = $this->controller->status([
-            'client_uuid' => $fakeUUID
+            'user_id' => $this->testUser->id, 'client_uuid' => $fakeUUID
         ]);
         $this->assertEquals(404, $statusResult[1]);
 
         // Conflicts
         $conflictsResult = $this->controller->conflicts([
-            'client_uuid' => $fakeUUID
+            'user_id' => $this->testUser->id, 'client_uuid' => $fakeUUID
         ]);
         $this->assertEquals(404, $conflictsResult[1]);
     }
@@ -683,7 +685,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $societe2 = $this->createTestSociete(['name' => 'Company Without Files']);
 
         $result = $this->controller->pull([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'object_type' => 'thirdparty'
         ]);
 
@@ -730,7 +732,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         ]);
 
         $result = $this->controller->pull([
-            'client_uuid' => $this->testClientUUID,
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
             'object_type' => 'thirdparty',
             'with_files' => '1',
         ]);
