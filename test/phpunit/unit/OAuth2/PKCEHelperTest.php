@@ -122,29 +122,23 @@ class PKCEHelperTest extends TestCase
     }
 
     /**
-     * Test validating correct plain verifier/challenge pair
+     * Test that the 'plain' method is rejected.
+     * Even when verifier == challenge, plain must not validate.
      */
-    public function testValidatePlainCorrect(): void
+    public function testValidatePlainAlwaysRejected(): void
     {
         $verifier = PKCEHelper::generateVerifier();
-        $challenge = $verifier; // Plain method: challenge = verifier
 
-        $result = PKCEHelper::validate($verifier, $challenge, PKCEHelper::METHOD_PLAIN);
+        $this->assertFalse(
+            PKCEHelper::validate($verifier, $verifier, PKCEHelper::METHOD_PLAIN),
+            'plain method must be rejected even when verifier == challenge'
+        );
 
-        $this->assertTrue($result);
-    }
-
-    /**
-     * Test validating incorrect plain verifier/challenge pair
-     */
-    public function testValidatePlainIncorrect(): void
-    {
-        $verifier = PKCEHelper::generateVerifier();
         $wrongVerifier = PKCEHelper::generateVerifier();
-
-        $result = PKCEHelper::validate($wrongVerifier, $verifier, PKCEHelper::METHOD_PLAIN);
-
-        $this->assertFalse($result);
+        $this->assertFalse(
+            PKCEHelper::validate($wrongVerifier, $verifier, PKCEHelper::METHOD_PLAIN),
+            'plain method must be rejected for mismatched verifier too'
+        );
     }
 
     /**
@@ -228,19 +222,20 @@ class PKCEHelperTest extends TestCase
     }
 
     /**
-     * Test isValidMethod with valid methods
+     * Test isValidMethod accepts only S256 (CR-3 fix).
      */
     public function testIsValidMethodValid(): void
     {
         $this->assertTrue(PKCEHelper::isValidMethod('S256'));
-        $this->assertTrue(PKCEHelper::isValidMethod('plain'));
     }
 
     /**
-     * Test isValidMethod with invalid methods
+     * Test isValidMethod with invalid methods.
+     * 'plain' is no longer accepted.
      */
     public function testIsValidMethodInvalid(): void
     {
+        $this->assertFalse(PKCEHelper::isValidMethod('plain'), 'plain must be rejected');
         $this->assertFalse(PKCEHelper::isValidMethod('s256')); // Case sensitive
         $this->assertFalse(PKCEHelper::isValidMethod('PLAIN')); // Case sensitive
         $this->assertFalse(PKCEHelper::isValidMethod('MD5'));
@@ -263,16 +258,15 @@ class PKCEHelperTest extends TestCase
     }
 
     /**
-     * Test isValidChallenge for plain method
+     * Test isValidChallenge rejects the plain method (CR-3 fix).
      */
-    public function testIsValidChallengePlain(): void
+    public function testIsValidChallengePlainRejected(): void
     {
-        // Plain challenge must be valid verifier format
-        $validChallenge = str_repeat('a', 43);
-        $tooShort = str_repeat('a', 42);
-
-        $this->assertTrue(PKCEHelper::isValidChallenge($validChallenge, PKCEHelper::METHOD_PLAIN));
-        $this->assertFalse(PKCEHelper::isValidChallenge($tooShort, PKCEHelper::METHOD_PLAIN));
+        $validShape = str_repeat('a', 43);
+        $this->assertFalse(
+            PKCEHelper::isValidChallenge($validShape, PKCEHelper::METHOD_PLAIN),
+            'plain method must be rejected by isValidChallenge'
+        );
     }
 
     /**
@@ -281,7 +275,6 @@ class PKCEHelperTest extends TestCase
     public function testIsValidChallengeEmpty(): void
     {
         $this->assertFalse(PKCEHelper::isValidChallenge('', PKCEHelper::METHOD_S256));
-        $this->assertFalse(PKCEHelper::isValidChallenge('', PKCEHelper::METHOD_PLAIN));
     }
 
     /**

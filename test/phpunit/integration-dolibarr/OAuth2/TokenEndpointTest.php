@@ -400,15 +400,26 @@ class TokenEndpointTest extends OAuthTestCase
     }
 
     /**
-     * Test public client has no secret
+     * Test public client has no secret.
+     *
+     * Updated for H-15 fix (TODO-SECURITY-01): verifySecret() no longer
+     * returns true on an empty stored hash. Public clients are expected
+     * to be short-circuited via isConfidential() before reaching
+     * verifySecret(); calling verifySecret() on them must now fail safely.
      */
     public function testPublicClientNoSecret(): void
     {
         $client = $this->createTestClientFromFixture('public');
 
         $this->assertFalse($client->isConfidential());
-        // Public client should accept any secret (returns true for empty check)
-        $this->assertTrue($client->verifySecret(''));
+        $this->assertFalse(
+            $client->verifySecret(''),
+            'verifySecret must reject empty stored hash even for public clients'
+        );
+        $this->assertFalse(
+            $client->verifySecret('any-value'),
+            'verifySecret must never accept a value when stored hash is empty'
+        );
     }
 
     /**

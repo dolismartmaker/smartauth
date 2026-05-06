@@ -93,6 +93,30 @@ abstract class HttpTestCase extends TestCase
     public static function tearDownAfterClass(): void
     {
         self::stopServer();
+
+        // Clean up RAM DB shared across server requests for this port.
+        $ramDiskPath = is_dir('/dev/shm') ? '/dev/shm' : sys_get_temp_dir();
+        $ramDbPath = $ramDiskPath . '/smartauth_http_test_port_' . self::$serverPort . '.sdb';
+        $markerPath = $ramDbPath . '.ready';
+
+        if (file_exists($markerPath)) {
+            @unlink($markerPath);
+        }
+        if (file_exists($ramDbPath)) {
+            @unlink($ramDbPath);
+        }
+
+        // Restore the original SQLite vendor file from the .backup if any.
+        $projectRoot = dirname(__DIR__, 3);
+        $originalDbPath = $projectRoot . '/vendor/cap-rel/dolibarr-integration-sqlite/documents/database_dolibarr.sdb';
+        if (is_link($originalDbPath)) {
+            @unlink($originalDbPath);
+        }
+        if (file_exists($originalDbPath . '.backup')) {
+            @copy($originalDbPath . '.backup', $originalDbPath);
+            @unlink($originalDbPath . '.backup');
+        }
+
         parent::tearDownAfterClass();
     }
 

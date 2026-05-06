@@ -383,7 +383,8 @@ class OAuthConfigTest extends TestCase
 
         $this->assertIsArray($methods);
         $this->assertContains('S256', $methods);
-        $this->assertContains('plain', $methods);
+        // 'plain' is intentionally not advertised.
+        $this->assertNotContains('plain', $methods);
     }
 
     /**

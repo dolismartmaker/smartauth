@@ -767,4 +767,72 @@ class DmHelperTest extends DolibarrRealTestCase
         $this->assertIsArray($result);
         $this->assertArrayHasKey('options', $result);
     }
+
+    /**
+     * Sellist resolver: bare 'sellist' (no descriptor, no ':') is mapped
+     * to 'select' through the type switch in _customFilterAttributeType.
+     * The dedicated sellist resolver only fires when the type string
+     * contains at least one ':' so options stays absent in this case.
+     */
+    public function testSellistResolverWithoutDescriptor(): void
+    {
+        $result = $this->helper->propertiesFilter(['type' => 'sellist'], 'k', 'fk');
+
+        $this->assertSame('select', $result['type']);
+    }
+
+    /**
+     * Sellist resolver: a fully qualified descriptor against a real
+     * Dolibarr reference table (c_country) must surface a non-empty list
+     * of {label, value} pairs.
+     */
+    public function testSellistResolverResolvesRealTable(): void
+    {
+        $result = $this->helper->propertiesFilter(
+            ['type' => 'sellist:c_country:label:rowid'],
+            'fk_country',
+            'fkCountry'
+        );
+
+        $this->assertSame('select', $result['type']);
+        $this->assertArrayHasKey('options', $result);
+        $this->assertIsArray($result['options']);
+        $this->assertNotEmpty($result['options'], 'c_country must yield at least one row');
+
+        $first = $result['options'][0];
+        $this->assertArrayHasKey('label', $first);
+        $this->assertArrayHasKey('value', $first);
+    }
+
+    /**
+     * Sellist resolver: descriptor pointing at an unknown table must
+     * degrade gracefully (empty options, no exception).
+     */
+    public function testSellistResolverWithUnknownTable(): void
+    {
+        $result = $this->helper->propertiesFilter(
+            ['type' => 'sellist:c_does_not_exist_xyz:label:rowid'],
+            'k',
+            'fk'
+        );
+
+        $this->assertSame('select', $result['type']);
+        $this->assertSame([], $result['options']);
+    }
+
+    /**
+     * Sellist resolver: identifiers carrying SQL injection bytes must be
+     * rejected and the picker must end up with an empty options list.
+     */
+    public function testSellistResolverRejectsMaliciousIdentifiers(): void
+    {
+        $result = $this->helper->propertiesFilter(
+            ['type' => 'sellist:c_country; DROP TABLE x;--:label:rowid'],
+            'k',
+            'fk'
+        );
+
+        $this->assertSame('select', $result['type']);
+        $this->assertSame([], $result['options']);
+    }
 }
