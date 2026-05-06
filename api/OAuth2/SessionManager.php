@@ -43,7 +43,16 @@ class SessionManager
     /**
      * Cookie name for SmartAuth session
      */
-    const COOKIE_NAME = 'smartauth_session';
+    /**
+     * Default session cookie name. The "__Host-" prefix is preferred when
+     * the runtime can satisfy the browser's contract (https + path=/ +
+     * no Domain attribute). resolveCookieName() applies that prefix
+     * conditionally so dev environments served over plain HTTP still work
+     *.
+     */
+    const COOKIE_NAME_PLAIN = 'smartauth_session';
+    const COOKIE_NAME_HOST = '__Host-smartauth_session';
+    const COOKIE_NAME = self::COOKIE_NAME_PLAIN;
 
     /**
      * Database connection
@@ -81,7 +90,12 @@ class SessionManager
     public function validateSession(): ?int
     {
         // Check if cookie exists
-        $cookie = $_COOKIE[self::COOKIE_NAME] ?? null;
+        // Read either the "__Host-" prefixed cookie (https) or the plain
+        // one (legacy / dev). resolveCookieName() picks which one we'd
+        // emit; reading both lets us survive a switch from http->https.
+        $cookie = $_COOKIE[self::COOKIE_NAME_HOST]
+            ?? $_COOKIE[self::COOKIE_NAME_PLAIN]
+            ?? null;
         if (empty($cookie)) {
             return null;
         }
@@ -151,18 +165,20 @@ class SessionManager
 
         // Determine if we should use Secure flag
         $secure = $this->isSecureContext();
+        $cookieName = $this->resolveCookieName();
+        // __Host- requires no Domain attribute; otherwise honour configured domain.
+        $domain = $cookieName === self::COOKIE_NAME_HOST ? '' : $this->getCookieDomain();
 
-        // Set cookie
         $cookieOptions = [
             'expires' => $now + $ttl,
             'path' => '/',
-            'domain' => $this->getCookieDomain(),
+            'domain' => $domain,
             'secure' => $secure,
             'httponly' => true,
             'samesite' => 'Lax',
         ];
 
-        setcookie(self::COOKIE_NAME, $jwt, $cookieOptions);
+        setcookie($cookieName, $jwt, $cookieOptions);
 
         // Cache the payload
         $this->cachedPayload = $payload;
@@ -181,22 +197,25 @@ class SessionManager
     {
         $secure = $this->isSecureContext();
 
-        $cookieOptions = [
-            'expires' => time() - 3600,
-            'path' => '/',
-            'domain' => $this->getCookieDomain(),
-            'secure' => $secure,
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ];
-
-        setcookie(self::COOKIE_NAME, '', $cookieOptions);
+        // Clear both possible cookie names so a logout works regardless of
+        // whether the session was originally created in HTTPS / __Host- mode.
+        foreach ([self::COOKIE_NAME_HOST, self::COOKIE_NAME_PLAIN] as $name) {
+            $domain = $name === self::COOKIE_NAME_HOST ? '' : $this->getCookieDomain();
+            setcookie($name, '', [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'domain' => $domain,
+                'secure' => $secure,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+        }
 
         // Clear cached payload
         $this->cachedPayload = null;
 
         // Also unset from current request
-        unset($_COOKIE[self::COOKIE_NAME]);
+        unset($_COOKIE[self::COOKIE_NAME_HOST], $_COOKIE[self::COOKIE_NAME_PLAIN]);
     }
 
     /**
@@ -351,27 +370,59 @@ class SessionManager
     }
 
     /**
-     * Determine if we're in a secure context (HTTPS)
+     * Determine if we're in a secure context (HTTPS).
+     *
+     * X-Forwarded-Proto is honoured only when the immediate REMOTE_ADDR
+     * is in a private/loopback range or in SMARTAUTH_TRUSTED_PROXIES
+     * - otherwise an attacker on the public
+     * Internet could spoof the header to make the server believe
+     * "secure" and skip the Secure attribute.
      *
      * @return bool True if HTTPS
      */
     private function isSecureContext(): bool
     {
-        // Direct HTTPS
         if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
             return true;
         }
-
-        // Behind reverse proxy
-        if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+        if (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
             return true;
         }
-
-        // Check port
-        if (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443) {
-            return true;
+        if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])
+            && strtolower((string) $_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https'
+        ) {
+            $remote = $_SERVER['REMOTE_ADDR'] ?? '';
+            $trustedRaw = function_exists('getDolGlobalString')
+                ? (string) getDolGlobalString('SMARTAUTH_TRUSTED_PROXIES', '')
+                : '';
+            $trustedList = array_filter(array_map('trim', explode(',', $trustedRaw)));
+            $isPrivate = ($remote === ''
+                || preg_match('/^127\./', $remote)
+                || preg_match('/^10\./', $remote)
+                || preg_match('/^172\.(1[6-9]|2\d|3[01])\./', $remote)
+                || preg_match('/^192\.168\./', $remote)
+                || $remote === '::1');
+            if ($isPrivate || in_array($remote, $trustedList, true)) {
+                return true;
+            }
         }
-
         return false;
+    }
+
+    /**
+     * Choose the actual cookie name. Use the "__Host-" prefix when the
+     * browser will accept it (https + no explicit domain).
+     */
+    private function resolveCookieName(): string
+    {
+        if (!$this->isSecureContext()) {
+            return self::COOKIE_NAME_PLAIN;
+        }
+        $domain = $this->getCookieDomain();
+        if ($domain !== '' && $domain !== null) {
+            // __Host- requires Domain attribute to be omitted
+            return self::COOKIE_NAME_PLAIN;
+        }
+        return self::COOKIE_NAME_HOST;
     }
 }

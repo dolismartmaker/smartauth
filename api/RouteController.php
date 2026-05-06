@@ -352,7 +352,11 @@ class RouteController
 
 		if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE' || $method === 'PATCH') {
 			$raw = file_get_contents('php://input');
-			dol_syslog("SmartAuth Debug smartauth parseRequestData: method=$method, raw_length=" . strlen($raw) . ", raw=" . substr($raw, 0, 500));
+			// Log only the body length and the action target. Logging the
+			// raw body (even truncated to 500 chars) would persist passwords
+			// and tokens to the syslog when SMARTAUTH_DEBUG is enabled
+			//.
+			dol_syslog("SmartAuth Debug smartauth parseRequestData: method=$method, raw_length=" . strlen((string) $raw) . ", target=" . (string) $targetAction);
 			if ($raw !== false && $raw !== '') {
 				$decoded = json_decode($raw, true);
 				if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {

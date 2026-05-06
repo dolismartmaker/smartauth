@@ -1207,59 +1207,83 @@ class ObjectDocumentController
             ];
         }
 
-        // Create ZIP archive
-        $tmpFile = tempnam(sys_get_temp_dir(), 'smartauth_bundle_');
-        if ($tmpFile === false) {
-            return [['error' => 'Failed to create temp file'], 500];
+        // Create ZIP archive in a private per-request directory.
+        // Using sys_get_temp_dir() with tempnam() is symlink-race-able when
+        // /tmp is world-writable: an attacker who can create symlinks in
+        // /tmp could redirect ZipArchive::OVERWRITE to overwrite arbitrary
+        // files. We instead create a fresh dir
+        // with mode 0700 and place the bundle inside it.
+        $tmpDir = sys_get_temp_dir() . '/smartauth_bundle_' . bin2hex(random_bytes(16));
+        if (!@mkdir($tmpDir, 0700, true) && !is_dir($tmpDir)) {
+            dol_syslog('smartauth::ObjectDocumentController::bundle - failed to create temp dir', LOG_ERR);
+            return [['error' => 'Failed to create temp directory'], 500];
         }
+        @chmod($tmpDir, 0700);
+        $tmpFile = $tmpDir . '/bundle.zip';
 
-        $zip = new \ZipArchive();
-        if ($zip->open($tmpFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-            @unlink($tmpFile);
-            return [['error' => 'Failed to create ZIP archive'], 500];
+        // Cleanup helper - called both on success and exception paths
+        $cleanup = static function () use (&$tmpFile, &$tmpDir): void {
+            if (is_string($tmpFile) && is_file($tmpFile)) {
+                @unlink($tmpFile);
+            }
+            if (is_string($tmpDir) && is_dir($tmpDir)) {
+                @rmdir($tmpDir);
+            }
+        };
+
+        try {
+            $zip = new \ZipArchive();
+            // OVERWRITE on a path inside a freshly-created mode-0700 dir is
+            // safe because we own the directory.
+            if ($zip->open($tmpFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+                $cleanup();
+                return [['error' => 'Failed to create ZIP archive'], 500];
+            }
+
+            // Add manifest
+            $manifest = [
+                'included' => $included,
+                'oversized' => $oversized,
+                'remaining' => $remaining,
+                'errors' => $errors,
+                'server_time' => time(),
+            ];
+            $zip->addFromString('manifest.json', json_encode($manifest, JSON_UNESCAPED_UNICODE));
+            $zip->setCompressionName('manifest.json', \ZipArchive::CM_STORE);
+
+            foreach ($filesToAdd as $fileInfo) {
+                $entryName = 'files/' . $fileInfo['share'];
+                $zip->addFile($fileInfo['path'], $entryName);
+                $zip->setCompressionName($entryName, \ZipArchive::CM_STORE);
+            }
+
+            $zip->close();
+
+            $zipSize = filesize($tmpFile);
+            $docCount = count($included);
+            $overCount = count($oversized);
+            $remCount = count($remaining);
+            dol_syslog("smartauth::ObjectDocumentController::bundle - ZIP: {$docCount} files, {$overCount} oversized, {$remCount} remaining, {$zipSize} bytes");
+
+            if (is_object($db)) {
+                $db->close();
+            }
+
+            header('Content-Type: application/zip');
+            header('Content-Disposition: attachment; filename="bundle.zip"');
+            header('Content-Length: ' . $zipSize);
+            header('Cache-Control: private, max-age=0, must-revalidate');
+
+            readfileLowMemory($tmpFile);
+            $cleanup();
+            exit;
+        } catch (\Throwable $e) {
+            // Always remove the staging directory even if anything throws,
+            // otherwise long-running servers leak temp files.
+            $cleanup();
+            dol_syslog('smartauth::ObjectDocumentController::bundle - exception: ' . $e->getMessage(), LOG_ERR);
+            return [['error' => 'Failed to build bundle'], 500];
         }
-
-        // Add manifest
-        $manifest = [
-            'included' => $included,
-            'oversized' => $oversized,
-            'remaining' => $remaining,
-            'errors' => $errors,
-            'server_time' => time(),
-        ];
-        $zip->addFromString('manifest.json', json_encode($manifest, JSON_UNESCAPED_UNICODE));
-        $zip->setCompressionName('manifest.json', \ZipArchive::CM_STORE);
-
-        // Add files with STORE method (no compression - images/PDFs are already compressed)
-        foreach ($filesToAdd as $fileInfo) {
-            $entryName = 'files/' . $fileInfo['share'];
-            $zip->addFile($fileInfo['path'], $entryName);
-            $zip->setCompressionName($entryName, \ZipArchive::CM_STORE);
-        }
-
-        $zip->close();
-
-        // Stream ZIP response
-        $zipSize = filesize($tmpFile);
-        $docCount = count($included);
-        $overCount = count($oversized);
-        $remCount = count($remaining);
-        dol_syslog("smartauth::ObjectDocumentController::bundle - ZIP: {$docCount} files, {$overCount} oversized, {$remCount} remaining, {$zipSize} bytes");
-
-        // Close DB before streaming
-        if (is_object($db)) {
-            $db->close();
-        }
-
-        header('Content-Type: application/zip');
-        header('Content-Disposition: attachment; filename="bundle.zip"');
-        header('Content-Length: ' . $zipSize);
-        header('Cache-Control: private, max-age=0, must-revalidate');
-
-        readfileLowMemory($tmpFile);
-        @unlink($tmpFile);
-
-        exit;
     }
 
     /**

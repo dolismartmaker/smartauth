@@ -285,12 +285,24 @@ class InputSanitizer
 	}
 
 	/**
-	 * Sanitize a string value
+	 * Sanitize a string value.
+	 *
 	 * - Removes null bytes
-	 * - Strips HTML tags
-	 * - Converts special characters to HTML entities
+	 * - Strips HTML tags (defence in depth - the API never expects HTML)
 	 * - Trims whitespace
 	 * - Limits length
+	 *
+	 * NOTE on HTML escaping: this function does NOT call htmlspecialchars().
+	 * SmartAuth is a JSON API; HTML escaping is the responsibility of the
+	 * consumer, which alone knows the rendering context (HTML body,
+	 * attribute, JS, URL, ...).
+	 *
+	 * The previous implementation applied htmlspecialchars() unconditionally,
+	 * which made every PUT round-trip corrupt apostrophes and other special
+	 * chars: "L'École" -> "L&apos;École" -> "L&amp;apos;École" -> ...
+	 * This is a well-known anti-pattern documented by OWASP (output encoding
+	 * is a presentation concern, not a storage concern). Fixed alongside
+	 * the TODO-SECURITY-01 campaign.
 	 *
 	 * @param mixed $value  Raw value
 	 * @param int   $maxLen Maximum length
@@ -310,9 +322,6 @@ class InputSanitizer
 
 		// Strip HTML tags
 		$value = strip_tags($value);
-
-		// Convert special characters to HTML entities
-		$value = htmlspecialchars($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
 		// Trim whitespace
 		$value = trim($value);

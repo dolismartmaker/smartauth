@@ -320,7 +320,7 @@ class SyncController
         }
 
         // Get client info
-        $client = $this->getClientByUUID($client_uuid);
+        $client = $this->getClientByUUID($client_uuid, $this->payloadUserId($payload));
         if (!$client) {
             return [['error' => 'Client not registered'], 404];
         }
@@ -431,7 +431,7 @@ class SyncController
         }
 
         // Get client info
-        $client = $this->getClientByUUID($client_uuid);
+        $client = $this->getClientByUUID($client_uuid, $this->payloadUserId($payload));
         if (!$client) {
             return [['error' => 'Client not registered'], 404];
         }
@@ -554,7 +554,7 @@ class SyncController
             return [['error' => 'client_uuid is required'], 400];
         }
 
-        $client = $this->getClientByUUID($client_uuid);
+        $client = $this->getClientByUUID($client_uuid, $this->payloadUserId($payload));
         if (!$client) {
             return [['error' => 'Client not registered'], 404];
         }
@@ -604,7 +604,7 @@ class SyncController
             return [['error' => 'client_uuid is required'], 400];
         }
 
-        $client = $this->getClientByUUID($client_uuid);
+        $client = $this->getClientByUUID($client_uuid, $this->payloadUserId($payload));
         if (!$client) {
             return [['error' => 'Client not registered'], 404];
         }
@@ -756,19 +756,66 @@ class SyncController
     }
 
     /**
-     * Get client by UUID
+     * Get client by UUID, restricted to a given Dolibarr user.
+     *
+     * The fk_device link is joined with smartauth_devices to verify that
+     * the device behind this sync client belongs to $userId. Without this
+     * scope, any authenticated user who guessed (or harvested) another
+     * user's client_uuid could pull/push their data (M-11).
+     *
+     * @param string $uuid Sync client UUID
+     * @param int $userId Authenticated Dolibarr user id (mandatory)
+     * @return object|null Sync client row, or null if not found / not owned
      */
-    private function getClientByUUID($uuid)
+    private function getClientByUUID($uuid, int $userId = 0)
     {
-        $sql = "SELECT * FROM " . MAIN_DB_PREFIX . "smartauth_sync_clients";
-        $sql .= " WHERE client_uuid = '" . $this->db->escape($uuid) . "'";
-        $sql .= " AND status = 1";
+        if ($userId <= 0) {
+            dol_syslog('SmartAuth SyncController::getClientByUUID called without userId - rejecting (M-11)', LOG_WARNING);
+            return null;
+        }
+
+        // smartauth_devices.fk_user_creat is the column linking a device
+        // to its owning Dolibarr user.
+        $sql = "SELECT sc.* FROM " . MAIN_DB_PREFIX . "smartauth_sync_clients sc";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "smartauth_devices sd ON sc.fk_device = sd.rowid";
+        $sql .= " WHERE sc.client_uuid = '" . $this->db->escape($uuid) . "'";
+        $sql .= " AND sc.status = 1";
+        $sql .= " AND sd.fk_user_creat = " . $userId;
 
         $resql = $this->db->query($sql);
         if ($resql && $this->db->num_rows($resql) > 0) {
             return $this->db->fetch_object($resql);
         }
         return null;
+    }
+
+    /**
+     * Resolve the authenticated Dolibarr user id from the route payload.
+     *
+     * Resolution order:
+     *   1. $payload['user']->id      (RouteController convention)
+     *   2. $payload['user_id']
+     *   3. fk_user resolved from $payload['jwt_device_id'] (also injected
+     *      by RouteController after JWT validation)
+     */
+    private function payloadUserId(array $payload): int
+    {
+        if (!empty($payload['user']) && is_object($payload['user']) && !empty($payload['user']->id)) {
+            return (int) $payload['user']->id;
+        }
+        $direct = (int) ($payload['user_id'] ?? 0);
+        if ($direct > 0) {
+            return $direct;
+        }
+        $deviceId = (int) ($payload['jwt_device_id'] ?? 0);
+        if ($deviceId > 0) {
+            $sql = "SELECT fk_user_creat FROM " . MAIN_DB_PREFIX . "smartauth_devices WHERE rowid = " . $deviceId;
+            $resql = $this->db->query($sql);
+            if ($resql && ($row = $this->db->fetch_object($resql))) {
+                return (int) $row->fk_user_creat;
+            }
+        }
+        return 0;
     }
 
     /**

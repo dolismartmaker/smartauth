@@ -104,6 +104,15 @@ class SmartUpload
         // Re-detect MIME from disk: the client-supplied $file['type'] is
         // user-controlled and cannot be trusted.
         $detectedMime = self::detectMime($file['tmp_name'], $file['name'] ?? '');
+
+        // Hard MIME denylist: regardless of the
+        // admin-overridable allow-list, certain types are always rejected
+        // because they enable XSS / RCE when served back over the same
+        // origin (svg with inline JS, html, php source, etc.).
+        if (in_array(strtolower($detectedMime), self::HARD_DENY_MIME, true)) {
+            return 'MIME type not allowed: ' . $detectedMime;
+        }
+
         $allowedMime = self::resolveAllowedMime($options);
         if (!in_array($detectedMime, $allowedMime, true)) {
             return 'MIME type not allowed: ' . $detectedMime;
@@ -397,6 +406,33 @@ class SmartUpload
         }
         return min(max((int) $ttl, 60), self::MAX_TTL);
     }
+
+    /**
+     * Hard MIME denylist.
+     *
+     * These types are rejected even when an admin has loosened
+     * SMARTAUTH_UPLOAD_ALLOWED_MIME because they can host inline scripts
+     * or be executed by the webserver.
+     */
+    const HARD_DENY_MIME = [
+        'image/svg+xml',
+        'image/svg',
+        'text/html',
+        'application/xhtml+xml',
+        'application/x-httpd-php',
+        'application/x-php',
+        'application/php',
+        'text/x-php',
+        'application/x-perl',
+        'application/x-python',
+        'application/x-sh',
+        'application/x-shellscript',
+        'application/javascript',
+        'text/javascript',
+        'application/x-msdownload',
+        'application/x-msdos-program',
+        'application/x-msi',
+    ];
 
     /**
      * Server-executable / handler-bound extensions that must NEVER survive

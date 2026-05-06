@@ -631,15 +631,27 @@ class RegistrationService
      */
     public function emailAlreadyKnown(string $email): bool
     {
-        $escaped = $this->db->escape($email);
+        $escaped = $this->db->escape(strtolower($email));
 
-        $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "user WHERE LOWER(email) = '" . $escaped . "' LIMIT 1";
+        // Restrict the lookup to entities the current registration context
+        // can legitimately see. Without this filter, the registration flow
+        // would leak user existence across tenants.
+        $userEntity = function_exists('getEntity') ? getEntity('user') : '1';
+        $contactEntity = function_exists('getEntity') ? getEntity('socpeople') : '1';
+
+        $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "user"
+            . " WHERE LOWER(email) = '" . $escaped . "'"
+            . " AND entity IN (" . $userEntity . ")"
+            . " LIMIT 1";
         $resql = $this->db->query($sql);
         if ($resql && $this->db->fetch_object($resql)) {
             return true;
         }
 
-        $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "socpeople WHERE LOWER(email) = '" . $escaped . "' LIMIT 1";
+        $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "socpeople"
+            . " WHERE LOWER(email) = '" . $escaped . "'"
+            . " AND entity IN (" . $contactEntity . ")"
+            . " LIMIT 1";
         $resql = $this->db->query($sql);
         if ($resql && $this->db->fetch_object($resql)) {
             return true;

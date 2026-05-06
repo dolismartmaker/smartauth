@@ -82,8 +82,31 @@ class PasswordResetController
             ];
         }
 
-        // Rate limiting by email to prevent abuse
+        // Rate limiting: by email AND by IP. The per-email limit alone
+        // (3/15min) was bypassable for mail-bombing by varying the email
+        // parameter. Adding the IP scope makes
+        // mass enumeration / spamming much harder.
         $rateLimiter = new RateLimiter($db);
+        $clientIp = \SmartAuth\Api\RouteController::get_client_ip();
+
+        $rateCheckIp = $rateLimiter->checkLimit(
+            $clientIp,
+            'password_reset_ip',
+            getDolGlobalInt('SMARTAUTH_RATELIMIT_RESET_IP_MAX', 10),
+            getDolGlobalInt('SMARTAUTH_RATELIMIT_RESET_IP_WINDOW', 900)
+        );
+        if (!$rateCheckIp['allowed']) {
+            dol_syslog("SmartAuth PasswordResetController::requestReset - IP rate limit exceeded for: " . $clientIp, LOG_WARNING);
+            return [
+                [
+                    'statusCode' => 429,
+                    'message' => 'Too many requests. Please try again later.',
+                    'retry_after' => $rateCheckIp['retry_after'],
+                ],
+                429
+            ];
+        }
+
         $rateCheck = $rateLimiter->checkLimit(
             $email,
             'password_reset',
@@ -103,7 +126,8 @@ class PasswordResetController
             ];
         }
 
-        // Record the attempt
+        // Record the attempts on both buckets
+        $rateLimiter->recordAttempt($clientIp, 'password_reset_ip');
         $rateLimiter->recordAttempt($email, 'password_reset');
 
         // Find user by email
@@ -126,15 +150,19 @@ class PasswordResetController
             // Generate reset token with embedded expiry
             $token = $this->generateTokenWithExpiry();
 
-            // Store token in user's pass_temp field
+            // Store the SHA-256 of the token in pass_temp.
+            // The plain token is sent to the user's email; only its hash
+            // lives in the database, so a SQLi or backup leak does not
+            // give the attacker a usable reset link.
+            $tokenHash = hash('sha256', $token);
             $sql = "UPDATE " . MAIN_DB_PREFIX . "user SET";
-            $sql .= " pass_temp = '" . $db->escape($token) . "'";
+            $sql .= " pass_temp = '" . $db->escape($tokenHash) . "'";
             $sql .= " WHERE rowid = " . ((int) $userId);
 
             $result = $db->query($sql);
 
             if ($result) {
-                // Send email
+                // Send email with the plain token (the only place it ever appears)
                 $this->sendResetEmail($userObj, $token);
 
                 SmartAuthLogger::debug("PasswordResetController::requestReset - Reset email sent to user ID: " . $userId);
@@ -342,8 +370,10 @@ class PasswordResetController
 
         $obj = $db->fetch_object($resql);
 
-        // Verify token matches
-        if (empty($obj->pass_temp) || $obj->pass_temp !== $token) {
+        // Verify token matches via constant-time comparison against the
+        // stored SHA-256 hash.
+        $expectedHash = hash('sha256', $token);
+        if (empty($obj->pass_temp) || !hash_equals((string) $obj->pass_temp, $expectedHash)) {
             dol_syslog("SmartAuth PasswordResetController::confirmReset - Token mismatch for user: " . $email, LOG_WARNING);
             return [
                 ['error' => 'Invalid email or token'],
@@ -372,12 +402,42 @@ class PasswordResetController
         $sql .= " WHERE rowid = " . ((int) $obj->rowid);
         $db->query($sql);
 
+        // Invalidate all existing SmartAuth tokens for this user
+        //. Without this, an attacker who held
+        // valid tokens before the password change keeps them after.
+        $this->revokeAllUserTokens((int) $obj->rowid);
+
         SmartAuthLogger::debug("PasswordResetController::confirmReset - Password reset successful for user ID: " . $obj->rowid);
 
         return [
             ['message' => 'Password has been reset successfully'],
             200
         ];
+    }
+
+    /**
+     * Revoke all live JWT (mobile) and OAuth2 tokens belonging to the
+     * given user. Called on password change so that previously-issued
+     * tokens cannot survive the credential rotation (M-3).
+     */
+    private function revokeAllUserTokens(int $userId): void
+    {
+        global $db;
+
+        // Mobile JWT tokens (llx_smartauth_auth)
+        $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth"
+            . " SET status = 0"
+            . " WHERE fk_authid = " . $userId
+            . " AND status = 1";
+        $resql = $db->query($sql);
+        if (!$resql) {
+            dol_syslog('SmartAuth PasswordResetController::revokeAllUserTokens - failed to revoke JWT tokens: ' . $db->lasterror(), LOG_ERR);
+        }
+
+        // OAuth2 tokens (llx_smartauth_oauth_tokens)
+        if (class_exists('\\SmartAuthOAuthToken')) {
+            \SmartAuthOAuthToken::revokeAllForUser($db, $userId);
+        }
     }
 
     /**

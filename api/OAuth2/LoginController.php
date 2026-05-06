@@ -402,8 +402,14 @@ class LoginController
         // Parse URL
         $parsed = parse_url($url);
 
-        // Allow relative URLs (starting with /)
-        if (strpos($url, '/') === 0 && strpos($url, '//') !== 0) {
+        // Allow relative URLs (starting with /). Reject the protocol-relative
+        // forms "//evil.com" and "/\\evil.com" (Chrome / Firefox normalise
+        // the latter to the former) which would otherwise produce an open
+        // redirect.
+        if (
+            isset($url[0]) && $url[0] === '/'
+            && (!isset($url[1]) || ($url[1] !== '/' && $url[1] !== '\\'))
+        ) {
             return $url;
         }
 

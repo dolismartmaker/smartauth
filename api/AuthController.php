@@ -511,9 +511,16 @@ class AuthController
 		global $db;
 		$user = $payload['user'];
 		// dol_syslog("SmartAuth Debug smartauth::AuthController : logout for " . json_encode($payload));
-		if (!empty($payload['family_id'])) {
-			dol_syslog("SmartAuth Debug smartauth::AuthController : logout for " . $user->id . ", tokenFamily id=" . $payload['family_id']);
-			$this->_revokeTokenFamily($payload['family_id'], 'logout');
+		// RouteController populates the payload with 'jwt_family_id' (and
+		// 'jwt_token_id', 'jwt_device_id'), not 'family_id'. The previous
+		// code read 'family_id' which is never set, so logout silently
+		// revoked nothing.
+		$familyId = $payload['jwt_family_id'] ?? $payload['family_id'] ?? '';
+		if (!empty($familyId)) {
+			dol_syslog("SmartAuth Debug smartauth::AuthController : logout for " . $user->id . ", tokenFamily id=" . $familyId);
+			$this->_revokeTokenFamily($familyId, 'logout');
+		} else {
+			dol_syslog("SmartAuth AuthController::logout: no jwt_family_id in payload, nothing revoked", LOG_WARNING);
 		}
 		// if (!empty($payload['token_id'])) {
 		// 	dol_syslog("SmartAuth Debug smartauth::AuthController : logout for " . $user->id . ", token id=" . $payload['token_id']);

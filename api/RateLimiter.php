@@ -57,6 +57,7 @@ class RateLimiter
      */
     public function checkLimit($identifier, $action, $max_attempts = 5, $window_seconds = 300)
     {
+        $identifierRaw = (string) $identifier;
         $identifier = $this->db->escape($identifier);
         $action = $this->db->escape($action);
         $window_start = time() - $window_seconds;
@@ -73,7 +74,7 @@ class RateLimiter
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            // If rate limit check fails, allow request (fail open)
+            // If rate limit check fails, deny by default (fail-close).
             dol_syslog("SmartAuth Rate limit check failed (fail-close): " . $this->db->lasterror(), LOG_WARNING);
             return ['allowed' => false, 'retry_after' => 60];
         }
@@ -87,11 +88,107 @@ class RateLimiter
 
         if ($attempt_count >= $max_attempts) {
             $retry_after = ($last_attempt + $window_seconds) - time();
-            dol_syslog("SmartAuth Rate limit exceeded for $identifier on $action", LOG_WARNING);
+            // Mask the identifier in logs - it may carry PII (email)
+            //.
+            dol_syslog("SmartAuth Rate limit exceeded for " . self::maskIdentifier($identifierRaw) . " on $action", LOG_WARNING);
             return ['allowed' => false, 'retry_after' => max(0, $retry_after)];
         }
 
         return ['allowed' => true, 'retry_after' => null];
+    }
+
+    /**
+     * Atomically record an attempt and check whether the bucket is full.
+     *
+     * Combines recordAttempt() and checkLimit() inside a single SQL
+     * transaction so two concurrent requests cannot both observe count
+     * < $max_attempts and both proceed.
+     *
+     * Returns the same shape as checkLimit() with the additional contract
+     * that, on the success path, the caller does NOT need to call
+     * recordAttempt() afterwards (it has already been recorded here).
+     *
+     * @param string $identifier
+     * @param string $action
+     * @param int $max_attempts
+     * @param int $window_seconds
+     * @return array ['allowed' => bool, 'retry_after' => int|null]
+     */
+    public function enforceLimit($identifier, $action, $max_attempts = 5, $window_seconds = 300): array
+    {
+        $identifierRaw = (string) $identifier;
+        $idEscaped = $this->db->escape($identifier);
+        $actEscaped = $this->db->escape($action);
+        $now = time();
+        $windowStart = $now - $window_seconds;
+
+        $this->db->begin();
+        $inTx = true;
+
+        try {
+            // Atomic insert
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_ratelimit"
+                . " (identifier, action, attempt_time, success)"
+                . " VALUES ('" . $idEscaped . "', '" . $actEscaped . "', " . $now . ", 0)";
+            if (!$this->db->query($sql)) {
+                throw new \RuntimeException('insert failed');
+            }
+
+            // Count within window (includes the row we just inserted).
+            $sql = "SELECT COUNT(*) as cnt, MAX(attempt_time) as last_attempt"
+                . " FROM " . MAIN_DB_PREFIX . "smartauth_ratelimit"
+                . " WHERE identifier = '" . $idEscaped . "'"
+                . " AND action = '" . $actEscaped . "'"
+                . " AND attempt_time > " . $windowStart;
+            $resql = $this->db->query($sql);
+            if (!$resql) {
+                throw new \RuntimeException('count failed');
+            }
+            $row = $this->db->fetch_object($resql);
+            $count = $row ? (int) $row->cnt : 0;
+            $lastAttempt = $row ? (int) $row->last_attempt : $now;
+
+            $this->db->commit();
+            $inTx = false;
+
+            if ($count > $max_attempts) {
+                $retryAfter = ($lastAttempt + $window_seconds) - $now;
+                dol_syslog("SmartAuth Rate limit exceeded for " . self::maskIdentifier($identifierRaw) . " on $action", LOG_WARNING);
+                return ['allowed' => false, 'retry_after' => max(0, $retryAfter)];
+            }
+            return ['allowed' => true, 'retry_after' => null];
+        } catch (\Throwable $e) {
+            if ($inTx) {
+                $this->db->rollback();
+            }
+            dol_syslog('SmartAuth RateLimiter::enforceLimit failed: ' . $e->getMessage(), LOG_ERR);
+            // Fail-close on infrastructure failure
+            return ['allowed' => false, 'retry_after' => 60];
+        }
+    }
+
+    /**
+     * Mask an identifier for safe logging.
+     *
+     * Emails are reduced to "f***@domain", other identifiers to first 2
+     * + "***" + last 2 chars (M-20). Short strings are entirely masked.
+     */
+    public static function maskIdentifier(string $id): string
+    {
+        if ($id === '') {
+            return '(empty)';
+        }
+        $atPos = strpos($id, '@');
+        if ($atPos !== false && $atPos > 0) {
+            $local = substr($id, 0, $atPos);
+            $domain = substr($id, $atPos);
+            return substr($local, 0, 1) . str_repeat('*', max(0, strlen($local) - 1)) . $domain;
+        }
+        $len = strlen($id);
+        if ($len <= 4) {
+            return str_repeat('*', $len);
+        }
+        return substr($id, 0, 2) . str_repeat('*', $len - 4) . substr($id, -2);
     }
 
     /**

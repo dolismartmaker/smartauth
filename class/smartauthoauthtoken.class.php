@@ -577,11 +577,16 @@ class SmartAuthOAuthToken extends CommonObject
      */
     public static function revokeAllForUserAndClient(DoliDB $db, $userId, $clientId)
     {
+        $entityClause = function_exists('getEntity')
+            ? " AND entity IN (" . getEntity('smartauthoauthtoken') . ")"
+            : '';
+
         $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_oauth_tokens";
         $sql .= " SET revoked_at = '" . $db->idate(dol_now()) . "'";
         $sql .= " WHERE fk_user = " . ((int) $userId);
         $sql .= " AND fk_client = " . ((int) $clientId);
         $sql .= " AND revoked_at IS NULL";
+        $sql .= $entityClause;
 
         $resql = $db->query($sql);
         if ($resql) {
@@ -592,7 +597,12 @@ class SmartAuthOAuthToken extends CommonObject
     }
 
     /**
-     * Revoke all tokens for a specific user
+     * Revoke all tokens for a specific user.
+     *
+     * Multi-tenant safe: scoped to the entities the caller can see via
+     * getEntity('smartauthoauthtoken'). Without this filter, a logout in
+     * entity A could ripple to revoke tokens issued in entity B for the
+     * same Dolibarr user.
      *
      * @param DoliDB $db     Database handler
      * @param int    $userId User ID
@@ -600,10 +610,15 @@ class SmartAuthOAuthToken extends CommonObject
      */
     public static function revokeAllForUser(DoliDB $db, $userId)
     {
+        $entityClause = function_exists('getEntity')
+            ? " AND entity IN (" . getEntity('smartauthoauthtoken') . ")"
+            : '';
+
         $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_oauth_tokens";
         $sql .= " SET revoked_at = '" . $db->idate(dol_now()) . "'";
         $sql .= " WHERE fk_user = " . ((int) $userId);
         $sql .= " AND revoked_at IS NULL";
+        $sql .= $entityClause;
 
         $resql = $db->query($sql);
         if ($resql) {
