@@ -399,6 +399,24 @@ class SmartUpload
     }
 
     /**
+     * Server-executable / handler-bound extensions that must NEVER survive
+     * an upload, regardless of the configured MIME whitelist (H-18 of
+     * TODO-SECURITY-01). Each occurrence in the filename - including in
+     * multi-extension shapes like "evil.php.jpg" - is rewritten to ".bin"
+     * so a misconfigured webserver cannot execute the staged file.
+     */
+    private static $executableExtensionDenylist = [
+        'php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'phps', 'phar',
+        'pl', 'cgi', 'py', 'rb', 'sh', 'bash', 'zsh',
+        'exe', 'com', 'bat', 'cmd', 'msi', 'dll', 'so',
+        'jsp', 'jspx', 'asp', 'aspx', 'cer',
+        'htaccess', 'htpasswd',
+        // Vector / markup formats that can host inline scripts when served
+        // from the same origin as the API.
+        'svg', 'svgz', 'htm', 'html', 'xhtml',
+    ];
+
+    /**
      * Sanitize a filename to a safe ASCII-ish form.
      */
     private static function sanitizeFilename($name)
@@ -411,6 +429,14 @@ class SmartUpload
         if ($clean === '' || $clean === null) {
             $clean = 'upload.bin';
         }
+
+        $clean = self::neutraliseExecutableExtensions($clean);
+
+        // Reject hidden-file shapes ("evil" -> stays, ".htaccess" -> "htaccess.bin").
+        if (isset($clean[0]) && $clean[0] === '.') {
+            $clean = ltrim($clean, '.') . '.bin';
+        }
+
         // Hard cap to keep paths reasonable.
         if (strlen($clean) > 200) {
             $ext = pathinfo($clean, PATHINFO_EXTENSION);
@@ -418,6 +444,32 @@ class SmartUpload
             $clean = substr($base, 0, 180) . ($ext !== '' ? '.' . $ext : '');
         }
         return $clean;
+    }
+
+    /**
+     * Walk every '.'-delimited segment of the filename and rewrite any
+     * server-executable extension to ".bin" (H-18).
+     */
+    private static function neutraliseExecutableExtensions(string $name): string
+    {
+        if (strpos($name, '.') === false) {
+            return $name;
+        }
+
+        $parts = explode('.', $name);
+        $base = array_shift($parts);
+        $changed = false;
+        foreach ($parts as $i => $segment) {
+            $segLower = strtolower($segment);
+            if (in_array($segLower, self::$executableExtensionDenylist, true)) {
+                $parts[$i] = 'bin';
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            dol_syslog('SmartAuth SmartUpload: neutralised executable extension in: ' . substr($name, 0, 200), LOG_WARNING);
+        }
+        return $base . (count($parts) > 0 ? '.' . implode('.', $parts) : '');
     }
 
     /**

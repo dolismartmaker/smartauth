@@ -60,6 +60,9 @@ class RouteController
 		// Handle CORS headers and preflight requests
 		self::handleCORS();
 
+		// Emit baseline security headers on every response
+		self::emitSecurityHeaders();
+
 		$method = $_SERVER['REQUEST_METHOD'];
 
 		// Parse action from URI
@@ -1079,9 +1082,13 @@ class RouteController
 				? apache_request_headers()
 				: [];
 
-			// Priority: X-Real-IP > X-Forwarded-For
+			// Priority: X-Real-IP > X-Forwarded-For. Each is also checked
+			// via $_SERVER for environments where apache_request_headers()
+			// is unavailable (CLI test runners, some PHP-FPM setups).
 			if (!empty($headers['X-Real-IP'])) {
 				$remoteAddr = trim($headers['X-Real-IP']);
+			} elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+				$remoteAddr = trim($_SERVER['HTTP_X_REAL_IP']);
 			} elseif (!empty($headers['X-Forwarded-For'])) {
 				// Take first IP from chain (original client)
 				$ips = explode(',', $headers['X-Forwarded-For']);
@@ -1120,19 +1127,127 @@ class RouteController
 			return;
 		}
 
-		$allowedOrigin = getDolGlobalString('SMARTAUTH_CORS_ORIGIN', '*');
+		// SMARTAUTH_CORS_ORIGIN now defaults to '' (no CORS) instead of '*'.
+		// Setting it to '*' is still possible but explicit and logged as a
+		// warning since allowing every origin to read /login responses is a
+		// rate-limit / credential-leak risk.
+		$configured = getDolGlobalString('SMARTAUTH_CORS_ORIGIN', '');
 		$allowedMethods = getDolGlobalString('SMARTAUTH_CORS_METHODS', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
 		$allowedHeaders = getDolGlobalString('SMARTAUTH_CORS_HEADERS', 'Content-Type, Authorization, X-DeviceId');
 
-		header('Access-Control-Allow-Origin: ' . $allowedOrigin);
-		header('Access-Control-Allow-Methods: ' . $allowedMethods);
-		header('Access-Control-Allow-Headers: ' . $allowedHeaders);
+		$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+		$resolvedOrigin = self::resolveCorsOrigin($configured, $requestOrigin);
+
+		// Only emit Access-Control-Allow-Origin when we have a concrete answer
+		// (configured + matched, OR explicit wildcard).
+		if ($resolvedOrigin !== '') {
+			header('Access-Control-Allow-Origin: ' . $resolvedOrigin);
+			if ($resolvedOrigin !== '*') {
+				header('Vary: Origin');
+				// Credentials are only meaningful with a specific origin
+				header('Access-Control-Allow-Credentials: true');
+			}
+			header('Access-Control-Allow-Methods: ' . $allowedMethods);
+			header('Access-Control-Allow-Headers: ' . $allowedHeaders);
+		}
 
 		// Handle preflight OPTIONS request
 		if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
-			http_response_code(200);
+			http_response_code(204);
 			exit;
 		}
+	}
+
+	/**
+	 * Emit baseline HTTP security headers on every API response.
+	 *
+	 * Addresses H-8 of TODO-SECURITY-01 (no CSP / HSTS / X-Content-Type-Options
+	 * / X-Frame-Options / Referrer-Policy was sent). Each header can be
+	 * overridden via a Dolibarr global constant, and HSTS is opt-in to avoid
+	 * locking dev environments served over plain HTTP.
+	 */
+	public static function emitSecurityHeaders(): void
+	{
+		if (defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING) {
+			return;
+		}
+
+		// X-Content-Type-Options: prevent MIME-sniffing of API responses.
+		$xcto = getDolGlobalString('SMARTAUTH_HEADER_XCTO', 'nosniff');
+		if ($xcto !== '') {
+			header('X-Content-Type-Options: ' . $xcto);
+		}
+
+		// X-Frame-Options: API responses are JSON, never meant to be framed.
+		$xfo = getDolGlobalString('SMARTAUTH_HEADER_XFO', 'DENY');
+		if ($xfo !== '') {
+			header('X-Frame-Options: ' . $xfo);
+		}
+
+		// Referrer-Policy: do not leak the URL (which may carry tokens) to
+		// downstream resources.
+		$refPolicy = getDolGlobalString('SMARTAUTH_HEADER_REFERRER_POLICY', 'no-referrer');
+		if ($refPolicy !== '') {
+			header('Referrer-Policy: ' . $refPolicy);
+		}
+
+		// Content-Security-Policy: tight default suitable for a JSON API.
+		// Override via SMARTAUTH_HEADER_CSP for embedded HTML pages, or set
+		// to empty to disable.
+		$csp = getDolGlobalString('SMARTAUTH_HEADER_CSP', "default-src 'none'; frame-ancestors 'none'");
+		if ($csp !== '') {
+			header('Content-Security-Policy: ' . $csp);
+		}
+
+		// HSTS: opt-in (only emit when explicitly configured, since locking
+		// in HTTPS for a dev environment served over plain HTTP would brick
+		// it). Recommended prod value: "max-age=31536000; includeSubDomains".
+		$hsts = getDolGlobalString('SMARTAUTH_HEADER_HSTS', '');
+		$isHttps = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+		if ($hsts !== '' && $isHttps) {
+			header('Strict-Transport-Security: ' . $hsts);
+		}
+
+		// Cross-Origin policies: tighten cross-origin reads on API responses.
+		$coop = getDolGlobalString('SMARTAUTH_HEADER_COOP', 'same-origin');
+		if ($coop !== '') {
+			header('Cross-Origin-Opener-Policy: ' . $coop);
+		}
+		$corp = getDolGlobalString('SMARTAUTH_HEADER_CORP', 'same-origin');
+		if ($corp !== '') {
+			header('Cross-Origin-Resource-Policy: ' . $corp);
+		}
+	}
+
+	/**
+	 * Resolve the value to send in Access-Control-Allow-Origin.
+	 *
+	 * @param string $configured Comma-separated allow-list (or '*' for any).
+	 *                            Empty string means "no CORS", we return ''.
+	 * @param string $requestOrigin The Origin header from the request.
+	 * @return string The origin to echo back, '*' for wildcard, or '' to skip.
+	 */
+	public static function resolveCorsOrigin(string $configured, string $requestOrigin): string
+	{
+		if ($configured === '') {
+			return '';
+		}
+		if ($configured === '*') {
+			dol_syslog('SmartAuth CORS: SMARTAUTH_CORS_ORIGIN=* allows any site to read API responses (H-6) - prefer an explicit allow-list', LOG_WARNING);
+			return '*';
+		}
+		if ($requestOrigin === '') {
+			return '';
+		}
+		$allowed = array_filter(array_map('trim', explode(',', $configured)));
+		// Case-insensitive comparison on host part
+		foreach ($allowed as $candidate) {
+			if (strcasecmp($candidate, $requestOrigin) === 0) {
+				return $requestOrigin;
+			}
+		}
+		dol_syslog('SmartAuth CORS: rejected origin "' . substr($requestOrigin, 0, 200) . '"', LOG_WARNING);
+		return '';
 	}
 
 	/**

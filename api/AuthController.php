@@ -151,25 +151,23 @@ class AuthController
 			return [['error' => 'Invalid token format'], 401];
 		}
 
+		// Verify signature, expiration, type and status BEFORE looking at any
+		// payload claim. Reading jti from an unverified payload would let an
+		// attacker poison llx_smartauth_jti_used with a victim's known jti and
+		// force the next legitimate refresh to be classified as a replay,
+		// triggering family revocation.
+		$decoded = $this->_decodeJWT($refresh_token, SmartTokenConfig::TYPE_REFRESH);
+
 		// === REPLAY ATTACK PREVENTION ===
-		// Extract and mark jti BEFORE full token validation (atomic operation)
-		$jti = $this->_extractJtiFromToken($refresh_token);
-		if ($jti !== null) {
+		// jti is now read from the verified payload only.
+		$jti = $decoded->jti ?? null;
+		if (!empty($jti)) {
 			if (!$this->_markJtiAsUsed($jti)) {
 				// jti already used = replay attack detected
 				dol_syslog("smartauth : REPLAY ATTACK DETECTED on refresh token", LOG_ERR);
-				// Extract token_id to revoke the family
-				$token_id = substr($refresh_token, 0, strpos($refresh_token, '|'));
-				if (is_numeric($token_id)) {
-					// Try to get family_id from database to revoke entire family
-					$sql = "SELECT family_id FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE rowid = " . (int) $token_id;
-					$resql = $db->query($sql);
-					if ($resql && $db->num_rows($resql) > 0) {
-						$obj = $db->fetch_object($resql);
-						if ($obj->family_id) {
-							$this->_revokeTokenFamily($obj->family_id, 'replay_attack_detected');
-						}
-					}
+				$replayFamilyId = $decoded->family_id ?? '';
+				if (!empty($replayFamilyId)) {
+					$this->_revokeTokenFamily($replayFamilyId, 'replay_attack_detected');
 				}
 				return [['error' => 'Security violation detected. Token reuse is not allowed.'], 401];
 			}
@@ -180,8 +178,6 @@ class AuthController
 		if (mt_rand(1, 100) === 1) {
 			$this->_cleanupOldJti();
 		}
-
-		$decoded = $this->_decodeJWT($refresh_token, SmartTokenConfig::TYPE_REFRESH);
 
 		// Extract info from JWT
 		$login = $decoded->login ?? '';
@@ -313,8 +309,10 @@ class AuthController
 			$rawLogin = $payload['username'] ?? '';
 		}
 
-		// Sanitize and validate email format
+		// Sanitize and validate email format. We also normalise to lowercase
+		// so that "Admin", "aDmIn", "ADMIN" share the same rate-limit bucket
 		$login = $this->_validateAndSanitizeLogin($rawLogin);
+		$rateLimitKey = strtolower($login);
 
 		// Check 1: IP-based rate limit (prevent distributed attacks on same IP)
 		$ip_limit = $rateLimiter->checkLimit(
@@ -332,33 +330,40 @@ class AuthController
 			], 429]; // HTTP 429 Too Many Requests
 		}
 
+		// Reject empty login fast.
+		// Without this, a request whose login sanitises to '' would skip the
+		// per-user rate limit entirely. Even with the IP limit fixed (H-1),
+		// flooding the auth endpoint with empty logins consumes only the IP
+		// counter and leaks server resources.
+		if (empty($login)) {
+			$rateLimiter->recordAttempt($ip, 'login_ip', false);
+			dol_syslog("SmartAuth login rejected: empty/invalid login from IP $ip", LOG_WARNING);
+			return [['error' => 'Invalid credentials'], 401];
+		}
+
 		// Check 2: Username-based rate limit (prevent brute force on specific account)
-		if (!empty($login)) {
-			$login_limit = $rateLimiter->checkLimit(
-				$login,
-				'login_username',
-				$max_attempts = getDolGlobalInt('SMARTAUTH_RATELIMIT_USER_MAX', 5),
-				$window_seconds = getDolGlobalInt('SMARTAUTH_RATELIMIT_USER_WINDOW', 900) // 15 minutes
-			);
+		$login_limit = $rateLimiter->checkLimit(
+			$rateLimitKey,
+			'login_username',
+			$max_attempts = getDolGlobalInt('SMARTAUTH_RATELIMIT_USER_MAX', 5),
+			$window_seconds = getDolGlobalInt('SMARTAUTH_RATELIMIT_USER_WINDOW', 900) // 15 minutes
+		);
 
-			if (!$login_limit['allowed']) {
-				dol_syslog("SmartAuth Rate limit: Username $login blocked", LOG_WARNING);
+		if (!$login_limit['allowed']) {
+			dol_syslog("SmartAuth Rate limit: Username $rateLimitKey blocked", LOG_WARNING);
 
-				// Record IP attempt anyway
-				$rateLimiter->recordAttempt($ip, 'login_ip', false);
+			// Record IP attempt anyway
+			$rateLimiter->recordAttempt($ip, 'login_ip', false);
 
-				return [[
-					'error' => 'Too many failed attempts for this account. Please try again later.',
-					'retry_after' => $login_limit['retry_after']
-				], 429];
-			}
+			return [[
+				'error' => 'Too many failed attempts for this account. Please try again later.',
+				'retry_after' => $login_limit['retry_after']
+			], 429];
 		}
 
 		// Record attempts BEFORE authentication
 		$rateLimiter->recordAttempt($ip, 'login_ip', false);
-		if (!empty($login)) {
-			$rateLimiter->recordAttempt($login, 'login_username', false);
-		}
+		$rateLimiter->recordAttempt($rateLimitKey, 'login_username', false);
 
 
 		$entity = (int) ($payload['entity'] ?? 1);
@@ -394,6 +399,10 @@ class AuthController
 			$login = '';
 		}
 		if (empty($login)) {
+			// Dummy password_verify on the failure path to equalise the
+			// response time with the success path - prevents user
+			// enumeration via timing.
+			password_verify($pass, self::_getDummyBcryptHash());
 			dol_syslog("smartauth : AuthController::login : authentication failed (empty login after check)", LOG_WARNING);
 			json_reply($genericAuthError, 401);
 		}
@@ -410,11 +419,11 @@ class AuthController
 
 		// SUCCESS: Reset rate limits
 		$rateLimiter->reset($ip, 'login_ip');
-		$rateLimiter->reset($login, 'login_username');
+		$rateLimiter->reset($rateLimitKey, 'login_username');
 
 		// Record successful attempt
 		$rateLimiter->recordAttempt($ip, 'login_ip', true);
-		$rateLimiter->recordAttempt($login, 'login_username', true);
+		$rateLimiter->recordAttempt($rateLimitKey, 'login_username', true);
 
 		if (!is_object($tmpuser) || empty($tmpuser->id)) {
 			dol_syslog("smartauth : AuthController::login : authentication failed (user object invalid)", LOG_WARNING);
@@ -942,68 +951,41 @@ class AuthController
 	}
 
 	/**
-	 * Get the server variable REMOTE_ADDR, or the first ip of HTTP_X_FORWARDED_FOR (when using proxy).
-	 * Source: thanks to prestashop
+	 * Return a valid bcrypt hash to be used as a dummy target for
+	 * password_verify() on the auth-failure path.
 	 *
-	 * @return string $remote_addr ip of client
+	 * Computed once per process and cached so the cost is paid only on
+	 * the first failed attempt (subsequent calls reuse the same hash).
+	 * Must be a syntactically valid bcrypt string, otherwise
+	 * password_verify() short-circuits to false instantly and the timing
+	 * equalisation is defeated.
+	 *
+	 * @return string A pre-computed bcrypt hash that no password matches.
+	 */
+	private static function _getDummyBcryptHash(): string
+	{
+		static $dummy = null;
+		if ($dummy === null) {
+			$dummy = password_hash('SmartAuthDummyTimingHash:' . random_bytes(16), PASSWORD_BCRYPT);
+		}
+		return $dummy;
+	}
+
+	/**
+	 * Resolve the client IP address.
+	 *
+	 * Delegates to RouteController::get_client_ip(), which honours the
+	 * SMARTAUTH_TRUSTED_PROXIES allow-list. The previous local
+	 * implementation accepted CF-Connecting-IP / X-Forwarded-For / X-Real-IP
+	 * unconditionally, allowing trivial rate-limit bypass (H-1 of
+	 * TODO-SECURITY-01). This facade is kept so existing callers and tests
+	 * can keep referencing AuthController::get_client_ip().
+	 *
+	 * @return string Client IP address (validated format), or '0.0.0.0'
 	 */
 	public static function get_client_ip()
 	{
-		global $conf;
-		if (isset($conf->cache['smartmakers']['clientIP'])) {
-			dol_syslog("SmartAuth get_client_ip from cache : " . $conf->cache['smartmakers']['clientIP']);
-			return $conf->cache['smartmakers']['clientIP'];
-		}
-		// Try Apache function first if available
-		if (function_exists('apache_request_headers')) {
-			$headers = apache_request_headers();
-			$headers = array_change_key_case($headers, CASE_UPPER);
-
-			$priority = [
-				'CF-CONNECTING-IP',
-				'X-REAL-IP',
-				'X-FORWARDED-FOR',
-				'CLIENT-IP'
-			];
-
-			foreach ($priority as $header) {
-				if (!empty($headers[$header])) {
-					$ips = explode(',', $headers[$header]);
-					$ip = trim($ips[0]);
-
-					if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-						$conf->cache['smartmakers']['clientIP'] = $ip;
-						// dol_syslog("SmartAuth get_client_ip (1) use return $ip");
-						return $ip;
-					}
-				}
-			}
-		}
-
-		// Fallback to $_SERVER
-		$ip_keys = [
-			'HTTP_CF_CONNECTING_IP',
-			'HTTP_X_REAL_IP',
-			'HTTP_X_FORWARDED_FOR',
-			'HTTP_CLIENT_IP',
-			'REMOTE_ADDR'
-		];
-
-		foreach ($ip_keys as $key) {
-			if (!empty($_SERVER[$key])) {
-				$ips = explode(',', $_SERVER[$key]);
-				$ip = trim($ips[0]);
-
-				if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-					$conf->cache['smartmakers']['clientIP'] = $ip;
-					// dol_syslog("SmartAuth get_client_ip (2) use return $ip");
-					return $ip;
-				}
-			}
-		}
-
-		// dol_syslog("SmartAuth get_client_ip use return 0.0.0.0");
-		return "0.0.0.0";
+		return RouteController::get_client_ip();
 	}
 
 	/**
@@ -1243,9 +1225,15 @@ class AuthController
 		// Generate unique JWT ID to prevent replay attacks
 		$jti = bin2hex(random_bytes(16));
 
-		// Build JWT payload
+		// Build JWT payload. iss/iat/nbf/typ are added as part of H-14
+		// (TODO-SECURITY-01) so that _decodeJWT can perform the standard
+		// RFC 7519 / RFC 8725 claim checks on every refresh.
+		$now = time();
 		$payload = [
 			"jti" => $jti,
+			"iss" => \SmartAuth\Api\OAuth2\OAuthConfig::getIssuer(),
+			"iat" => $now,
+			"nbf" => $now,
 			"login" => $login,
 			"user_id" => $user_id,
 			"entity" => $entity,
@@ -1253,11 +1241,12 @@ class AuthController
 			"family_id" => $family_id,
 			"device_id" => $device_id,
 			"refresh_count" => 0,
-			"exp" => time() + $lifetime // Expiration timestamp
+			"exp" => $now + $lifetime,
 		];
 
 		$key = $salt . $salt2 . JwtKeyHelper::getKey();
-		$jwt = JWT::encode($payload, $key, 'HS256');
+		// 'typ' header explicitly set for RFC 8725 §3.11 compliance
+		$jwt = JWT::encode($payload, $key, 'HS256', null, ['typ' => 'JWT']);
 
 		// Return token_id|jwt format
 		return $token_id . '|' . $jwt;
@@ -1394,8 +1383,12 @@ class AuthController
 	}
 
 	/**
-	 * Extract jti from a token without full validation
-	 * Used for early replay detection before expensive signature verification
+	 * Extract jti from a token without signature verification.
+	 *
+	 * Low-level utility for diagnostics and unit tests. MUST NOT be used
+	 * to drive security decisions: a non-signed payload is attacker
+	 * controlled. For replay detection during refresh(), read the jti
+	 * from the object returned by _decodeJWT() instead.
 	 *
 	 * @param string $token The full token in format "token_id|jwt"
 	 * @return string|null The jti if found, null otherwise
@@ -1733,8 +1726,46 @@ class AuthController
 			json_reply('Invalid token, please login', 401);
 		}
 
+		// RFC 7519 / RFC 8725 claim checks.
+		// firebase/php-jwt validates 'exp', 'nbf' and 'iat' itself when those
+		// claims are present, but it does NOT validate 'iss' or the header
+		// 'typ' value. We add those checks here, plus a 30s clock-skew
+		// tolerance for nbf/iat just in case the upstream lib was permissive.
+		// Tokens issued before the H-14 fix will not carry these claims; we
+		// remain backward-compatible by only enforcing the constraints when
+		// the claim is present.
 		if (is_object($decoded)) {
-			// dol_syslog("smartauth : _decodeJWT is " . json_encode($decoded));
+			$now = time();
+			$skew = 30;
+
+			$expectedIss = \SmartAuth\Api\OAuth2\OAuthConfig::getIssuer();
+			if (isset($decoded->iss) && $decoded->iss !== $expectedIss) {
+				dol_syslog("smartauth : _decodeJWT iss mismatch: got " . substr((string) $decoded->iss, 0, 80), LOG_WARNING);
+				json_reply('Invalid token issuer, please login', 401);
+			}
+			if (isset($decoded->nbf) && (int) $decoded->nbf > $now + $skew) {
+				dol_syslog("smartauth : _decodeJWT nbf in the future", LOG_WARNING);
+				json_reply('Token not yet valid, please login', 401);
+			}
+			if (isset($decoded->iat) && (int) $decoded->iat > $now + $skew) {
+				dol_syslog("smartauth : _decodeJWT iat in the future", LOG_WARNING);
+				json_reply('Token issued in the future, please login', 401);
+			}
+
+			// Verify header.typ (cheap parse of the unsigned middle is OK
+			// here because the signature was already verified by JWT::decode).
+			$parts = explode('.', $jwt);
+			if (count($parts) === 3) {
+				$header = json_decode(base64_decode(strtr($parts[0], '-_', '+/')), true);
+				if (is_array($header) && isset($header['typ'])) {
+					$typ = strtoupper((string) $header['typ']);
+					if ($typ !== 'JWT') {
+						dol_syslog("smartauth : _decodeJWT unexpected typ: " . $header['typ'], LOG_WARNING);
+						json_reply('Invalid token type, please login', 401);
+					}
+				}
+			}
+
 			$decoded->token_id = $token_id;
 		}
 		return $decoded;

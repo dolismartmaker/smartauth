@@ -206,7 +206,11 @@ class TokenController
             return;
         }
 
-        // Validate PKCE if code was issued with a challenge
+        // Validate PKCE if code was issued with a challenge.
+        // The stored method must be S256: AuthorizationController only
+        // accepts S256 since the CR-3 fix, and a missing method here means
+        // the auth code was created before the fix - reject as invalid_grant
+        // rather than silently falling back to plain.
         if (!empty($authCode->code_challenge)) {
             if (empty($codeVerifier)) {
                 dol_syslog('SmartAuth TokenController: Missing code_verifier', LOG_WARNING);
@@ -214,18 +218,30 @@ class TokenController
                 return;
             }
 
-            if (!PKCEHelper::validate($codeVerifier, $authCode->code_challenge, $authCode->code_challenge_method ?? 'plain')) {
+            $storedMethod = $authCode->code_challenge_method ?? '';
+            if (!PKCEHelper::isValidMethod($storedMethod)) {
+                dol_syslog('SmartAuth TokenController: stored PKCE method is not S256: ' . ($storedMethod ?: '(missing)'), LOG_WARNING);
+                $this->sendError('invalid_grant', 'Unsupported code_challenge_method on the authorization code', 400);
+                return;
+            }
+
+            if (!PKCEHelper::validate($codeVerifier, $authCode->code_challenge, $storedMethod)) {
                 dol_syslog('SmartAuth TokenController: PKCE verification failed', LOG_WARNING);
                 $this->sendError('invalid_grant', 'Code verifier does not match', 400);
                 return;
             }
         }
 
-        // Mark code as used
-        $authCode->markAsUsed();
-
-        // Get scopes from authorization code
+        // Get scopes from authorization code (before pre_token hook so external modules can inspect them)
         $scopes = $authCode->getScopesArray();
+
+        // Pre-token hook: external modules may re-evaluate access right
+        if (!$this->runPreTokenHook($authCode->fk_user, $scopes, 'authorization_code')) {
+            return;
+        }
+
+        // Mark code as used (only after hook approval, otherwise a blocked grant would burn the code)
+        $authCode->markAsUsed();
 
         // Generate tokens
         $tokens = $this->generateTokens($authCode->fk_user, $scopes, $authCode->nonce);
@@ -281,6 +297,11 @@ class TokenController
             $scopes = $requestedScopes;
         } else {
             $scopes = $originalScopes;
+        }
+
+        // Pre-token hook: external modules may re-evaluate access right (e.g. contract closed since last refresh)
+        if (!$this->runPreTokenHook($tokenRecord->fk_user, $scopes, 'refresh_token')) {
+            return;
         }
 
         // Rotate refresh token (revoke old, create new)
@@ -372,6 +393,28 @@ class TokenController
         $serviceUserId = $this->resolveServiceUser();
         if ($serviceUserId === null) {
             $this->sendError('server_error', 'No service user configured for this client', 500);
+            return;
+        }
+
+        // Verify the service user actually exists and is active before
+        // minting tokens for it. A disabled or
+        // deleted service user must not yield a working access token.
+        require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+        $serviceUser = new \User($this->db);
+        $fetchResult = $serviceUser->fetch($serviceUserId);
+        if ($fetchResult <= 0 || empty($serviceUser->id)) {
+            dol_syslog('SmartAuth TokenController: client_credentials service user not found (id=' . $serviceUserId . ')', LOG_WARNING);
+            $this->sendError('server_error', 'Service user not available', 500);
+            return;
+        }
+        if ((int) $serviceUser->statut !== 1) {
+            dol_syslog('SmartAuth TokenController: client_credentials service user disabled (id=' . $serviceUserId . ', statut=' . $serviceUser->statut . ')', LOG_WARNING);
+            $this->sendError('server_error', 'Service user disabled', 500);
+            return;
+        }
+
+        // Pre-token hook: external modules may block client_credentials too (gating may opt out per spec)
+        if (!$this->runPreTokenHook($serviceUserId, $scopes, 'client_credentials')) {
             return;
         }
 
@@ -609,6 +652,46 @@ class TokenController
         dol_syslog('SmartAuth TokenController: Tokens generated successfully', LOG_INFO);
 
         $this->sendJsonResponse($response);
+    }
+
+    /**
+     * Invoke smartmaker_oauth_pre_token hook.
+     *
+     * If a module blocks the request, sends the OAuth2 error response
+     * directly and returns false so the caller can stop processing.
+     *
+     * @param int    $userId    User ID (or service user ID for client_credentials)
+     * @param array  $scopes    Scopes that will be granted
+     * @param string $grantType Grant type label ('authorization_code', 'refresh_token', 'client_credentials')
+     * @return bool True if the hook allows the flow to continue, false otherwise
+     */
+    private function runPreTokenHook(int $userId, array $scopes, string $grantType): bool
+    {
+        $result = HookHelper::runBlockingHook(
+            'smartmaker_oauth_pre_token',
+            [
+                'user_id' => $userId,
+                'client_id' => $this->client->client_id,
+                'client_pk' => $this->client->id,
+                'scopes' => $scopes,
+                'grant_type' => $grantType,
+            ],
+            $this->client
+        );
+
+        if ($result['internal_error']) {
+            $this->sendError('server_error', 'Internal error during token authorization', 500);
+            return false;
+        }
+
+        if ($result['blocked']) {
+            $error = $result['error'] ?: 'invalid_grant';
+            $description = $result['error_description'] ?: 'Access denied for this grant';
+            $this->sendError($error, $description, 400);
+            return false;
+        }
+
+        return true;
     }
 
     /**

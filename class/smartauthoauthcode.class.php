@@ -399,14 +399,16 @@ class SmartAuthOAuthCode extends CommonObject
             return true;
         }
 
-        if ($this->code_challenge_method === 'S256') {
-            $expectedChallenge = rtrim(strtr(base64_encode(hash('sha256', $codeVerifier, true)), '+/', '-_'), '=');
-            return hash_equals($this->code_challenge, $expectedChallenge);
-        } elseif ($this->code_challenge_method === 'plain') {
-            return hash_equals($this->code_challenge, $codeVerifier);
+        // Only S256 is supported. The legacy 'plain' method (and any unknown
+        // method) is rejected as part of the CR-3 fix in TODO-SECURITY-01:
+        // plain offers no protection against code interception attacks.
+        if ($this->code_challenge_method !== 'S256') {
+            dol_syslog('SmartAuthOAuthCode::verifyPkce - unsupported method: ' . ($this->code_challenge_method ?? '(null)'), LOG_WARNING);
+            return false;
         }
 
-        return false;
+        $expectedChallenge = rtrim(strtr(base64_encode(hash('sha256', $codeVerifier, true)), '+/', '-_'), '=');
+        return hash_equals($this->code_challenge, $expectedChallenge);
     }
 
     /**

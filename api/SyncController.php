@@ -58,7 +58,11 @@ class SyncController
     {
         global $hookmanager;
 
-        // Built-in syncable objects (Phase 1: simple objects only)
+        // Built-in syncable objects (Phase 1: simple objects only).
+        // The 'allowed_fields' key whitelists which payload keys may be
+        // copied onto the Dolibarr object - any other key (and any key from
+        // the universal denylist below) is rejected. See
+        // applyDataToObject() and CR-6 of TODO-SECURITY-01.
         $this->syncableObjects = [
             'thirdparty' => [
                 'class' => 'Societe',
@@ -69,6 +73,22 @@ class SyncController
                 'module' => 'societe',
                 'priority' => 'high',
                 'default_enabled' => true,
+                'allowed_fields' => [
+                    'name', 'name_alias',
+                    'email', 'phone', 'fax', 'url',
+                    'address', 'zip', 'town', 'country_id', 'state_id',
+                    'client', 'fournisseur',
+                    'code_client', 'code_fournisseur',
+                    'note_public', 'note_private',
+                    'siren', 'siret', 'ape',
+                    'idprof4', 'idprof5', 'idprof6',
+                    'capital', 'tva_assuj', 'tva_intra',
+                    'gencod', 'barcode',
+                    'effectif_id', 'forme_juridique_code', 'typent_id',
+                    'outstanding_limit',
+                    'mode_reglement_id', 'cond_reglement_id',
+                    'status',
+                ],
             ],
             'contact' => [
                 'class' => 'Contact',
@@ -79,6 +99,15 @@ class SyncController
                 'module' => 'societe',
                 'priority' => 'high',
                 'default_enabled' => true,
+                'allowed_fields' => [
+                    'lastname', 'firstname', 'civility_id',
+                    'address', 'zip', 'town', 'country_id',
+                    'email', 'phone_pro', 'phone_mobile', 'phone_perso', 'fax',
+                    'fk_soc', 'socid',
+                    'no_email',
+                    'note_public', 'note_private',
+                    'poste', 'birthday',
+                ],
             ],
             'product' => [
                 'class' => 'Product',
@@ -89,6 +118,21 @@ class SyncController
                 'module' => 'product',
                 'priority' => 'medium',
                 'default_enabled' => true,
+                'allowed_fields' => [
+                    'ref', 'label', 'description',
+                    'status', 'status_buy', 'status_batch',
+                    'finished', 'type',
+                    'customcode', 'country_id',
+                    'weight', 'weight_units',
+                    'length', 'length_units',
+                    'surface', 'surface_units',
+                    'volume', 'volume_units',
+                    'price', 'price_ttc',
+                    'price_min', 'price_min_ttc',
+                    'price_label',
+                    'tva_tx', 'barcode',
+                    'note_public', 'note_private',
+                ],
             ],
             'category' => [
                 'class' => 'Categorie',
@@ -99,6 +143,9 @@ class SyncController
                 'module' => 'categorie',
                 'priority' => 'low',
                 'default_enabled' => true,
+                'allowed_fields' => [
+                    'label', 'description', 'color', 'type', 'fk_parent',
+                ],
             ],
         ];
 
@@ -826,6 +873,82 @@ class SyncController
     }
 
     /**
+     * Universal denylist of property names that must never be writable
+     * through /sync/push, regardless of object type. This is the second
+     * layer of CR-6 defence (the first being the per-type allowed_fields
+     * whitelist) and protects against:
+     *   - cross-tenant writes (entity, ms*)
+     *   - admin escalation when an external module exposes the User class
+     *   - audit-trail forgery (datec, fk_user_creat, fk_user_modif)
+     *   - password / authentication tampering (pass*, password*, salt, ...)
+     *   - rowid spoofing
+     */
+    private static $sensitiveFieldsDenylist = [
+        'rowid', 'id', 'tms', 'datec', 'date_creation', 'date_modification',
+        'entity',
+        'admin', 'employee', 'statut',
+        'fk_user_creat', 'fk_user_modif', 'fk_user', 'fk_user_author',
+        'import_key',
+    ];
+
+    /**
+     * Universal denylist (regex form) for password / secret-shaped names.
+     * Matches any property whose name starts with 'pass', equals 'password',
+     * starts with 'salt', or equals 'api_key' / 'token'. Catches Dolibarr's
+     * pass / pass_indatabase / pass_crypted / password / api_key conventions.
+     */
+    private static $sensitiveFieldsDenylistRegex = '/^(pass|password|salt|api_key|token|secret)/i';
+
+    /**
+     * Apply payload data to a Dolibarr object after gating each key through
+     * the per-type whitelist and the universal denylist.
+     *
+     * Returns the list of rejected keys for logging (do not silently drop
+     * sensitive fields - CLAUDE.md "no silent failures").
+     *
+     * @param object $object Dolibarr object
+     * @param array $data Caller-provided data
+     * @param array $config Syncable object config (must contain 'allowed_fields')
+     * @return string[] Names of rejected keys
+     */
+    private function applyDataToObject($object, array $data, array $config): array
+    {
+        $allowedFields = $config['allowed_fields'] ?? null;
+        $rejected = [];
+
+        foreach ($data as $key => $value) {
+            // Universal denylist - always wins.
+            if (in_array($key, self::$sensitiveFieldsDenylist, true)
+                || preg_match(self::$sensitiveFieldsDenylistRegex, (string) $key)) {
+                $rejected[] = $key;
+                continue;
+            }
+
+            // Per-type whitelist when defined.
+            // For external modules registered via smartmaker_registerSyncableObjects
+            // without an allowed_fields key, fall back to denylist-only mode and
+            // log so the missing whitelist is visible.
+            if (is_array($allowedFields) && !in_array($key, $allowedFields, true)) {
+                $rejected[] = $key;
+                continue;
+            }
+
+            if (property_exists($object, $key)) {
+                $object->$key = $value;
+            }
+        }
+
+        if (!empty($rejected)) {
+            dol_syslog('SmartAuth SyncController: rejected mass-assignment keys for ' . ($config['class'] ?? '?') . ': ' . implode(',', $rejected), LOG_WARNING);
+        }
+        if (!is_array($allowedFields)) {
+            dol_syslog('SmartAuth SyncController: no allowed_fields whitelist for ' . ($config['class'] ?? '?') . ' - denylist-only mode', LOG_WARNING);
+        }
+
+        return $rejected;
+    }
+
+    /**
      * Process a CREATE operation
      */
     private function processCreate($config, $data, $user)
@@ -834,12 +957,8 @@ class SyncController
         $classname = $config['class'];
         $object = new $classname($this->db);
 
-        // Map data to object properties
-        foreach ($data as $key => $value) {
-            if (property_exists($object, $key)) {
-                $object->$key = $value;
-            }
-        }
+        // Map data to object properties (whitelist + denylist gated, CR-6 fix)
+        $this->applyDataToObject($object, $data, $config);
 
         $result = $object->create($user);
         if ($result > 0) {
@@ -896,13 +1015,9 @@ class SyncController
             // False conflict - tms differs but data is same, proceed
         }
 
-        // Apply update
+        // Apply update (whitelist + denylist gated, CR-6 fix)
         $object->fetch($id);
-        foreach ($data as $key => $value) {
-            if (property_exists($object, $key) && !in_array($key, ['rowid', 'id', 'tms'])) {
-                $object->$key = $value;
-            }
-        }
+        $this->applyDataToObject($object, $data, $config);
 
         $result = $object->update($user);
         if ($result > 0) {
@@ -1042,11 +1157,8 @@ class SyncController
             return ['success' => false, 'error' => 'Object not found'];
         }
 
-        foreach ($data as $key => $value) {
-            if (property_exists($object, $key) && !in_array($key, ['rowid', 'id', 'tms'])) {
-                $object->$key = $value;
-            }
-        }
+        // Whitelist + denylist gated (CR-6 fix)
+        $this->applyDataToObject($object, $data, $config);
 
         // Dolibarr classes have different update() signatures:
         // - Societe, Product, Contact: update($id, $user, ...)

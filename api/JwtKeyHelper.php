@@ -222,52 +222,236 @@ class JwtKeyHelper
     const RSA_KEY_ID_CONFIG = 'SMARTAUTH_OAUTH_RSA_KID';
 
     /**
-     * Get or generate RSA private key for OAuth2/OIDC
+     * Resolve the directory where RSA keys are stored on disk
+     * (H-13 of TODO-SECURITY-01: keep the private key out of llx_const).
+     *
+     * @return string Absolute path; empty string when DOL_DATA_ROOT isn't defined.
+     */
+    private static function getRsaKeyDir(): string
+    {
+        if (!defined('DOL_DATA_ROOT')) {
+            return '';
+        }
+        return DOL_DATA_ROOT . '/smartauth/keys';
+    }
+
+    /**
+     * Read the RSA private key PEM from the filesystem.
+     * Returns empty string on miss.
+     */
+    private static function readPrivateKeyFile(): string
+    {
+        $dir = self::getRsaKeyDir();
+        if ($dir === '') {
+            return '';
+        }
+        $path = $dir . '/private.pem';
+        if (!is_file($path) || !is_readable($path)) {
+            return '';
+        }
+        $content = @file_get_contents($path);
+        return is_string($content) ? $content : '';
+    }
+
+    /**
+     * Read the RSA public key PEM from the filesystem.
+     * Returns empty string on miss.
+     */
+    private static function readPublicKeyFile(): string
+    {
+        $dir = self::getRsaKeyDir();
+        if ($dir === '') {
+            return '';
+        }
+        $path = $dir . '/public.pem';
+        if (!is_file($path) || !is_readable($path)) {
+            return '';
+        }
+        $content = @file_get_contents($path);
+        return is_string($content) ? $content : '';
+    }
+
+    /**
+     * Read the kid from the filesystem.
+     * Returns empty string on miss.
+     */
+    private static function readKidFile(): string
+    {
+        $dir = self::getRsaKeyDir();
+        if ($dir === '') {
+            return '';
+        }
+        $path = $dir . '/kid';
+        if (!is_file($path) || !is_readable($path)) {
+            return '';
+        }
+        $content = @file_get_contents($path);
+        return is_string($content) ? trim($content) : '';
+    }
+
+    /**
+     * Persist the key triplet to disk with chmod 0600 on the private key.
+     * Falls back to llx_const storage when DOL_DATA_ROOT isn't writable.
+     */
+    private static function writeKeyFiles(string $privateKey, string $publicKey, string $kid): bool
+    {
+        $dir = self::getRsaKeyDir();
+        if ($dir === '') {
+            return false;
+        }
+
+        if (!is_dir($dir)) {
+            if (!@mkdir($dir, 0700, true) && !is_dir($dir)) {
+                dol_syslog('SmartAuth JwtKeyHelper: cannot create RSA key dir ' . $dir, LOG_ERR);
+                return false;
+            }
+            @chmod($dir, 0700);
+        }
+
+        $privPath = $dir . '/private.pem';
+        $pubPath = $dir . '/public.pem';
+        $kidPath = $dir . '/kid';
+
+        if (@file_put_contents($privPath, $privateKey, LOCK_EX) === false) {
+            dol_syslog('SmartAuth JwtKeyHelper: failed to write private.pem', LOG_ERR);
+            return false;
+        }
+        @chmod($privPath, 0600);
+
+        @file_put_contents($pubPath, $publicKey, LOCK_EX);
+        @chmod($pubPath, 0644);
+
+        @file_put_contents($kidPath, $kid, LOCK_EX);
+        @chmod($kidPath, 0644);
+
+        return true;
+    }
+
+    /**
+     * If a legacy llx_const entry holds a private key but the filesystem
+     * doesn't, migrate it to disk and clear the const so the secret is no
+     * longer at the mercy of a SQLi or backup leak (H-13).
+     */
+    private static function maybeMigrateLegacyConst(): void
+    {
+        global $db, $conf;
+
+        if (!is_object($db)) {
+            return;
+        }
+
+        $diskPriv = self::readPrivateKeyFile();
+        if ($diskPriv !== '') {
+            return; // already migrated
+        }
+
+        $constPriv = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
+        $constPub = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
+        $constKid = getDolGlobalString(self::RSA_KEY_ID_CONFIG, '');
+
+        if ($constPriv === '' || $constPub === '') {
+            return; // nothing to migrate
+        }
+
+        $kid = $constKid !== '' ? $constKid : 'smartauth-' . substr(hash('sha256', $constPub), 0, 8);
+
+        if (!self::writeKeyFiles($constPriv, $constPub, $kid)) {
+            dol_syslog('SmartAuth JwtKeyHelper: legacy const migration: filesystem write failed - keeping llx_const fallback', LOG_WARNING);
+            return;
+        }
+
+        // Successful migration: scrub the private key from llx_const.
+        // Public key + kid can stay (they're not secret) but we replace
+        // them with empty strings to keep the storage layout consistent.
+        if (function_exists('dolibarr_del_const')) {
+            @dolibarr_del_const($db, self::RSA_PRIVATE_KEY_CONFIG, 0);
+            @dolibarr_del_const($db, self::RSA_PUBLIC_KEY_CONFIG, 0);
+            @dolibarr_del_const($db, self::RSA_KEY_ID_CONFIG, 0);
+        }
+        if (isset($conf->global)) {
+            unset($conf->global->{self::RSA_PRIVATE_KEY_CONFIG});
+            unset($conf->global->{self::RSA_PUBLIC_KEY_CONFIG});
+            unset($conf->global->{self::RSA_KEY_ID_CONFIG});
+        }
+
+        dol_syslog('SmartAuth JwtKeyHelper: migrated legacy RSA key from llx_const to filesystem (H-13)', LOG_INFO);
+    }
+
+    /**
+     * Get or generate RSA private key for OAuth2/OIDC.
+     *
+     * Storage strategy:
+     *   1. Filesystem (DOL_DATA_ROOT/smartauth/keys/private.pem, mode 0600)
+     *   2. Legacy llx_const fallback (auto-migrated to disk on first read)
+     *   3. Generate a new pair if neither exists
      *
      * @return string PEM-encoded private key
      * @throws \RuntimeException If key generation fails
      */
     public static function getRsaPrivateKey(): string
     {
-        global $db;
-
-        $privateKey = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
-
-        if (empty($privateKey)) {
-            // Generate new RSA key pair
-            self::generateRsaKeyPair();
-            $privateKey = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
-
-            if (empty($privateKey)) {
-                throw new \RuntimeException('Failed to generate or retrieve RSA private key');
-            }
+        $privateKey = self::readPrivateKeyFile();
+        if ($privateKey !== '') {
+            return $privateKey;
         }
 
+        // Legacy installs: try the old llx_const location, migrate, retry.
+        self::maybeMigrateLegacyConst();
+        $privateKey = self::readPrivateKeyFile();
+        if ($privateKey !== '') {
+            return $privateKey;
+        }
+
+        // Last resort: still readable from llx_const if migration failed
+        $privateKey = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
+        if ($privateKey !== '') {
+            return $privateKey;
+        }
+
+        // No key anywhere: generate a fresh pair
+        self::generateRsaKeyPair();
+        $privateKey = self::readPrivateKeyFile();
+        if ($privateKey === '') {
+            $privateKey = getDolGlobalString(self::RSA_PRIVATE_KEY_CONFIG, '');
+        }
+        if ($privateKey === '') {
+            throw new \RuntimeException('Failed to generate or retrieve RSA private key');
+        }
         return $privateKey;
     }
 
     /**
-     * Get RSA public key for OAuth2/OIDC
+     * Get RSA public key for OAuth2/OIDC.
      *
      * @return string PEM-encoded public key
      * @throws \RuntimeException If key retrieval fails
      */
     public static function getRsaPublicKey(): string
     {
-        global $db;
-
-        $publicKey = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
-
-        if (empty($publicKey)) {
-            // Generate new RSA key pair
-            self::generateRsaKeyPair();
-            $publicKey = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
-
-            if (empty($publicKey)) {
-                throw new \RuntimeException('Failed to generate or retrieve RSA public key');
-            }
+        $publicKey = self::readPublicKeyFile();
+        if ($publicKey !== '') {
+            return $publicKey;
         }
 
+        self::maybeMigrateLegacyConst();
+        $publicKey = self::readPublicKeyFile();
+        if ($publicKey !== '') {
+            return $publicKey;
+        }
+
+        $publicKey = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
+        if ($publicKey !== '') {
+            return $publicKey;
+        }
+
+        self::generateRsaKeyPair();
+        $publicKey = self::readPublicKeyFile();
+        if ($publicKey === '') {
+            $publicKey = getDolGlobalString(self::RSA_PUBLIC_KEY_CONFIG, '');
+        }
+        if ($publicKey === '') {
+            throw new \RuntimeException('Failed to generate or retrieve RSA public key');
+        }
         return $publicKey;
     }
 
@@ -278,19 +462,30 @@ class JwtKeyHelper
      */
     public static function getRsaKeyId(): string
     {
-        $kid = getDolGlobalString(self::RSA_KEY_ID_CONFIG, '');
-
-        if (empty($kid)) {
-            // Generate key pair which will also create kid
-            self::generateRsaKeyPair();
-            $kid = getDolGlobalString(self::RSA_KEY_ID_CONFIG, '');
-
-            if (empty($kid)) {
-                // Fallback kid if generation failed
-                return 'smartauth-' . date('Y');
-            }
+        $kid = self::readKidFile();
+        if ($kid !== '') {
+            return $kid;
         }
 
+        self::maybeMigrateLegacyConst();
+        $kid = self::readKidFile();
+        if ($kid !== '') {
+            return $kid;
+        }
+
+        $kid = getDolGlobalString(self::RSA_KEY_ID_CONFIG, '');
+        if ($kid !== '') {
+            return $kid;
+        }
+
+        self::generateRsaKeyPair();
+        $kid = self::readKidFile();
+        if ($kid === '') {
+            $kid = getDolGlobalString(self::RSA_KEY_ID_CONFIG, '');
+        }
+        if ($kid === '') {
+            return 'smartauth-' . date('Y');
+        }
         return $kid;
     }
 
@@ -338,9 +533,24 @@ class JwtKeyHelper
         // Generate Key ID based on public key hash
         $kid = 'smartauth-' . substr(hash('sha256', $publicKeyPem), 0, 8);
 
-        // Store keys in database
-        $success = true;
+        // Preferred storage: filesystem (private.pem mode 0600). Falls back
+        // to llx_const only if writing to disk fails (H-13).
+        $diskOk = self::writeKeyFiles($privateKeyPem, $publicKeyPem, $kid);
+        if ($diskOk) {
+            // Mirror the public material in $conf cache so other code paths
+            // that still go through getDolGlobalString see something consistent.
+            if (isset($conf->global)) {
+                $conf->global->{self::RSA_PUBLIC_KEY_CONFIG} = $publicKeyPem;
+                $conf->global->{self::RSA_KEY_ID_CONFIG} = $kid;
+            }
+            dol_syslog('SmartAuth JwtKeyHelper: Generated new RSA key pair with kid=' . $kid . ' (filesystem)', LOG_INFO);
+            return true;
+        }
 
+        // Filesystem unavailable - degrade to llx_const with a warning.
+        dol_syslog('SmartAuth JwtKeyHelper: filesystem write failed, falling back to llx_const storage (H-13 hardening unavailable)', LOG_WARNING);
+
+        $success = true;
         if (function_exists('dolibarr_set_const')) {
             $success = $success && (dolibarr_set_const($db, self::RSA_PRIVATE_KEY_CONFIG, $privateKeyPem, 'chaine', 0, 'RSA private key for OAuth2/OIDC', 0) > 0);
             $success = $success && (dolibarr_set_const($db, self::RSA_PUBLIC_KEY_CONFIG, $publicKeyPem, 'chaine', 0, 'RSA public key for OAuth2/OIDC', 0) > 0);
@@ -352,14 +562,12 @@ class JwtKeyHelper
         }
 
         if ($success) {
-            // Update conf cache
             if (isset($conf->global)) {
                 $conf->global->{self::RSA_PRIVATE_KEY_CONFIG} = $privateKeyPem;
                 $conf->global->{self::RSA_PUBLIC_KEY_CONFIG} = $publicKeyPem;
                 $conf->global->{self::RSA_KEY_ID_CONFIG} = $kid;
             }
-
-            dol_syslog('SmartAuth JwtKeyHelper: Generated new RSA key pair with kid=' . $kid, LOG_INFO);
+            dol_syslog('SmartAuth JwtKeyHelper: Generated new RSA key pair with kid=' . $kid . ' (llx_const fallback)', LOG_INFO);
         } else {
             dol_syslog('SmartAuth JwtKeyHelper: Failed to store RSA key pair', LOG_ERR);
         }

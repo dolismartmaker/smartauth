@@ -166,11 +166,16 @@ class AuthorizationController
             return;
         }
 
-        // Validate PKCE format if provided
+        // Validate PKCE format if provided.
+        // S256 is mandatory; we no longer fall back to 'plain' (RFC 7636
+        // permits plain but it offers no real protection - OAuth 2.1
+        // requires S256). A missing method when a challenge is present is
+        // also an explicit invalid_request (no silent default).
         if ($codeChallenge !== null) {
-            $method = $codeChallengeMethod ?? 'plain';
+            $method = $codeChallengeMethod ?? '';
             if (!PKCEHelper::isValidMethod($method)) {
-                $this->redirectWithError($redirectUri, 'invalid_request', 'Methode code_challenge non supportee.', $state);
+                dol_syslog('SmartAuth AuthorizationController: PKCE method must be S256, got: ' . ($method ?: '(missing)'), LOG_WARNING);
+                $this->redirectWithError($redirectUri, 'invalid_request', 'Methode code_challenge non supportee (S256 requis).', $state);
                 return;
             }
             if (!PKCEHelper::isValidChallenge($codeChallenge, $method)) {
@@ -191,6 +196,29 @@ class AuthorizationController
         if ($prompt === 'login') {
             $this->sessionManager->clearSession();
             $this->redirectToLogin();
+            return;
+        }
+
+        // Step 6.5: Allow external modules (e.g. ssomanager) to block authorization
+        $hookResult = HookHelper::runBlockingHook(
+            'smartmaker_oauth_pre_authorize',
+            [
+                'user_id' => $this->userId,
+                'client_id' => $this->client->client_id,
+                'client_pk' => $this->client->id,
+                'scopes' => $validatedScopes,
+                'redirect_uri' => $redirectUri,
+            ],
+            $this->client
+        );
+        if ($hookResult['internal_error']) {
+            $this->showErrorPage('server_error', 'Erreur interne lors de la verification d\'autorisation.');
+            return;
+        }
+        if ($hookResult['blocked']) {
+            $error = $hookResult['error'] ?: 'access_denied';
+            $description = $hookResult['error_description'] ?: 'Acces refuse.';
+            $this->redirectWithError($redirectUri, $error, $description, $state);
             return;
         }
 

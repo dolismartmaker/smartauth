@@ -134,6 +134,12 @@ dol_include_once('/smartauth/api/OAuth2/TokenController.php');
 dol_include_once('/smartauth/api/OAuth2/UserinfoController.php');
 dol_include_once('/smartauth/api/OAuth2/RevocationController.php');
 dol_include_once('/smartauth/api/OAuth2/LogoutController.php');
+dol_include_once('/smartauth/api/Account/EmailValidationToken.php');
+dol_include_once('/smartauth/api/Account/RegistrationService.php');
+dol_include_once('/smartauth/api/Account/RegisterController.php');
+dol_include_once('/smartauth/api/Account/AccountService.php');
+dol_include_once('/smartauth/api/Account/AccountController.php');
+dol_include_once('/smartauth/api/Account/EmailAlternativeController.php');
 
 use SmartAuth\Api\OAuth2\OAuthConfig;
 use SmartAuth\Api\OAuth2\DiscoveryController;
@@ -143,6 +149,9 @@ use SmartAuth\Api\OAuth2\TokenController;
 use SmartAuth\Api\OAuth2\UserinfoController;
 use SmartAuth\Api\OAuth2\RevocationController;
 use SmartAuth\Api\OAuth2\LogoutController;
+use SmartAuth\Api\Account\RegisterController;
+use SmartAuth\Api\Account\AccountController;
+use SmartAuth\Api\Account\EmailAlternativeController;
 
 // ============================================================================
 // Check if OAuth is enabled
@@ -168,11 +177,31 @@ if (!OAuthConfig::isEnabled() && !$isDiscoveryEndpoint) {
 // Handle OPTIONS requests (CORS preflight)
 // ============================================================================
 
+// Emit baseline security headers on every OAuth2 response (H-8)
+if (!(defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING)) {
+    \SmartAuth\Api\RouteController::emitSecurityHeaders();
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header('Access-Control-Allow-Origin: *');
-    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization');
-    header('Access-Control-Max-Age: 86400');
+    // CORS preflight for the OAuth2 endpoints.
+    // SMARTAUTH_OAUTH_CORS_ORIGINS is a CSV allow-list (or '*' for any).
+    // Empty string (default) means "no CORS" - the preflight succeeds with
+    // no Access-Control-Allow-* headers, which is the safe default
+    //. Browsers will block the actual request.
+    $configured = getDolGlobalString('SMARTAUTH_OAUTH_CORS_ORIGINS', '');
+    $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    $resolved = \SmartAuth\Api\RouteController::resolveCorsOrigin($configured, $requestOrigin);
+
+    if ($resolved !== '') {
+        header('Access-Control-Allow-Origin: ' . $resolved);
+        if ($resolved !== '*') {
+            header('Vary: Origin');
+            header('Access-Control-Allow-Credentials: true');
+        }
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization');
+        header('Access-Control-Max-Age: 600');
+    }
     http_response_code(204);
     exit;
 }
@@ -253,6 +282,48 @@ if (!$handled && $requestPath === '/login') {
     $handled = true;
 }
 
+// Public registration (Lot 5)
+if (!$handled && $requestPath === '/register') {
+    $registerController = new RegisterController($db);
+    $registerController->handle();
+    $handled = true;
+}
+
+// Registration confirmation (Lot 6)
+if (!$handled && $requestPath === '/register/confirm') {
+    $registerController = new RegisterController($db);
+    $registerController->handleConfirm();
+    $handled = true;
+}
+
+// Registration resend (Lot 6)
+if (!$handled && $requestPath === '/register/resend') {
+    $registerController = new RegisterController($db);
+    $registerController->handleResend();
+    $handled = true;
+}
+
+// Account lookup by email (Lot 6)
+if (!$handled && $requestPath === '/lookup-by-email') {
+    $registerController = new RegisterController($db);
+    $registerController->handleLookup();
+    $handled = true;
+}
+
+// Self-service account page (Lot 7)
+if (!$handled && $requestPath === '/account') {
+    $accountController = new AccountController($db);
+    $accountController->handle();
+    $handled = true;
+}
+
+// Email-alternative confirmation (Lot 9 - SmartAuth side)
+if (!$handled && $requestPath === '/email-alternative/confirm') {
+    $emailAltController = new EmailAlternativeController($db);
+    $emailAltController->handleConfirm();
+    $handled = true;
+}
+
 // Logout page
 if (!$handled && $requestPath === '/logout') {
     // Clear session and redirect
@@ -260,8 +331,42 @@ if (!$handled && $requestPath === '/logout') {
     $sessionManager = new \SmartAuth\Api\OAuth2\SessionManager($db);
     $sessionManager->clearSession();
 
-    // Redirect to login or issuer root
-    $redirectUrl = $_GET['redirect'] ?? '/';
+    // Validate the redirect target before sending Location, otherwise an
+    // attacker could phish the user post-logout.
+    // Accepted shapes:
+    //   - same-origin relative path:  /, /login, /something/page
+    //   - absolute URL whose host is whitelisted via
+    //     SMARTAUTH_LOGOUT_REDIRECT_WHITELIST (CSV of hosts)
+    // Everything else falls back to '/'.
+    $requestedRedirect = $_GET['redirect'] ?? '/';
+    $redirectUrl = '/';
+
+    if (is_string($requestedRedirect) && $requestedRedirect !== '') {
+        // Reject protocol-relative URLs (//evil.com) and backslash-prefixed
+        // variants (/\evil.com) that some browsers normalise into them.
+        $startsWithSlashOnly = isset($requestedRedirect[0])
+            && $requestedRedirect[0] === '/'
+            && (!isset($requestedRedirect[1]) || ($requestedRedirect[1] !== '/' && $requestedRedirect[1] !== '\\'));
+
+        if ($startsWithSlashOnly) {
+            $redirectUrl = $requestedRedirect;
+        } else {
+            $parsed = parse_url($requestedRedirect);
+            if (is_array($parsed) && !empty($parsed['scheme']) && !empty($parsed['host'])) {
+                $whitelistRaw = getDolGlobalString('SMARTAUTH_LOGOUT_REDIRECT_WHITELIST', '');
+                $whitelist = array_filter(array_map('trim', explode(',', $whitelistRaw)));
+                $isHttp = in_array(strtolower($parsed['scheme']), ['http', 'https'], true);
+                if ($isHttp && in_array(strtolower($parsed['host']), array_map('strtolower', $whitelist), true)) {
+                    $redirectUrl = $requestedRedirect;
+                } else {
+                    dol_syslog('SmartAuth logout: rejected redirect to non-whitelisted host: ' . $parsed['host'], LOG_WARNING);
+                }
+            } else {
+                dol_syslog('SmartAuth logout: rejected malformed or relative-with-host redirect: ' . substr($requestedRedirect, 0, 200), LOG_WARNING);
+            }
+        }
+    }
+
     header('Location: ' . $redirectUrl);
     exit;
 }

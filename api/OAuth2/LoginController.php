@@ -277,8 +277,12 @@ class LoginController
         }
 
         if ($result <= 0) {
-            // User not found - use constant time comparison to prevent timing attacks
-            password_verify($password, '$2y$10$dummy.hash.to.prevent.timing.attacks.here');
+            // User not found - perform a dummy password_verify against a
+            // valid bcrypt hash to equalise timing with the success path
+            //. The previous dummy was a
+            // syntactically invalid hash, so password_verify returned
+            // false instantly and the timing channel remained.
+            password_verify($password, self::getDummyBcryptHash());
             return null;
         }
 
@@ -295,13 +299,25 @@ class LoginController
             return null;
         }
 
-        // Dolibarr may use different hash formats depending on version
-        // Modern Dolibarr uses password_hash (bcrypt/argon2)
+        // Dolibarr may use different hash formats depending on version.
+        // Modern Dolibarr uses password_hash (bcrypt/argon2). Very old
+        // installs still store MD5 hashes; we accept that as a fallback,
+        // but using hash_equals to avoid the timing side channel exploited
+        // by H-4 of TODO-SECURITY-01. The previous '!==' comparison leaked
+        // the matching prefix length character by character.
         if (!password_verify($password, $storedHash)) {
-            // Try MD5 fallback for very old Dolibarr installations
-            if ($storedHash !== md5($password)) {
+            if (!hash_equals($storedHash, md5($password))) {
                 return null;
             }
+            // Successful MD5 login - record so the admin can plan an upgrade.
+            // We do not auto-rehash here: the column shape varies across
+            // Dolibarr versions (pass_crypted vs pass_indatabase_crypted)
+            // and a wrong write could lock the user out.
+            dol_syslog(
+                'SmartAuth LoginController: legacy MD5 password matched for user_id=' . (int) $user->id
+                . ' - upgrade Dolibarr password storage (MAIN_SECURITY_USE_PASSWORD_HASH=1)',
+                LOG_WARNING
+            );
         }
 
         return (int) $user->id;
@@ -411,31 +427,18 @@ class LoginController
     }
 
     /**
-     * Get client IP address
+     * Resolve the client IP address.
      *
-     * @return string IP address
+     * Delegates to RouteController::get_client_ip(), which honours the
+     * SMARTAUTH_TRUSTED_PROXIES allow-list. The previous local helper
+     * trusted forwarding headers unconditionally, defeating the per-IP
+     * rate limiter.
+     *
+     * @return string IP address (validated format), or '0.0.0.0'
      */
     private function getClientIp(): string
     {
-        // Check for proxy headers
-        $headers = [
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_REAL_IP',
-            'HTTP_CLIENT_IP',
-        ];
-
-        foreach ($headers as $header) {
-            if (!empty($_SERVER[$header])) {
-                // X-Forwarded-For can contain multiple IPs, use first
-                $ips = explode(',', $_SERVER[$header]);
-                $ip = trim($ips[0]);
-                if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                    return $ip;
-                }
-            }
-        }
-
-        return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        return \SmartAuth\Api\RouteController::get_client_ip();
     }
 
     /**
@@ -443,6 +446,23 @@ class LoginController
      *
      * @return bool True if HTTPS
      */
+    /**
+     * Return a valid bcrypt hash to be used as a dummy target for
+     * password_verify() on the auth-failure path (H-5).
+     *
+     * Cached per process: only the first failed attempt pays the bcrypt
+     * cost. Must be syntactically valid (a malformed hash makes
+     * password_verify short-circuit, defeating the timing equalisation).
+     */
+    private static function getDummyBcryptHash(): string
+    {
+        static $dummy = null;
+        if ($dummy === null) {
+            $dummy = password_hash('SmartAuthDummyTimingHash:' . random_bytes(16), PASSWORD_BCRYPT);
+        }
+        return $dummy;
+    }
+
     private function isSecureContext(): bool
     {
         if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {

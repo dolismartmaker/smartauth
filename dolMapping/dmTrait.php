@@ -320,18 +320,25 @@ trait dmTrait
 				}
 			}
 
-			// print json_encode($obj->array_options);//exit;
-			// dol_syslog("SmartAuth   ## doliside=" . $doliside . " and appside=" . $appside);
-			// dol_syslog("SmartAuth   ## value on dolibarr object =" . $obj->$doliside ?? 'null');
-			if (!empty($obj->$doliside)) {
+			// Capture the property value once with a null-coalesce so an
+			// undefined dynamic property (PHP 8.2 deprecates implicit
+			// dynamic property creation; PHPUnit strict mode promotes the
+			// warning to an error) never derails exportMappedData. A mapper
+			// can publish keys that Dolibarr only fills under specific
+			// fetch paths (fk_user_author after a refresh, etc.) and
+			// crashing the whole export over a missing optional field would
+			// be the wrong default. The value falls through as null which
+			// the existing !empty() guard already filters out.
+			$doliVal = $obj->$doliside ?? null;
+			if (!empty($doliVal)) {
 				//try to apply a function as data filter for example for logo to base64 encoded logo (Societe / dmSociete)
 				$user_function = "fieldFilterValue" . ucfirst($doliside);
 				// dol_syslog("SmartAuth Call user function $user_function on object " . get_class($this));
 				if (is_callable([$this, $user_function])) {
-					$mapped->$appside = call_user_func([$this, $user_function], $obj, $obj->$doliside);
+					$mapped->$appside = call_user_func([$this, $user_function], $obj, $doliVal);
 					continue;
 				} else {
-					$mapped->$appside = $obj->$doliside;
+					$mapped->$appside = $doliVal;
 					continue;
 				}
 			}
@@ -339,7 +346,7 @@ trait dmTrait
 			//detect fk and push object into $mapped->$appside
 			if (in_array($doliside, array_keys($this->listOfForeignKeys))) {
 				// dol_syslog('#####_listOfForeignKeys = ' . json_encode($this->listOfForeignKeys));
-				$mapped->$appside = $this->exportData($doliside, $obj->$doliside);
+				$mapped->$appside = $this->exportData($doliside, $doliVal);
 			}
 
 			// print json_encode($obj->array_options);exit;
@@ -370,7 +377,17 @@ trait dmTrait
 				$filteredline = new \stdClass;
 				//export only needed fields listed into _listOfPublishedFieldsForLines
 				foreach ($this->listOfPublishedFieldsForLines as $doliside => $appside) {
-					$filteredline->$appside = $line->$doliside;
+					// Dolibarr line classes (CommandeFournisseurLigne, etc.) populate
+					// $line->id = $objp->rowid in fetch_lines() but never the inverse,
+					// so reading $line->rowid yields null and the API returned id:null
+					// even though the line existed in DB. Mirror the header logic by
+					// falling back to $line->id when 'rowid' is requested. Same defensive
+					// null-coalesce as the header loop avoids PHP 8.2 "Undefined property".
+					if ($doliside === 'rowid') {
+						$filteredline->$appside = $line->rowid ?? $line->id ?? null;
+					} else {
+						$filteredline->$appside = $line->$doliside ?? null;
+					}
 				}
 				$mapped->lines[] = $filteredline;
 			}

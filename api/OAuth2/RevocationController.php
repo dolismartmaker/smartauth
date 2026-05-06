@@ -202,8 +202,12 @@ class RevocationController
      */
     private function revokeAccessToken(string $token): bool
     {
-        // First, try to decode as JWT to get JTI
-        $payload = $this->tokenService->validateAccessToken($token);
+        // First, try to decode as JWT to get JTI.
+        // Per RFC 7009 §2.1, only the client to which the token was issued
+        // may revoke it. When a client is authenticated on this endpoint,
+        // require the token's aud to match the authenticated client.
+        $expectedAudience = $this->client !== null ? $this->client->client_id : null;
+        $payload = $this->tokenService->validateAccessToken($token, $expectedAudience);
 
         if ($payload !== null && !empty($payload['jti'])) {
             $jti = $payload['jti'];

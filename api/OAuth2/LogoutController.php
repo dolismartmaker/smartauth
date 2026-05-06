@@ -122,10 +122,12 @@ class LogoutController
     }
 
     /**
-     * Decode and extract information from id_token_hint
+     * Decode and extract information from id_token_hint.
      *
-     * Note: We only extract information, we don't strictly validate the token
-     * since the user might already be logged out and the token expired.
+     * Per OpenID Connect RP-Initiated Logout 1.0 section 3, expired tokens
+     * are accepted (the whole point of logout is that the session may be
+     * over). The signature, however, is mandatory: without it a forged
+     * payload would let any caller revoke another user's tokens.
      *
      * @param string $idTokenHint ID token JWT
      * @return array ['userId' => int|null, 'clientId' => string|null]
@@ -140,19 +142,40 @@ class LogoutController
             return $result;
         }
 
-        // Decode payload (without signature verification for logout)
-        // Per OIDC spec, we can accept expired tokens for logout
-        $payloadJson = JwtKeyHelper::base64UrlDecode($parts[1]);
-        $payload = json_decode($payloadJson, true);
+        list($headerEncoded, $payloadEncoded, $signatureEncoded) = $parts;
 
+        // Verify the JWT header advertises RS256 (no 'none', no HS*).
+        $headerJson = JwtKeyHelper::base64UrlDecode($headerEncoded);
+        $header = json_decode($headerJson, true);
+        if (!is_array($header) || ($header['alg'] ?? '') !== 'RS256') {
+            dol_syslog('SmartAuth LogoutController: id_token_hint has unsupported alg', LOG_WARNING);
+            return $result;
+        }
+
+        // Verify the signature against our current RSA public key.
+        $signature = JwtKeyHelper::base64UrlDecode($signatureEncoded);
+        $publicKey = JwtKeyHelper::getRsaPublicKey();
+        if (empty($publicKey)) {
+            dol_syslog('SmartAuth LogoutController: no RSA public key configured', LOG_ERR);
+            return $result;
+        }
+
+        $dataToVerify = $headerEncoded . '.' . $payloadEncoded;
+        $verified = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA256);
+        if ($verified !== 1) {
+            dol_syslog('SmartAuth LogoutController: id_token_hint signature is invalid', LOG_WARNING);
+            return $result;
+        }
+
+        $payload = json_decode(JwtKeyHelper::base64UrlDecode($payloadEncoded), true);
         if (!is_array($payload)) {
             return $result;
         }
 
-        // Verify issuer matches our server
+        // Verify issuer matches our server (now trustworthy since signed)
         $issuer = $payload['iss'] ?? '';
         if ($issuer !== OAuthConfig::getIssuer()) {
-            dol_syslog('SmartAuth LogoutController: id_token_hint has wrong issuer', LOG_DEBUG);
+            dol_syslog('SmartAuth LogoutController: id_token_hint has wrong issuer', LOG_WARNING);
             return $result;
         }
 

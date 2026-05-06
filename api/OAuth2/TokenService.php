@@ -30,6 +30,7 @@
 namespace SmartAuth\Api\OAuth2;
 
 dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
+dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/api/JwtKeyHelper.php');
 
 use SmartAuth\Api\JwtKeyHelper;
@@ -96,21 +97,49 @@ class TokenService
     }
 
     /**
-     * Validate an access token (JWT)
+     * Validate an access token (JWT).
+     *
+     * Verifies signature (via decodeJwt), header typ, and the standard
+     * lifetime claims (exp, iat, nbf). When $expectedAudience is supplied,
+     * the aud claim must contain it (string equality, or membership for
+     * array-shaped aud values) - this is what closes the "confused deputy"
+     * cross-client scenario described in CR-4 of TODO-SECURITY-01.
      *
      * @param string $jwt JWT token string
+     * @param string|null $expectedAudience If non-null, the token's aud
+     *                                      claim must contain this value.
      * @return array|null Decoded payload or null if invalid
      */
-    public function validateAccessToken(string $jwt): ?array
+    public function validateAccessToken(string $jwt, ?string $expectedAudience = null): ?array
     {
         $payload = $this->decodeJwt($jwt);
         if ($payload === null) {
             return null;
         }
 
-        // Check expiration
-        if (!isset($payload['exp']) || $payload['exp'] < time()) {
+        $now = time();
+        // Tolerate small clock skew between this server and any peer that
+        // signed/issued the token (RFC 7519 doesn't define a value; 30s is
+        // the de-facto common upper bound).
+        $skew = 30;
+
+        // Check expiration (mandatory: every access token must have exp)
+        if (!isset($payload['exp']) || (int) $payload['exp'] < $now) {
             dol_syslog('SmartAuth TokenService: Access token expired', LOG_DEBUG);
+            return null;
+        }
+
+        // Check not-before (optional). If present and still in the future
+        // beyond skew, reject.
+        if (isset($payload['nbf']) && (int) $payload['nbf'] > $now + $skew) {
+            dol_syslog('SmartAuth TokenService: Access token not yet valid (nbf)', LOG_WARNING);
+            return null;
+        }
+
+        // Check issued-at (optional). A token with iat in the future beyond
+        // skew is suspicious - reject.
+        if (isset($payload['iat']) && (int) $payload['iat'] > $now + $skew) {
+            dol_syslog('SmartAuth TokenService: Access token issued in the future (iat)', LOG_WARNING);
             return null;
         }
 
@@ -118,6 +147,24 @@ class TokenService
         if (!isset($payload['iss']) || $payload['iss'] !== OAuthConfig::getIssuer()) {
             dol_syslog('SmartAuth TokenService: Invalid issuer', LOG_WARNING);
             return null;
+        }
+
+        // Check audience when the caller has stated which audience it expects.
+        // Tokens issued for client A must not be accepted by a resource that
+        // expects audience B (RFC 8725 §3.10, RFC 7519 §4.1.3).
+        if ($expectedAudience !== null) {
+            if (!isset($payload['aud'])) {
+                dol_syslog('SmartAuth TokenService: aud claim missing', LOG_WARNING);
+                return null;
+            }
+            $audClaim = $payload['aud'];
+            $audMatches = is_array($audClaim)
+                ? in_array($expectedAudience, $audClaim, true)
+                : ($audClaim === $expectedAudience);
+            if (!$audMatches) {
+                dol_syslog('SmartAuth TokenService: aud mismatch (expected=' . $expectedAudience . ')', LOG_WARNING);
+                return null;
+            }
         }
 
         // Check JTI not revoked (if stored)
@@ -183,7 +230,13 @@ class TokenService
     }
 
     /**
-     * Validate a refresh token
+     * Validate a refresh token.
+     *
+     * Implements RFC 9700 §2.2.2 (formerly OAuth 2.0 Security BCP §4.13.2)
+     * refresh-token replay detection: if the presented refresh token has
+     * already been revoked (i.e., a previous use already rotated it), we
+     * assume the token was leaked and revoke the entire family rooted at
+     * the original token. This is H-11 of TODO-SECURITY-01.
      *
      * @param string $token Plain text refresh token
      * @return \SmartAuthOAuthToken|null Token record or null if invalid
@@ -204,9 +257,21 @@ class TokenService
             return null;
         }
 
-        // Check validity (not expired, not revoked)
+        // Refresh token replay: token exists but is already revoked.
+        // Per RFC 9700, revoke the entire family.
+        if ($tokenRecord->isRevoked()) {
+            dol_syslog(
+                'SmartAuth TokenService: refresh token replay detected (id=' . (int) $tokenRecord->id
+                . ', user=' . (int) $tokenRecord->fk_user . ') - revoking family',
+                LOG_WARNING
+            );
+            $this->revokeFamily($tokenRecord);
+            return null;
+        }
+
+        // Check validity (not expired)
         if (!$tokenRecord->isValid()) {
-            dol_syslog('SmartAuth TokenService: Refresh token is invalid (expired or revoked)', LOG_INFO);
+            dol_syslog('SmartAuth TokenService: Refresh token is invalid (expired)', LOG_INFO);
             return null;
         }
 
@@ -214,10 +279,32 @@ class TokenService
     }
 
     /**
-     * Rotate a refresh token (invalidate old, create new)
+     * Walk up the parent chain to the root token, then revoke it and all
+     * descendants. Used by validateRefreshToken() when a replay is detected.
+     */
+    private function revokeFamily(\SmartAuthOAuthToken $token): void
+    {
+        $root = $token;
+        $guard = 0;
+        while (!empty($root->fk_parent) && $guard < 100) {
+            $parent = new \SmartAuthOAuthToken($this->db);
+            if ($parent->fetch((int) $root->fk_parent) <= 0) {
+                break;
+            }
+            $root = $parent;
+            $guard++;
+        }
+        $root->revokeWithChildren();
+    }
+
+    /**
+     * Rotate a refresh token (invalidate old, create new) atomically.
      *
-     * This implements refresh token rotation for security.
-     * The old token is revoked and a new one is created.
+     * The revoke + create pair runs inside a single SQL transaction with
+     * a conditional UPDATE so two concurrent refresh requests with the
+     * same token cannot both succeed. The
+     * loser of the race sees a runtime exception and the caller should
+     * surface that as invalid_grant to the client.
      *
      * @param \SmartAuthOAuthToken $oldToken The old refresh token to rotate
      * @param array|null $newScopes New scopes (null = keep same scopes)
@@ -225,21 +312,55 @@ class TokenService
      */
     public function rotateRefreshToken(\SmartAuthOAuthToken $oldToken, ?array $newScopes = null): array
     {
-        // Get scopes from old token if not provided
         $scopes = $newScopes ?? $oldToken->getScopesArray();
 
-        // Revoke the old token
-        $oldToken->revoke();
-        dol_syslog('SmartAuth TokenService: Old refresh token revoked (id=' . $oldToken->id . ')', LOG_INFO);
+        $this->db->begin();
+        $inTx = true;
+        try {
+            // Atomic conditional revoke: only the first concurrent attempt
+            // sees affected_rows=1, the others see 0 and abort.
+            $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_oauth_tokens"
+                . " SET revoked_at = '" . $this->db->idate(dol_now()) . "'"
+                . " WHERE rowid = " . ((int) $oldToken->id)
+                . " AND revoked_at IS NULL";
+            $resql = $this->db->query($sql);
+            if (!$resql) {
+                throw new \RuntimeException('Failed to revoke old refresh token: ' . $this->db->lasterror());
+            }
+            if ((int) $this->db->affected_rows($resql) !== 1) {
+                // Lost the race - another caller already rotated this token.
+                // Treat as a replay and revoke the family before returning.
+                dol_syslog(
+                    'SmartAuth TokenService: rotateRefreshToken concurrent reuse detected (id=' . (int) $oldToken->id . ')',
+                    LOG_WARNING
+                );
+                $this->db->rollback();
+                $inTx = false;
+                $this->revokeFamily($oldToken);
+                throw new \RuntimeException('Refresh token already used');
+            }
 
-        // Create new refresh token with reference to old one
-        return $this->createRefreshToken(
-            $oldToken->fk_user,
-            $oldToken->fk_client,
-            $scopes,
-            null,
-            $oldToken->id
-        );
+            // Reflect the revoke locally so the rest of the codebase sees it
+            $oldToken->revoked_at = dol_now();
+
+            $newToken = $this->createRefreshToken(
+                $oldToken->fk_user,
+                $oldToken->fk_client,
+                $scopes,
+                null,
+                $oldToken->id
+            );
+
+            $this->db->commit();
+            $inTx = false;
+            dol_syslog('SmartAuth TokenService: Refresh token rotated (old_id=' . (int) $oldToken->id . ')', LOG_INFO);
+            return $newToken;
+        } catch (\Throwable $e) {
+            if ($inTx) {
+                $this->db->rollback();
+            }
+            throw $e;
+        }
     }
 
     /**
@@ -291,7 +412,41 @@ class TokenService
         // Add claims based on scopes
         $payload = $this->addUserClaims($payload, $user, $scopes);
 
+        // Allow external modules to mutate claims (id_token context)
+        $clientPk = $this->resolveClientPk($clientId);
+        $payload = HookHelper::runClaimsHook(
+            [
+                'user_id' => $userId,
+                'client_id' => $clientId,
+                'client_pk' => $clientPk,
+                'scopes' => $scopes,
+                'context' => 'id_token',
+            ],
+            $payload
+        );
+
         return $this->encodeJwt($payload);
+    }
+
+    /**
+     * Resolve a client primary key (rowid) from its public client_id.
+     *
+     * @param string $clientId Public client ID
+     * @return int|null Database rowid or null
+     */
+    private function resolveClientPk(string $clientId): ?int
+    {
+        if ($clientId === '') {
+            return null;
+        }
+
+        $client = new \SmartAuthOAuthClient($this->db);
+        $result = $client->fetch(0, null, $clientId);
+        if ($result <= 0) {
+            return null;
+        }
+
+        return (int) $client->id;
     }
 
     /**
@@ -372,6 +527,50 @@ class TokenService
     }
 
     /**
+     * Revoke all access and refresh tokens for a (user, client) couple.
+     *
+     * Stamps revoked_at = NOW() on every active token. Does NOT delete
+     * oauth_consents (the user may reconsent later without re-passing the
+     * consent screen). Returns the number of tokens revoked, or a negative
+     * error code on database failure.
+     *
+     * @param int $fk_user      User row ID
+     * @param int $fk_client_pk OAuth client row ID
+     * @return int Number of revoked tokens, or -1 on error
+     */
+    public function revokeAllForUserAndClient(int $fk_user, int $fk_client_pk): int
+    {
+        $count = \SmartAuthOAuthToken::revokeAllForUserAndClient($this->db, $fk_user, $fk_client_pk);
+        if ($count < 0) {
+            dol_syslog('SmartAuth TokenService: revokeAllForUserAndClient failed for user ' . $fk_user . ' client ' . $fk_client_pk, LOG_ERR);
+            return -1;
+        }
+        dol_syslog('SmartAuth TokenService: Revoked ' . $count . ' tokens for user ' . $fk_user . ' client ' . $fk_client_pk, LOG_INFO);
+        return $count;
+    }
+
+    /**
+     * Revoke every active token for a user across all clients.
+     *
+     * Used by /account "log out everywhere" and by ssomanager USER_DISABLE
+     * / USER_DELETE / COMPANY_DELETE triggers. Returns the number of tokens
+     * revoked, or a negative error code on database failure.
+     *
+     * @param int $fk_user User row ID
+     * @return int Number of revoked tokens, or -1 on error
+     */
+    public function revokeAllForUser(int $fk_user): int
+    {
+        $count = \SmartAuthOAuthToken::revokeAllForUser($this->db, $fk_user);
+        if ($count < 0) {
+            dol_syslog('SmartAuth TokenService: revokeAllForUser failed for user ' . $fk_user, LOG_ERR);
+            return -1;
+        }
+        dol_syslog('SmartAuth TokenService: Revoked ' . $count . ' tokens for user ' . $fk_user, LOG_INFO);
+        return $count;
+    }
+
+    /**
      * Encode a payload as JWT using RS256
      *
      * @param array $payload JWT payload
@@ -429,6 +628,15 @@ class TokenService
         // Only RS256 supported
         if ($header['alg'] !== 'RS256') {
             dol_syslog('SmartAuth TokenService: Unsupported JWT algorithm: ' . $header['alg'], LOG_WARNING);
+            return null;
+        }
+
+        // Reject unexpected typ values (RFC 8725 §3.11). 'JWT' is the default
+        // when typ is set; we tolerate its absence (RFC 7519 makes typ optional)
+        // but never accept any other media type, to prevent confusion with
+        // other JOSE-shaped artefacts.
+        if (isset($header['typ']) && $header['typ'] !== 'JWT' && $header['typ'] !== 'jwt') {
+            dol_syslog('SmartAuth TokenService: Unexpected JWT typ: ' . $header['typ'], LOG_WARNING);
             return null;
         }
 

@@ -65,17 +65,15 @@ class PKCEHelper
             return false;
         }
 
-        if ($method === self::METHOD_S256) {
-            $expectedChallenge = self::generateChallenge($verifier, self::METHOD_S256);
-            return hash_equals($challenge, $expectedChallenge);
+        // Only S256 is accepted (RFC 7636 + OAuth 2.1 / Security BCP §2.1.1).
+        // The 'plain' method is rejected even if a legacy auth code carries it,
+        // because the resulting verifier == challenge is just a bearer secret.
+        if ($method !== self::METHOD_S256) {
+            return false;
         }
 
-        if ($method === self::METHOD_PLAIN) {
-            return hash_equals($challenge, $verifier);
-        }
-
-        // Unknown method
-        return false;
+        $expectedChallenge = self::generateChallenge($verifier, self::METHOD_S256);
+        return hash_equals($challenge, $expectedChallenge);
     }
 
     /**
@@ -147,14 +145,19 @@ class PKCEHelper
     }
 
     /**
-     * Check if a code challenge method is supported
+     * Check if a code challenge method is supported.
+     *
+     * Only S256 is supported. The legacy 'plain' method is rejected here
+     * because, with no hashing, knowing the challenge is equivalent to
+     * knowing the verifier, which voids the protection PKCE is supposed
+     * to provide (RFC 7636 acknowledges this; OAuth 2.1 mandates S256).
      *
      * @param string $method The method to check
      * @return bool True if supported
      */
     public static function isValidMethod(string $method): bool
     {
-        return in_array($method, [self::METHOD_S256, self::METHOD_PLAIN], true);
+        return $method === self::METHOD_S256;
     }
 
     /**
@@ -170,21 +173,17 @@ class PKCEHelper
             return false;
         }
 
-        if ($method === self::METHOD_S256) {
-            // S256 challenge is base64url-encoded SHA256 hash (43 chars)
-            if (strlen($challenge) !== 43) {
-                return false;
-            }
-            // Must be valid base64url
-            return preg_match('/^[A-Za-z0-9\-_]+$/', $challenge) === 1;
+        // Only S256 is supported; see isValidMethod().
+        if ($method !== self::METHOD_S256) {
+            return false;
         }
 
-        if ($method === self::METHOD_PLAIN) {
-            // Plain challenge must be valid verifier format
-            return self::isValidVerifier($challenge);
+        // S256 challenge is base64url-encoded SHA256 hash (43 chars)
+        if (strlen($challenge) !== 43) {
+            return false;
         }
-
-        return false;
+        // Must be valid base64url
+        return preg_match('/^[A-Za-z0-9\-_]+$/', $challenge) === 1;
     }
 
     /**
