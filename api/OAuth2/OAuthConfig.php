@@ -33,6 +33,9 @@ class OAuthConfig
     const DEFAULT_REFRESH_TOKEN_TTL = 2592000;    // 30 days
     const DEFAULT_CODE_TTL = 600;                 // 10 minutes
     const DEFAULT_SESSION_TTL = 86400;            // 24 hours
+    const DEFAULT_REGISTER_TOKEN_TTL = 86400;     // 24 hours - email validation links
+    const DEFAULT_REGISTER_RESEND_COOLDOWN = 300; // 5 minutes between resends
+    const DEFAULT_REGISTER_RATE_LIMIT = 1;        // registrations per hour per IP
 
     /**
      * Supported scopes
@@ -70,9 +73,12 @@ class OAuthConfig
     ];
 
     /**
-     * Supported code challenge methods for PKCE
+     * Supported code challenge methods for PKCE.
+     * Only S256 is supported - the legacy 'plain' method offers no real
+     * protection against code interception (RFC 7636 acknowledges this;
+     * OAuth 2.1 / Security BCP §2.1.1 require S256).
      */
-    const CODE_CHALLENGE_METHODS = ['S256', 'plain'];
+    const CODE_CHALLENGE_METHODS = ['S256'];
 
     /**
      * Supported claims
@@ -125,20 +131,82 @@ class OAuthConfig
     }
 
     /**
-     * Auto-detect issuer URL from current HTTP request
+     * Auto-detect issuer URL from the current HTTP request.
+     *
+     * Hardened against Host-header injection:
+     *   - SERVER_NAME (web-server config, not client-controlled) is preferred
+     *     over HTTP_HOST.
+     *   - When SMARTAUTH_ISSUER_ALLOWED_HOSTS is configured (CSV), HTTP_HOST
+     *     is honoured only if the value is in the allow-list.
+     *   - X-Forwarded-Proto is honoured only when SERVER_NAME isn't set
+     *     and the immediate REMOTE_ADDR is private/loopback (typical
+     *     reverse-proxy setup).
+     *   - When neither SMARTAUTH_OAUTH_ISSUER nor an allow-list is
+     *     configured, a warning is logged so the operator is reminded
+     *     to harden the deployment.
      *
      * @return string
      */
     private static function detectIssuerFromRequest(): string
     {
+        // Determine protocol
         $protocol = 'http';
         if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
             $protocol = 'https';
+        } elseif (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
+            $protocol = 'https';
         } elseif (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
-            $protocol = $_SERVER['HTTP_X_FORWARDED_PROTO'];
+            $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+            $isLocalProxy = (
+                $remoteAddr === ''
+                || preg_match('/^127\./', $remoteAddr)
+                || preg_match('/^10\./', $remoteAddr)
+                || preg_match('/^172\.(1[6-9]|2\d|3[01])\./', $remoteAddr)
+                || preg_match('/^192\.168\./', $remoteAddr)
+                || $remoteAddr === '::1'
+            );
+            if ($isLocalProxy && in_array(strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']), ['http', 'https'], true)) {
+                $protocol = strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']);
+            }
         }
 
-        $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+        // Resolve host
+        $serverName = $_SERVER['SERVER_NAME'] ?? '';
+        $httpHost = $_SERVER['HTTP_HOST'] ?? '';
+
+        $allowedHostsRaw = getDolGlobalString('SMARTAUTH_ISSUER_ALLOWED_HOSTS', '');
+        $allowedHosts = array_filter(array_map('trim', explode(',', $allowedHostsRaw)));
+
+        if (!empty($allowedHosts)) {
+            $allowedLower = array_map('strtolower', $allowedHosts);
+            // Prefer SERVER_NAME if it's in the allow-list, else fall back to
+            // a HTTP_HOST that's also allowed, else the first allowed entry.
+            if ($serverName !== '' && in_array(strtolower($serverName), $allowedLower, true)) {
+                $host = $serverName;
+            } elseif ($httpHost !== '' && in_array(strtolower($httpHost), $allowedLower, true)) {
+                $host = $httpHost;
+            } else {
+                $host = $allowedHosts[0];
+                dol_syslog(
+                    'SmartAuth OAuthConfig: Host header "' . $httpHost . '" not in SMARTAUTH_ISSUER_ALLOWED_HOSTS - using "' . $host . '" instead',
+                    LOG_WARNING
+                );
+            }
+        } else {
+            // Back-compat path: prefer SERVER_NAME (set by web server config),
+            // fall back to HTTP_HOST with a warning.
+            if ($serverName !== '') {
+                $host = $serverName;
+            } elseif ($httpHost !== '') {
+                dol_syslog(
+                    'SmartAuth OAuthConfig: deriving issuer from HTTP_HOST - set SMARTAUTH_OAUTH_ISSUER or SMARTAUTH_ISSUER_ALLOWED_HOSTS to harden against Host header injection',
+                    LOG_WARNING
+                );
+                $host = $httpHost;
+            } else {
+                $host = 'localhost';
+            }
+        }
 
         return $protocol . '://' . $host;
     }
@@ -181,6 +249,36 @@ class OAuthConfig
     public static function getSessionTTL(): int
     {
         return getDolGlobalInt('SMARTAUTH_OAUTH_SESSION_TTL', self::DEFAULT_SESSION_TTL);
+    }
+
+    /**
+     * Get email validation token lifetime in seconds (registration / email change).
+     *
+     * @return int
+     */
+    public static function getRegisterTokenTTL(): int
+    {
+        return getDolGlobalInt('SMARTAUTH_REGISTER_TOKEN_TTL', self::DEFAULT_REGISTER_TOKEN_TTL);
+    }
+
+    /**
+     * Minimum number of seconds between two confirmation-email resends.
+     *
+     * @return int
+     */
+    public static function getRegisterResendCooldown(): int
+    {
+        return getDolGlobalInt('SMARTAUTH_REGISTER_RESEND_COOLDOWN', self::DEFAULT_REGISTER_RESEND_COOLDOWN);
+    }
+
+    /**
+     * Maximum number of /register attempts allowed per source IP per hour.
+     *
+     * @return int
+     */
+    public static function getRegisterRateLimit(): int
+    {
+        return getDolGlobalInt('SMARTAUTH_REGISTER_RATE_LIMIT', self::DEFAULT_REGISTER_RATE_LIMIT);
     }
 
     /**

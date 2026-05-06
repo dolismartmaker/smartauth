@@ -459,16 +459,22 @@ class SmartAuthOAuthClient extends CommonObject
     }
 
     /**
-     * Verify a client secret against the stored hash
+     * Verify a client secret against the stored hash.
+     *
+     * Returns false (NOT true) when the stored hash is empty. The previous
+     * behaviour (return true) made every misconfigured confidential client
+     * accept any secret, including the empty one.
+     * Public clients (is_confidential=0) must never reach this method - the
+     * caller is expected to short-circuit on isConfidential() first.
      *
      * @param string $secret Plain text secret to verify
-     * @return bool True if secret matches
+     * @return bool True iff the stored hash is non-empty AND password_verify matches
      */
     public function verifySecret($secret)
     {
         if (empty($this->client_secret)) {
-            // Public client, no secret required
-            return true;
+            dol_syslog('SmartAuthOAuthClient::verifySecret called with empty stored hash for client_id=' . ($this->client_id ?? '?') . ' - rejecting', LOG_WARNING);
+            return false;
         }
         return password_verify($secret, $this->client_secret);
     }

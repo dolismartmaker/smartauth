@@ -31,6 +31,7 @@
 namespace SmartAuth\Api\OAuth2;
 
 require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/api/OAuth2/ResponseTrait.php');
 dol_include_once('/smartauth/api/OAuth2/ResponseException.php');
 
@@ -119,9 +120,47 @@ class UserinfoController
         // Build claims based on scopes
         $claims = $this->buildClaims($user, $scopes);
 
+        // Allow external modules to mutate claims (e.g. ssomanager email override)
+        $clientId = isset($payload['client_id']) ? (string) $payload['client_id'] : (isset($payload['aud']) ? (string) $payload['aud'] : '');
+        $clientPk = $this->resolveClientPk($clientId);
+        $claims = HookHelper::runClaimsHook(
+            [
+                'user_id' => $userId,
+                'client_id' => $clientId,
+                'client_pk' => $clientPk,
+                'scopes' => $scopes,
+                'context' => 'userinfo',
+            ],
+            $claims
+        );
+
         dol_syslog('SmartAuth UserinfoController: Returning claims for user ' . $userId, LOG_INFO);
 
         $this->sendJsonResponse($claims);
+    }
+
+    /**
+     * Resolve a client primary key (rowid) from its public client_id.
+     *
+     * Returns null if the client cannot be resolved; the hook will then
+     * receive client_pk = null which is fine for read-only contexts.
+     *
+     * @param string $clientId Public client ID
+     * @return int|null Database rowid or null
+     */
+    private function resolveClientPk(string $clientId): ?int
+    {
+        if ($clientId === '') {
+            return null;
+        }
+
+        $client = new \SmartAuthOAuthClient($this->db);
+        $result = $client->fetch(0, null, $clientId);
+        if ($result <= 0) {
+            return null;
+        }
+
+        return (int) $client->id;
     }
 
     /**

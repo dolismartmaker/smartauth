@@ -130,22 +130,112 @@ class dmHelper
 		return $ret;
 	}
 
+	/** @var array Per-process cache of resolved sellist options (table|label|value|where -> result). */
+	private static $sellistCache = [];
+
 	/**
-	 * Filter attribute type list of selection
+	 * Filter attribute type list of selection.
 	 *
-	 * @param   [type]  $str  [$str description]
+	 * Dolibarr declares such fields with a colon-separated descriptor:
+	 *   sellist:<table>:<labelCol>:<valueCol>[:<parentField>[:<extraWhere>]]
+	 * for example:
+	 *   sellist:c_payment_term:libelle:rowid
+	 *   sellist:c_paiement:libelle:id::active=1
 	 *
-	 * @return  array        [return description]
+	 * We resolve the descriptor into a concrete options array
+	 *   [{label, value}, ...]
+	 * so the front does not have to round-trip again. The result is cached
+	 * per (table|labelCol|valueCol|extraWhere) for the lifetime of the PHP
+	 * request: each $cacheDesc boot of a mapper would otherwise re-issue
+	 * the same SELECT for c_currencies / c_paiement / etc.
+	 *
+	 * Identifiers (table + columns) are validated against [A-Za-z0-9_] so
+	 * the values cannot escape the FROM/SELECT context. The extra WHERE
+	 * fragment is only applied when it does NOT contain '$' (Dolibarr's
+	 * placeholder convention for parent-driven filters which we cannot
+	 * resolve at describe time).
+	 *
+	 * @param   string  $str  Raw type descriptor coming from $object->fields.
+	 * @return  array         {type:'select', options:[{label,value},...]}
 	 */
 	private function _customFilterAttributeTypeSellist($str)
 	{
-		$localDebug = false;
+		global $db, $langs;
 
-		if ($localDebug) dol_syslog("SmartAuth propertiesFilter TODO > _customFilterAttributeTypeSellist call with $str");
-		return [
-			'type' => 'sellist',
-			'todo' => 'todo'
-		];
+		$tab = explode(':', $str);
+		if (count($tab) < 3) {
+			return ['type' => 'select', 'options' => []];
+		}
+
+		$table = isset($tab[1]) ? trim($tab[1]) : '';
+		$labelCol = isset($tab[2]) ? trim($tab[2]) : '';
+		$valueCol = isset($tab[3]) ? trim($tab[3]) : 'rowid';
+
+		if ($labelCol === '') $labelCol = 'label';
+		if ($valueCol === '') $valueCol = 'rowid';
+
+		// Optional extra WHERE clause: tab index 5 by Dolibarr convention.
+		// Skip when it references a placeholder ($ID$, $SEL$, ...).
+		$extraWhere = '';
+		if (isset($tab[5]) && trim($tab[5]) !== '' && strpos($tab[5], '$') === false) {
+			$extraWhere = trim($tab[5]);
+		}
+
+		// Validate identifiers to prevent SQL injection through descriptor.
+		$identRx = '/^[A-Za-z0-9_]+$/';
+		if (
+			$table === ''
+			|| !preg_match($identRx, $table)
+			|| !preg_match($identRx, $labelCol)
+			|| !preg_match($identRx, $valueCol)
+		) {
+			dol_syslog("SmartAuth _customFilterAttributeTypeSellist invalid identifier in '$str'", LOG_WARNING);
+			return ['type' => 'select', 'options' => []];
+		}
+
+		$cacheKey = $table . '|' . $labelCol . '|' . $valueCol . '|' . $extraWhere;
+		if (isset(self::$sellistCache[$cacheKey])) {
+			return self::$sellistCache[$cacheKey];
+		}
+
+		// Most c_* tables expose an `active` column. We attempt the filtered
+		// query first; on failure fall back to an unfiltered one so a missing
+		// `active` column does not silently empty the picker.
+		$baseSelect = 'SELECT ' . $valueCol . ' as v, ' . $labelCol . ' as l FROM ' . MAIN_DB_PREFIX . $table;
+		$orderBy = ' ORDER BY ' . $labelCol;
+		$limit = ' LIMIT 500';
+
+		$sqlActive = $baseSelect . ' WHERE active = 1' . ($extraWhere !== '' ? ' AND (' . $extraWhere . ')' : '') . $orderBy . $limit;
+		$resql = $db->query($sqlActive);
+		if (!$resql) {
+			$sqlPlain = $baseSelect . ($extraWhere !== '' ? ' WHERE (' . $extraWhere . ')' : '') . $orderBy . $limit;
+			$resql = $db->query($sqlPlain);
+			if (!$resql) {
+				dol_syslog("SmartAuth _customFilterAttributeTypeSellist SQL failed for '$str': " . $db->lasterror(), LOG_WARNING);
+				$ret = ['type' => 'select', 'options' => []];
+				self::$sellistCache[$cacheKey] = $ret;
+				return $ret;
+			}
+		}
+
+		$options = [];
+		while ($obj = $db->fetch_object($resql)) {
+			$rawLabel = (string) ($obj->l ?? '');
+			// Many c_* libelle fields ARE the human label already; for those
+			// where the column carries a translation key (e.g. "RECEP"),
+			// transnoentities() returns the localized string when the key is
+			// known and otherwise echoes the input verbatim.
+			$translated = is_object($langs) ? $langs->transnoentities($rawLabel) : $rawLabel;
+			$options[] = [
+				'label' => $translated,
+				'value' => $obj->v,
+			];
+		}
+		$db->free($resql);
+
+		$ret = ['type' => 'select', 'options' => $options];
+		self::$sellistCache[$cacheKey] = $ret;
+		return $ret;
 	}
 
 
@@ -314,8 +404,14 @@ class dmHelper
 
 		$localDebug = false;
 
-		//TODO load langs for myself current object -- objective is to remove hardcoded samartinterventions
-		$langs->loadLangs(array('companies'));
+		// Preload the Dolibarr translation namespaces that ship the bulk of
+		// $object->fields[*]['label'] keys we surface to the front. Without
+		// these, labels like PaymentTerm / PaymentMode / BankAccount /
+		// Currency / DateStart / Author bubble up untranslated through
+		// transnoentities() -- yielding an English-looking PWA.
+		// The cost is incremental: loadLangs is idempotent and Dolibarr
+		// caches each file after the first call.
+		$langs->loadLangs(array('companies', 'main', 'bills', 'compta', 'banks', 'projects', 'commercial', 'products', 'stocks', 'orders', 'admin'));
 
 		if ($localDebug) dol_syslog("SmartAuth call propertiesFilter on $dolikey / $frontkey for input " . json_encode($input));
 		// if($localDebug) dol_syslog("SmartAuth call propertiesFilter on $dolikey / $frontkey for parentOverride " . json_encode($parentOverride));
@@ -324,7 +420,7 @@ class dmHelper
 
 		//optim
 		$useParentOverride = false;
-		if (null !== $parentOverride && is_array($parentOverride[$dolikey])) {
+		if (null !== $parentOverride && isset($parentOverride[$dolikey]) && is_array($parentOverride[$dolikey])) {
 			$useParentOverride = true;
 		}
 

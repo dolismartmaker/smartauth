@@ -373,9 +373,20 @@ class ObjectDocumentController
         // Mode 1: Share hash via ?q= query parameter
         $shareHash = $payload['q'] ?? '';
         if (!empty($shareHash)) {
-            $resolved = $this->resolveShareHash($shareHash);
+            // Resolve in the caller's security context. The user must be
+            // present (route is JWT-protected) and entity defaults to the
+            // current Dolibarr entity. Without this, knowing the share hash
+            // alone would grant read access to any document (CR-5 fix).
+            $user = $payload['user'] ?? null;
+            if (empty($user) || !is_object($user)) {
+                dol_syslog("smartauth::ObjectDocumentController::$caller - Authentication required for share hash mode", LOG_WARNING);
+                return ['error' => 'Authentication required', 'status' => 401];
+            }
+            $entity = (int) ($payload['entity'] ?? $conf->entity);
+
+            $resolved = $this->resolveShareHash($shareHash, $user, $entity);
             if ($resolved === null) {
-                dol_syslog("smartauth::ObjectDocumentController::$caller - Share hash not found: $shareHash", LOG_WARNING);
+                dol_syslog("smartauth::ObjectDocumentController::$caller - Share hash not found or access denied: $shareHash", LOG_WARNING);
                 return ['error' => 'Document not found', 'status' => 404];
             }
 
@@ -410,11 +421,25 @@ class ObjectDocumentController
             return ['error' => 'Missing path or q parameter', 'status' => 400];
         }
 
-        $relativePath = urldecode($relativePath);
+        $relativePath = urldecode((string) $relativePath);
 
-        // Security: prevent path traversal
-        if (preg_match('/\.\./', $relativePath) || preg_match('/[<>|]/', $relativePath)) {
-            dol_syslog("smartauth::ObjectDocumentController::$caller - Path traversal attempt: $relativePath", LOG_WARNING);
+        // Layered path-traversal defence.
+        // The original guard relied on a single preg_match for ".." which is
+        // bypassable via:
+        //   - URL-decoded forms (already addressed by urldecode above) but
+        //     also encoded slash variants like "%2F..%2F" once urldecode hits
+        //   - Null bytes that truncate the path on stat()
+        //   - Absolute paths that ignore $docDir entirely
+        // We now reject these explicitly, and do a realpath()-based boundary
+        // check so any residual traversal is detected.
+        if (
+            strpos($relativePath, "\0") !== false
+            || strpos($relativePath, '..') !== false
+            || preg_match('#[<>|]#', $relativePath)
+            || preg_match('#^[\\\\/]#', $relativePath)
+            || preg_match('#^[a-zA-Z]:#', $relativePath)
+        ) {
+            dol_syslog("smartauth::ObjectDocumentController::$caller - Path traversal attempt: " . substr($relativePath, 0, 200), LOG_WARNING);
             return ['error' => 'Invalid path', 'status' => 400];
         }
 
@@ -425,6 +450,16 @@ class ObjectDocumentController
         if (!file_exists($fullPathEncoded)) {
             dol_syslog("smartauth::ObjectDocumentController::$caller - File not found: $fullPath", LOG_WARNING);
             return ['error' => 'File not found', 'status' => 404];
+        }
+
+        // realpath() boundary check: the resolved file must live inside the
+        // document directory, not somewhere reachable via symlink or unicode
+        // tricks.
+        $docDirReal = realpath($docDir);
+        $fullReal = realpath($fullPathEncoded);
+        if ($docDirReal === false || $fullReal === false || strpos($fullReal . '/', $docDirReal . '/') !== 0) {
+            dol_syslog("smartauth::ObjectDocumentController::$caller - Path escapes docDir: " . $fullPath, LOG_WARNING);
+            return ['error' => 'Invalid path', 'status' => 400];
         }
 
         $filename = basename($fullPath);
@@ -743,19 +778,43 @@ class ObjectDocumentController
     }
 
     /**
-     * Resolve a share hash to a file path via ecm_files
+     * Resolve a share hash to a file path via ecm_files.
+     *
+     * Applies the same gating as SmartFileController::_loadAndValidateFile
+     * (the reference implementation cited by ~/docs/MODULE.md):
+     *   - the file must belong to the caller's entity (or be entity 0);
+     *   - the caller must pass dol_check_secure_access_document for the
+     *     resolved modulepart with mode='read'.
+     *
+     * Without these checks, knowing the 32-character share hash would be
+     * enough to download any document in any tenant.
      *
      * @param string $shareHash The share hash from ecm_files
+     * @param \User $user Authenticated user (for permission checks)
+     * @param int $entity Caller's entity id
      * @return array|null ['filepath' => string, 'filename' => string, 'ecm_id' => int] or null
      */
-    private function resolveShareHash($shareHash)
+    private function resolveShareHash($shareHash, \User $user, $entity)
     {
         global $db;
+
+        $entity = (int) $entity;
 
         $ecmFile = new \EcmFiles($db);
         $result = $ecmFile->fetch(0, '', '', '', $shareHash);
 
         if ($result <= 0 || empty($ecmFile->filepath) || empty($ecmFile->filename)) {
+            return null;
+        }
+
+        // Entity check (Dolibarr core EcmFiles::fetch does not filter on
+        // entity for share-hash lookups, so we must do it ourselves).
+        if ((int) $ecmFile->entity !== $entity && (int) $ecmFile->entity !== 0) {
+            dol_syslog('smartauth::ObjectDocumentController::resolveShareHash - cross-entity access denied (file=' . $ecmFile->entity . ', user=' . $entity . ')', LOG_WARNING);
+            return null;
+        }
+
+        if (!$this->shareHashAccessAllowed($ecmFile->filepath, $ecmFile->filename, $user, $entity)) {
             return null;
         }
 
@@ -769,18 +828,27 @@ class ObjectDocumentController
     }
 
     /**
-     * Batch resolve multiple share hashes to file paths via ecm_files (single SQL query).
+     * Batch resolve multiple share hashes to file paths via ecm_files
+     * (single SQL query).
+     *
+     * Applies the same entity + dol_check_secure_access_document gating
+     * as resolveShareHash() - rows the caller cannot read are dropped
+     * silently from the result map (CR-5 fix).
      *
      * @param array $shares Array of share hash strings
+     * @param \User $user Authenticated user (for permission checks)
+     * @param int $entity Caller's entity id
      * @return array Map of share => ['filepath', 'filename', 'ecm_id', 'src_object_type', 'src_object_id']
      */
-    private function resolveShareHashes($shares)
+    private function resolveShareHashes($shares, \User $user, $entity)
     {
         global $db;
 
         if (empty($shares)) {
             return [];
         }
+
+        $entity = (int) $entity;
 
         $placeholders = [];
         foreach ($shares as $s) {
@@ -796,11 +864,18 @@ class ObjectDocumentController
         $sql = "SELECT rowid, share, filepath, filename, src_object_type, src_object_id";
         $sql .= " FROM " . MAIN_DB_PREFIX . "ecm_files";
         $sql .= " WHERE share IN (" . implode(',', $placeholders) . ")";
+        // Entity filter (CR-5 fix). Use Dolibarr's getEntity() so that
+        // multicompany "shared" entities behave correctly.
+        $sql .= " AND entity IN (" . getEntity('ecmfiles') . ")";
 
         $results = [];
         $resql = $db->query($sql);
         if ($resql) {
             while ($obj = $db->fetch_object($resql)) {
+                if (!$this->shareHashAccessAllowed($obj->filepath, $obj->filename, $user, $entity)) {
+                    continue;
+                }
+
                 $results[$obj->share] = [
                     'filepath' => $obj->filepath,
                     'filename' => $obj->filename,
@@ -813,6 +888,44 @@ class ObjectDocumentController
         }
 
         return $results;
+    }
+
+    /**
+     * Determine whether the caller may read the file behind a share hash.
+     *
+     * Mirrors SmartFileController::_loadAndValidateFile : extract modulepart
+     * from the filepath (with multicompany prefix handling), then ask
+     * dol_check_secure_access_document() to apply the per-module ACL.
+     *
+     * @param string $filepath ecm_files.filepath value
+     * @param string $filename ecm_files.filename value
+     * @param \User $user Authenticated user
+     * @param int $entity Caller's entity id
+     * @return bool
+     */
+    private function shareHashAccessAllowed($filepath, $filename, \User $user, $entity)
+    {
+        $tmp = explode('/', $filepath, 2);
+        // Multicompany layout: when the first segment is numeric, it is the entity dir.
+        if (isset($tmp[0]) && is_numeric($tmp[0])) {
+            $tmp = explode('/', $tmp[1] ?? '', 2);
+        }
+
+        $modulepart = $tmp[0] ?? '';
+        $original_file = (($tmp[1] ?? '') ? $tmp[1] . '/' : '') . $filename;
+
+        if (empty($modulepart)) {
+            dol_syslog('smartauth::ObjectDocumentController::shareHashAccessAllowed - modulepart not derivable from filepath: ' . $filepath, LOG_WARNING);
+            return false;
+        }
+
+        $check = dol_check_secure_access_document($modulepart, $original_file, (int) $entity, $user, '', 'read');
+        if (empty($check['accessallowed'])) {
+            dol_syslog('smartauth::ObjectDocumentController::shareHashAccessAllowed - access denied for user ' . (int) $user->id . ' on modulepart=' . $modulepart, LOG_WARNING);
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -1005,7 +1118,7 @@ class ObjectDocumentController
      */
     public function bundle($payload)
     {
-        global $db;
+        global $db, $conf;
 
         dol_syslog("smartauth::ObjectDocumentController::bundle");
 
@@ -1014,6 +1127,8 @@ class ObjectDocumentController
         if (empty($user) || !is_object($user)) {
             return [['error' => 'Authentication required'], 401];
         }
+
+        $entity = (int) ($payload['entity'] ?? $conf->entity);
 
         // Parse request body
         $shares = $payload['shares'] ?? [];
@@ -1028,8 +1143,11 @@ class ObjectDocumentController
             ? min((int) $payload['max_file_size'], self::BUNDLE_MAX_FILE_SIZE)
             : self::BUNDLE_MAX_FILE_SIZE;
 
-        // Batch resolve all share hashes in one SQL query
-        $resolved = $this->resolveShareHashes($shares);
+        // Batch resolve all share hashes in one SQL query.
+        // Resolution is gated by the caller's entity + dol_check_secure_access_document
+        // so an authenticated user cannot pull files they could not normally read
+        // through the regular UI (CR-5 fix).
+        $resolved = $this->resolveShareHashes($shares, $user, $entity);
 
         $included = [];
         $oversized = [];
