@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.14 -- 20260507
+
+ - Full security review
+ - Add oAuth stuff for sso
+
 ## 2.0.12 -- 20260428
 
  - Fix sanitizeRequestData : call loadExternalSchemas for external specs like photo uploads
