@@ -20,15 +20,14 @@ class AuthControllerExtendedTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->controller = new AuthController();
-
-        // Ensure global conf is set
+        // Restore a Dolibarr-shaped $conf BEFORE instantiating the
+        // controller: AuthController::__construct -> dol_include_once which
+        // reads $conf->file->dol_document_root. Earlier tests may have
+        // wiped that property, causing a PHP 8.2 fatal "Undefined property".
         global $conf, $mysoc;
-        if (!is_object($conf)) {
-            $conf = new \stdClass();
-        }
-        $conf->cache = [];
-        $conf->cache['smartmakers'] = [];
+        smartauth_test_reset_conf();
+
+        $this->controller = new AuthController();
 
         // Mock mysoc for index() method
         if (!is_object($mysoc)) {

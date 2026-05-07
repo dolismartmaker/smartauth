@@ -2006,10 +2006,20 @@ class AuthControllerTest extends DolibarrRealTestCase
         $result2 = $this->controller->login($loginPayload);
         $token2 = $result2[0]['access_token'];
 
-        // Logout from device 1 (revoke all tokens in that family)
+        // Logout from device 1 (revoke all tokens in that family).
+        // The HTTP_X_DEVICEID was changed for device 2's login above, so
+        // check() may fail to validate token1 (salt2 mismatch). check()
+        // now throws JsonReplyEmittedError under PHPUNIT_RUNNING when it
+        // would have called exit() in prod; we swallow that error and rely
+        // on the DB fallback below to recover family_id.
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $token1;
         ob_start();
-        $decoded = \SmartAuth\Api\AuthController::check();
+        $decoded = null;
+        try {
+            $decoded = \SmartAuth\Api\AuthController::check();
+        } catch (\JsonReplyEmittedError $e) {
+            // expected when device-binding mismatches
+        }
         ob_end_clean();
 
         // Get family_id from DB as fallback if check() fails in test environment

@@ -22,6 +22,16 @@ use SmartAuth\Tests\Mocks\MockDatabase;
 
 class RegistrationServicePolicyTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Restore a Dolibarr-shaped $conf: emailAlreadyKnown() reaches into
+        // getEntity() which reads $conf->entity. When an earlier unit test
+        // resets $conf to a bare stdClass, this property goes missing and
+        // PHP 8.2 turns the implicit access into a fatal Undefined property.
+        smartauth_test_reset_conf();
+    }
+
     public function testPasswordTooShort(): void
     {
         $this->assertFalse(RegistrationService::isPasswordStrongEnough('Aa1aa'));
