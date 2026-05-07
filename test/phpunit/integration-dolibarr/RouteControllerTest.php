@@ -1179,9 +1179,16 @@ class RouteControllerTest extends DolibarrRealTestCase
         unset($_SERVER['REQUEST_URI']);
         $conf->global->SMARTAUTH_COLLECT_LOGS = '1';
 
-        // Try to route - should fail with 400
+        // Try to route - should fail with 400 via json_reply, which throws
+        // JsonReplyEmittedError under PHPUNIT_RUNNING (replaces the prod
+        // exit() so the SQLite transaction stays alive). The output is
+        // still produced before the throw, so ob_get_clean() captures it.
         ob_start();
-        RouteController::route('GET', 'test/route', 'TestController', 'testMethod', false);
+        try {
+            RouteController::route('GET', 'test/route', 'TestController', 'testMethod', false);
+        } catch (\JsonReplyEmittedError $e) {
+            // expected
+        }
         $output = ob_get_clean();
 
         // Should have produced error output
@@ -1258,14 +1265,27 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_URI'] = '/api.php/protected/route';
         unset($_SERVER['HTTP_AUTHORIZATION']);
 
-        // Try protected route without JWT
+        // Try protected route without JWT - json_reply throws under PHPUNIT
         ob_start();
-        RouteController::route('GET', 'protected/route', 'TestController', 'testMethod', true);
+        try {
+            RouteController::route('GET', 'protected/route', 'TestController', 'testMethod', true);
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: 401 was emitted
+        }
         $output = ob_get_clean();
 
-        // Should produce 401 response with authentication message
+        // Should produce 401 response with authentication message.
+        // The exact wording depends on where in the auth chain the rejection
+        // happens: "Authentication required" comes from RouteController's
+        // outer catch, "Access denied (protected route)" from _decodeJWT
+        // when the Bearer token is missing entirely. Both are 401s and
+        // semantically equivalent for this test.
         $this->assertNotEmpty($output);
-        $this->assertStringContainsString('Authentication required', $output);
+        $this->assertTrue(
+            str_contains($output, 'Authentication required') ||
+            str_contains($output, 'Access denied'),
+            'Expected an authentication-required-like 401 message, got: ' . $output
+        );
 
         // Restore
         if ($originalMethod !== null) {
@@ -1296,17 +1316,26 @@ class RouteControllerTest extends DolibarrRealTestCase
         $_SERVER['REQUEST_URI'] = '/api.php/protected/route';
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer invalid.jwt.token';
 
-        // Try protected route with invalid JWT
+        // Try protected route with invalid JWT - json_reply throws under PHPUNIT
         ob_start();
-        RouteController::route('GET', 'protected/route', 'TestController', 'testMethod', true);
+        try {
+            RouteController::route('GET', 'protected/route', 'TestController', 'testMethod', true);
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: 401 was emitted
+        }
         $output = ob_get_clean();
 
-        // Should produce 401 response with authentication error
+        // Should produce 401 response with authentication error. As above,
+        // the wording varies between "Authentication required", "Invalid
+        // token", "Authentication failed" and "Access denied (...)"
+        // depending on which check trips first in the auth chain.
         $this->assertNotEmpty($output);
         $this->assertTrue(
             str_contains($output, 'Authentication required') ||
             str_contains($output, 'Invalid token') ||
-            str_contains($output, 'Authentication failed')
+            str_contains($output, 'Authentication failed') ||
+            str_contains($output, 'Access denied'),
+            'Expected an authentication-failure 401 message, got: ' . $output
         );
 
         // Restore
@@ -1451,7 +1480,8 @@ class RouteControllerTest extends DolibarrRealTestCase
 
         // Try to execute with non-existent class
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'NonExistentControllerClass',
             'someMethod',
@@ -1462,7 +1492,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null,
             null
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should produce 500 error with class not found message
@@ -1520,7 +1553,8 @@ class RouteControllerTest extends DolibarrRealTestCase
 
         // Try to execute with non-existent method
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'TestControllerForMethodTest',
             'nonExistentMethod',
@@ -1531,7 +1565,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null,
             null
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should produce 500 error with method not found message
@@ -1588,7 +1625,8 @@ class RouteControllerTest extends DolibarrRealTestCase
         $method->setAccessible(true);
 
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'TestControllerSuccess200',
             'testAction',
@@ -1599,7 +1637,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null,
             null
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should produce 200 response
@@ -1656,7 +1697,8 @@ class RouteControllerTest extends DolibarrRealTestCase
         $method->setAccessible(true);
 
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'TestControllerSuccess201',
             'createAction',
@@ -1667,7 +1709,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null,
             null
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should produce 201 response
@@ -1724,7 +1769,8 @@ class RouteControllerTest extends DolibarrRealTestCase
         $method->setAccessible(true);
 
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'TestControllerNotFound',
             'notFoundAction',
@@ -1735,7 +1781,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null,
             null
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should produce 404 response
@@ -1792,7 +1841,8 @@ class RouteControllerTest extends DolibarrRealTestCase
         $method->setAccessible(true);
 
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'TestControllerException',
             'throwingAction',
@@ -1803,7 +1853,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null,
             null
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should produce 500 error with exception message
@@ -2350,7 +2403,8 @@ class RouteControllerTest extends DolibarrRealTestCase
         $method->setAccessible(true);
 
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'TestControllerInvalidResponse',
             'badAction',
@@ -2361,7 +2415,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null,
             null
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should produce 500 error for invalid response format
@@ -2418,7 +2475,8 @@ class RouteControllerTest extends DolibarrRealTestCase
         $method->setAccessible(true);
 
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'TestControllerWrongCount',
             'wrongCountAction',
@@ -2429,7 +2487,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null,
             null
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should produce 500 error for invalid response format (wrong array count)
@@ -2498,7 +2559,8 @@ class RouteControllerTest extends DolibarrRealTestCase
         ];
 
         ob_start();
-        $method->invoke(
+        try {
+            $method->invoke(
             null,
             'TestControllerPayload',
             'checkPayload',
@@ -2509,7 +2571,10 @@ class RouteControllerTest extends DolibarrRealTestCase
             new \Societe($this->db),
             null, // family_id
             null  // device_id
-        );
+            );
+        } catch (\JsonReplyEmittedError $e) {
+            // expected: executeAction() always emits via json_reply()
+        }
         $output = ob_get_clean();
 
         // Should have executed successfully

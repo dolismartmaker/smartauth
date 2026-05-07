@@ -16,13 +16,11 @@ class RouteControllerTest extends TestCase
 {
     protected function setUp(): void
     {
-        global $conf;
-
-        if (!is_object($conf)) {
-            $conf = new \stdClass();
-        }
-        $conf->cache = [];
-        $conf->cache['smartmakers'] = [];
+        // sanitizeField -> InputSanitizer -> getEntity -> hookmanager which
+        // reaches into $conf->modules_parts. Restoring a Dolibarr-shaped
+        // $conf avoids the PHP 8.2 "Undefined property" fatal that surfaces
+        // when an earlier unit test left $conf as a bare stdClass.
+        smartauth_test_reset_conf();
     }
 
     /**
@@ -864,7 +862,10 @@ class RouteControllerTest extends TestCase
     {
         global $conf, $db;
 
-        // Mock db that should NOT be called
+        // Save the global $db so we don't poison subsequent tests that rely
+        // on the real Dolibarr SQLite handle (e.g. dmHelperTest expects
+        // $db->query() to exist).
+        $dbBackup = $db;
         $db = $this->createMock(\stdClass::class);
 
         // Ensure logging is disabled
@@ -880,11 +881,15 @@ class RouteControllerTest extends TestCase
         $_SERVER['REQUEST_URI'] = '/api.php/test';
         $_SERVER['REQUEST_METHOD'] = 'GET';
 
-        // Should return early without inserting
-        RouteController::insertLogs(1, 200, 'Test', 1);
+        try {
+            // Should return early without inserting
+            RouteController::insertLogs(1, 200, 'Test', 1);
 
-        // If no exception thrown, test passes
-        $this->assertTrue(true);
+            // If no exception thrown, test passes
+            $this->assertTrue(true);
+        } finally {
+            $db = $dbBackup;
+        }
 
         if ($backupUri !== null) {
             $_SERVER['REQUEST_URI'] = $backupUri;
