@@ -72,7 +72,7 @@ class modSmartauth extends DolibarrModules
 		$this->editor_url = 'https://cap-rel.fr/';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.0.14';
+		$this->version = '2.0.15';
 		// Url to the file with your last numberversion of this module
 		$this->url_last_version = "https://cap-rel.fr/dolibarr/ver.php?m=" . $this->rights_class . "&v=" . $this->version . "&d=" . DOL_VERSION . "&h=" . md5(DOL_DATA_ROOT);
 
@@ -382,14 +382,23 @@ class modSmartauth extends DolibarrModules
 			return -1; // Do not activate module if error 'not allowed' returned when loading module SQL queries (the _load_table run sql with run_sql with the error allowed parameter set to 'default')
 		}
 
-		// Create extrafields during init
-		//include_once DOL_DOCUMENT_ROOT.'/core/class/extrafields.class.php';
-		//$extrafields = new ExtraFields($this->db);
-		//$result1=$extrafields->addExtraField('smartauth_myattr1', "New Attr 1 label", 'boolean', 1,  3, 'thirdparty',   0, 0, '', '', 1, '', 0, 0, '', '', 'smartauth@smartauth', 'isModEnabled("smartauth")');
-		//$result2=$extrafields->addExtraField('smartauth_myattr2', "New Attr 2 label", 'varchar', 1, 10, 'project',      0, 0, '', '', 1, '', 0, 0, '', '', 'smartauth@smartauth', 'isModEnabled("smartauth")');
-		//$result3=$extrafields->addExtraField('smartauth_myattr3', "New Attr 3 label", 'varchar', 1, 10, 'bank_account', 0, 0, '', '', 1, '', 0, 0, '', '', 'smartauth@smartauth', 'isModEnabled("smartauth")');
-		//$result4=$extrafields->addExtraField('smartauth_myattr4', "New Attr 4 label", 'select',  1,  3, 'thirdparty',   0, 1, '', array('options'=>array('code1'=>'Val1','code2'=>'Val2','code3'=>'Val3')), 1,'', 0, 0, '', '', 'smartauth@smartauth', 'isModEnabled("smartauth")');
-		//$result5=$extrafields->addExtraField('smartauth_myattr5', "New Attr 5 label", 'text',    1, 10, 'user',         0, 0, '', '', 1, '', 0, 0, '', '', 'smartauth@smartauth', 'isModEnabled("smartauth")');
+		// Create extrafields during init.
+		// `smartmaker_annotations` is the shared primitive used by all SmartMaker
+		// modules (smartInterventions, dsd, scanInvoices, ...) to persist photo
+		// annotations attached to an ECM file. Managed at runtime through
+		// \SmartAuth\Api\AnnotationsHelper. Position 1900 keeps it at the bottom
+		// of the ECM admin extrafields list since it is technical, not user-edited.
+		include_once DOL_DOCUMENT_ROOT.'/core/class/extrafields.class.php';
+		$extrafields = new ExtraFields($this->db);
+		$extrafields->addExtraField(
+			'smartmaker_annotations',
+			'Photo annotations (JSON, managed by SmartAuth AnnotationsHelper)',
+			'mediumtext',
+			1900,
+			'',
+			'ecm_files',
+			0, 0, '', '', 0, '', 0, 0, '', '', 'smartauth@smartauth'
+		);
 
 		// Permissions
 		$this->remove($options);
