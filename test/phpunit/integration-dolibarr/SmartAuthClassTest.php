@@ -993,6 +993,41 @@ class SmartAuthClassTest extends DolibarrRealTestCase
     }
 
     /**
+     * doScheduledJob() must purge llx_smartauth_qr_pairings rows older
+     * than SMARTAUTH_QRPAIR_RETENTION_DAYS (7 by default). Without this
+     * cleanup the table grows by one row per /custom/smartauth/user_tab.php
+     * page load and never shrinks (pre-fix behaviour).
+     */
+    public function testSmartAuthDoScheduledJobPurgesOldQrPairings(): void
+    {
+        require_once __DIR__ . '/../../../class/smartauthqrpairing.class.php';
+
+        // Reset the table for this user so the assertions are deterministic.
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "smartauth_qr_pairings WHERE fk_user = " . (int) $this->testUser->id);
+
+        $repo = new \SmartAuthQrPairing($this->db);
+        $oldId = \SmartAuthQrPairing::generatePairingId();
+        $newId = \SmartAuthQrPairing::generatePairingId();
+
+        $this->assertGreaterThan(0, $repo->createPending($oldId, (int) $this->testUser->id, null, 1));
+        $this->assertGreaterThan(0, $repo->createPending($newId, (int) $this->testUser->id, null, 1));
+
+        // Backdate the first row to 30 days ago so the 7-day cleanup hits it.
+        $thirtyDaysAgo = $this->db->idate(dol_now() - 30 * 24 * 3600);
+        $this->db->query(
+            "UPDATE " . MAIN_DB_PREFIX . "smartauth_qr_pairings"
+            . " SET datec = '" . $thirtyDaysAgo . "'"
+            . " WHERE pairing_id = '" . $this->db->escape($oldId) . "'"
+        );
+
+        $scheduler = new SmartAuth($this->db);
+        $this->assertSame(0, $scheduler->doScheduledJob());
+
+        $this->assertNull($repo->findByPairingId($oldId, 1), 'aged QR pairing must be purged by doScheduledJob');
+        $this->assertNotNull($repo->findByPairingId($newId, 1), 'recent QR pairing must survive');
+    }
+
+    /**
      * Test getTooltipContentArray with different parameters
      */
     public function testSmartAuthGetTooltipContentArrayWithParams(): void

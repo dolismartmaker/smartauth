@@ -233,7 +233,14 @@ class AuthController
 			'access_token' => $new_tokens['access_token'],
 			'refresh_token' => $new_tokens['refresh_token'],
 			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
-			'token_type' => 'Bearer'
+			'token_type' => 'Bearer',
+			// Versions are returned on every refresh so the PWA About modal
+			// stays accurate even after a long-running session that survived
+			// a backend module upgrade. Cf AuthController::login() for the
+			// authoritative comment on these fields.
+			'app_version' => SmartAuthApp::version(),
+			'smartauth_version' => SmartAuthApp::smartauthVersion(),
+			'dolibarr_version' => defined('DOL_VERSION') ? (string) DOL_VERSION : '',
 		], 200];
 	}
 
@@ -438,6 +445,12 @@ class AuthController
 		// Generate BOTH tokens
 		$tokens = $this->_generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id, $device_id);
 
+		// New-login alert (opt-in via SMARTAUTH_NEW_LOGIN_NOTIFY): if the
+		// IP or device is unknown for this user, fire an email so the
+		// owner of the account can react quickly. Wrapped in a no-throw
+		// helper so a mail failure never breaks the login itself.
+		$this->_maybeNotifyNewLogin($tmpuser, $device_id);
+
 		// Renew the hash ?
 		// Generate token for user
 		$result = $tmpuser->call_trigger('USER_LOGIN', $tmpuser);
@@ -479,7 +492,17 @@ class AuthController
 			'token_type' => 'Bearer',
 			'devices_choice' => $devices_choice,
 			'rememberMe' => $rememberme,
-			'must_change_password' => $mustChangePassword
+			'must_change_password' => $mustChangePassword,
+			// Three versions exposed so the PWA can populate its About modal
+			// in one shot, without an extra round-trip per module.
+			//   - app_version       : version of the host module (read from
+			//                         $smartAuthApp->version when the module
+			//                         exposes its DolibarrModules instance)
+			//   - smartauth_version : version of smartauth itself
+			//   - dolibarr_version  : version of the underlying Dolibarr core
+			'app_version' => SmartAuthApp::version(),
+			'smartauth_version' => SmartAuthApp::smartauthVersion(),
+			'dolibarr_version' => defined('DOL_VERSION') ? (string) DOL_VERSION : '',
 		];
 		return ([$ret, 200]);
 	}
@@ -1844,11 +1867,43 @@ class AuthController
 			$device_uuid
 		);
 
+		// New-login alert. Same opt-in switch as the regular /login
+		// path; covers QR-pair issuance and any other server-side
+		// caller that bypasses the user-driven login flow.
+		$this->_maybeNotifyNewLogin($user, $device_id);
+
 		return [
 			'access_token' => $tokens['access_token'],
 			'refresh_token' => $tokens['refresh_token'],
 			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
-			'device_uuid' => $device_uuid_for_db
+			'device_uuid' => $device_uuid_for_db,
+			'devices_choice' => $this->_getAllDevicesForUser($user->id),
 		];
+	}
+
+	/**
+	 * Fire a "new login from unknown IP / device" alert email when the
+	 * SMARTAUTH_NEW_LOGIN_NOTIFY constant is set. Errors are swallowed
+	 * inside NewLoginNotifier::notifyIfNewLogin so they cannot abort
+	 * the login.
+	 *
+	 * @param object $user
+	 * @param int    $deviceId
+	 * @return void
+	 */
+	private function _maybeNotifyNewLogin($user, $deviceId)
+	{
+		global $db;
+		if (!getDolGlobalString('SMARTAUTH_NEW_LOGIN_NOTIFY')) {
+			return;
+		}
+		try {
+			require_once __DIR__ . '/Account/NewLoginNotifier.php';
+			$ip = self::get_client_ip();
+			$notifier = new \SmartAuth\Api\Account\NewLoginNotifier($db);
+			$notifier->notifyIfNewLogin($user, (string) $ip, (int) $deviceId);
+		} catch (\Throwable $e) {
+			dol_syslog('SmartAuth _maybeNotifyNewLogin failed: ' . $e->getMessage(), LOG_ERR);
+		}
 	}
 }

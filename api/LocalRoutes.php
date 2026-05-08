@@ -26,6 +26,7 @@ use SmartAuth\Api\SyncController;
 use SmartAuth\Api\ObjectDocumentController;
 use SmartAuth\Api\PwaController;
 use SmartAuth\Api\UploadController;
+use SmartAuth\Api\QrPairController;
 
 // ========== Auth Routes ========== //
 
@@ -135,3 +136,13 @@ Route::get('manifest.webmanifest', PwaController::class, 'manifest');
 
 // PWA icons (unprotected)
 Route::get('icon/{size}', PwaController::class, 'icon');
+
+// ========== Cross-device QR pairing (mobile side) ========== //
+
+// Mobile claims a QR pairing after scanning. The PC (Dolibarr session) has
+// already created the pending row through /custom/smartauth/user/qrpair.php.
+Route::post('qr-pair/{pairing_id}/claim', QrPairController::class, 'claim');
+
+// Mobile polls the pairing until the PC user confirms; the first poll on a
+// confirmed row exchanges it for an access+refresh JWT pair (single-use).
+Route::post('qr-pair/{pairing_id}/poll', QrPairController::class, 'poll');

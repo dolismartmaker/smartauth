@@ -247,3 +247,34 @@ SmartAuthDolibarrRedirectUriHelp=Mettez à jour cette URI pour correspondre à l
 SmartAuthDolibarrInstallDoc=Documentation d'installation
 SmartAuthDolibarrCopyFile=Copiez le fichier d'authentification dans Dolibarr
 SmartAuthDolibarrFilePath=Fichier à copier
+# QR pair (cross-device pairing)
+QrPairPageTitle=Coupler un appareil mobile
+QrPairScanInstruction=Ouvrez l'application sur votre mobile et scannez le code ci-dessous.
+QrPairWaitingScan=En attente du scan...
+QrPairWaitingConfirm=Mobile détecté. Vérifiez les infos puis confirmez.
+QrPairConfirm=Autoriser ce mobile
+QrPairCancel=Annuler / Refuser
+QrPairConfirmed=Appareil autorisé. Vous pouvez fermer cette page.
+QrPairExpired=Le code QR a expiré. Recharger la page pour en générer un nouveau.
+QrPairCancelled=La demande a été annulée.
+QrPairConsumed=Appareil déjà couplé.
+QrPairDeviceLabel=Appareil
+QrPairClaimIp=IP du mobile
+QrPairUserAgent=User-Agent
+QrPairCardTitle=Coupler un mobile
+QrPairCardLegend=Flashez ce QR code depuis une application SmartMaker pour authentifier le périphérique.
+QrPairRegenerate=Générer un nouveau QR code
+QrPairToggle=Replier / déplier la carte
+Anonymous=anonyme
+SmartAuthHereIsYourLastLogs=Vous trouverez ci-dessous vos dernières connexions à l'API. Suivez ce lien pour consulter la <a href="%s">liste complète</a>
+
+# New-login alert
+SMARTAUTH_NEW_LOGIN_NOTIFY=Notifier l'utilisateur lors d'une nouvelle connexion
+SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=Quand cette option est active, un e-mail est envoyé à l'utilisateur dès qu'un jeton est émis depuis une adresse IP ou un appareil non vu récemment. Inspiré du système d'alerte de Google.
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYS=Fenêtre de mémoire (jours) pour les IP connues
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYSTooltip=Une IP est considérée "connue" si elle a été utilisée par cet utilisateur dans les N derniers jours. Au-delà, une nouvelle connexion depuis cette IP déclenchera une alerte.
+NewLoginEmailSubject=Alerte SmartAuth : nouvelle connexion détectée
+NewLoginUnknownDevice=appareil inconnu
+NewLoginReasonNewIp=Nouvelle adresse IP utilisée pour se connecter
+NewLoginReasonNewDevice=Nouvel appareil utilisé pour se connecter
+NewLoginReasonNewBoth=Nouvelle adresse IP et nouvel appareil

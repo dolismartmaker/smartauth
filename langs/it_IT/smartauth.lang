@@ -47,3 +47,36 @@ IpAddr=Indirizzo IP
 SMARTAUTH_TOKEN_EOL_DAYS=Tempo (in giorni) dopo il quale un token scade
 SMARTAUTH_TRUSTED_PROXIES=IP dei proxy affidabili
 SMARTAUTH_TRUSTED_PROXIESTooltip=Elenco degli indirizzi IP dei proxy affidabili, separati da virgole (es: 10.0.0.1,172.17.0.1). Quando una richiesta proviene da uno di questi IP, l'intestazione X-Forwarded-For verra utilizzata per determinare l'IP reale del client. Gli IP privati (127.x, 10.x, 172.16-31.x, 192.168.x) sono automaticamente affidabili. Lasciare vuoto se non si utilizza un reverse proxy con IP pubblico.
+
+# QR pair (cross-device pairing)
+QrPairPageTitle=Accoppia un dispositivo mobile
+QrPairScanInstruction=Apri l'app sul tuo dispositivo mobile e scansiona il QR qui sotto.
+QrPairWaitingScan=In attesa della scansione...
+QrPairWaitingConfirm=Mobile rilevato. Verifica e conferma.
+QrPairConfirm=Autorizza questo mobile
+QrPairCancel=Annulla / Rifiuta
+QrPairConfirmed=Dispositivo autorizzato.
+QrPairExpired=Il codice QR e scaduto.
+QrPairCancelled=Richiesta annullata.
+QrPairConsumed=Dispositivo gia accoppiato.
+QrPairDeviceLabel=Dispositivo
+QrPairClaimIp=IP mobile
+QrPairUserAgent=User-Agent
+Expired=Scaduto
+QrPairCardTitle=Accoppia un mobile
+QrPairCardLegend=Scansiona questo codice QR da un'app SmartMaker per autenticare il dispositivo.
+QrPairRegenerate=Genera un nuovo codice QR
+QrPairToggle=Comprimi / espandi la card
+Anonymous=anonimo
+SmartAuthHereIsYourLastLogs=Ecco le ultime connessioni API. Segui questo link per vedere l'<a href="%s">elenco completo</a>
+
+# New-login alert
+SMARTAUTH_NEW_LOGIN_NOTIFY=Notifica l'utente per nuovi accessi
+SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=Se attivato, viene inviata una mail quando un token e emesso da un IP o dispositivo non visto di recente.
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYS=Finestra (giorni) per IP conosciuti
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYSTooltip=Un IP e considerato conosciuto se usato negli ultimi N giorni.
+NewLoginEmailSubject=Avviso SmartAuth: nuovo accesso rilevato
+NewLoginUnknownDevice=dispositivo sconosciuto
+NewLoginReasonNewIp=Nuovo indirizzo IP usato
+NewLoginReasonNewDevice=Nuovo dispositivo usato
+NewLoginReasonNewBoth=Nuovo indirizzo IP e nuovo dispositivo

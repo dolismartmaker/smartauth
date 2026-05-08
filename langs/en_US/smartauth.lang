@@ -78,7 +78,7 @@ ShowAuth=Show auth token
 ShowSmartAuthDevices=Show device
 SmartAuthDevices=SmartAuth Devices
 SmartAuthDevicess=SmartAuth Devices
-SmartAuthHereIsYourLastKeys=Here are your last API keys. Follow this link to see the <a href="%%s">complete list</a>
+SmartAuthHereIsYourLastKeys=Here are your last API keys. Follow this link to see the <a href="%s">complete list</a>
 SmartAuthAPILogs=API connection history
 ConfirmActionAuth=Are you sure you want to perform this action on this token?
 ConfirmActionSmartAuthDevices=Are you sure you want to perform this action on this device?
@@ -267,3 +267,36 @@ SmartAuthDolibarrRedirectUriHelp=Update this URI to match your Dolibarr installa
 SmartAuthDolibarrInstallDoc=Installation documentation
 SmartAuthDolibarrCopyFile=Copy the authentication file to Dolibarr
 SmartAuthDolibarrFilePath=File to copy
+
+# QR pair (cross-device pairing)
+QrPairPageTitle=Pair a mobile device
+QrPairScanInstruction=Open the app on your mobile and scan the QR code below.
+QrPairWaitingScan=Waiting for the QR to be scanned...
+QrPairWaitingConfirm=Mobile detected. Check the details below, then authorise.
+QrPairConfirm=Authorise this mobile
+QrPairCancel=Cancel / Reject
+QrPairConfirmed=Device authorised. You can close this page.
+QrPairExpired=The QR code has expired. Reload the page to get a new one.
+QrPairCancelled=The pairing request has been cancelled.
+QrPairConsumed=Device already paired.
+QrPairDeviceLabel=Device
+QrPairClaimIp=Mobile IP
+QrPairUserAgent=User-Agent
+Expired=Expired
+QrPairCardTitle=Pair a mobile
+QrPairCardLegend=Scan this QR code from a SmartMaker app to authenticate the device.
+QrPairRegenerate=Generate a new QR code
+QrPairToggle=Collapse / expand the card
+Anonymous=anonymous
+SmartAuthHereIsYourLastLogs=Here are your last API connections. Follow this link to see the <a href="%s">complete list</a>
+
+# New-login alert
+SMARTAUTH_NEW_LOGIN_NOTIFY=Notify the user on new sign-in
+SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=When enabled, an email is sent to the user whenever a token is issued from an IP address or a device that has not been seen recently. Inspired by Google's new sign-in alerts.
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYS=Window (days) for known IPs
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYSTooltip=An IP is considered known if it was used by this user within the last N days. Beyond that window a new sign-in from the same IP triggers an alert.
+NewLoginEmailSubject=SmartAuth alert: new sign-in detected
+NewLoginUnknownDevice=unknown device
+NewLoginReasonNewIp=New IP address used to sign in
+NewLoginReasonNewDevice=New device used to sign in
+NewLoginReasonNewBoth=New IP address and new device

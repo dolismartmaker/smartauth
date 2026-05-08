@@ -114,3 +114,35 @@ Expired=Expirado
 SetupGeoIPForSmartAuth=Descargar e inicializar GeoIP
 SmartAuthDevicesMenu=Dispositivos
 SetupGeoIPForSmartAuthFileIsPresent=El archivo %s esta instalado
+
+# QR pair (cross-device pairing)
+QrPairPageTitle=Vincular un dispositivo movil
+QrPairScanInstruction=Abra la app en su movil y escanee el codigo QR.
+QrPairWaitingScan=Esperando el escaneo...
+QrPairWaitingConfirm=Movil detectado. Revise y confirme.
+QrPairConfirm=Autorizar este movil
+QrPairCancel=Cancelar / Rechazar
+QrPairConfirmed=Dispositivo autorizado.
+QrPairExpired=El codigo QR ha expirado.
+QrPairCancelled=Solicitud cancelada.
+QrPairConsumed=Dispositivo ya vinculado.
+QrPairDeviceLabel=Dispositivo
+QrPairClaimIp=IP movil
+QrPairUserAgent=User-Agent
+QrPairCardTitle=Vincular movil
+QrPairCardLegend=Escanee este codigo QR desde una app SmartMaker para autenticar el dispositivo.
+QrPairRegenerate=Generar un nuevo codigo QR
+QrPairToggle=Plegar / desplegar la tarjeta
+Anonymous=anonimo
+SmartAuthHereIsYourLastLogs=Aqui estan sus ultimas conexiones API. Siga este enlace para ver la <a href="%s">lista completa</a>
+
+# New-login alert
+SMARTAUTH_NEW_LOGIN_NOTIFY=Notificar al usuario en cada nuevo inicio de sesion
+SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=Si esta activado, se envia un correo cuando se emite un token desde una IP o un dispositivo no visto recientemente.
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYS=Ventana (dias) para IPs conocidas
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYSTooltip=Una IP se considera conocida si se ha usado en los ultimos N dias.
+NewLoginEmailSubject=Alerta SmartAuth: nuevo inicio de sesion detectado
+NewLoginUnknownDevice=dispositivo desconocido
+NewLoginReasonNewIp=Nueva direccion IP utilizada
+NewLoginReasonNewDevice=Nuevo dispositivo utilizado
+NewLoginReasonNewBoth=Nueva direccion IP y nuevo dispositivo

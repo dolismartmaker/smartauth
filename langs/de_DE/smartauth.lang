@@ -114,3 +114,35 @@ Expired=Abgelaufen
 SetupGeoIPForSmartAuth=GeoIP herunterladen und initialisieren
 SmartAuthDevicesMenu=Geraete
 SetupGeoIPForSmartAuthFileIsPresent=Die Datei %s ist installiert
+
+# QR pair (cross-device pairing)
+QrPairPageTitle=Mobilgerat koppeln
+QrPairScanInstruction=Offnen Sie die App auf Ihrem Mobilgerat und scannen Sie den QR-Code unten.
+QrPairWaitingScan=Warte auf Scan...
+QrPairWaitingConfirm=Mobilgerat erkannt. Bitte prufen und bestatigen.
+QrPairConfirm=Mobilgerat autorisieren
+QrPairCancel=Abbrechen / Ablehnen
+QrPairConfirmed=Gerat autorisiert. Sie konnen die Seite schliessen.
+QrPairExpired=Der QR-Code ist abgelaufen. Seite neu laden.
+QrPairCancelled=Anfrage abgebrochen.
+QrPairConsumed=Gerat bereits gekoppelt.
+QrPairDeviceLabel=Gerat
+QrPairClaimIp=Mobil-IP
+QrPairUserAgent=User-Agent
+QrPairCardTitle=Mobilgerat koppeln
+QrPairCardLegend=Scannen Sie diesen QR-Code mit einer SmartMaker-App, um das Gerat zu authentifizieren.
+QrPairRegenerate=Neuen QR-Code erzeugen
+QrPairToggle=Karte einklappen / ausklappen
+Anonymous=anonym
+SmartAuthHereIsYourLastLogs=Ihre letzten API-Verbindungen. Folgen Sie diesem Link, um die <a href="%s">vollstandige Liste</a> zu sehen
+
+# New-login alert
+SMARTAUTH_NEW_LOGIN_NOTIFY=Bei neuer Anmeldung benachrichtigen
+SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=Wenn aktiviert, erhalt der Benutzer eine E-Mail, sobald ein Token von einer kurzlich nicht gesehenen IP oder einem unbekannten Gerat ausgestellt wird.
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYS=Zeitfenster (Tage) fur bekannte IPs
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYSTooltip=Eine IP gilt als bekannt, wenn sie in den letzten N Tagen verwendet wurde.
+NewLoginEmailSubject=SmartAuth-Alarm: neue Anmeldung erkannt
+NewLoginUnknownDevice=unbekanntes Gerat
+NewLoginReasonNewIp=Neue IP-Adresse fur die Anmeldung
+NewLoginReasonNewDevice=Neues Gerat fur die Anmeldung
+NewLoginReasonNewBoth=Neue IP-Adresse und neues Gerat

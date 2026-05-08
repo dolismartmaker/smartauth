@@ -70,6 +70,8 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/functions.lib.php';
 // load module libraries
 dol_include_once('/smartauth/class/smartauth.class.php');
 dol_include_once('/smartauth/class/smartlogs.class.php');
+dol_include_once('/smartauth/class/smartauthqrpairing.class.php');
+dol_include_once('/smartauth/api/RouteController.php');
 dol_include_once('/smartauth/lib/tools.php');
 
 // Load translation files required by page
@@ -246,6 +248,128 @@ if ($action == 'rename' && $permtoedit) {
 	}
 }
 
+// =====================================================================
+// QR-pair AJAX handlers (cross-device pairing).
+// These return JSON and exit early; no page chrome is involved. Only the
+// user's own card may drive these (admin viewing someone else's card
+// cannot create or confirm pairings on their behalf).
+// =====================================================================
+$qrpairAction = (string) $action;
+if (in_array($qrpairAction, array('qrpairstatus', 'qrpairconfirm', 'qrpaircancel'), true)) {
+	header('Content-Type: application/json; charset=utf-8');
+	header('Cache-Control: no-store');
+
+	if ((int) $user->id !== (int) $id) {
+		http_response_code(403);
+		echo json_encode(array('error' => 'forbidden_not_self'));
+		exit;
+	}
+
+	$qrPairingId = strtolower(trim((string) GETPOST('pairing_id', 'alpha')));
+	if ($qrPairingId === '' || !preg_match('/^[0-9a-f]{32}$/', $qrPairingId)) {
+		http_response_code(400);
+		echo json_encode(array('error' => 'invalid_pairing_id'));
+		exit;
+	}
+
+	$qrEntity = (int) ($conf->entity ?? 1);
+	$qrRepo = new SmartAuthQrPairing($db);
+	$qrRow = $qrRepo->findByPairingId($qrPairingId, $qrEntity);
+	if ($qrRow === null) {
+		http_response_code(404);
+		echo json_encode(array('error' => 'pairing_not_found'));
+		exit;
+	}
+	if ((int) $qrRow['fk_user'] !== (int) $user->id) {
+		// The pairing exists but belongs to someone else: never leak this
+		// across users. Refuse with a generic 403.
+		dol_syslog('SmartAuth user_tab.php: cross-user qrpair access by user_id=' . $user->id . ' on pairing fk_user=' . $qrRow['fk_user'], LOG_WARNING);
+		http_response_code(403);
+		echo json_encode(array('error' => 'forbidden'));
+		exit;
+	}
+
+	if ($qrpairAction === 'qrpairconfirm') {
+		// CSRF: Dolibarr's newToken() returns the canonical session token.
+		if (newToken() !== (string) GETPOST('token', 'alpha')) {
+			http_response_code(403);
+			echo json_encode(array('error' => 'csrf'));
+			exit;
+		}
+		$qrOk = $qrRepo->markConfirmed((int) $qrRow['rowid'], (int) $user->id);
+		echo json_encode(array(
+			'ok' => $qrOk,
+			'status' => $qrOk ? SmartAuthQrPairing::STATUS_CONFIRMED : $qrRow['status'],
+		));
+		exit;
+	}
+
+	if ($qrpairAction === 'qrpaircancel') {
+		if (newToken() !== (string) GETPOST('token', 'alpha')) {
+			http_response_code(403);
+			echo json_encode(array('error' => 'csrf'));
+			exit;
+		}
+		$qrRepo->markCancelled((int) $qrRow['rowid'], (int) $user->id);
+		echo json_encode(array('ok' => true, 'status' => SmartAuthQrPairing::STATUS_CANCELLED));
+		exit;
+	}
+
+	// qrpairstatus (GET)
+	$qrEffectiveStatus = (string) $qrRow['status'];
+	if (
+		in_array($qrEffectiveStatus, array(SmartAuthQrPairing::STATUS_PENDING, SmartAuthQrPairing::STATUS_CLAIMED), true)
+		&& SmartAuthQrPairing::isExpired($qrRow)
+	) {
+		$qrEffectiveStatus = SmartAuthQrPairing::STATUS_EXPIRED;
+	}
+	echo json_encode(array(
+		'status' => $qrEffectiveStatus,
+		'device_label' => $qrRow['device_label'] !== null ? (string) $qrRow['device_label'] : '',
+		'claim_ip' => $qrRow['claim_ip'] !== null ? (string) $qrRow['claim_ip'] : '',
+		'claim_user_agent' => $qrRow['claim_user_agent'] !== null ? (string) $qrRow['claim_user_agent'] : '',
+	));
+	exit;
+}
+
+// =====================================================================
+// QR-pair generate handler (Post-Redirect-Get).
+// Triggered by the explicit "Générer un QR code" button on the card.
+// On purpose we do NOT generate a fresh pairing on every page load --
+// that would mean a real, scannable QR is exposed as soon as somebody
+// merely opens this page, with the obvious "shoulder surfing" risk.
+// Instead the page loads as a blurred decoy and the user has to click
+// a button to spawn the real pairing.
+// =====================================================================
+if ($qrpairAction === 'qrpairgenerate' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+	if ((int) $user->id !== (int) $id) {
+		accessforbidden();
+	}
+	if (newToken() !== (string) GETPOST('token', 'alpha')) {
+		accessforbidden();
+	}
+
+	$qrEntity = (int) ($conf->entity ?? 1);
+	$qrRepo = new SmartAuthQrPairing($db);
+
+	// Cancel any pending/claimed pairing the user already has on file
+	// (multi-tab / earlier "Générer" click) so only one QR can be valid
+	// at any given time.
+	$cleanupSql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_qr_pairings"
+		. " SET status = '" . $db->escape(SmartAuthQrPairing::STATUS_CANCELLED) . "'"
+		. " WHERE fk_user = " . ((int) $user->id)
+		. " AND entity = " . $qrEntity
+		. " AND status IN ('" . SmartAuthQrPairing::STATUS_PENDING . "','" . SmartAuthQrPairing::STATUS_CLAIMED . "')";
+	$db->query($cleanupSql);
+
+	$qrNewPairingId = SmartAuthQrPairing::generatePairingId();
+	$qrInitiatorIp = \SmartAuth\Api\RouteController::get_client_ip();
+	$qrRepo->createPending($qrNewPairingId, (int) $user->id, $qrInitiatorIp, $qrEntity);
+
+	header('Location: ' . $_SERVER['PHP_SELF'] . '?id=' . ((int) $id), true, 303);
+	exit;
+}
+
 if (GETPOST('cancel', 'alpha')) {
 	$action = 'list';
 	$massaction = '';
@@ -299,6 +423,132 @@ if ($object->id) {
 
 	print dol_get_fiche_head($head, 'tabSmartAuth', $langs->trans("User"), -1, 'user');
 
+	// =====================================================================
+	// QR-pair card (cross-device pairing). Rendered as the right column of
+	// a flex container that wraps the existing device-list block. The
+	// previous attempt at float:right did not work because the device list
+	// uses Dolibarr's `div-table-responsive` which sets overflow-x:auto
+	// and therefore creates a new block-formatting context that ignores
+	// outside floats. Flexbox sidesteps the problem entirely.
+	// $object has been reassigned later in the page so we compare against
+	// $id (URL parameter, validated by restrictedArea above) to detect
+	// "own card". AJAX handlers (qrpairstatus / qrpairconfirm /
+	// qrpaircancel) sit near the top of this file. The mobile side flow
+	// lives in api/QrPairController.php (claim + poll).
+	// =====================================================================
+	$qrCardHtml = '';
+	if ((int) $user->id === (int) $id) {
+		$qrEntity = (int) ($conf->entity ?? 1);
+		$qrRepoUI = new SmartAuthQrPairing($db);
+
+		// Two render modes:
+		//   - REAL  : an active pending/claimed pairing exists (just
+		//             generated via the qrpairgenerate POST handler, or
+		//             still alive after a page refresh during a scan).
+		//             The QR is rendered clear, polling JS is enabled.
+		//   - DECOY : no active pairing yet. We render a *random* QR
+		//             (32 hex bytes that match nothing in DB) blurred
+		//             behind a "Générer un QR code" button, so a stray
+		//             screenshot of the page does not yield a scannable
+		//             QR.
+		// The page never spawns a real pairing on plain GET -- only the
+		// explicit "Générer" form POST creates one (PRG handler above).
+		$qrExisting = $qrRepoUI->findActiveForUser((int) $user->id, $qrEntity);
+		$qrIsDecoy = ($qrExisting === null);
+		$qrPairingId = $qrIsDecoy
+			? SmartAuthQrPairing::generatePairingId() // unrelated to any DB row
+			: (string) $qrExisting['pairing_id'];
+
+		// Build the public mobile URL embedded in the QR code. Prefer the
+		// configured PWA base URL, fall back to the current host's
+		// /custom/smartauth/public path.
+		$qrBaseUrl = '';
+		if (!empty($conf->global->SMARTAUTH_PWA_URL)) {
+			$qrBaseUrl = rtrim((string) $conf->global->SMARTAUTH_PWA_URL, '/');
+		} else {
+			$qrScheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+			$qrHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+			$qrBaseUrl = $qrScheme . '://' . $qrHost . '/custom/smartauth/public';
+		}
+		$qrPayload = $qrBaseUrl . '/qr-pair/' . $qrPairingId;
+
+		// Inline overlay/QR styles toggled depending on the mode.
+		$qrInitialFilter = $qrIsDecoy ? 'filter:blur(4px) opacity(0.45);' : '';
+		$qrOverlayDisplay = $qrIsDecoy ? 'flex' : 'none';
+		$qrStatusInitialDisplay = $qrIsDecoy ? 'none' : 'block';
+
+		// Capture the card markup into a buffer; it is emitted later as
+		// the right-hand flex item once the left column is closed.
+		// The body is wrapped in #smartauth-qrpair-body so JS can collapse
+		// it (accordion) on narrow screens where the card sits above the
+		// device list and would otherwise hide it from view.
+		ob_start();
+		echo '<div id="smartauth-qrpair-card" class="info-box" data-decoy="' . ($qrIsDecoy ? '1' : '0') . '" style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">';
+		echo '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+		echo '  <h3 style="margin:0;font-size:16px;">' . dol_escape_htmltag($langs->trans('QrPairCardTitle')) . '</h3>';
+		echo '  <button type="button" id="smartauth-qrpair-toggle" aria-expanded="true" aria-controls="smartauth-qrpair-body" title="' . dol_escape_htmltag($langs->trans('QrPairToggle')) . '" style="display:none;background:none;border:none;cursor:pointer;font-size:18px;padding:4px 8px;color:#6b7280;line-height:1;">';
+		echo '    <span id="smartauth-qrpair-toggle-icon" aria-hidden="true">&#9650;</span>';
+		echo '  </button>';
+		echo '</div>';
+		echo '<div id="smartauth-qrpair-body">';
+		echo '<p style="margin:0 0 14px 0;color:#4b5563;font-size:13px;line-height:1.4;">' . dol_escape_htmltag($langs->trans('QrPairCardLegend')) . '</p>';
+
+		// Hidden form used by both the placeholder "Générer" button and
+		// the JS regenerate path (terminal state). One CSRF-protected
+		// POST endpoint, two ways to trigger it.
+		echo '<form id="smartauth-qrpair-genform" method="POST" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . ((int) $user->id) . '" style="display:none;">';
+		echo '  <input type="hidden" name="action" value="qrpairgenerate">';
+		echo '  <input type="hidden" name="id" value="' . ((int) $user->id) . '">';
+		echo '  <input type="hidden" name="token" value="' . dol_escape_htmltag(newToken()) . '">';
+		echo '</form>';
+
+		require_once DOL_DOCUMENT_ROOT . '/includes/tecnickcom/tcpdf/tcpdf_barcodes_2d.php';
+		$qrBarcode = new TCPDF2DBarcode($qrPayload, 'QRCODE,M');
+		$qrSvg = $qrBarcode->getBarcodeSVGcode(5, 5, 'black');
+		// The wrapper is position:relative so the JS can drop a refresh
+		// overlay on top of the QR when it reaches a terminal state, and
+		// it is also pre-applied for the decoy initial render.
+		echo '<div id="smartauth-qrpair-wrap" style="position:relative;margin:0 auto 10px;max-width:260px;">';
+		echo '  <div id="smartauth-qrpair-qr" style="text-align:center;transition:filter 0.2s;' . $qrInitialFilter . '">' . $qrSvg . '</div>';
+		echo '  <div id="smartauth-qrpair-overlay" style="display:' . $qrOverlayDisplay . ';position:absolute;inset:0;align-items:center;justify-content:center;">';
+		echo '    <button type="button" id="smartauth-qrpair-refresh" class="butAction" style="font-size:13px;">' . dol_escape_htmltag($langs->trans('QrPairRegenerate')) . '</button>';
+		echo '  </div>';
+		echo '</div>';
+
+		echo '<div id="smartauth-qrpair-status" data-pairing-id="' . dol_escape_htmltag($qrIsDecoy ? '' : $qrPairingId) . '" style="display:' . $qrStatusInitialDisplay . ';">';
+		echo '  <p id="smartauth-qrpair-msg" style="margin:0;color:#6b7280;font-size:13px;text-align:center;">' . dol_escape_htmltag($langs->trans('QrPairWaitingScan')) . '</p>';
+		echo '  <div id="smartauth-qrpair-claim-info" style="display:none;background:#f9fafb;padding:10px;border-radius:6px;margin:10px 0;font-size:12px;">';
+		echo '    <p style="margin:4px 0;"><strong>' . dol_escape_htmltag($langs->trans('QrPairDeviceLabel')) . ':</strong> <span id="smartauth-qrpair-device"></span></p>';
+		echo '    <p style="margin:4px 0;"><strong>' . dol_escape_htmltag($langs->trans('QrPairClaimIp')) . ':</strong> <span id="smartauth-qrpair-ip"></span></p>';
+		echo '    <p style="margin:4px 0;"><strong>' . dol_escape_htmltag($langs->trans('QrPairUserAgent')) . ':</strong> <span id="smartauth-qrpair-ua" style="word-break:break-all;"></span></p>';
+		echo '  </div>';
+		echo '  <div id="smartauth-qrpair-actions" style="display:none;margin-top:10px;text-align:center;">';
+		echo '    <button type="button" id="smartauth-qrpair-confirm" class="butAction">' . dol_escape_htmltag($langs->trans('QrPairConfirm')) . '</button>';
+		echo '    <button type="button" id="smartauth-qrpair-cancel" class="butActionDelete">' . dol_escape_htmltag($langs->trans('QrPairCancel')) . '</button>';
+		echo '  </div>';
+		echo '</div>'; // close #smartauth-qrpair-status
+		echo '</div>'; // close #smartauth-qrpair-body
+		echo '</div>'; // close #smartauth-qrpair-card
+		// Inline CSS: only show the toggle button when the right column has
+		// wrapped under the table (single-column stack). 920px is a
+		// reasonable breakpoint -- below that, our 340px QR + 16px gap +
+		// table padding leaves the table too narrow to be useful.
+		echo '<style>'
+			. '@media (max-width: 920px) { #smartauth-qrpair-toggle { display: inline-block !important; } }'
+			. '#smartauth-qrpair-card.collapsed #smartauth-qrpair-body { display: none; }'
+			. '</style>';
+		$qrCardHtml = (string) ob_get_clean();
+	}
+
+	// Open the two-column flex layout. Left column gets `min-width:0` so
+	// the inner div-table-responsive can shrink horizontally; without
+	// it, flex defaults to min-width:auto and keeps the table at its
+	// content's natural width, ignoring the right column.
+	if ($qrCardHtml !== '') {
+		print '<div style="display:flex;gap:16px;align-items:flex-start;">';
+		print '<div style="flex:1;min-width:0;">';
+	}
+
 	print '<div class="fichecenter">';
 
 
@@ -347,6 +597,11 @@ if ($object->id) {
 	// --------------------------------------------------------------------
 	$sql = 'SELECT ';
 	$sql .= $object->getFieldList('t');
+	// llx_smartauth_auth has no user_agent column; the previous code used
+	// $obj->user_agent (always empty) and parseDeviceInfo('') returned the
+	// "(PROV)" placeholder, masking the real device. Pull label/uuid from
+	// the linked smartauth_devices row to display a meaningful name.
+	$sql .= ', d.label AS device_label_db, d.uuid AS device_uuid_db';
 	// Add fields from hooks
 	$parameters = array();
 	$reshook = $hookmanager->executeHooks('printFieldListSelect', $parameters, $object, $action); // Note that $action and $object may have been modified by hook
@@ -356,6 +611,7 @@ if ($object->id) {
 	$sqlfields = $sql; // $sql fields to remove for count total
 
 	$sql .= " FROM " . MAIN_DB_PREFIX . $object->table_element . " as t";
+	$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "smartauth_devices AS d ON d.rowid = t.fk_device_id";
 
 	// Add table from hooks
 	$parameters = array();
@@ -364,7 +620,7 @@ if ($object->id) {
 	$sql .= " WHERE 1 = 1";
 
 	if (! $user->admin) {
-		$sql .= " AND fk_authid=" . (int) $user->id;
+		$sql .= " AND t.fk_authid=" . (int) $user->id;
 	}
 
 	// Add where from hooks
@@ -408,6 +664,13 @@ if ($object->id) {
 	}
 
 	$num = $db->num_rows($resql);
+
+	// Initialise list-related variables read by partial templates below
+	// (getTitleFieldOfList, printFieldListTitle hook, etc.). Without this,
+	// PHP 8.x emits a stream of "Undefined variable $param" warnings on
+	// every page load.
+	$param = '';
+	$massactionbutton = '';
 
 	print '<form method="POST" id="searchFormList" action="' . $_SERVER["PHP_SELF"] . '">' . "\n";
 
@@ -526,12 +789,18 @@ if ($object->id) {
 		$object->setVarsFromFetchObj($obj);
 
 		//erics
-		// Parse device information
-		$deviceInfo = parseDeviceInfo($obj->user_agent ?? '');
+		// Parse device information. The auth row itself has no user_agent
+		// column; we display the linked smartauth_devices.label / uuid
+		// when present, with parseDeviceInfo as a last-resort fallback.
+		$deviceInfo = parseDeviceInfo($obj->device_label_db ?? '');
 		$countryInfo = getCountryFromIP($obj->ip);
 
-		// Get custom label if exists (stored in note_private for now)
-		$deviceLabel = !empty($obj->note_private) ? $obj->note_private : null;
+		// Custom user-supplied label takes precedence over the raw
+		// device_label_db (which is the auto-generated one). Today the
+		// rename action stores nothing persistent (note_private column
+		// does not exist on this table), so this stays null until the
+		// rename feature is wired to a real column.
+		$deviceLabel = !empty($obj->device_label_db) ? (string) $obj->device_label_db : null;
 
 		// $object->appuid = $object->getModuleName($object->appuid);
 
@@ -614,6 +883,24 @@ if ($object->id) {
 				} elseif ($key == 'status') {
 					print '<td class="center ' . $cssforfield . '">';
 					print $object->getLibStatut(5);
+					print '</td>';
+				} elseif ($key == 'fk_device_id') {
+					// The default rendering resolves the FK and shows the
+					// auto-generated ref ("SMAUTHD-0003"), which is opaque
+					// to the user. Display the linked device.label
+					// instead (LEFT JOIN result), truncated to 20 chars
+					// and wrapped in a link to the device card. Tooltip
+					// keeps the full label so nothing is lost on truncate.
+					print '<td' . ($cssforfield ? ' class="' . $cssforfield . '"' : '') . '>';
+					$deviceFullLabel = (string) ($obj->device_label_db ?? '');
+					$deviceLinkId = (int) ($obj->fk_device_id ?? 0);
+					if ($deviceFullLabel !== '' && $deviceLinkId > 0) {
+						$shown = dol_trunc($deviceFullLabel, 20, 'right', 'UTF-8', 1);
+						$deviceUrl = dol_buildpath('/smartauth/smartauthdevices_card.php', 1) . '?id=' . $deviceLinkId;
+						print '<a href="' . dol_escape_htmltag($deviceUrl) . '" title="' . dol_escape_htmltag($deviceFullLabel) . '">' . dol_escape_htmltag($shown) . '</a>';
+					} else {
+						print '<span style="color:#9ca3af;font-style:italic;">' . dol_escape_htmltag($langs->trans('Anonymous')) . '</span>';
+					}
 					print '</td>';
 				} else {
 					// Default field display
@@ -721,6 +1008,9 @@ if ($object->id) {
 	// --------------------------------------------------------------------
 	$sql = 'SELECT ';
 	$sql .= $object->getFieldList('t');
+	// Pull the linked device label so the rendering loop below can show
+	// it (truncated and linked) instead of the opaque "SMAUTHD-XXXX" ref.
+	$sql .= ', d.label AS device_label_db';
 
 	// Add fields from hooks
 	$parameters = array();
@@ -731,6 +1021,7 @@ if ($object->id) {
 	$sqlfields = $sql; // $sql fields to remove for count total
 
 	$sql .= " FROM " . MAIN_DB_PREFIX . $object->table_element . " as t";
+	$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "smartauth_devices AS d ON d.rowid = t.fk_device_id";
 
 	// Add table from hooks
 	$parameters = array();
@@ -739,7 +1030,7 @@ if ($object->id) {
 	$sql .= " WHERE 1 = 1";
 
 	if (! $user->admin) {
-		$sql .= " AND fk_key IN ( SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE fk_authid = " . (int) $user->id . ")";
+		$sql .= " AND t.fk_key IN ( SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE fk_authid = " . (int) $user->id . ")";
 	}
 
 	// Add where from hooks
@@ -804,7 +1095,17 @@ if ($object->id) {
 	$reshook = $hookmanager->executeHooks('printFieldListSearchParam', $parameters, $object, $action); // Note that $action and $object may have been modified by hook
 	$param .= $hookmanager->resPrint;
 
-	print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sortorder, $massactionbutton, $num, $nbtotalofrecords, 'object_' . $object->picto, 0, $newcardbutton, '', $limit, 0, 0, 1);
+	// Pointer to the dedicated logs page (full list with filters and
+	// search). Mirrors the SmartAuthHereIsYourLastKeys hint above the
+	// auth list.
+	print "<p>" . $langs->trans("SmartAuthHereIsYourLastLogs", dol_buildpath("/smartauth/logs_list.php", 1)) . "</p>";
+
+	// $hideselectlimit=1 + $hidenavigation=1: this view shows the latest
+	// hits only (capped by $limit). The pagination dropdown and arrows
+	// did not work reliably here because $page/$limit are shared with
+	// the first table on this page; redirecting users to logs_list.php
+	// is both simpler and gives them proper filters.
+	print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sortorder, $massactionbutton, $num, $nbtotalofrecords, 'object_' . $object->picto, 0, $newcardbutton, '', $limit, 1, 1, 1);
 
 	$parameters = array();
 	$reshook = $hookmanager->executeHooks('printFieldPreListTitle', $parameters, $object, $action); // Note that $action and $object may have been modified by hook
@@ -910,6 +1211,29 @@ if ($object->id) {
 					print $object->getLibStatut(5);
 				} elseif ($key == 'rowid') {
 					print $object->showOutputField($val, $key, $object->id, '');
+				} elseif ($key == 'fk_key' && (int) $object->fk_key <= 0) {
+					// Logs emitted from public routes (login, register,
+					// manifest, qr-pair claim/poll...) carry no SmartAuth
+					// token id - show "anonyme" instead of an empty cell.
+					print '<span style="color:#9ca3af;font-style:italic;">' . dol_escape_htmltag($langs->trans('Anonymous')) . '</span>';
+				} elseif ($key == 'dol_element' && empty($object->dol_element)) {
+					// Same story: insertLogs() callers rarely pass an
+					// element name. Empty here just means "not declared
+					// at log time" -- mark it instead of leaving blank.
+					print '<span style="color:#9ca3af;font-style:italic;">' . dol_escape_htmltag($langs->trans('Anonymous')) . '</span>';
+				} elseif ($key == 'fk_device_id') {
+					// Same treatment as the auth list above: link to the
+					// device card with the truncated label, "anonyme" if
+					// no label was ever recorded for the device.
+					$deviceFullLabel = (string) ($obj->device_label_db ?? '');
+					$deviceLinkId = (int) ($obj->fk_device_id ?? 0);
+					if ($deviceFullLabel !== '' && $deviceLinkId > 0) {
+						$shown = dol_trunc($deviceFullLabel, 20, 'right', 'UTF-8', 1);
+						$deviceUrl = dol_buildpath('/smartauth/smartauthdevices_card.php', 1) . '?id=' . $deviceLinkId;
+						print '<a href="' . dol_escape_htmltag($deviceUrl) . '" title="' . dol_escape_htmltag($deviceFullLabel) . '">' . dol_escape_htmltag($shown) . '</a>';
+					} else {
+						print '<span style="color:#9ca3af;font-style:italic;">' . dol_escape_htmltag($langs->trans('Anonymous')) . '</span>';
+					}
 				} else {
 					print $object->showOutputField($val, $key, $object->$key, '');
 				}
@@ -976,6 +1300,15 @@ if ($object->id) {
 
 
 	print '</div>';
+
+	// Close the left flex column and emit the QR card as the right one.
+	if ($qrCardHtml !== '') {
+		print '</div>'; // close flex:1 left column
+		print '<div style="width:340px;flex-shrink:0;">';
+		print $qrCardHtml;
+		print '</div>'; // close right flex item
+		print '</div>'; // close flex container
+	}
 
 	print dol_get_fiche_end();
 
@@ -1054,6 +1387,191 @@ document.addEventListener('keydown', function(e) {
 		if (modal) modal.remove();
 	}
 });
+
+// =====================================================================
+// QR-pair polling (cross-device pairing). Only runs when the section has
+// been rendered AND the QR is real (decoy mode = data-pairing-id empty).
+// In decoy mode we still wire the "Générer un QR code" button so the
+// user can submit the form to spawn a real pairing.
+// =====================================================================
+(function () {
+	var cardEl = document.getElementById('smartauth-qrpair-card');
+	if (!cardEl) { return; }
+	var genForm = document.getElementById('smartauth-qrpair-genform');
+	var refreshBtn = document.getElementById('smartauth-qrpair-refresh');
+	if (refreshBtn && genForm) {
+		// Single behaviour for the "Générer" button regardless of why the
+		// overlay is visible (decoy default, expired, cancelled): submit
+		// the CSRF-protected form so the server creates the pairing and
+		// redirects back to a clean URL (PRG).
+		refreshBtn.addEventListener('click', function () {
+			refreshBtn.disabled = true;
+			genForm.submit();
+		});
+	}
+
+	// Accordion toggle is independent of decoy/real state -- wire it up
+	// even when polling is skipped below.
+	var toggleBtn = document.getElementById('smartauth-qrpair-toggle');
+	var toggleIcon = document.getElementById('smartauth-qrpair-toggle-icon');
+	if (toggleBtn) {
+		toggleBtn.addEventListener('click', function () {
+			var collapsed = cardEl.classList.toggle('collapsed');
+			toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+			if (toggleIcon) {
+				toggleIcon.innerHTML = collapsed ? '&#9660;' : '&#9650;';
+			}
+		});
+	}
+
+	var statusEl = document.getElementById('smartauth-qrpair-status');
+	if (!statusEl) { return; }
+	var pairingId = statusEl.getAttribute('data-pairing-id') || '';
+	if (!pairingId) {
+		// Decoy mode: nothing to poll, the user has not generated a real
+		// pairing yet. The refresh button (above) is the only interaction.
+		return;
+	}
+
+	var csrfToken = <?php echo json_encode(newToken()); ?>;
+	var userId    = <?php echo (int) $id; ?>;
+	var i18n = {
+		waitingScan:    <?php echo json_encode($langs->transnoentities('QrPairWaitingScan')); ?>,
+		waitingConfirm: <?php echo json_encode($langs->transnoentities('QrPairWaitingConfirm')); ?>,
+		confirmed:      <?php echo json_encode($langs->transnoentities('QrPairConfirmed')); ?>,
+		cancelled:      <?php echo json_encode($langs->transnoentities('QrPairCancelled')); ?>,
+		expired:        <?php echo json_encode($langs->transnoentities('QrPairExpired')); ?>,
+		consumed:       <?php echo json_encode($langs->transnoentities('QrPairConsumed')); ?>
+	};
+
+	var msgEl = document.getElementById('smartauth-qrpair-msg');
+	var infoEl = document.getElementById('smartauth-qrpair-claim-info');
+	var deviceEl = document.getElementById('smartauth-qrpair-device');
+	var ipEl = document.getElementById('smartauth-qrpair-ip');
+	var uaEl = document.getElementById('smartauth-qrpair-ua');
+	var actionsEl = document.getElementById('smartauth-qrpair-actions');
+	var confirmBtn = document.getElementById('smartauth-qrpair-confirm');
+	var cancelBtn = document.getElementById('smartauth-qrpair-cancel');
+	var qrEl = document.getElementById('smartauth-qrpair-qr');
+	var overlayEl = document.getElementById('smartauth-qrpair-overlay');
+	var pollHandle = null;
+
+	function stopPolling() {
+		if (pollHandle) { clearTimeout(pollHandle); pollHandle = null; }
+	}
+	function setTerminal(text, showRefresh) {
+		stopPolling();
+		msgEl.textContent = text;
+		infoEl.style.display = 'none';
+		actionsEl.style.display = 'none';
+		// On expired/cancelled the QR is no longer usable; blur it and
+		// reveal the "regenerate" button on top so the user can request
+		// a fresh pairing without leaving the tab. Form submit (the
+		// button click handler set up above) handles the actual reload.
+		if (showRefresh && qrEl && overlayEl) {
+			qrEl.style.filter = 'blur(4px) opacity(0.45)';
+			overlayEl.style.display = 'flex';
+		}
+	}
+
+	// (The accordion toggle and the refresh-button handler are wired up
+	// above, before the early "decoy" return -- they need to work both
+	// in real and decoy modes.)
+
+	function poll() {
+		var url = window.location.pathname + '?action=qrpairstatus&id=' + userId
+			+ '&pairing_id=' + encodeURIComponent(pairingId);
+		fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+			.then(function (r) { return r.json(); })
+			.then(function (data) {
+				if (!data || !data.status) {
+					pollHandle = setTimeout(poll, 2000);
+					return;
+				}
+				switch (data.status) {
+					case 'pending':
+					case 'claimed':
+						if (data.device_label || data.claim_ip) {
+							deviceEl.textContent = data.device_label || '(unknown)';
+							ipEl.textContent = data.claim_ip || '';
+							uaEl.textContent = data.claim_user_agent || '';
+							infoEl.style.display = 'block';
+							actionsEl.style.display = 'block';
+							msgEl.textContent = i18n.waitingConfirm;
+						} else {
+							msgEl.textContent = i18n.waitingScan;
+							infoEl.style.display = 'none';
+							actionsEl.style.display = 'none';
+						}
+						pollHandle = setTimeout(poll, 2000);
+						break;
+					case 'confirmed':
+						// Local PC has confirmed; mobile will fetch tokens
+						// on its next /poll. Keep watching for 'consumed'.
+						msgEl.textContent = i18n.confirmed;
+						infoEl.style.display = 'none';
+						actionsEl.style.display = 'none';
+						pollHandle = setTimeout(poll, 2000);
+						break;
+					case 'consumed':
+						// Pairing successfully used by the mobile; no need
+						// to regenerate, the QR has done its job.
+						setTerminal(i18n.confirmed, false);
+						break;
+					case 'cancelled':
+						setTerminal(i18n.cancelled, true);
+						break;
+					case 'expired':
+						setTerminal(i18n.expired, true);
+						break;
+					default:
+						pollHandle = setTimeout(poll, 2000);
+				}
+			})
+			.catch(function () { pollHandle = setTimeout(poll, 4000); });
+	}
+
+	function postQrAction(action) {
+		var fd = new FormData();
+		fd.append('action', action);
+		fd.append('id', String(userId));
+		fd.append('pairing_id', pairingId);
+		fd.append('token', csrfToken);
+		return fetch(window.location.pathname, {
+			method: 'POST',
+			credentials: 'same-origin',
+			body: fd,
+			headers: { 'Accept': 'application/json' }
+		}).then(function (r) { return r.json(); });
+	}
+
+	if (confirmBtn) {
+		confirmBtn.addEventListener('click', function () {
+			confirmBtn.disabled = true;
+			cancelBtn.disabled = true;
+			postQrAction('qrpairconfirm').then(function (data) {
+				if (data && data.ok) {
+					msgEl.textContent = i18n.confirmed;
+					infoEl.style.display = 'none';
+					actionsEl.style.display = 'none';
+					if (!pollHandle) { pollHandle = setTimeout(poll, 2000); }
+				} else {
+					confirmBtn.disabled = false;
+					cancelBtn.disabled = false;
+				}
+			});
+		});
+	}
+	if (cancelBtn) {
+		cancelBtn.addEventListener('click', function () {
+			confirmBtn.disabled = true;
+			cancelBtn.disabled = true;
+			postQrAction('qrpaircancel').then(function () { setTerminal(i18n.cancelled, true); });
+		});
+	}
+
+	pollHandle = setTimeout(poll, 1500);
+})();
 </script>
 
 
