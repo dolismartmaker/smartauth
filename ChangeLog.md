@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.15 -- 20260508
+
+ - Add extrafield for ecmfiles annotations
+ - Add qr code pairing process + mail warning
+
 ## 2.0.14 -- 20260507
 
  - Full security review
