@@ -400,6 +400,25 @@ class modSmartauth extends DolibarrModules
 			0, 0, '', '', 0, '', 0, 0, '', '', 'smartauth@smartauth'
 		);
 
+		// Pre-create the geo columns on llx_ecm_files that land natively in
+		// Dolibarr 23.0. Managed at runtime by \SmartAuth\Api\GeoHelper.
+		// DDLAddField returns -1 silently when the column already exists,
+		// which makes this idempotent across module re-activations and a
+		// no-op on Dolibarr versions where the schema is already up to date.
+		// On Dolibarr 23+, all four columns are part of core llx_ecm_files
+		// already, so we skip the pre-creation entirely.
+		if (defined('DOL_VERSION') && version_compare(DOL_VERSION, '23.0.0', '<')) {
+			// SQLite has no spatial 'point' type; fall back to text and store
+			// the WKT string. The remap should eventually move into
+			// cap-rel/dolibarr-integration-sqlite, alongside mediumtext->text.
+			$pointType = (isset($this->db->type) && $this->db->type === 'sqlite3') ? 'text' : 'point';
+			$ecmTable = MAIN_DB_PREFIX.'ecm_files';
+			$this->db->DDLAddField($ecmTable, 'geolat',        ['type'=>'double',     'value'=>'24,8', 'null'=>'NULL']);
+			$this->db->DDLAddField($ecmTable, 'geolong',       ['type'=>'double',     'value'=>'24,8', 'null'=>'NULL']);
+			$this->db->DDLAddField($ecmTable, 'geopoint',      ['type'=>$pointType,   'value'=>'',     'null'=>'NULL']);
+			$this->db->DDLAddField($ecmTable, 'georesultcode', ['type'=>'varchar',    'value'=>'16',   'null'=>'NULL']);
+		}
+
 		// Permissions
 		$this->remove($options);
 
