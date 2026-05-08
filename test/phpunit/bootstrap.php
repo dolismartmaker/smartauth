@@ -113,3 +113,6 @@ if (!function_exists('getEntity')) {
         return '1';
     }
 }
+
+// Shared test helpers (also loaded by integration-dolibarr bootstrap)
+require_once __DIR__ . '/test_helpers.php';

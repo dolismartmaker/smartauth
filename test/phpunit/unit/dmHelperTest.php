@@ -29,7 +29,7 @@ class dmHelperTest extends TestCase
 
     protected function setUp(): void
     {
-        global $conf, $langs;
+        global $conf, $langs, $db;
 
         // Initialize $conf
         if (!is_object($conf)) {
@@ -46,6 +46,32 @@ class dmHelperTest extends TestCase
             public function transnoentities($str)
             {
                 return $str;
+            }
+        };
+
+        // Reset $db to a minimal mock so unit tests do not inherit the
+        // anonymous mocks installed by other suites (e.g. RouteControllerTest)
+        // which omit methods like fetch_object/free that this helper uses.
+        $db = new class {
+            public $type = 'mysqli';
+            public function escape($val)
+            {
+                return $val;
+            }
+            public function query($sql)
+            {
+                return false;
+            }
+            public function fetch_object($r)
+            {
+                return false;
+            }
+            public function free($r)
+            {
+            }
+            public function lasterror()
+            {
+                return 'mock db: no real connection';
             }
         };
 
