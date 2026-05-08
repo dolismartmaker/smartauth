@@ -129,11 +129,18 @@ class SmartAuth extends CommonObject
 		'date_creation' => array('type' => 'datetime', 'label' => 'Datecreation', 'enabled' => '1', 'position' => 25, 'notnull' => 1, 'visible' => 1,),
 		'date_lastused' => array('type' => 'datetime', 'label' => 'Datelastused', 'enabled' => '1', 'position' => 30, 'notnull' => 0, 'visible' => 1,),
 		'ip' => array('type' => 'varchar(50)', 'label' => 'smartAuthLastIP', 'enabled' => '1', 'position' => 35, 'notnull' => 0, 'visible' => 1, 'default' => ''),
-		'refresh_count' => array('type' => 'integer', 'label' => 'smartAuthRefreshCount', 'enabled' => '1', 'position' => 36, 'notnull' => 0, 'visible' => 1,),
+		// refresh_count is hidden in lists: token rotation creates a new
+		// row at every refresh, so the counter on the visible (current)
+		// row stays at 0. The historical count is on the previous (now
+		// revoked) row, not interesting in the active-tokens view.
+		'refresh_count' => array('type' => 'integer', 'label' => 'smartAuthRefreshCount', 'enabled' => '1', 'position' => 36, 'notnull' => 0, 'visible' => 0,),
 		'date_eol' => array('type' => 'datetime', 'label' => 'Dateeol', 'enabled' => '1', 'position' => 38, 'notnull' => 0, 'visible' => 1,),
 		'tms' => array('type' => 'timestamp', 'label' => 'DateModification', 'enabled' => '1', 'position' => 40, 'notnull' => 1, 'visible' => -1,),
 		'fk_user_creat' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserAuthor', 'enabled' => '$user->admin', 'position' => 45, 'notnull' => 1, 'visible' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150',),
-		'fk_user_modif' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserModif', 'enabled' => '$user->admin', 'position' => 50, 'notnull' => -1, 'visible' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150',),
+		// fk_user_modif is hidden in lists: token INSERTs in AuthController
+		// bypass CommonObject::update() and never set this field, so the
+		// column was empty for ~100% of rows and only added visual noise.
+		'fk_user_modif' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'UserModif', 'enabled' => '$user->admin', 'position' => 50, 'notnull' => -1, 'visible' => 0, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150',),
 		'fk_device_id' => array('type' => 'integer:SmartAuthDevices:smartauth/class/smartauthdevices.class.php', 'label' => 'device', 'enabled' => '1', 'position' => 55, 'notnull' => -1, 'visible' => 1, 'index' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150', 'noteditable' => '1',),
 		'fk_authid' => array('type' => 'integer', 'label' => 'AuthElementID', 'enabled' => '1', 'position' => 60, 'notnull' => 1, 'visible' => 1, 'css' => 'maxwidth500 widthcentpercentminusxx', 'csslist' => 'tdoverflowmax150',),
 		'auth_element' => array('type' => 'varchar(128)', 'label' => 'AuthElementSource', 'enabled' => '1', 'position' => 65, 'notnull' => 1, 'visible' => 1,),
@@ -729,6 +736,23 @@ class SmartAuth extends CommonObject
 	 */
 	public function getLibStatut($mode = 0)
 	{
+		// A token row stays at status=STATUS_VALIDATED until either it is
+		// actively revoked (refresh rotation, logout, family kill) or the
+		// SMARTAUTH_TOKEN_EOL_DAYS cron sweeps it. Until that sweep runs,
+		// the row will look "Enabled" in the list even though its date_eol
+		// has passed and any auth attempt would be rejected via the JWT
+		// `exp` claim. Show "Expired" in that case so the list is honest.
+		if (
+			$this->status == self::STATUS_VALIDATED
+			&& !empty($this->date_eol)
+		) {
+			$eolTs = is_numeric($this->date_eol) ? (int) $this->date_eol : strtotime((string) $this->date_eol);
+			if ($eolTs !== false && $eolTs > 0 && $eolTs < dol_now()) {
+				global $langs;
+				$label = $langs->transnoentitiesnoconv('Expired');
+				return dolGetStatus($label, $label, '', 'status8', $mode);
+			}
+		}
 		return $this->LibStatut($this->status, $mode);
 	}
 
@@ -925,6 +949,45 @@ class SmartAuth extends CommonObject
 					dol_syslog("SmartAuth::doScheduledJob Update status error", LOG_ERR);
 				}
 			}
+		}
+
+		// Cleanup short-lived auxiliary tables that would otherwise grow
+		// indefinitely. None of these need an opt-in because they only ever
+		// store transient state (codes/tokens already expired or revoked,
+		// QR pairings older than the audit window).
+		dol_include_once('/smartauth/class/smartauthqrpairing.class.php');
+		dol_include_once('/smartauth/class/smartauthoauthcode.class.php');
+		dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
+
+		// QR pairings: rows live a few minutes during the flow; keep one
+		// week of history for audit then drop. Configurable via
+		// SMARTAUTH_QRPAIR_RETENTION_DAYS (defaults to 7).
+		$qrRetentionDays = (int) getDolGlobalString('SMARTAUTH_QRPAIR_RETENTION_DAYS');
+		if ($qrRetentionDays <= 0) {
+			$qrRetentionDays = 7;
+		}
+		$qrRepo = new \SmartAuthQrPairing($this->db);
+		$qrDeleted = $qrRepo->deleteOld($qrRetentionDays * 24 * 3600);
+		if ($qrDeleted >= 0) {
+			dol_syslog("SmartAuth::doScheduledJob qr_pairings cleanup deleted $qrDeleted rows");
+		}
+
+		// OAuth2 authorization codes: short-lived (5-10min TTL). Drop any
+		// row past its expires_at, plus any used row older than 1h.
+		$codesExpired = \SmartAuthOAuthCode::deleteExpired($this->db);
+		if ($codesExpired >= 0) {
+			dol_syslog("SmartAuth::doScheduledJob oauth_codes deleteExpired removed $codesExpired rows");
+		}
+		$codesUsed = \SmartAuthOAuthCode::deleteUsed($this->db);
+		if ($codesUsed >= 0) {
+			dol_syslog("SmartAuth::doScheduledJob oauth_codes deleteUsed removed $codesUsed rows");
+		}
+
+		// OAuth2 access/refresh tokens: drop revoked or expired rows that
+		// are older than 7 days (matches the helper's default cutoff).
+		$tokensExpired = \SmartAuthOAuthToken::deleteExpired($this->db);
+		if ($tokensExpired >= 0) {
+			dol_syslog("SmartAuth::doScheduledJob oauth_tokens deleteExpired removed $tokensExpired rows");
 		}
 
 		$this->db->commit();

@@ -114,3 +114,35 @@ Expired=Verlopen
 SetupGeoIPForSmartAuth=GeoIP downloaden en initialiseren
 SmartAuthDevicesMenu=Apparaten
 SetupGeoIPForSmartAuthFileIsPresent=Het bestand %s is geinstalleerd
+
+# QR pair (cross-device pairing)
+QrPairPageTitle=Een mobiel apparaat koppelen
+QrPairScanInstruction=Open de app op uw mobiel en scan de QR-code.
+QrPairWaitingScan=Wachten op scan...
+QrPairWaitingConfirm=Mobiel gedetecteerd. Controleer en bevestig.
+QrPairConfirm=Dit mobiel autoriseren
+QrPairCancel=Annuleren / Weigeren
+QrPairConfirmed=Apparaat geautoriseerd.
+QrPairExpired=De QR-code is verlopen.
+QrPairCancelled=Verzoek geannuleerd.
+QrPairConsumed=Apparaat al gekoppeld.
+QrPairDeviceLabel=Apparaat
+QrPairClaimIp=Mobiel-IP
+QrPairUserAgent=User-Agent
+QrPairCardTitle=Mobiel koppelen
+QrPairCardLegend=Scan deze QR-code vanuit een SmartMaker-app om het apparaat te authenticeren.
+QrPairRegenerate=Een nieuwe QR-code genereren
+QrPairToggle=Kaart inklappen / uitklappen
+Anonymous=anoniem
+SmartAuthHereIsYourLastLogs=Hier zijn uw laatste API-verbindingen. Volg deze link voor de <a href="%s">volledige lijst</a>
+
+# New-login alert
+SMARTAUTH_NEW_LOGIN_NOTIFY=Gebruiker waarschuwen bij nieuwe aanmelding
+SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=Wanneer ingeschakeld wordt een e-mail verstuurd zodra een token wordt uitgegeven vanaf een onbekend IP of apparaat.
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYS=Venster (dagen) voor bekende IP's
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYSTooltip=Een IP geldt als bekend wanneer het in de laatste N dagen werd gebruikt.
+NewLoginEmailSubject=SmartAuth-melding: nieuwe aanmelding gedetecteerd
+NewLoginUnknownDevice=onbekend apparaat
+NewLoginReasonNewIp=Nieuw IP-adres gebruikt
+NewLoginReasonNewDevice=Nieuw apparaat gebruikt
+NewLoginReasonNewBoth=Nieuw IP-adres en nieuw apparaat

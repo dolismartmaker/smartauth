@@ -580,18 +580,12 @@ if ($object->id > 0 && (empty($action) || ($action != 'edit' && $action != 'crea
 		print '<div class="fichecenter"><div class="fichehalfleft">';
 		print '<a name="builddoc"></a>'; // ancre
 
-		$includedocgeneration = 1;
-
-		// Documents
-		if ($includedocgeneration) {
-			$objref = dol_sanitizeFileName($object->ref);
-			$relativepath = $objref.'/'.$objref.'.pdf';
-			$filedir = $conf->smartauth->dir_output.'/'.$object->element.'/'.$objref;
-			$urlsource = $_SERVER["PHP_SELF"]."?id=".$object->id;
-			$genallowed = $permissiontoread; // If you can read, you can build the PDF to read content
-			$delallowed = $permissiontoadd; // If you can create/edit, you can remove a file on card
-			print $formfile->showdocuments('smartauth:SmartAuthDevices', $object->element.'/'.$objref, $filedir, $urlsource, $genallowed, $delallowed, $object->model_pdf, 1, 0, 0, 28, 0, '', '', '', $langs->defaultlang);
-		}
+		// Document generation block disabled: SmartAuthDevices has no PDF
+		// model and no /core/modules/smartauth/modules_smartauthdevices.php
+		// stub. Calling showdocuments('smartauth:SmartAuthDevices', ...)
+		// triggered a runtime warning ("Failed to open stream") in Dolibarr
+		// core because the model loader could not find that file.
+		// The dedicated Documents tab still allows uploading attachments.
 
 		// Show links to link elements
 		$linktoelem = $form->showLinkToObjectBlock($object, null, array('smartauthdevices'));
@@ -602,7 +596,9 @@ if ($object->id > 0 && (empty($action) || ($action != 'edit' && $action != 'crea
 
 		$MAXEVENT = 10;
 
-		$morehtmlcenter = dolGetButtonTitle($langs->trans('SeeAll'), '', 'fa fa-bars imgforviewmode', dol_buildpath('/smartauth/smartauthdevices_agenda.php', 1).'?id='.$object->id);
+		// No "see all" button: the dedicated agenda tab page does not exist
+		// in this module (see lib/smartauth_smartauthdevices.lib.php).
+		$morehtmlcenter = '';
 
 		// List of actions on element
 		include_once DOL_DOCUMENT_ROOT.'/core/class/html.formactions.class.php';

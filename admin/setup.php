@@ -127,6 +127,21 @@ $days = [
 
 $item = $formSetup->newItem('SMARTAUTH_LAST_LOGS')->setAsSelect($days);
 
+// New-login email alert (Google-style "new sign-in" notification).
+$item = $formSetup->newItem('SMARTAUTH_NEW_LOGIN_NOTIFY')->setAsYesNo();
+$item->helpText = $langs->transnoentities('SMARTAUTH_NEW_LOGIN_NOTIFYTooltip');
+
+$lookbackChoices = [
+	'7' => '7',
+	'14' => '14',
+	'30' => '30',
+	'60' => '60',
+	'90' => '90',
+];
+$item = $formSetup->newItem('SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYS')->setAsSelect($lookbackChoices);
+$item->defaultFieldValue = '30';
+$item->helpText = $langs->transnoentities('SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYSTooltip');
+
 // Trusted proxies for X-Forwarded-For header
 $item = $formSetup->newItem('SMARTAUTH_TRUSTED_PROXIES');
 $item->helpText = $langs->transnoentities('SMARTAUTH_TRUSTED_PROXIESTooltip');

@@ -114,3 +114,35 @@ Expired=Wygasly
 SetupGeoIPForSmartAuth=Pobierz i zainicjalizuj GeoIP
 SmartAuthDevicesMenu=Urzadzenia
 SetupGeoIPForSmartAuthFileIsPresent=Plik %s jest zainstalowany
+
+# QR pair (cross-device pairing)
+QrPairPageTitle=Sparuj urzadzenie mobilne
+QrPairScanInstruction=Otworz aplikacje na telefonie i zeskanuj kod QR.
+QrPairWaitingScan=Czekam na zeskanowanie...
+QrPairWaitingConfirm=Wykryto urzadzenie. Sprawdz i potwierdz.
+QrPairConfirm=Autoryzuj to urzadzenie
+QrPairCancel=Anuluj / Odrzuc
+QrPairConfirmed=Urzadzenie autoryzowane.
+QrPairExpired=Kod QR wygasl.
+QrPairCancelled=Prosba anulowana.
+QrPairConsumed=Urzadzenie juz sparowane.
+QrPairDeviceLabel=Urzadzenie
+QrPairClaimIp=IP mobilne
+QrPairUserAgent=User-Agent
+QrPairCardTitle=Sparuj mobile
+QrPairCardLegend=Zeskanuj ten kod QR z aplikacji SmartMaker, aby uwierzytelnic urzadzenie.
+QrPairRegenerate=Wygeneruj nowy kod QR
+QrPairToggle=Zwin / rozwin karte
+Anonymous=anonimowy
+SmartAuthHereIsYourLastLogs=Oto ostatnie polaczenia API. Otwórz <a href="%s">pelna liste</a>
+
+# New-login alert
+SMARTAUTH_NEW_LOGIN_NOTIFY=Powiadom uzytkownika o nowym logowaniu
+SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=Gdy wlaczone, e-mail jest wysylany przy emisji tokenu z nowego adresu IP lub urzadzenia.
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYS=Okno (dni) dla znanych adresow IP
+SMARTAUTH_NEW_LOGIN_NOTIFY_LOOKBACK_DAYSTooltip=Adres IP uznawany jest za znany jesli byl uzyty w ostatnich N dniach.
+NewLoginEmailSubject=Alert SmartAuth: nowe logowanie
+NewLoginUnknownDevice=nieznane urzadzenie
+NewLoginReasonNewIp=Nowy adres IP uzyty do logowania
+NewLoginReasonNewDevice=Nowe urzadzenie uzyte do logowania
+NewLoginReasonNewBoth=Nowy adres IP i nowe urzadzenie
