@@ -442,6 +442,11 @@ class AuthController
 
 		$device_id = $this->_createDeviceIdIfNeeded($tmpuser->id);
 
+		// Single-session-per-app invariant: a fresh login from this device for
+		// this app supersedes any previous session of the same (user, device,
+		// app, entity) tuple. Other apps and other devices stay untouched.
+		$this->_revokePreviousFamiliesForDeviceApp((int) $tmpuser->id, (int) $device_id, (int) $entity);
+
 		// Generate BOTH tokens
 		$tokens = $this->_generateTokenPair('user', $tmpuser->id, $tmpuser->id, $login, $entity, $family_id, $device_id);
 
@@ -1328,6 +1333,74 @@ class AuthController
 	}
 
 	/**
+	 * Revoke previous active token families for the same (user, device, app, entity)
+	 * tuple. Called at login time before issuing a fresh family so that a single
+	 * physical device can hold at most one live session per application -- but
+	 * remains free to keep concurrent sessions on other SmartMaker apps or on
+	 * other physical devices.
+	 *
+	 * Scope rationale: the scoping key is (fk_user_creat, fk_device_id, appuid,
+	 * entity). Filtering on appuid is what keeps capTodo from killing capCRM,
+	 * filtering on fk_device_id is what keeps the mobile from killing the web,
+	 * and filtering on entity respects Dolibarr multi-company isolation.
+	 *
+	 * @param   int $user_id    Authenticated user (must match fk_user_creat)
+	 * @param   int $device_id  smartauth_devices.rowid resolved from the device UUID
+	 * @param   int $entity     Dolibarr entity (multi-company isolation)
+	 *
+	 * @return  int             Number of families revoked (>=0)
+	 */
+	private function _revokePreviousFamiliesForDeviceApp($user_id, $device_id, $entity)
+	{
+		global $db, $smartAuthAppID;
+
+		$user_id = (int) $user_id;
+		$device_id = (int) $device_id;
+		$entity = (int) $entity;
+		$appuid = (int) ($smartAuthAppID ?? 0);
+
+		if ($user_id <= 0 || $device_id <= 0) {
+			dol_syslog("SmartAuth _revokePreviousFamiliesForDeviceApp skipped: user_id=$user_id device_id=$device_id", LOG_WARNING);
+			return 0;
+		}
+		// Without an app id we cannot scope the revocation. Bail out rather
+		// than risk killing every session of the user on this device.
+		if ($appuid <= 0) {
+			dol_syslog("SmartAuth _revokePreviousFamiliesForDeviceApp skipped: empty smartAuthAppID", LOG_WARNING);
+			return 0;
+		}
+
+		$sql = "SELECT DISTINCT family_id FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " WHERE fk_user_creat = " . $user_id;
+		$sql .= " AND fk_device_id = " . $device_id;
+		$sql .= " AND appuid = " . $appuid;
+		$sql .= " AND entity = " . $entity;
+		$sql .= " AND status = " . self::STATUS_VALID;
+		$sql .= " AND family_id IS NOT NULL";
+
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog("SmartAuth _revokePreviousFamiliesForDeviceApp select failed: " . $db->lasterror(), LOG_ERR);
+			return 0;
+		}
+
+		$families = [];
+		while ($obj = $db->fetch_object($resql)) {
+			$families[] = (int) $obj->family_id;
+		}
+
+		foreach ($families as $fid) {
+			$this->_revokeTokenFamily($fid, 'replaced_by_new_session');
+		}
+
+		if (count($families) > 0) {
+			dol_syslog("SmartAuth _revokePreviousFamiliesForDeviceApp revoked " . count($families) . " families for user=$user_id device=$device_id app=$appuid entity=$entity", LOG_INFO);
+		}
+
+		return count($families);
+	}
+
+	/**
 	 * Revoke entire token family, example of reason: security breach detected)
 	 *
 	 * @param   [type]          $family_id  id of family token
@@ -1854,6 +1927,12 @@ class AuthController
 			$db->query($sql);
 			$device_id = $db->last_insert_id(MAIN_DB_PREFIX . "smartauth_devices");
 		}
+
+		// Same single-session-per-app invariant as the regular /login path.
+		// QR-pair issuance must not coexist with a previous JWT for the same
+		// user/device/app -- otherwise scanning the QR twice leaves the older
+		// JWT alive in the wild.
+		$this->_revokePreviousFamiliesForDeviceApp((int) $user->id, (int) $device_id, (int) $entity);
 
 		// Generate token pair with original device_uuid (will be hashed by _getSalt2)
 		$tokens = $this->_generateTokenPair(
