@@ -637,6 +637,19 @@ class AuthController
 						SmartAuthLogger::debug("smartauth::AuthController : device update ok call validate");
 						$message = "";
 						$device->validate($user);
+
+						// Single-iPhone-de-Bertrand invariant: when this label
+						// already exists on other devices of the same user
+						// (typical case = app reinstalled, new UUID, same
+						// physical phone), revoke their sessions for the
+						// current app and cancel the stale device rows.
+						$deviceEntity = (int) ($device->entity ?? $user->entity ?? 1);
+						$this->_collapseDuplicateLabelDevices(
+							(int) $user->id,
+							(int) $device->id,
+							(string) $new_name,
+							$deviceEntity
+						);
 					}
 					$ret = [
 						'message' => $message,
@@ -1398,6 +1411,128 @@ class AuthController
 		}
 
 		return count($families);
+	}
+
+	/**
+	 * When the user names a device with a label that already belongs to other
+	 * devices of his own (same user, same entity), collapse those siblings:
+	 *  - revoke ALL their active token families across every SmartMaker app
+	 *    (cross-app), because the user just declared that the previous
+	 *    "iPhone de Bertrand" physical device no longer exists
+	 *  - mark the device rows themselves as STATUS_CANCELED so they no longer
+	 *    appear in the "choose your device" picker on next logins
+	 *
+	 * Cross-app rationale: a CANCELED device with still-valid JWTs in the wild
+	 * would be a zombie. The single-label-per-user invariant the caller asked
+	 * for ("2 sessions on 'iPhone de Bertrand' is not allowed") only makes
+	 * sense if every session bound to the previous physical device dies at
+	 * once. The user accepts that re-logging in capCRM/capTodo/etc. is the
+	 * cost of renaming a fresh device install with an existing label.
+	 *
+	 * Note: this is DIFFERENT from _revokePreviousFamiliesForDeviceApp which is
+	 * scoped to the current app -- there the user is just relogging on the
+	 * same physical device and capCRM/capTodo must keep cohabiting.
+	 *
+	 * @param   int    $user_id          Authenticated user (fk_user_creat owner)
+	 * @param   int    $current_device_id Device id just being (re)named, EXCLUDED from collapse
+	 * @param   string $label             Label assigned to the current device (must be non-empty)
+	 * @param   int    $entity            Dolibarr entity for multi-company isolation
+	 *
+	 * @return  int                       Number of sibling devices collapsed
+	 */
+	private function _collapseDuplicateLabelDevices($user_id, $current_device_id, $label, $entity)
+	{
+		global $db, $user;
+
+		$user_id = (int) $user_id;
+		$current_device_id = (int) $current_device_id;
+		$entity = (int) $entity;
+		$label = trim((string) $label);
+
+		if ($user_id <= 0 || $current_device_id <= 0 || $label === '') {
+			dol_syslog("SmartAuth _collapseDuplicateLabelDevices skipped: user_id=$user_id device_id=$current_device_id label='$label'", LOG_WARNING);
+			return 0;
+		}
+
+		// Sibling devices: same owner, same entity, same label, different rowid,
+		// and not already canceled. Empty labels are excluded so that draft
+		// devices created by _createDeviceIdIfNeeded (label '') do not collide.
+		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+		$sql .= " WHERE fk_user_creat = " . $user_id;
+		$sql .= " AND entity = " . $entity;
+		$sql .= " AND rowid != " . $current_device_id;
+		$sql .= " AND TRIM(label) = '" . $db->escape($label) . "'";
+		$sql .= " AND status != " . \SmartAuthDevices::STATUS_CANCELED;
+
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog("SmartAuth _collapseDuplicateLabelDevices select failed: " . $db->lasterror(), LOG_ERR);
+			return 0;
+		}
+
+		$siblingIds = [];
+		while ($obj = $db->fetch_object($resql)) {
+			$siblingIds[] = (int) $obj->rowid;
+		}
+
+		if (empty($siblingIds)) {
+			return 0;
+		}
+
+		// Revoke EVERY active family on each sibling device, regardless of
+		// appuid. Without this, capCRM tokens pointing at the now-canceled
+		// device would survive until JWT expiry and become unattributable.
+		foreach ($siblingIds as $sid) {
+			$sql = "SELECT DISTINCT family_id FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sql .= " WHERE fk_user_creat = " . $user_id;
+			$sql .= " AND fk_device_id = " . $sid;
+			$sql .= " AND entity = " . $entity;
+			$sql .= " AND status = " . self::STATUS_VALID;
+			$sql .= " AND family_id IS NOT NULL";
+			$resql = $db->query($sql);
+			if (!$resql) {
+				dol_syslog("SmartAuth _collapseDuplicateLabelDevices select families failed for sid=$sid: " . $db->lasterror(), LOG_ERR);
+				continue;
+			}
+			$families = [];
+			while ($obj = $db->fetch_object($resql)) {
+				$families[] = (int) $obj->family_id;
+			}
+			foreach ($families as $fid) {
+				$this->_revokeTokenFamily($fid, 'duplicate_label_device_collapsed');
+			}
+			if (count($families) > 0) {
+				dol_syslog("SmartAuth _collapseDuplicateLabelDevices revoked " . count($families) . " cross-app families on sibling device=$sid for user=$user_id", LOG_INFO);
+			}
+		}
+
+		// Cancel the sibling device rows so the picker no longer offers them.
+		// Use the model's setCanceled() so triggers/dates are handled, with a
+		// SQL fallback if the entry isn't fetchable for some reason.
+		$canceledCount = 0;
+		foreach ($siblingIds as $sid) {
+			$sibling = new \SmartAuthDevices($db);
+			if ($sibling->fetch($sid) > 0) {
+				$actingUser = is_object($user) && !empty($user->id) ? $user : null;
+				if ($actingUser !== null && method_exists($sibling, 'setCanceled') && $sibling->setCanceled($actingUser, 1) > 0) {
+					$canceledCount++;
+					continue;
+				}
+			}
+			// Fallback: direct UPDATE if model path failed.
+			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
+			$sql .= " SET status = " . \SmartAuthDevices::STATUS_CANCELED;
+			$sql .= " WHERE rowid = " . (int) $sid;
+			if ($db->query($sql)) {
+				$canceledCount++;
+			} else {
+				dol_syslog("SmartAuth _collapseDuplicateLabelDevices cancel fallback failed for sid=$sid: " . $db->lasterror(), LOG_ERR);
+			}
+		}
+
+		dol_syslog("SmartAuth _collapseDuplicateLabelDevices collapsed " . $canceledCount . " sibling devices for user=$user_id label='$label' entity=$entity (kept device=$current_device_id)", LOG_INFO);
+
+		return $canceledCount;
 	}
 
 	/**
