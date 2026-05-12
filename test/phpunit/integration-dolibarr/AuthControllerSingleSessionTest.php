@@ -9,7 +9,6 @@ require_once __DIR__ . '/../../../class/smartauth.class.php';
 require_once __DIR__ . '/../../../class/smartauthdevices.class.php';
 
 use SmartAuth\Api\AuthController;
-use SmartAuth\Api\SmartTokenConfig;
 
 /**
  * Integration tests for the single-session-per-(user,device,app) invariant:
@@ -187,14 +186,18 @@ class AuthControllerSingleSessionTest extends DolibarrRealTestCase
     }
 
     /**
-     * Label collapse: user logs in on a fresh UUID, then names the new
-     * device with a label that already belongs to a previous device of
-     * his (typical case = app reinstalled / cookies cleared, "same"
-     * physical iPhone). The previous device row must be canceled and
-     * ALL its sessions revoked across every app -- the user cannot have
-     * "2 sessions on iPhone de Bertrand" anywhere.
+     * Logical-device grouping: a user names device A "iPhone de Bertrand",
+     * later names a fresh device B with the same label, and both technical
+     * rows now point at the SAME logical user_device parent. Cross-app
+     * sessions are preserved -- the previous "winner takes all" behaviour
+     * (revoke the sibling on rename) was the source of accidental
+     * sign-outs whenever a user re-tagged a PWA, and is replaced by the
+     * new smartauth_user_devices grouping. Revocation now only happens
+     * when the user explicitly clicks "revoke this device" on the
+     * logical row, which cascades through every attached technical row
+     * in one shot (covered separately in UserDeviceControllerTest).
      */
-    public function testRenamingNewDeviceToExistingLabelCollapsesSibling(): void
+    public function testRenamingNewDeviceToExistingLabelLinksToSameUserDevice(): void
     {
         global $smartAuthAppID, $user;
 
@@ -210,7 +213,9 @@ class AuthControllerSingleSessionTest extends DolibarrRealTestCase
         $firstFamilyA = (int) $obj->family_id;
         $firstDeviceId = (int) $obj->fk_device_id;
 
-        // Assign the label to the first device.
+        // Assign the label to the first device. This creates the logical
+        // user_device row "iPhone de Bertrand" and links the technical
+        // row to it.
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $firstLogin['access_token'];
         ob_start();
         $this->authController->device([
@@ -222,8 +227,8 @@ class AuthControllerSingleSessionTest extends DolibarrRealTestCase
         ob_end_clean();
 
         // --- Phase 2: same user opens a separate session on a DIFFERENT app
-        // (capCRM) from the same physical device -- this should survive
-        // the regular per-(user,device,app) revocation logic.
+        // (capCRM) from the same physical device -- this survives the
+        // per-(user,device,app) revocation logic.
         $smartAuthAppID = 500002;
         $firstLoginAppB = $this->login(); // same X-DeviceId still set
         $firstFamilyB = (int) $this->db->fetch_object($this->db->query(
@@ -246,7 +251,7 @@ class AuthControllerSingleSessionTest extends DolibarrRealTestCase
         $this->assertNotSame($firstDeviceId, $secondDeviceId, 'new UUID must yield a new device row');
 
         // --- Phase 4: user picks the existing label "iPhone de Bertrand"
-        // for this fresh device -> triggers the collapse.
+        // for this fresh device -> links to the same logical parent.
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $secondLogin['access_token'];
         ob_start();
         $this->authController->device([
@@ -257,32 +262,53 @@ class AuthControllerSingleSessionTest extends DolibarrRealTestCase
         ]);
         ob_end_clean();
 
-        // The previous device row must now be STATUS_CANCELED (=9).
+        // Both technical device rows must stay validated. The old
+        // "collapse" semantics is gone.
         $this->assertDatabaseHas('smartauth_devices', [
             'rowid' => $firstDeviceId,
-            'status' => \SmartAuthDevices::STATUS_CANCELED,
+            'status' => \SmartAuthDevices::STATUS_VALIDATED,
         ]);
-        // The kept device must remain validated.
         $this->assertDatabaseHas('smartauth_devices', [
             'rowid' => $secondDeviceId,
             'status' => \SmartAuthDevices::STATUS_VALIDATED,
         ]);
 
-        // BOTH previous families (app A + app B) must be revoked, even though
-        // only app A triggered the collapse. This is the cross-app reach.
+        // Every token family stays alive: PWAs on the same physical phone
+        // coexist regardless of when they were tagged.
         $this->assertDatabaseHas('smartauth_token_family', [
             'rowid' => $firstFamilyA,
-            'revoked' => 1,
+            'revoked' => 0,
         ]);
         $this->assertDatabaseHas('smartauth_token_family', [
             'rowid' => $firstFamilyB,
-            'revoked' => 1,
+            'revoked' => 0,
         ]);
-        // The newly created family on the kept device stays alive.
         $this->assertDatabaseHas('smartauth_token_family', [
             'rowid' => $secondFamily,
             'revoked' => 0,
         ]);
+
+        // Both technical devices now share the same logical parent.
+        $sql = "SELECT rowid, fk_user_device FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+        $sql .= " WHERE rowid IN (" . $firstDeviceId . "," . $secondDeviceId . ")";
+        $resql = $this->db->query($sql);
+        $parents = [];
+        while ($obj = $this->db->fetch_object($resql)) {
+            $parents[(int) $obj->rowid] = (int) $obj->fk_user_device;
+        }
+        $this->assertCount(2, $parents);
+        $this->assertGreaterThan(0, $parents[$firstDeviceId]);
+        $this->assertSame(
+            $parents[$firstDeviceId],
+            $parents[$secondDeviceId],
+            'Both technical devices must point at the same logical user_device'
+        );
+
+        // Exactly one logical user_device named "iPhone de Bertrand" exists.
+        $sql = "SELECT COUNT(*) AS cnt FROM " . MAIN_DB_PREFIX . "smartauth_user_devices";
+        $sql .= " WHERE fk_user = " . (int) $user->id . " AND label = 'iPhone de Bertrand'";
+        $count = (int) $this->db->fetch_object($this->db->query($sql))->cnt;
+        $this->assertSame(1, $count, 'a single logical user_device must back the shared label');
     }
 
     /**
@@ -342,6 +368,37 @@ class AuthControllerSingleSessionTest extends DolibarrRealTestCase
         $this->assertDatabaseHas('smartauth_token_family', [
             'rowid' => $familyA,
             'revoked' => 0,
+        ]);
+    }
+
+    /**
+     * Multi-entity safety: a device created while the active entity is 2 must
+     * be stamped entity=2 in the DB, NOT the table default of 1. Without this
+     * stamping, every downstream "WHERE entity = X" filter (token issuance,
+     * label collapse, device picker) silently misses the device.
+     *
+     * Note: AuthController::login() forces $conf->entity from the payload, so
+     * we steer the test via payload['entity']=2.
+     */
+    public function testDeviceCreationStampsCurrentEntity(): void
+    {
+        global $smartAuthAppID;
+
+        $smartAuthAppID = 500001;
+        $uuid = $this->generateUUID();
+        $_SERVER['HTTP_X_DEVICEID'] = $uuid;
+
+        $result = $this->authController->login([
+            'email' => 'admin',
+            'password' => 'adminadmin',
+            'entity' => 2,
+            'rememberMe' => 0,
+        ]);
+        $this->assertEquals(200, $result[1], 'login should succeed');
+
+        $this->assertDatabaseHas('smartauth_devices', [
+            'uuid' => $uuid,
+            'entity' => 2,
         ]);
     }
 

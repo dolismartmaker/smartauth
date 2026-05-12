@@ -300,3 +300,18 @@ NewLoginUnknownDevice=unknown device
 NewLoginReasonNewIp=New IP address used to sign in
 NewLoginReasonNewDevice=New device used to sign in
 NewLoginReasonNewBoth=New IP address and new device
+
+# Logical user devices (cross-PWA grouping)
+SmartAuthUserDeviceLabel=Device
+SmartAuthUserDeviceSessions=Connected apps
+SmartAuthUserDeviceLastSeen=Last seen
+SmartAuthUserDeviceEmpty=No device registered for this user yet.
+SmartAuthUserDeviceRevokeAction=Revoke this device
+SmartAuthUserDeviceRevokeConfirm=Are you sure you want to revoke "%s"? Every open session on this device will be terminated.
+SmartAuthUserDevicePickTitle=Which device are you using?
+SmartAuthUserDevicePickHint=If this device is not in the list, create it.
+SmartAuthUserDeviceNewLabel=New device
+SmartAuthUserDeviceIconPhone=Phone
+SmartAuthUserDeviceIconTablet=Tablet
+SmartAuthUserDeviceIconLaptop=Laptop
+SmartAuthUserDeviceIconDesktop=Desktop

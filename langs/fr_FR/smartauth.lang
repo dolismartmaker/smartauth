@@ -278,3 +278,18 @@ NewLoginUnknownDevice=appareil inconnu
 NewLoginReasonNewIp=Nouvelle adresse IP utilisée pour se connecter
 NewLoginReasonNewDevice=Nouvel appareil utilisé pour se connecter
 NewLoginReasonNewBoth=Nouvelle adresse IP et nouvel appareil
+
+# Logical user devices (cross-PWA grouping)
+SmartAuthUserDeviceLabel=Appareil
+SmartAuthUserDeviceSessions=Applications connectées
+SmartAuthUserDeviceLastSeen=Dernier accès
+SmartAuthUserDeviceEmpty=Aucun appareil enregistré pour cet utilisateur.
+SmartAuthUserDeviceRevokeAction=Révoquer cet appareil
+SmartAuthUserDeviceRevokeConfirm=Êtes-vous sûr de vouloir révoquer "%s" ? Toutes les sessions ouvertes sur cet appareil seront coupées.
+SmartAuthUserDevicePickTitle=Quel appareil utilisez-vous ?
+SmartAuthUserDevicePickHint=Si cet appareil n'est pas dans la liste, créez-le.
+SmartAuthUserDeviceNewLabel=Nouvel appareil
+SmartAuthUserDeviceIconPhone=Téléphone
+SmartAuthUserDeviceIconTablet=Tablette
+SmartAuthUserDeviceIconLaptop=Ordinateur portable
+SmartAuthUserDeviceIconDesktop=Ordinateur fixe

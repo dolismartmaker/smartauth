@@ -27,6 +27,7 @@ use SmartAuth\Api\ObjectDocumentController;
 use SmartAuth\Api\PwaController;
 use SmartAuth\Api\UploadController;
 use SmartAuth\Api\QrPairController;
+use SmartAuth\Api\Account\UserDeviceController;
 
 // ========== Auth Routes ========== //
 
@@ -136,6 +137,25 @@ Route::get('manifest.webmanifest', PwaController::class, 'manifest');
 
 // PWA icons (unprotected)
 Route::get('icon/{size}', PwaController::class, 'icon');
+
+// ========== Logical user devices (cross-PWA grouping) ========== //
+
+// List the authenticated user's logical devices (e.g. "mon iPhone").
+Route::get('account/user-devices', UserDeviceController::class, 'index', true);
+
+// Create a new logical device and link the current JWT device to it.
+// Body: { label, icon? }
+Route::post('account/user-devices', UserDeviceController::class, 'create', true);
+
+// Link the current JWT device row to an existing logical device.
+Route::post('account/user-devices/{id}/link', UserDeviceController::class, 'link', true);
+
+// Rename a logical device. Body: { label }
+Route::post('account/user-devices/{id}/rename', UserDeviceController::class, 'rename', true);
+
+// Cascade-revoke a logical device: every PWA session attached to it is
+// terminated in one shot.
+Route::delete('account/user-devices/{id}', UserDeviceController::class, 'revoke', true);
 
 // ========== Cross-device QR pairing (mobile side) ========== //
 
