@@ -169,7 +169,10 @@ function secureUnlink($path)
  */
 function mkdirAndCheck($path)
 {
-	if (mkdir($path)) {
+	if (is_dir($path)) {
+		return true;
+	}
+	if (mkdir($path, 0777, true)) {
 		clearstatcache();
 		if (is_dir($path)) {
 			return true;

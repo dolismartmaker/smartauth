@@ -23,11 +23,13 @@ namespace SmartAuth\Api;
 
 dol_include_once('/smartauth/api/tools.php');
 dol_include_once('/smartauth/class/smartauthdevices.class.php');
+dol_include_once('/smartauth/class/smartauthuserdevice.class.php');
 
 use User;
 use Exception;
 use SmartAuth;
 use SmartAuthDevices;
+use SmartAuthUserDevice;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use SmartAuth\Api\RateLimiter;
@@ -473,6 +475,17 @@ class AuthController
 			$devices_choice = $this->_getAllDevicesForUser($tmpuser->id);
 		}
 
+		// New logical-device layer. The technical row in smartauth_devices
+		// either already points at a smartauth_user_devices parent (the
+		// physical phone has been declared on a previous login of any of
+		// this user's PWAs) or it does not. If not, surface the picker so
+		// the mobile can ask "which of your devices is this?" and call
+		// /account/user-devices/{id}/link or POST /account/user-devices.
+		$logicalDeviceContext = $this->_resolveLogicalDeviceContext((int) $tmpuser->id, (int) $device_id, (int) $entity);
+		if (!empty($logicalDeviceContext['linked_user_device_id'])) {
+			$this->_touchUserDeviceLastseen((int) $logicalDeviceContext['linked_user_device_id']);
+		}
+
 		if (empty($tmpuser->email)) {
 			$userlogin = $tmpuser->login;
 		}
@@ -496,6 +509,12 @@ class AuthController
 			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
 			'token_type' => 'Bearer',
 			'devices_choice' => $devices_choice,
+			// Logical-device picker hints. Mobile clients on the new
+			// smartcommon code path consume these two fields and ignore
+			// devices_choice; legacy clients keep working unchanged
+			// because the legacy field is still populated above.
+			'needs_device_pick' => $logicalDeviceContext['needs_device_pick'],
+			'existing_user_devices' => $logicalDeviceContext['existing_user_devices'],
 			'rememberMe' => $rememberme,
 			'must_change_password' => $mustChangePassword,
 			// Three versions exposed so the PWA can populate its About modal
@@ -638,13 +657,23 @@ class AuthController
 						$message = "";
 						$device->validate($user);
 
-						// Single-iPhone-de-Bertrand invariant: when this label
-						// already exists on other devices of the same user
-						// (typical case = app reinstalled, new UUID, same
-						// physical phone), revoke their sessions for the
-						// current app and cancel the stale device rows.
-						$deviceEntity = (int) ($device->entity ?? $user->entity ?? 1);
-						$this->_collapseDuplicateLabelDevices(
+						// $device->entity is not always hydrated by fetch();
+						// pull the canonical entity from the row itself.
+						$entSql = "SELECT entity FROM " . MAIN_DB_PREFIX . "smartauth_devices WHERE rowid = " . (int) $device->id;
+						$entRes = $db->query($entSql);
+						$entRow = $entRes ? $db->fetch_object($entRes) : null;
+						$deviceEntity = $entRow !== null ? (int) $entRow->entity : (int) ($user->entity ?? 1);
+
+						// Logical-device sync: the previous behaviour was to
+						// collapse every sibling row that shared this label
+						// (winner takes all). It killed cross-app sessions
+						// every time the user renamed a device. Now the
+						// rename is recorded into the new logical layer
+						// instead: find or create the matching user_device
+						// row and attach this technical device to it. The
+						// label on llx_smartauth_devices is kept in sync so
+						// legacy queries still see the label.
+						$this->_syncLogicalDeviceForRenamedTechnical(
 							(int) $user->id,
 							(int) $device->id,
 							(string) $new_name,
@@ -1442,7 +1471,7 @@ class AuthController
 	 */
 	private function _collapseDuplicateLabelDevices($user_id, $current_device_id, $label, $entity)
 	{
-		global $db, $user;
+		global $db;
 
 		$user_id = (int) $user_id;
 		$current_device_id = (int) $current_device_id;
@@ -1507,27 +1536,19 @@ class AuthController
 		}
 
 		// Cancel the sibling device rows so the picker no longer offers them.
-		// Use the model's setCanceled() so triggers/dates are handled, with a
-		// SQL fallback if the entry isn't fetchable for some reason.
+		// Direct UPDATE rather than SmartAuthDevices::setCanceled() because the
+		// latter only accepts transitions from STATUS_VALIDATED and we want to
+		// cancel uniformly regardless of the sibling's current state (DRAFT,
+		// VALIDATED, ...). Triggers on cancellation are not needed here.
 		$canceledCount = 0;
-		foreach ($siblingIds as $sid) {
-			$sibling = new \SmartAuthDevices($db);
-			if ($sibling->fetch($sid) > 0) {
-				$actingUser = is_object($user) && !empty($user->id) ? $user : null;
-				if ($actingUser !== null && method_exists($sibling, 'setCanceled') && $sibling->setCanceled($actingUser, 1) > 0) {
-					$canceledCount++;
-					continue;
-				}
-			}
-			// Fallback: direct UPDATE if model path failed.
-			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
-			$sql .= " SET status = " . \SmartAuthDevices::STATUS_CANCELED;
-			$sql .= " WHERE rowid = " . (int) $sid;
-			if ($db->query($sql)) {
-				$canceledCount++;
-			} else {
-				dol_syslog("SmartAuth _collapseDuplicateLabelDevices cancel fallback failed for sid=$sid: " . $db->lasterror(), LOG_ERR);
-			}
+		$idsList = implode(',', array_map('intval', $siblingIds));
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
+		$sql .= " SET status = " . \SmartAuthDevices::STATUS_CANCELED;
+		$sql .= " WHERE rowid IN (" . $idsList . ")";
+		if ($db->query($sql)) {
+			$canceledCount = count($siblingIds);
+		} else {
+			dol_syslog("SmartAuth _collapseDuplicateLabelDevices cancel UPDATE failed: " . $db->lasterror(), LOG_ERR);
 		}
 
 		dol_syslog("SmartAuth _collapseDuplicateLabelDevices collapsed " . $canceledCount . " sibling devices for user=$user_id label='$label' entity=$entity (kept device=$current_device_id)", LOG_INFO);
@@ -1814,11 +1835,17 @@ class AuthController
 		}
 
 		if ($deviceid <= 0) {
+			// Stamp the device with the active Dolibarr entity. Without this
+			// the column took DEFAULT 1 and any login from entity != 1 ended
+			// up cross-leaking through every "WHERE entity = X" filter
+			// downstream (token issuance, label collapse, picker, etc.).
+			$insertEntity = (int) ($conf->entity ?? 1);
 			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
-			$sql .= " (uuid, fk_user_creat, date_creation, status)";
+			$sql .= " (uuid, fk_user_creat, date_creation, status, entity)";
 			$sql .= " VALUES ('" . substr($db->escape($device_uuid), 0, 64) . "', ";
 			$sql .= (int) $user_id . ", ";
-			$sql .= "'" . $db->idate(time()) . "', " . self::STATUS_DRAFT . ")";
+			$sql .= "'" . $db->idate(time()) . "', " . self::STATUS_DRAFT . ", ";
+			$sql .= $insertEntity . ")";
 
 			$resql = $db->query($sql);
 			if (!$resql) {
@@ -2086,13 +2113,132 @@ class AuthController
 		// caller that bypasses the user-driven login flow.
 		$this->_maybeNotifyNewLogin($user, $device_id);
 
+		$logicalDeviceContext = $this->_resolveLogicalDeviceContext((int) $user->id, (int) $device_id, (int) $entity);
+		if (!empty($logicalDeviceContext['linked_user_device_id'])) {
+			$this->_touchUserDeviceLastseen((int) $logicalDeviceContext['linked_user_device_id']);
+		}
+
 		return [
 			'access_token' => $tokens['access_token'],
 			'refresh_token' => $tokens['refresh_token'],
 			'expires_in' => SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
 			'device_uuid' => $device_uuid_for_db,
 			'devices_choice' => $this->_getAllDevicesForUser($user->id),
+			'needs_device_pick' => $logicalDeviceContext['needs_device_pick'],
+			'existing_user_devices' => $logicalDeviceContext['existing_user_devices'],
 		];
+	}
+
+	/**
+	 * Resolve the logical-device context for a freshly-issued JWT.
+	 *
+	 * Inspects the technical smartauth_devices row to see whether it
+	 * already points at a logical smartauth_user_devices parent. If it
+	 * does, returns the parent id so the caller can update its
+	 * date_lastseen. If it does not, returns the list of active logical
+	 * devices the user already owns so the mobile can render a picker
+	 * and call /account/user-devices/{id}/link or POST /account/user-devices.
+	 *
+	 * @return array{needs_device_pick: bool, existing_user_devices: array<int,array<string,mixed>>, linked_user_device_id: int}
+	 */
+	private function _resolveLogicalDeviceContext(int $userId, int $technicalDeviceId, int $entity): array
+	{
+		global $db;
+
+		$linked = 0;
+		if ($technicalDeviceId > 0) {
+			$sql = "SELECT fk_user_device FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+			$sql .= " WHERE rowid = " . $technicalDeviceId;
+			$resql = $db->query($sql);
+			if ($resql) {
+				$obj = $db->fetch_object($resql);
+				if ($obj && $obj->fk_user_device !== null && $obj->fk_user_device !== '') {
+					$linked = (int) $obj->fk_user_device;
+				}
+			}
+		}
+
+		if ($linked > 0) {
+			return [
+				'needs_device_pick' => false,
+				'existing_user_devices' => [],
+				'linked_user_device_id' => $linked,
+			];
+		}
+
+		$repo = new SmartAuthUserDevice($db);
+		$rows = $repo->listForUser($userId, $entity);
+
+		$existing = [];
+		foreach ($rows as $row) {
+			$existing[] = [
+				'id' => (int) $row['rowid'],
+				'label' => (string) $row['label'],
+				'icon' => (string) $row['icon'],
+				'date_creation' => $row['date_creation'],
+				'date_lastseen' => $row['date_lastseen'],
+				'session_count' => (int) ($row['session_count'] ?? 0),
+			];
+		}
+
+		return [
+			'needs_device_pick' => true,
+			'existing_user_devices' => $existing,
+			'linked_user_device_id' => 0,
+		];
+	}
+
+	/**
+	 * Bump date_lastseen on a logical user_device. Cheap UPDATE used at
+	 * every login that targets a device already attached to a parent.
+	 */
+	private function _touchUserDeviceLastseen(int $userDeviceId): void
+	{
+		global $db;
+		if ($userDeviceId <= 0) {
+			return;
+		}
+		$repo = new SmartAuthUserDevice($db);
+		$repo->touchLastseen($userDeviceId);
+	}
+
+	/**
+	 * Replacement for _collapseDuplicateLabelDevices in the /device
+	 * rename path: instead of revoking siblings that share the same
+	 * label, attach this technical device to the matching logical
+	 * user_device row (creating one if necessary). Other PWAs of the
+	 * same physical device that were never tagged stay alive; once
+	 * they hit /device themselves with the same label, they'll converge
+	 * onto the same parent.
+	 */
+	private function _syncLogicalDeviceForRenamedTechnical(int $userId, int $technicalDeviceId, string $label, int $entity): void
+	{
+		global $db;
+		$label = SmartAuthUserDevice::normaliseLabel($label);
+		if ($userId <= 0 || $technicalDeviceId <= 0 || $label === '') {
+			return;
+		}
+
+		$repo = new SmartAuthUserDevice($db);
+		$existing = $repo->findByLabel($userId, $label, $entity);
+		if ($existing === null) {
+			$rowid = $repo->create($userId, $label, SmartAuthUserDevice::ICON_PHONE, $entity);
+			if ($rowid <= 0) {
+				dol_syslog("SmartAuth _syncLogicalDeviceForRenamedTechnical: create returned $rowid for user=$userId label='$label'", LOG_WARNING);
+				return;
+			}
+			$userDeviceId = $rowid;
+		} else {
+			$userDeviceId = (int) $existing['rowid'];
+			if ((int) $existing['status'] !== SmartAuthUserDevice::STATUS_ACTIVE) {
+				dol_syslog("SmartAuth _syncLogicalDeviceForRenamedTechnical: existing user_device $userDeviceId is revoked, skipping link", LOG_WARNING);
+				return;
+			}
+		}
+
+		if (!$repo->linkTechnicalDevice($userDeviceId, $technicalDeviceId, $userId, $entity)) {
+			dol_syslog("SmartAuth _syncLogicalDeviceForRenamedTechnical: link failed user_device=$userDeviceId tech=$technicalDeviceId", LOG_WARNING);
+		}
 	}
 
 	/**

@@ -170,6 +170,37 @@ class NewLoginNotifier
         // lookback window. A device a user has used before is not "new"
         // even if dormant. The lookback parameter is purely an IP-side
         // filter to keep alerts useful for travelling users.
+        //
+        // Logical-device layer: once Thomas has declared "mon iPhone"
+        // and any PWA on that phone has earned a fk_user_device parent,
+        // every other PWA on the same phone (sharing the parent) is
+        // considered "known device" too. Without this, installing a 4th
+        // PWA on a known phone would still fire a new-login alert and
+        // waste the user's attention.
+        $parentUserDevice = $this->parentUserDeviceOf($deviceId);
+
+        if ($parentUserDevice > 0) {
+            $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "smartauth_auth a";
+            $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "smartauth_devices d ON d.rowid = a.fk_device_id";
+            $sql .= " WHERE a.fk_authid = " . $userId;
+            $sql .= " AND a.auth_element = 'user'";
+            $sql .= " AND d.fk_user_device = " . $parentUserDevice;
+            $sql .= " AND a.date_creation < '" . $this->db->idate(dol_now() - 1) . "'";
+            $sql .= " LIMIT 1";
+            $resql = $this->db->query($sql);
+            if ($resql) {
+                $obj = $this->db->fetch_object($resql);
+                if ($obj !== false && $obj !== null) {
+                    return true;
+                }
+            }
+            // Fall through to the strict per-device check too. The
+            // technical device might be brand new but already attached
+            // to a parent that no other PWA has used yet (legacy data),
+            // in which case we still want to honour the "exact same
+            // fk_device_id seen before" semantics.
+        }
+
         $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "smartauth_auth";
         $sql .= " WHERE fk_authid = " . $userId;
         $sql .= " AND auth_element = 'user'";
@@ -184,12 +215,35 @@ class NewLoginNotifier
         return $obj !== false && $obj !== null;
     }
 
+    /**
+     * Resolve the logical-device parent of a technical smartauth_devices
+     * row, if any. Returns 0 when the row has no parent (legacy or not
+     * yet sorted by the user).
+     */
+    private function parentUserDeviceOf(int $deviceId): int
+    {
+        if ($deviceId <= 0) {
+            return 0;
+        }
+        $sql = "SELECT fk_user_device FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+        $sql .= " WHERE rowid = " . $deviceId;
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            return 0;
+        }
+        $obj = $this->db->fetch_object($resql);
+        if (!$obj || $obj->fk_user_device === null || $obj->fk_user_device === '') {
+            return 0;
+        }
+        return (int) $obj->fk_user_device;
+    }
+
     private function lookupDeviceLabel(int $deviceId): string
     {
         if ($deviceId <= 0) {
             return '';
         }
-        $sql = "SELECT label, ref, uuid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+        $sql = "SELECT label, ref, uuid, fk_user_device FROM " . MAIN_DB_PREFIX . "smartauth_devices";
         $sql .= " WHERE rowid = " . $deviceId;
         $resql = $this->db->query($sql);
         if (!$resql) {
@@ -198,6 +252,20 @@ class NewLoginNotifier
         $obj = $this->db->fetch_object($resql);
         if (!$obj) {
             return '';
+        }
+        // Prefer the logical-device label when this technical row has a
+        // parent: it is the name the user himself chose ("mon iPhone")
+        // rather than whatever happened to be saved on the per-PWA row.
+        if (!empty($obj->fk_user_device)) {
+            $sql = "SELECT label FROM " . MAIN_DB_PREFIX . "smartauth_user_devices";
+            $sql .= " WHERE rowid = " . (int) $obj->fk_user_device;
+            $resql = $this->db->query($sql);
+            if ($resql) {
+                $parent = $this->db->fetch_object($resql);
+                if ($parent && !empty($parent->label)) {
+                    return (string) $parent->label;
+                }
+            }
         }
         if (!empty($obj->label)) {
             return (string) $obj->label;

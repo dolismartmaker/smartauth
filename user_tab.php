@@ -71,6 +71,7 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/functions.lib.php';
 dol_include_once('/smartauth/class/smartauth.class.php');
 dol_include_once('/smartauth/class/smartlogs.class.php');
 dol_include_once('/smartauth/class/smartauthqrpairing.class.php');
+dol_include_once('/smartauth/class/smartauthuserdevice.class.php');
 dol_include_once('/smartauth/api/RouteController.php');
 dol_include_once('/smartauth/lib/tools.php');
 
@@ -370,6 +371,50 @@ if ($qrpairAction === 'qrpairgenerate' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') 
 	exit;
 }
 
+// =====================================================================
+// Logical user-device handlers (rename / revoke). Only the owner of the
+// devices being touched is allowed to act; cross-user requests get a
+// hard accessforbidden(). Both actions follow the POST -> 303 PRG
+// pattern so a refresh after submit does not re-execute the action.
+// =====================================================================
+$userDeviceAction = (string) $action;
+if (in_array($userDeviceAction, array('userdevicerevoke', 'userdevicerename'), true)
+	&& ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
+) {
+	if ((int) $user->id !== (int) $id) {
+		accessforbidden();
+	}
+	if (newToken() !== (string) GETPOST('token', 'alpha')) {
+		accessforbidden();
+	}
+
+	$udEntity = (int) ($conf->entity ?? 1);
+	$udRepo = new SmartAuthUserDevice($db);
+	$udId = (int) GETPOST('user_device_id', 'int');
+
+	if ($udId > 0) {
+		if ($userDeviceAction === 'userdevicerevoke') {
+			$udRepo->revoke($udId, (int) $user->id, $udEntity);
+		} elseif ($userDeviceAction === 'userdevicerename') {
+			$udNewLabel = SmartAuthUserDevice::normaliseLabel((string) GETPOST('new_label', 'alphanohtml'));
+			if ($udNewLabel !== '') {
+				$udRepo->rename($udId, (int) $user->id, $udNewLabel, $udEntity);
+				// Keep llx_smartauth_devices.label in sync so legacy
+				// queries see the new name immediately.
+				$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_devices";
+				$sql .= " SET label = '" . $db->escape($udNewLabel) . "'";
+				$sql .= " WHERE fk_user_device = " . $udId;
+				$sql .= " AND fk_user_creat = " . ((int) $user->id);
+				$sql .= " AND entity = " . $udEntity;
+				$db->query($sql);
+			}
+		}
+	}
+
+	header('Location: ' . $_SERVER['PHP_SELF'] . '?id=' . ((int) $id), true, 303);
+	exit;
+}
+
 if (GETPOST('cancel', 'alpha')) {
 	$action = 'list';
 	$massaction = '';
@@ -551,6 +596,76 @@ if ($object->id) {
 
 	print '<div class="fichecenter">';
 
+	// ------------------------------------------------------------------------------------------------------------ LOGICAL DEVICES
+	// "Mes appareils" : one logical row per physical device the user
+	// declared. Several PWAs on the same phone collapse into a single
+	// line here; clicking "Révoquer cet appareil" cascades through every
+	// session attached to the parent in one shot.
+	$udEntity = (int) ($conf->entity ?? 1);
+	$udRepo = new SmartAuthUserDevice($db);
+	$udRows = $udRepo->listForUser((int) $id, $udEntity);
+	$udIsOwner = ((int) $user->id === (int) $id);
+
+	print '<div class="div-table-responsive-no-min" style="margin-bottom:18px;">';
+	print '<table class="noborder centpercent">';
+	print '<thead><tr class="liste_titre">';
+	print '<th>' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceLabel')) . '</th>';
+	print '<th class="center">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceSessions')) . '</th>';
+	print '<th class="center">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceLastSeen')) . '</th>';
+	if ($udIsOwner) {
+		print '<th class="right">' . dol_escape_htmltag($langs->trans('Actions')) . '</th>';
+	}
+	print '</tr></thead><tbody>';
+
+	if (empty($udRows)) {
+		$colspan = $udIsOwner ? 4 : 3;
+		print '<tr><td colspan="' . $colspan . '" class="opacitymedium">';
+		print dol_escape_htmltag($langs->trans('SmartAuthUserDeviceEmpty'));
+		print '</td></tr>';
+	} else {
+		$udIconMap = array(
+			SmartAuthUserDevice::ICON_PHONE => 'fa-mobile-alt',
+			SmartAuthUserDevice::ICON_TABLET => 'fa-tablet-alt',
+			SmartAuthUserDevice::ICON_LAPTOP => 'fa-laptop',
+			SmartAuthUserDevice::ICON_DESKTOP => 'fa-desktop',
+		);
+		foreach ($udRows as $udRow) {
+			$udIconClass = $udIconMap[$udRow['icon']] ?? 'fa-mobile-alt';
+			print '<tr class="oddeven">';
+			print '<td>';
+			print '<i class="fas ' . $udIconClass . '" aria-hidden="true" style="margin-right:6px;"></i>';
+			print dol_escape_htmltag((string) $udRow['label']);
+			print '</td>';
+			print '<td class="center">' . (int) ($udRow['session_count'] ?? 0) . '</td>';
+			print '<td class="center">';
+			print !empty($udRow['date_lastseen']) ? dol_print_date($db->jdate($udRow['date_lastseen']), 'dayhour') : '-';
+			print '</td>';
+			if ($udIsOwner) {
+				$udRowId = (int) $udRow['rowid'];
+				print '<td class="right">';
+				// Rename form (inline, label-only).
+				print '<form method="POST" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . ((int) $id) . '" style="display:inline-block;margin-right:8px;">';
+				print '<input type="hidden" name="action" value="userdevicerename">';
+				print '<input type="hidden" name="token" value="' . newToken() . '">';
+				print '<input type="hidden" name="user_device_id" value="' . $udRowId . '">';
+				print '<input type="text" name="new_label" maxlength="100" value="' . dol_escape_htmltag((string) $udRow['label']) . '" style="width:140px;">';
+				print '<button type="submit" class="butAction" style="padding:2px 8px;font-size:12px;">' . dol_escape_htmltag($langs->trans('Rename')) . '</button>';
+				print '</form>';
+				// Revoke form (with JS confirm).
+				$udConfirmMsg = $langs->transnoentities('SmartAuthUserDeviceRevokeConfirm', $udRow['label']);
+				print '<form method="POST" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . ((int) $id) . '" style="display:inline-block;" onsubmit="return confirm(' . htmlspecialchars(json_encode($udConfirmMsg), ENT_QUOTES, 'UTF-8') . ');">';
+				print '<input type="hidden" name="action" value="userdevicerevoke">';
+				print '<input type="hidden" name="token" value="' . newToken() . '">';
+				print '<input type="hidden" name="user_device_id" value="' . $udRowId . '">';
+				print '<button type="submit" class="butActionDelete" style="padding:2px 8px;font-size:12px;">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceRevokeAction')) . '</button>';
+				print '</form>';
+				print '</td>';
+			}
+			print '</tr>';
+		}
+	}
+	print '</tbody></table>';
+	print '</div>';
 
 	// ------------------------------------------------------------------------------------------------------------ API KEYS
 	//note eric attention truandage, object était user et passe maintenant Auth ...

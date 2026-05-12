@@ -990,6 +990,21 @@ class SmartAuth extends CommonObject
 			dol_syslog("SmartAuth::doScheduledJob oauth_tokens deleteExpired removed $tokensExpired rows");
 		}
 
+		// Upload idempotency cache: completed rows live for 24h (covers
+		// the worst-case client retry window of ~10min many times over);
+		// processing rows live 10min so a process killed between INSERT
+		// and UPDATE cannot block the same key indefinitely.
+		dol_include_once('/smartauth/class/smartauthuploadidempotency.class.php');
+		$idemRepo = new \SmartAuthUploadIdempotency($this->db);
+		$idemDeleted = $idemRepo->deleteOld(86400);
+		if ($idemDeleted >= 0) {
+			dol_syslog("SmartAuth::doScheduledJob upload_idempotency deleteOld removed $idemDeleted rows");
+		}
+		$idemStale = $idemRepo->deleteStaleProcessing(600);
+		if ($idemStale >= 0) {
+			dol_syslog("SmartAuth::doScheduledJob upload_idempotency deleteStaleProcessing removed $idemStale rows");
+		}
+
 		$this->db->commit();
 		return $error;
 	}
