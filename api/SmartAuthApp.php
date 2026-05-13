@@ -76,12 +76,33 @@ class SmartAuthApp
     }
 
     /**
-     * Pinned smartauth version. Single source of truth for clients that
-     * want to display "smartauth X.Y.Z" in their About screen. Kept in sync
-     * with core/modules/modSmartauth.class.php::$version on every release.
+     * Running smartauth version, for clients that want to display
+     * "smartauth X.Y.Z" in their About screen.
+     *
+     * Primary source: llx_const, written by modSmartauth::init() at every
+     * (re)activation/upgrade as SMARTAUTH_MODULE_VERSION (same convention
+     * as PEPPOL_MODULE_VERSION etc.). Read is a cheap getDolGlobalString().
+     *
+     * Fallback: if the constant is missing (fresh code update before the
+     * admin re-activates the module), parse the descriptor with the exact
+     * same regex buildzip.php uses to extract the version literal, so the
+     * two stay aligned by construction.
      */
     public static function smartauthVersion(): string
     {
-        return '2.0.15';
+        $v = (string) getDolGlobalString('SMARTAUTH_MODULE_VERSION');
+        if ($v !== '') {
+            return $v;
+        }
+        $descriptor = __DIR__ . '/../core/modules/modSmartauth.class.php';
+        if (is_readable($descriptor)) {
+            $content = @file_get_contents($descriptor);
+            if ($content !== false
+                && preg_match("/^.*this->version\s*=\s*'(?<version>[^']+)'\s*;/m", $content, $m)
+            ) {
+                return $m['version'];
+            }
+        }
+        return 'unknown';
     }
 }
