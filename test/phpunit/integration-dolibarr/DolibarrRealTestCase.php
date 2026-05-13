@@ -99,20 +99,46 @@ abstract class DolibarrRealTestCase extends TestCase
     }
 
     /**
-     * Clean SmartAuth tables between tests
+     * Wipe SmartAuth data tables between tests.
+     *
+     * Discovers tables at runtime by listing everything that matches
+     * MAIN_DB_PREFIX . 'smartauth_%' in the live schema, which is
+     * authoritative since modSmartauth::init() loaded it. We never
+     * hard-code a list here: any new SQL file picked up by init() is
+     * automatically wiped without touching this method.
+     *
+     * Skips:
+     *   - *_extrafields tables: these hold extrafield DEFINITIONS, not
+     *     runtime data, and are populated by init() itself.
      */
     protected function cleanSmartAuthTables(): void
     {
-        $tables = [
-            'smartauth_auth',
-            'smartauth_devices',
-            'smartauth_token_family',
-            'smartauth_ratelimit',
-            'smartauth_logs'
-        ];
+        $prefix = MAIN_DB_PREFIX;
+        $like   = $prefix . 'smartauth_%';
+        $isSqlite = (isset($this->db->type) && in_array($this->db->type, ['sqlite', 'sqlite3'], true));
 
-        foreach ($tables as $table) {
-            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . $table);
+        if ($isSqlite) {
+            $resql = $this->db->query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '" . $this->db->escape($like) . "'");
+        } else {
+            $resql = $this->db->query("SHOW TABLES LIKE '" . $this->db->escape($like) . "'");
+        }
+        if (!$resql) {
+            return;
+        }
+
+        while ($obj = $this->db->fetch_object($resql)) {
+            // sqlite_master returns the column as "name"; SHOW TABLES
+            // returns a single column whose name varies per server. Read
+            // the first column whatever it is called.
+            $row   = (array) $obj;
+            $table = (string) reset($row);
+            if ($table === '' || strpos($table, $prefix) !== 0) {
+                continue;
+            }
+            if (substr($table, -strlen('_extrafields')) === '_extrafields') {
+                continue;
+            }
+            $this->db->query("DELETE FROM " . $table);
         }
     }
 
