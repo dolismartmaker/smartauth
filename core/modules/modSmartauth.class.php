@@ -72,7 +72,7 @@ class modSmartauth extends DolibarrModules
 		$this->editor_url = 'https://cap-rel.fr/';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.0.15';
+		$this->version = '2.0.16';
 		// Url to the file with your last numberversion of this module
 		$this->url_last_version = "https://cap-rel.fr/dolibarr/ver.php?m=" . $this->rights_class . "&v=" . $this->version . "&d=" . DOL_VERSION . "&h=" . md5(DOL_DATA_ROOT);
 
@@ -434,6 +434,11 @@ class modSmartauth extends DolibarrModules
 				$m->flush(1);
 			}
 		}
+
+		// Publish running version so SmartAuthApp::smartauthVersion() (and any
+		// other consumer) can read it via getDolGlobalString() instead of
+		// parsing this file. Same convention as PEPPOL_MODULE_VERSION etc.
+		dolibarr_set_const($this->db, 'SMARTAUTH_MODULE_VERSION', $this->version, 'chaine', 0, 'Active module version', $conf->entity);
 
 		return $this->_init($sql, $options);
 	}

@@ -1,7 +1,9 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 2.0.15 -- 20260508
+## 2.0.16 -- 20260513
 
+ - Add Idempotency-Key support on POST /upload
+ - Better auto tests
  - Add extrafield for ecmfiles annotations
  - Add qr code pairing process + mail warning
 
