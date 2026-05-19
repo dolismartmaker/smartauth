@@ -769,8 +769,12 @@ class RegistrationService
         }
 
         $user = new \User($this->db);
-        $user->fk_soc = $thirdpartyId;
-        $user->fk_socpeople = $contactId;
+        // Note: fk_soc and fk_socpeople are NOT assigned here.
+        // User::create() ships a minimal INSERT that ignores them anyway
+        // (see comment above the UPDATE below), and \User does not
+        // declare these properties so assigning them would trigger
+        // a PHP 8.2 "Creation of dynamic property" deprecation. The
+        // explicit UPDATE further down materialises them in DB.
         $user->login = $this->generateUniqueLogin($email);
         $user->email = $email;
         $user->firstname = $firstname ?? '';
@@ -803,9 +807,13 @@ class RegistrationService
             dol_syslog('SmartAuth RegistrationService: failed to materialise external user fields for user ' . $user->id, LOG_ERR);
             return -1;
         }
+        // $statut is declared on \User, OK to assign for in-memory
+        // coherence. fk_soc / fk_socpeople are NOT declared on \User
+        // and the caller only uses $user->id from this method, so we
+        // skip them to avoid the PHP 8.2 dynamic-property deprecation
+        // (the DB row already carries the correct values via the UPDATE
+        // above).
         $user->statut = 0;
-        $user->fk_soc = $thirdpartyId;
-        $user->fk_socpeople = $contactId;
 
         $passwordResult = $user->setPassword($admin, $password, 0, 0, 1, 0);
         if ($passwordResult < 0) {
