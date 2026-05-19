@@ -45,6 +45,7 @@ $listOfModuleContent = [
 	'js',
 	'langs',
 	'lib',
+	'public',
 	'sql',
 	'tpl',
 	'vendor',
