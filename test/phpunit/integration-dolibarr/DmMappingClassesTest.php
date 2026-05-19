@@ -32,28 +32,28 @@ class DmMappingClassesTest extends DolibarrRealTestCase
         'dmBank' => ['object', false, 'dmAccountLine'],
         'dmBankAccount' => ['object', false, 'dmAccount'],
         'dmBom' => ['object', true, null],
-        'dmCactiontype' => ['dictionary', false, null],
+        'dmCactiontype' => ['dict', false, null],
         'dmCategory' => ['object', false, null],
-        'dmCavailability' => ['dictionary', false, null],
+        'dmCavailability' => ['dict', false, null],
         'dmCcivility' => ['dict', false, null],
         'dmCcountry' => ['dict', false, null],
-        'dmCincoterm' => ['dictionary', false, null],
+        'dmCincoterm' => ['dict', false, null],
         'dmCompanyBankAccount' => ['object', false, null],
         'dmContact' => ['object', false, null],
         'dmContract' => ['object', true, 'dmContrat'],
-        'dmCpaymentterm' => ['dictionary', false, null],
-        'dmCpaymenttype' => ['dictionary', false, null],
-        'dmCprospectstatus' => ['dictionary', false, null],
-        'dmCshipmentmode' => ['dictionary', false, null],
+        'dmCpaymentterm' => ['dict', false, null],
+        'dmCpaymenttype' => ['dict', false, null],
+        'dmCprospectstatus' => ['dict', false, null],
+        'dmCshipmentmode' => ['dict', false, null],
         'dmCstate' => ['dict', false, null],
-        'dmCstcomm' => ['dictionary', false, null],
-        'dmCticketcategory' => ['dictionary', false, null],
-        'dmCticketresolution' => ['dictionary', false, null],
-        'dmCticketseverity' => ['dictionary', false, null],
-        'dmCtickettype' => ['dictionary', false, null],
-        'dmCtypecontact' => ['dictionary', false, null],
-        'dmCtypent' => ['dictionary', false, null],
-        'dmCunits' => ['dictionary', false, null],
+        'dmCstcomm' => ['dict', false, null],
+        'dmCticketcategory' => ['dict', false, null],
+        'dmCticketresolution' => ['dict', false, null],
+        'dmCticketseverity' => ['dict', false, null],
+        'dmCtickettype' => ['dict', false, null],
+        'dmCtypecontact' => ['dict', false, null],
+        'dmCtypent' => ['dict', false, null],
+        'dmCunits' => ['dict', false, null],
         'dmDeliveryNote' => ['object', false, 'dmLivraison'],
         'dmDonation' => ['object', false, null],
         'dmExpenseReport' => ['object', true, null],
@@ -466,7 +466,7 @@ class DmMappingClassesTest extends DolibarrRealTestCase
     {
         $data = [];
         foreach (self::$mappingClasses as $className => $config) {
-            if ($config[0] === 'dictionary') {
+            if ($config[0] === 'dict') {
                 $data[$className] = [$className];
             }
         }
