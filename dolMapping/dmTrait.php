@@ -264,7 +264,12 @@ trait dmTrait
 			}
 			// dol_syslog("SmartAuth ".get_class($this) . " _objectDesc : call extrafieldsFilter ...");
 			$obj->$appside = $this->_dolmapping->extrafieldsFilter($parentElementToUseForExtraFields, $extrakey, $appside, $extrafields);
-			$reorder[$obj->$appside['position']] = $appside;
+			// Mirror the guarded reorder above: extrafieldsFilter may return
+			// an array without 'position' (or a scalar value at export time);
+			// accessing a missing key emits a notice under PHP 8.
+			if (isset($obj->$appside['position'])) {
+				$reorder[$obj->$appside['position']] = $appside;
+			}
 		}
 
 		if (isset($this->_dolmapping)) {
@@ -524,31 +529,33 @@ trait dmTrait
 
 		$mapped = new \stdClass;
 		foreach ($this->listOfPublishedFields as $doliside => $appside) {
-			//race condition for fk_soc : dolibarr change it to socid
-			if ($doliside == "fk_soc") {
-				//to keep generic process on smart*
-				if (!empty($obj->socid)) {
-					$obj->fk_soc = $obj->socid;
-				}
+			// Resolve the source value without mutating $obj.
+			//
+			// Two Dolibarr conventions complicate the lookup:
+			//   - 'rowid' is the SQL column name, but CommonObject exposes
+			//     the same value via $this->id. Modern Dolibarr classes
+			//     (Societe, Product, etc.) do NOT declare $rowid as a
+			//     property, so reading $obj->rowid would trigger a PHP 8.2
+			//     "Creation of dynamic property" warning if we tried to
+			//     assign it back. Read $obj->id and fall back to $obj->rowid
+			//     only when the legacy property exists (raw row case).
+			//   - 'fk_soc' similarly: some classes expose $socid instead.
+			// Reading defensively keeps the mapper compatible with both
+			// fetched objects and raw SELECT rows (no property-creation
+			// side effect).
+			//
+			// The trailing ?? null is the catch-all: a mapper can publish
+			// keys that Dolibarr only fills under specific fetch paths
+			// (fk_user_author after a refresh, etc.) and crashing the whole
+			// export over a missing optional field would be the wrong
+			// default. The !empty() guard below filters null/0/'' out.
+			if ($doliside === 'rowid') {
+				$doliVal = !empty($obj->id) ? $obj->id : ($obj->rowid ?? null);
+			} elseif ($doliside === 'fk_soc') {
+				$doliVal = !empty($obj->socid) ? $obj->socid : ($obj->fk_soc ?? null);
+			} else {
+				$doliVal = $obj->$doliside ?? null;
 			}
-			//same with id/rowid
-			if ($doliside == "rowid") {
-				//to keep generic process on smart*
-				if (!empty($obj->id)) {
-					$obj->rowid = $obj->id;
-				}
-			}
-
-			// Capture the property value once with a null-coalesce so an
-			// undefined dynamic property (PHP 8.2 deprecates implicit
-			// dynamic property creation; PHPUnit strict mode promotes the
-			// warning to an error) never derails exportMappedData. A mapper
-			// can publish keys that Dolibarr only fills under specific
-			// fetch paths (fk_user_author after a refresh, etc.) and
-			// crashing the whole export over a missing optional field would
-			// be the wrong default. The value falls through as null which
-			// the existing !empty() guard already filters out.
-			$doliVal = $obj->$doliside ?? null;
 			if (!empty($doliVal)) {
 				//try to apply a function as data filter for example for logo to base64 encoded logo (Societe / dmSociete)
 				$user_function = "fieldFilterValue" . ucfirst($doliside);
@@ -670,8 +677,14 @@ trait dmTrait
 		global $conf, $langs;
 		// dol_syslog("SmartAuth Ask exportExtrafieldData for name=$name, objectid=$objectid");
 
-		$doliMapClass = new $this->_dolmapclassname($this->_db);
-		$parentElementToUseForExtraFields = isset($doliMapClass->parentTableElementToUseForExtraFields) ? $doliMapClass->parentTableElementToUseForExtraFields : '';
+		// Read parentTableElementToUseForExtraFields from the MAPPER (this
+		// trait is in scope on the mapper), not from a fresh instance of
+		// the underlying Dolibarr class. Instantiating $this->_dolmapclassname
+		// would build a new Societe / Facture / ... whose default does not
+		// carry the mapper's extrafield element binding, so the lookup
+		// always returned empty and the function exited early. The
+		// property lives on the mapper instance via the trait.
+		$parentElementToUseForExtraFields = $this->parentTableElementToUseForExtraFields ?? '';
 		if (empty($parentElementToUseForExtraFields)) {
 			return;
 		}

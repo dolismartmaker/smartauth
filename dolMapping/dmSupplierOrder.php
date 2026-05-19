@@ -33,6 +33,16 @@ class dmSupplierOrder extends dmBase
 
 	protected $type = "object";
 	protected $dolibarrClassName = 'CommandeFournisseur';
+	protected $parentTableElementToUseForExtraFields = 'commande_fournisseur';
+
+	// Hints front-side: render these FKs as sellists wired to the
+	// matching Dolibarr dictionary tables. Supplier flow exposes
+	// fk_account directly.
+	protected $parentFieldsOverride = [
+		'cond_reglement_id' => ['type' => 'sellist:c_payment_term:libelle:rowid', 'label' => 'PaymentConditionsShort'],
+		'mode_reglement_id' => ['type' => 'sellist:c_paiement:libelle:id', 'label' => 'PaymentMode'],
+		'fk_account'        => ['type' => 'sellist:bank_account:label:rowid', 'label' => 'BankAccount'],
+	];
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

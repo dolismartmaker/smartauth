@@ -33,6 +33,15 @@ class dmInvoice extends dmBase
 
 	protected $type = "object";
 	protected $dolibarrClassName = 'Facture';
+	protected $parentTableElementToUseForExtraFields = 'facture';
+
+	// Hints front-side: render these FKs as sellists wired to the
+	// matching Dolibarr dictionary tables. Imported from Dolipocket
+	// where this was the de facto pattern for all document mappers.
+	protected $parentFieldsOverride = [
+		'fk_cond_reglement' => ['type' => 'sellist:c_payment_term:libelle:rowid', 'label' => 'PaymentConditionsShort'],
+		'fk_mode_reglement' => ['type' => 'sellist:c_paiement:libelle:id', 'label' => 'PaymentMode'],
+	];
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

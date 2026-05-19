@@ -33,6 +33,16 @@ class dmSupplierInvoice extends dmBase
 
 	protected $type = "object";
 	protected $dolibarrClassName = 'FactureFournisseur';
+	protected $parentTableElementToUseForExtraFields = 'facture_fourn';
+
+	// Hints front-side: render these FKs as sellists wired to the
+	// matching Dolibarr dictionary tables. Supplier flow exposes
+	// fk_account directly (no fk_currency on the header).
+	protected $parentFieldsOverride = [
+		'cond_reglement_id' => ['type' => 'sellist:c_payment_term:libelle:rowid', 'label' => 'PaymentConditionsShort'],
+		'mode_reglement_id' => ['type' => 'sellist:c_paiement:libelle:id', 'label' => 'PaymentMode'],
+		'fk_account'        => ['type' => 'sellist:bank_account:label:rowid', 'label' => 'BankAccount'],
+	];
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
