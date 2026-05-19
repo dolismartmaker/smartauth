@@ -70,11 +70,6 @@ class SyncMapperInvariantTest extends DolibarrRealTestCase
 
     public function testSyncPullThirdpartyEmitsOnlyMapperDeclaredFields(): void
     {
-        $this->markTestSkipped(
-            'Invariant I-1 not yet enforced for thirdparty: SyncController bypasses dmThirdparty. '
-            . 'Remove this line once SPEC_SMARTAUTH_AUTHORIZATION.md phase A migrates SyncController to dm*.'
-        );
-
         $this->registerSyncClientWithScope(['thirdparty']);
 
         $this->createTestSociete([
@@ -86,11 +81,6 @@ class SyncMapperInvariantTest extends DolibarrRealTestCase
 
     public function testSyncPullContactEmitsOnlyMapperDeclaredFields(): void
     {
-        $this->markTestSkipped(
-            'Invariant I-1 not yet enforced for contact: SyncController bypasses dmContact. '
-            . 'Remove this line once SPEC_SMARTAUTH_AUTHORIZATION.md phase A migrates SyncController to dm*.'
-        );
-
         $this->registerSyncClientWithScope(['contact']);
 
         // Contact requires a parent thirdparty in standard Dolibarr setup.
@@ -105,11 +95,6 @@ class SyncMapperInvariantTest extends DolibarrRealTestCase
 
     public function testSyncPullProductEmitsOnlyMapperDeclaredFields(): void
     {
-        $this->markTestSkipped(
-            'Invariant I-1 not yet enforced for product: SyncController bypasses dmProduct. '
-            . 'Remove this line once SPEC_SMARTAUTH_AUTHORIZATION.md phase A migrates SyncController to dm*.'
-        );
-
         $this->registerSyncClientWithScope(['product']);
 
         $this->createTestProduct([
@@ -185,12 +170,36 @@ class SyncMapperInvariantTest extends DolibarrRealTestCase
     }
 
     /**
+     * Sync-level metadata that is always present on every /sync/pull
+     * event regardless of the mapper. These keys are added by
+     * SyncController post-mapping (formatObjectForSync) and are part
+     * of the sync contract, not the entity contract:
+     *  - 'tms'              base_tms snapshot for conflict detection
+     *                       (SyncEngine.js stores it as server_tms)
+     *  - 'nb_linked_files'  count of files attached via ECM
+     *  - 'linked_files'     same payload but with the file metadata
+     *                       (only when ?with_files=1)
+     *  - 'categories'       category bindings via llx_categorie_<table>
+     */
+    private const SYNC_METADATA_FIELDS = [
+        'tms',
+        'nb_linked_files',
+        'linked_files',
+        'categories',
+    ];
+
+    /**
      * Read the API-side field names declared in a dm* mapper without
      * instantiating it. Uses ReflectionClass::getDefaultProperties to avoid
      * triggering dmBase::boot() and its Dolibarr global dependencies.
      *
+     * Returns the union of:
+     *  - listOfPublishedFields (1:1 Dolibarr column -> API key)
+     *  - listOfDerivedFields   (computed keys, eg logo / logo_mini)
+     *  - SYNC_METADATA_FIELDS  (post-mapping enrichment)
+     *
      * @param string $mapperClass Fully qualified dm* class name
-     * @return array<int, string> List of API-side field names (values of $listOfPublishedFields)
+     * @return array<int, string> List of API-side field names
      */
     private function getDeclaredApiFields(string $mapperClass): array
     {
@@ -207,7 +216,17 @@ class SyncMapperInvariantTest extends DolibarrRealTestCase
         $this->assertIsArray($list, "{$mapperClass}::\$listOfPublishedFields must be an array.");
         $this->assertNotEmpty($list, "{$mapperClass}::\$listOfPublishedFields must not be empty (violates invariant I-5).");
 
-        return array_values($list);
+        $allowed = array_values($list);
+
+        // Derived fields: optional. Only some mappers declare them.
+        if (array_key_exists('listOfDerivedFields', $defaults) && is_array($defaults['listOfDerivedFields'])) {
+            $allowed = array_merge($allowed, array_values($defaults['listOfDerivedFields']));
+        }
+
+        // Sync metadata is universal for /sync/pull events.
+        $allowed = array_merge($allowed, self::SYNC_METADATA_FIELDS);
+
+        return array_values(array_unique($allowed));
     }
 
     // =========================================================================

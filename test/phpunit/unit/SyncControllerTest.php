@@ -594,14 +594,21 @@ class SyncControllerTest extends TestCase
     }
 
     /**
-     * Test formatObjectForSync transforms data correctly
+     * Test formatObjectForSync raw-cast fallback path: when the
+     * object_type is not registered (no entry in $syncableObjects), no
+     * mapper resolves and the controller logs LOG_WARNING then falls
+     * back to a (array) cast. The fallback must still: rename rowid to
+     * id, normalise tms to ISO 8601, and return an array.
+     *
+     * The nominal mapper path (thirdparty / contact / product) is
+     * covered by SyncMapperInvariantTest in integration-dolibarr, where
+     * a real database lets us instantiate Societe/Contact/Product and
+     * run the fetch() rehydration. That path is not testable here
+     * because the unit mock $db cannot satisfy fetch().
      */
-    public function testFormatObjectForSyncTransformsData(): void
+    public function testFormatObjectForSyncFallsBackToRawCastWhenNoMapper(): void
     {
         $method = $this->getPrivateMethod('formatObjectForSync');
-
-        // Mock countLinkedFiles query result
-        $this->mockDb->setQueryResult(true, [['nb' => 0]], 1);
 
         $obj = (object) [
             'rowid' => 123,
@@ -610,14 +617,22 @@ class SyncControllerTest extends TestCase
             'tms' => '2025-01-19 10:00:00'
         ];
 
-        $result = $method->invoke($this->controller, $obj, 'thirdparty');
+        // 'unknown' is not a registered object_type, so resolveMapperClass
+        // returns null and formatObjectForSync goes straight to the raw
+        // cast fallback. No element/table -> no follow-up SQL queries.
+        $result = $method->invoke($this->controller, $obj, 'unknown');
 
         $this->assertIsArray($result);
         $this->assertEquals(123, $result['id']);
         $this->assertArrayNotHasKey('rowid', $result);
+        // Raw cast preserves Dolibarr-side column names (drift).
+        // Acceptable here because this is the fallback path, not the
+        // nominal one.
         $this->assertEquals('Test Company', $result['nom']);
-        // tms should be in ISO format
-        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/', $result['tms']);
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/',
+            $result['tms']
+        );
     }
 
     /**
@@ -769,21 +784,19 @@ class SyncControllerTest extends TestCase
     }
 
     /**
-     * Test formatObjectForSync handles missing tms
+     * Same fallback path as the previous test, but the input has no
+     * 'tms' column. The raw cast must not synthesise a tms key.
      */
-    public function testFormatObjectForSyncHandlesMissingTms(): void
+    public function testFormatObjectForSyncFallbackHandlesMissingTms(): void
     {
         $method = $this->getPrivateMethod('formatObjectForSync');
-
-        // Mock countLinkedFiles query result
-        $this->mockDb->setQueryResult(true, [['nb' => 0]], 1);
 
         $obj = (object) [
             'rowid' => 123,
             'nom' => 'Test Company'
         ];
 
-        $result = $method->invoke($this->controller, $obj, 'thirdparty');
+        $result = $method->invoke($this->controller, $obj, 'unknown');
 
         $this->assertIsArray($result);
         $this->assertEquals(123, $result['id']);

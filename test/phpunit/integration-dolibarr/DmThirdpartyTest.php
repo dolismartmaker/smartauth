@@ -92,9 +92,11 @@ class DmThirdpartyTest extends DolibarrRealTestCase
         $this->assertArrayHasKey('rowid', $fields);
         $this->assertEquals('id', $fields['rowid']);
 
-        // Name
-        $this->assertArrayHasKey('nom', $fields);
-        $this->assertEquals('name', $fields['nom']);
+        // Name -- declared with the PHP property name 'name' (not the
+        // SQL column 'nom'); see comment on dmThirdparty::$listOfPublishedFields.
+        $this->assertArrayHasKey('name', $fields);
+        $this->assertEquals('name', $fields['name']);
+        $this->assertArrayNotHasKey('nom', $fields);
 
         // Address fields
         $this->assertArrayHasKey('address', $fields);
@@ -279,16 +281,19 @@ class DmThirdpartyTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test that nom maps to name (API naming convention)
+     * Test that the 'name' PHP property maps to the 'name' API key
+     * (API naming convention). The Societe SQL column is 'nom' but
+     * the mapper addresses the PHP property name that Dolibarr's fetch
+     * populates -- see comment on dmThirdparty::$listOfPublishedFields.
      */
-    public function testNomMapsToName(): void
+    public function testNamePropertyMapsToNameApiKey(): void
     {
         $reflection = new ReflectionClass($this->mapper);
         $property = $reflection->getProperty('listOfPublishedFields');
         $property->setAccessible(true);
         $fields = $property->getValue($this->mapper);
 
-        $this->assertEquals('name', $fields['nom']);
+        $this->assertEquals('name', $fields['name']);
     }
 
     /**
@@ -314,7 +319,9 @@ class DmThirdpartyTest extends DolibarrRealTestCase
         $property->setAccessible(true);
         $writable = $property->getValue($this->mapper);
 
-        $this->assertContains('nom', $writable);
+        // PHP property names (see comment on dmThirdparty::$writableFields).
+        $this->assertContains('name', $writable);
+        $this->assertNotContains('nom', $writable);
         $this->assertContains('address', $writable);
         $this->assertContains('zip', $writable);
         $this->assertContains('town', $writable);
