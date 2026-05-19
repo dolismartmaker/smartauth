@@ -15,10 +15,10 @@
  *   - dmUser       : object with sensitive fields excluded from writableFields
  *   - dmWarehouse  : simple object with status state-machine excluded
  *
- * The same 30-line pattern can be replicated for every core mapper
- * (cf TODO-mappers-centralisation.md Phase 5 list). When extending
- * this suite, mirror the structure: one method per mapper, helpers
- * shared via the protected methods at the bottom of the class.
+ * The same 30-line pattern is replicated for every core mapper in
+ * MapperRoundTripLot{A,B,C,D,E}Test. When extending this suite, mirror
+ * the structure: one method per mapper, helpers shared via the
+ * protected methods at the bottom of the class.
  *
  * Copyright (c) 2026 Eric Seigne <eric.seigne@cap-rel.fr>
  *
