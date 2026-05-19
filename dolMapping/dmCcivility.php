@@ -27,6 +27,7 @@ class dmCcivility extends dmBase
 	use dmTrait;
 
 	protected $type = "dict";
+	protected $dolibarrClassName = 'CGenericDic';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

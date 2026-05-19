@@ -20,6 +20,8 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+require_once DOL_DOCUMENT_ROOT . '/core/class/cunits.class.php';
+
 /**
  * Mapping for Dolibarr c_units dictionary -> API Unit
  */
@@ -27,7 +29,8 @@ class dmCunits extends dmBase
 {
 	use dmTrait;
 
-	protected $type = "dictionary";
+	protected $type = "dict";
+	protected $dolibarrClassName = 'CUnits';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

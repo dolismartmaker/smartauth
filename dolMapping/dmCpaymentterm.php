@@ -20,6 +20,8 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/paymentterm.class.php';
+
 /**
  * Mapping for Dolibarr c_payment_term dictionary -> API PaymentTerm
  */
@@ -27,7 +29,8 @@ class dmCpaymentterm extends dmBase
 {
 	use dmTrait;
 
-	protected $type = "dictionary";
+	protected $type = "dict";
+	protected $dolibarrClassName = 'PaymentTerm';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

@@ -27,7 +27,7 @@ class dmCavailability extends dmBase
 {
 	use dmTrait;
 
-	protected $type = "dictionary";
+	protected $type = "dict";
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

@@ -27,6 +27,7 @@ class dmCstate extends dmBase
 	use dmTrait;
 
 	protected $type = "dict";
+	protected $dolibarrClassName = 'Cstate';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
