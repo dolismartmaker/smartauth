@@ -75,6 +75,7 @@ abstract class OAuthTestCase extends DolibarrRealTestCase
             'smartauth_oauth_codes',
             'smartauth_oauth_consents',
             'smartauth_oauth_clients',
+            'smartauth_revoked_jti',
         ];
 
         foreach ($tables as $table) {
