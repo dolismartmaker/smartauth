@@ -375,17 +375,24 @@ class dmHelper
 	}
 
 	/**
-	 * contacts linked to dolibarr object
+	 * Intentional extension point for the 'contacts' attribute. Returns an
+	 * empty array on purpose: the default mapping ($ret[$key] = $val) is
+	 * suppressed because raw Dolibarr contact lists must NOT leak into the
+	 * API payload through propertiesFilter / extrafieldsFilter. When a
+	 * module needs to expose contacts, it should override this method in a
+	 * dm* subclass and return a well-shaped {contacts: [...]} array.
 	 *
-	 * @param   [type]  $val  [$val description]
+	 * Returning [] (instead of null) is required: callers iterate the
+	 * result with foreach, and PHP 8+ raises a TypeError on foreach(null).
+	 * Do not remove this stub without auditing every dm* subclass that
+	 * could declare a 'contacts' attribute.
 	 *
-	 * @return  [type]        [return description]
+	 * @param   mixed  $val  Raw Dolibarr value (ignored at this layer).
+	 * @return  array        Empty by default; subclasses may override.
 	 */
 	public function _customFilterAttributeContacts($val)
 	{
-		$localDebug = false;
-
-		if ($localDebug) dol_syslog(("SmartAuth dmHelper : call for _customFilterAttributeContacts ..."));
+		return [];
 	}
 
 	/**
@@ -514,10 +521,15 @@ class dmHelper
 		$ret = [];
 
 		foreach ($this->_mappingExtrafieldsAttributes as $dolattr => $appattr) {
-			$val = $extrafields->attributes[$objectElement][$dolattr][str_replace('options_', '', $dolikey)];
-			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey, generic dolattr=$dolattr, appattr=$appattr, val=$val");
+			// ExtraFields::fetch_name_optionals_label() only populates a
+			// subset of dolattr keys. Optional ones (placeholder, picto,
+			// copytoclipboard, ...) may be absent, so guard the lookup
+			// rather than emit "Undefined array key" warnings.
+			$attrBucket = $extrafields->attributes[$objectElement][$dolattr] ?? [];
+			$val = $attrBucket[str_replace('options_', '', $dolikey)] ?? null;
+			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey, generic dolattr=$dolattr, appattr=$appattr, val=" . (is_scalar($val) ? $val : json_encode($val)));
 			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey, generic extrafieldsFilter search in extrafields->attributes[" . $objectElement . "][" . $dolattr . "][" . $dolikey . "]");
-			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey, generic : " . json_encode($extrafields->attributes[$objectElement][$dolattr]));
+			if ($localDebug) dol_syslog("SmartAuth   dmHelper dolikey=$dolikey, generic : " . json_encode($attrBucket));
 			// if(empty($val)) {
 			// 	continue;
 			// }
