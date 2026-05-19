@@ -96,8 +96,11 @@ class MapperRoundTripPilotTest extends DolibarrRealTestCase
             'email' => 'updated@example.com',
         ]);
 
-        $this->assertSame('Updated Co.', $sanitized->nom);
+        // Mapper writes to the PHP property 'name' (which Societe::update
+        // reads to write the SQL column 'nom'), not the raw column.
+        $this->assertSame('Updated Co.', $sanitized->name);
         $this->assertSame('updated@example.com', $sanitized->email);
+        $this->assertObjectNotHasProperty('nom', $sanitized);
         $this->assertObjectNotHasProperty('id', $sanitized);
     }
 

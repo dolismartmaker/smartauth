@@ -111,9 +111,11 @@ class MapperRoundTripLotCTest extends DolibarrRealTestCase
             'email' => 'sup-updated@example.com',
         ]);
 
-        // dmSupplier inherits writableFields from dmThirdparty: 'nom' is
-        // the Dolibarr column name behind the 'name' api key.
-        $this->assertSame('Updated supplier', $sanitized->nom);
+        // dmSupplier inherits writableFields from dmThirdparty: 'name' is
+        // the Dolibarr PHP property name behind the 'name' api key
+        // (the SQL column is 'nom' but Societe::update writes it from
+        // $this->name -- see dmThirdparty comments).
+        $this->assertSame('Updated supplier', $sanitized->name);
         $this->assertSame('sup-updated@example.com', $sanitized->email);
     }
 
