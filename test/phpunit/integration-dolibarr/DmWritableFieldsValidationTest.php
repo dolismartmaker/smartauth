@@ -152,8 +152,10 @@ class DmWritableFieldsValidationTest extends DolibarrRealTestCase
         // Dolibarr CommonObject backing them).
         $names = [
             'dmAgendaEvent',
+            'dmBankAccount',
             'dmBom',
             'dmCategory',
+            'dmCompanyBankAccount',
             'dmContact',
             'dmContract',
             'dmDonation',
@@ -170,7 +172,9 @@ class DmWritableFieldsValidationTest extends DolibarrRealTestCase
             'dmProposal',
             'dmReception',
             'dmShipment',
+            'dmStockMovement',
             'dmSubscription',
+            'dmSupplier',
             'dmSupplierInvoice',
             'dmSupplierOrder',
             'dmSupplierProposal',
