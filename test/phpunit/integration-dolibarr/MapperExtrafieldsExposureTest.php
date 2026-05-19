@@ -8,9 +8,9 @@
  * `$listOfPublishedFields` and set `$parentTableElementToUseForExtraFields`
  * to the matching Dolibarr element type (e.g. 'societe' for Societe).
  *
- * This test pins the contract end-to-end using an anonymous mapper class
- * (no core mapper currently opts in -- cf TODO-mappers-centralisation.md
- * Phase 2). It is the canonical model for enriching mappers later.
+ * This test pins the contract end-to-end using an anonymous mapper
+ * class. Cf `MAPPERS_CONVENTIONS.md` section "Mappers de type `dict`"
+ * + section sur les extrafields pour le pattern de declaration.
  *
  * Copyright (c) 2026 Eric Seigne <eric.seigne@cap-rel.fr>
  *

@@ -4,10 +4,9 @@
  * Meta-test : every concrete mapper class in `dolMapping/` must be
  * referenced by at least one test file under `test/phpunit/`.
  *
- * This guards the CI invariant stated in TODO-mappers-centralisation.md
- * Phase 5 : "tous les mappers coeur ont au moins un test". A new mapper
- * landing in `dolMapping/` without any test in the suite causes this
- * test to fail loudly, preventing silent drift.
+ * Guards the CI invariant "tous les mappers coeur ont au moins un
+ * test". A new mapper landing in `dolMapping/` without any test in
+ * the suite causes this test to fail loudly, preventing silent drift.
  *
  * Excluded from the check:
  *   - Infrastructure files (dmBase, dmTrait, dmHelper, dmLinesTrait,
