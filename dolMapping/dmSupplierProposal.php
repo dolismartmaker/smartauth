@@ -35,10 +35,16 @@ class dmSupplierProposal extends dmBase
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
+	// Note : llx_supplier_proposal has NO ref_supplier column. The
+	// SupplierProposal class declares $ref_supplier as a transient
+	// property used only as a parameter of addline()/updateline() to
+	// carry ref_fourn down to llx_supplier_proposaldet rows. It is
+	// never populated by SupplierProposal::fetch() and therefore must
+	// not appear in the header mapping (the previous 'ref_supplier'
+	// entry was a dead mapping silently filtered out at export time).
 	protected $listOfPublishedFields = [
 		'rowid'             => 'id',
 		'ref'               => 'ref',
-		'ref_supplier'      => 'supplier_ref',
 		'datec'             => 'created_at',
 		'tms'               => 'updated_at',
 		'date'              => 'date_proposal',
@@ -70,7 +76,6 @@ class dmSupplierProposal extends dmBase
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
 	protected $writableFields = [
-		'ref_supplier',
 		'socid',
 		'fk_projet',
 		'date',

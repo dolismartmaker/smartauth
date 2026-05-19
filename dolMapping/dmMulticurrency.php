@@ -34,11 +34,18 @@ class dmMulticurrency extends dmBase
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
+	//
+	// Note: $this->rate is NOT exposed. MultiCurrency::fetch() does not
+	// populate it -- the rate lives in llx_multicurrency_rate and is
+	// fetched separately through MultiCurrency::fetchAllCurrencyRate()
+	// or fetchCurrencyRate(). When populated, $this->rate is a
+	// CurrencyRate OBJECT, not a numeric value, so a flat mapping would
+	// emit malformed payloads. Consumers needing the rate must use a
+	// dedicated endpoint backed by the CurrencyRate class.
 	protected $listOfPublishedFields = [
 		'rowid'             => 'id',
 		'code'              => 'code',
 		'name'              => 'name',
-		'rate'              => 'rate',
 		'date_create'       => 'created_at',
 		'fk_user'           => 'created_by',
 	];
@@ -48,7 +55,6 @@ class dmMulticurrency extends dmBase
 	protected $writableFields = [
 		'code',
 		'name',
-		'rate',
 	];
 
 	/**

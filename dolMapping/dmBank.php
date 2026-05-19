@@ -46,6 +46,14 @@ class dmBank extends dmBase
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
+	//
+	// Note: 'numero_compte' and 'emetteur' are NOT exposed. The columns
+	// exist in llx_bank but AccountLine::fetch (account.class.php) has
+	// a latent bug: 'emetteur' is SELECTed but never assigned to
+	// $this->emetteur, and 'numero_compte' is not even SELECTed. Both
+	// PHP properties stay null after fetch, so emitting them as null
+	// keys in the API payload would mislead consumers. Skip until the
+	// Dolibarr fetch is fixed upstream.
 	protected $listOfPublishedFields = [
 		'rowid'                => 'id',
 		'ref'                  => 'ref',
@@ -60,8 +68,6 @@ class dmBank extends dmBase
 		'fk_user_author'       => 'fk_user_author',
 		'fk_user_rappro'       => 'fk_user_rappro',
 		'fk_bordereau'         => 'fk_bordereau',
-		'numero_compte'        => 'numero_compte',
-		'emetteur'             => 'emetteur',
 		'rappro'               => 'rappro',
 		'num_releve'           => 'num_releve',
 		'num_chq'              => 'num_chq',
@@ -79,7 +85,6 @@ class dmBank extends dmBase
 		'note',
 		'num_chq',
 		'bank_chq',
-		'emetteur',
 		'num_releve',
 	];
 

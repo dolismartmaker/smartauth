@@ -154,7 +154,14 @@ trait dmLinesTrait
 	 */
 	protected function getSupplierInvoiceLinesMapping(): array
 	{
-		return array_merge($this->getCommonLinesMapping(), [
+		// SupplierInvoiceLine::fetch (fournisseur.facture.class.php line 3663)
+		// reads the SQL column 'description' directly into $line->description,
+		// not into $line->desc. Override the common mapping which assumes
+		// $line->desc (true for Facture/Commande/Propal lines).
+		$common = $this->getCommonLinesMapping();
+		unset($common['desc']);
+		return array_merge($common, [
+			'description'           => 'description',
 			'fk_facture_fourn'      => 'supplier_invoice_id',
 			'fk_code_ventilation'   => 'accounting_code_id',
 			'ref'                   => 'ref',
@@ -282,13 +289,17 @@ trait dmLinesTrait
 	 */
 	protected function getInterventionLinesMapping(): array
 	{
+		// FichinterLigne::fetch (fichinter.class.php line 466, 1633)
+		// reads the SQL column 'duree' INTO $line->duration (renamed at
+		// fetch time). The mapper must read $line->duration, not
+		// $line->duree which is never populated.
 		return [
 			'rowid'                 => 'id',
 			'fk_fichinter'          => 'intervention_id',
 			'fk_product'            => 'product',
 			'desc'                  => 'description',
 			'date'                  => 'date',
-			'duree'                 => 'duration',
+			'duration'              => 'duration',
 			'rang'                  => 'position',
 		];
 	}
