@@ -29,6 +29,7 @@ class DmMappingClassesTest extends DolibarrRealTestCase
      */
     private static $mappingClasses = [
         'dmAgendaEvent' => ['object', false, 'dmActionComm'],
+        'dmBankAccount' => ['object', false, 'dmAccount'],
         'dmBom' => ['object', true, null],
         'dmCactiontype' => ['dictionary', false, null],
         'dmCategory' => ['object', false, null],
@@ -36,6 +37,7 @@ class DmMappingClassesTest extends DolibarrRealTestCase
         'dmCcivility' => ['dict', false, null],
         'dmCcountry' => ['dict', false, null],
         'dmCincoterm' => ['dictionary', false, null],
+        'dmCompanyBankAccount' => ['object', false, null],
         'dmContact' => ['object', false, null],
         'dmContract' => ['object', true, 'dmContrat'],
         'dmCpaymentterm' => ['dictionary', false, null],
@@ -65,7 +67,9 @@ class DmMappingClassesTest extends DolibarrRealTestCase
         'dmProposal' => ['object', true, 'dmPropal'],
         'dmReception' => ['object', true, null],
         'dmShipment' => ['object', true, 'dmExpedition'],
+        'dmStockMovement' => ['object', false, 'dmMouvementStock'],
         'dmSubscription' => ['object', false, null],
+        'dmSupplier' => ['object', false, 'dmFournisseur'],
         'dmSupplierInvoice' => ['object', true, 'dmFactureFournisseur'],
         'dmSupplierOrder' => ['object', true, 'dmCommandeFournisseur'],
         'dmSupplierProposal' => ['object', true, null],
@@ -114,12 +118,22 @@ class DmMappingClassesTest extends DolibarrRealTestCase
     public function testClassUsesDmTrait(string $className): void
     {
         $fullClassName = 'SmartAuth\\DolibarrMapping\\' . $className;
-        $traits = class_uses($fullClassName);
+
+        // class_uses() returns only traits used DIRECTLY by the class, not
+        // those used by its parents. dmSupplier extends dmThirdparty and
+        // inherits dmTrait via the parent; walking the inheritance chain
+        // makes the check honest for sub-classed mappers.
+        $traits = [];
+        $cursor = $fullClassName;
+        while ($cursor) {
+            $traits = array_merge($traits, class_uses($cursor) ?: []);
+            $cursor = get_parent_class($cursor);
+        }
 
         $this->assertContains(
             'SmartAuth\\DolibarrMapping\\dmTrait',
             $traits,
-            "$className should use dmTrait"
+            "$className should use dmTrait (directly or via inheritance)"
         );
     }
 
