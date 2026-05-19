@@ -5,6 +5,7 @@
          colors="true"
          verbose="true"
          stopOnFailure="false"
+         stopOnDefect="true"
          cacheResult="true"
          executionOrder="defects"
          cacheResultFile=".phpunit.cache/test-results.xml">
