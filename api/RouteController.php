@@ -921,9 +921,19 @@ class RouteController
 
 			self::insertLogs($token_id, $code, $message, $entity);
 			\json_reply($message, $code);
-		} catch (Exception $e) {
-			dol_syslog("SmartAuth Debug smartauth  Exception in $targetClass::$redirectFunction: " . $e->getMessage(), LOG_ERR);
-			self::insertLogs($token_id, 500, 'Exception: ' . $e->getMessage(), $entity);
+		} catch (\Throwable $e) {
+			// Let JsonReplyEmittedError (flow-control in PHPUNIT_RUNNING mode) bubble up
+			if ($e instanceof \JsonReplyEmittedError) {
+				throw $e;
+			}
+			// Capture full diagnostic for 500 troubleshooting (incl. \Error subclasses
+			// like TypeError that catch(Exception) used to miss and turn into raw 500)
+			$exClass = get_class($e);
+			$exWhere = $e->getFile() . ':' . $e->getLine();
+			$exMsg = $e->getMessage();
+			$exTrace = substr($e->getTraceAsString(), 0, 1500);
+			dol_syslog("SmartAuth Exception in $targetClass::$redirectFunction [$exClass @ $exWhere]: $exMsg | trace: $exTrace", LOG_ERR);
+			self::insertLogs($token_id, 500, "Exception ($exClass @ $exWhere): $exMsg", $entity);
 			\json_reply('Internal server error - Exception', 500);
 		}
 	}
@@ -1026,8 +1036,10 @@ class RouteController
 			if (!$resql) {
 				dol_syslog("SmartAuth Debug smartauth  Failed to insert log: " . $db->lasterror(), LOG_WARNING);
 			}
-		} catch (Exception $e) {
-			dol_syslog("SmartAuth Debug smartauth  Log insertion error: " . $e->getMessage(), LOG_WARNING);
+		} catch (\Throwable $e) {
+			// Widen to Throwable so a DB driver Error (e.g. SQLite locked) on the
+			// log insert path never bubbles up and turns a normal 4xx into a 500.
+			dol_syslog("SmartAuth Debug smartauth  Log insertion error (" . get_class($e) . "): " . $e->getMessage(), LOG_WARNING);
 		}
 	}
 
