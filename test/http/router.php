@@ -156,6 +156,7 @@ require_once $projectRoot . '/api/RouteCache.php';
 // Load SmartAuth classes
 require_once $projectRoot . '/api/SmartAuthLogger.php';
 require_once $projectRoot . '/api/PwaController.php';
+require_once $projectRoot . '/api/ThirdpartyMediaController.php';
 
 // Account / registration controllers (Lots 5-7)
 require_once $projectRoot . '/api/OAuth2/OAuthConfig.php';
@@ -173,6 +174,7 @@ if (empty($conf->global->SOCIETE_CODEFOURNISSEUR_ADDON)) {
 }
 
 use SmartAuth\Api\PwaController;
+use SmartAuth\Api\ThirdpartyMediaController;
 use SmartAuth\Api\Account\RegisterController;
 
 // Route the request
@@ -250,6 +252,158 @@ switch (true) {
             'verify_name' => $verify->name ?? null,
             'verify_enabled' => method_exists($verify, 'isEnabled') ? $verify->isEnabled() : null,
         ]);
+        break;
+
+    case $requestPath === '/_test/seed-thirdparty-logo':
+        // Seed a Societe with a real logo file on disk, plus its mini
+        // thumbnail, so the ThirdpartyMediaHttpTest can validate the
+        // binary stream end-to-end. Test-only route, never exposed in
+        // production. Returns JSON with the rowid, the sha256 of the
+        // full-size file (to compare against the streamed body) and
+        // the on-disk paths for debugging.
+        require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
+        if (!function_exists('imagecreatetruecolor')) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'GD extension required']);
+            break;
+        }
+        $ext = $_GET['ext'] ?? 'png';
+        if (!in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp'], true)) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'unsupported ext']);
+            break;
+        }
+        $withLogo = isset($_GET['nologo']) ? !$_GET['nologo'] : true;
+
+        // Configure multidir_output for entity 1 if not already done.
+        if (!isset($conf->societe) || !is_object($conf->societe)) {
+            $conf->societe = new stdClass();
+        }
+        $socBase = rtrim(DOL_DATA_ROOT, '/') . '/societe';
+        if (!is_dir($socBase)) {
+            @mkdir($socBase, 0755, true);
+        }
+        if (!isset($conf->societe->multidir_output) || !is_array($conf->societe->multidir_output)) {
+            $conf->societe->multidir_output = [];
+        }
+        $conf->societe->multidir_output[1] = $socBase;
+
+        $soc = new Societe($db);
+        $soc->name = 'HTTP Test ' . uniqid();
+        $soc->client = 1;
+        $soc->status = 1;
+        $soc->entity = 1;
+        $r = $soc->create($user);
+        if ($r <= 0) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'failed to create societe', 'detail' => $soc->error]);
+            break;
+        }
+
+        $payload = ['id' => (int) $soc->id];
+
+        if ($withLogo) {
+            $socDir = $socBase . '/' . (int) $soc->id;
+            $logosDir = $socDir . '/logos';
+            $thumbsDir = $logosDir . '/thumbs';
+            foreach ([$socDir, $logosDir, $thumbsDir] as $d) {
+                if (!is_dir($d)) {
+                    @mkdir($d, 0755, true);
+                }
+            }
+
+            $filename = 'httplogo_' . uniqid() . '.' . $ext;
+            $fullpath = $logosDir . '/' . $filename;
+            $miniName = str_replace(['.jpg', '.jpeg', '.png'], ['_mini.jpg', '_mini.jpg', '_mini.png'], $filename);
+            $minipath = $thumbsDir . '/' . $miniName;
+
+            // Generate two visually distinct images so the test can tell
+            // them apart by sha256: full=32x32 yellow, mini=8x8 red.
+            $imFull = imagecreatetruecolor(32, 32);
+            imagefill($imFull, 0, 0, imagecolorallocate($imFull, 255, 200, 0));
+            $imMini = imagecreatetruecolor(8, 8);
+            imagefill($imMini, 0, 0, imagecolorallocate($imMini, 200, 0, 0));
+
+            $writer = $ext === 'png' ? 'imagepng' : 'imagejpeg';
+            $writer($imFull, $fullpath);
+            $writer($imMini, $minipath);
+            imagedestroy($imFull);
+            imagedestroy($imMini);
+
+            // Persist the logo column on the row.
+            $sqlu = "UPDATE " . MAIN_DB_PREFIX . "societe SET logo = '"
+                . $db->escape($filename) . "' WHERE rowid = " . (int) $soc->id;
+            $db->query($sqlu);
+
+            $payload['filename']     = $filename;
+            $payload['mime']         = $ext === 'png' ? 'image/png' : 'image/jpeg';
+            $payload['size_full']    = filesize($fullpath);
+            $payload['sha256_full']  = hash_file('sha256', $fullpath);
+            $payload['size_mini']    = filesize($minipath);
+            $payload['sha256_mini']  = hash_file('sha256', $minipath);
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode($payload);
+        break;
+
+    case preg_match('#^/media/thirdparty/(\d+)/logo$#', $requestPath, $matches):
+    case preg_match('#^/media/thirdparty/(\d+)/logo/mini$#', $requestPath, $matches):
+        // End-to-end binary stream entry point for the HTTP test. We
+        // skip JWT validation here on purpose: the goal of this test is
+        // to verify that the binary stream traverses readfileLowMemory +
+        // header() + exit intact (not the auth layer, which is covered
+        // by the integration suite). We synthesise a payload with the
+        // admin user (already loaded by the router bootstrap) so the
+        // controller's hasRight() check still runs.
+
+        // Configure multidir_output for entity 1 if not already done.
+        if (!isset($conf->societe) || !is_object($conf->societe)) {
+            $conf->societe = new stdClass();
+        }
+        $socBase = rtrim(DOL_DATA_ROOT, '/') . '/societe';
+        if (!isset($conf->societe->multidir_output) || !is_array($conf->societe->multidir_output)) {
+            $conf->societe->multidir_output = [];
+        }
+        $conf->societe->multidir_output[1] = $socBase;
+
+        // Grant societe->lire to the admin user so hasRight passes.
+        if (!isset($user->rights) || !is_object($user->rights)) {
+            $user->rights = new stdClass();
+        }
+        if (!isset($user->rights->societe) || !is_object($user->rights->societe)) {
+            $user->rights->societe = new stdClass();
+        }
+        $user->rights->societe->lire = 1;
+        // Ensure the societe module is reported as enabled for hasRight().
+        if (!isset($conf->modules) || !is_array($conf->modules)) {
+            $conf->modules = [];
+        }
+        $conf->modules['societe'] = 1;
+
+        $isMini = (substr($requestPath, -5) === '/mini');
+        $payload = [
+            'id'     => (int) $matches[1],
+            'user'   => $user,
+            'entity' => 1,
+        ];
+
+        $controller = new ThirdpartyMediaController();
+        if ($isMini) {
+            $err = $controller->logoMini($payload);
+        } else {
+            $err = $controller->logo($payload);
+        }
+        // logo() / logoMini() exit on success; we only reach this point
+        // on the error tuple [$body, $status].
+        if (is_array($err) && isset($err[1])) {
+            http_response_code($err[1]);
+            header('Content-Type: application/json');
+            echo json_encode($err[0]);
+        }
         break;
 
     case $requestPath === '/register':
