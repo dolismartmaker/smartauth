@@ -181,6 +181,213 @@ class HookHelperTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // runBlockingHook extra_claims harvesting (PERFS.md §3.3)
+    // ---------------------------------------------------------------------
+
+    /**
+     * pre_token allow path (return 0) must harvest resArray['extra_claims']
+     * so TokenController can pass them to createAccessToken.
+     */
+    public function testPreTokenAllowedHarvestsExtraClaims(): void
+    {
+        global $hookmanager;
+        $hookmanager = $this->createMockHookManager(function ($hook, $params, &$object, $action) use (&$hookmanager) {
+            if ($hook === 'smartmaker_oauth_pre_token') {
+                $hookmanager->resArray = [
+                    'extra_claims' => [
+                        'services' => ['captodo', 'capcrm'],
+                        'tenant_id' => 42,
+                    ],
+                ];
+                return 0;
+            }
+            return 0;
+        });
+
+        $result = HookHelper::runBlockingHook('smartmaker_oauth_pre_token', [
+            'user_id' => 7,
+            'client_id' => 'captodo',
+            'client_pk' => 42,
+            'scopes' => ['openid'],
+            'grant_type' => 'authorization_code',
+        ]);
+
+        $this->assertFalse($result['blocked']);
+        $this->assertSame(['captodo', 'capcrm'], $result['extra_claims']['services']);
+        $this->assertSame(42, $result['extra_claims']['tenant_id']);
+    }
+
+    /**
+     * Reserved claims (identity, OIDC standard, profile/email/groups) must be
+     * dropped from extra_claims. A misbehaving module cannot forge them.
+     */
+    public function testPreTokenExtraClaimsDropsReservedClaims(): void
+    {
+        global $hookmanager;
+        $hookmanager = $this->createMockHookManager(function ($hook, $params, &$object, $action) use (&$hookmanager) {
+            if ($hook === 'smartmaker_oauth_pre_token') {
+                $hookmanager->resArray = [
+                    'extra_claims' => [
+                        'iss' => 'https://evil.example.com',
+                        'sub' => '999',
+                        'exp' => time() + 86400 * 365,
+                        'scope' => 'admin',
+                        'client_id' => 'someone_else',
+                        'email' => 'attacker@example.com',
+                        'groups' => ['Administrateurs'],
+                        'services' => ['captodo'],
+                        'tenant_id' => 42,
+                        'monmodule_flag' => true,
+                    ],
+                ];
+                return 0;
+            }
+            return 0;
+        });
+
+        $result = HookHelper::runBlockingHook('smartmaker_oauth_pre_token', [
+            'user_id' => 7,
+            'client_id' => 'captodo',
+            'client_pk' => 42,
+            'scopes' => ['openid'],
+            'grant_type' => 'authorization_code',
+        ]);
+
+        $this->assertSame(
+            ['services' => ['captodo'], 'tenant_id' => 42, 'monmodule_flag' => true],
+            $result['extra_claims']
+        );
+    }
+
+    /**
+     * Invalid value types must be dropped: objects, nested arrays, arrays of
+     * non-strings, etc. Only string, int, bool, or array<string> are allowed.
+     */
+    public function testPreTokenExtraClaimsDropsInvalidValueTypes(): void
+    {
+        global $hookmanager;
+        $hookmanager = $this->createMockHookManager(function ($hook, $params, &$object, $action) use (&$hookmanager) {
+            if ($hook === 'smartmaker_oauth_pre_token') {
+                $hookmanager->resArray = [
+                    'extra_claims' => [
+                        'object_claim' => (object) ['x' => 1],
+                        'nested_array' => ['a' => ['b' => 'c']],
+                        'array_of_ints' => [1, 2, 3],
+                        'array_mixed' => ['ok', 42],
+                        'float_claim' => 3.14,
+                        'null_claim' => null,
+                        'valid_string' => 'hello',
+                        'valid_int' => 7,
+                        'valid_bool' => true,
+                        'valid_array' => ['a', 'b', 'c'],
+                    ],
+                ];
+                return 0;
+            }
+            return 0;
+        });
+
+        $result = HookHelper::runBlockingHook('smartmaker_oauth_pre_token', [
+            'user_id' => 7,
+            'client_id' => 'captodo',
+            'client_pk' => 42,
+            'scopes' => ['openid'],
+            'grant_type' => 'authorization_code',
+        ]);
+
+        $this->assertSame(
+            [
+                'valid_string' => 'hello',
+                'valid_int' => 7,
+                'valid_bool' => true,
+                'valid_array' => ['a', 'b', 'c'],
+            ],
+            $result['extra_claims']
+        );
+    }
+
+    /**
+     * When the hook blocks, extra_claims must NOT be harvested -- the request
+     * never reaches createAccessToken so the claims would be dead weight.
+     */
+    public function testPreTokenExtraClaimsIgnoredWhenBlocked(): void
+    {
+        global $hookmanager;
+        $hookmanager = $this->createMockHookManager(function ($hook, $params, &$object, $action) use (&$hookmanager) {
+            if ($hook === 'smartmaker_oauth_pre_token') {
+                $hookmanager->resArray = [
+                    'error' => 'invalid_grant',
+                    'error_description' => 'Subscription expired.',
+                    'extra_claims' => ['services' => ['captodo']],
+                ];
+                return 1;
+            }
+            return 0;
+        });
+
+        $result = HookHelper::runBlockingHook('smartmaker_oauth_pre_token', [
+            'user_id' => 7,
+            'client_id' => 'captodo',
+            'client_pk' => 42,
+            'scopes' => ['openid'],
+            'grant_type' => 'refresh_token',
+        ]);
+
+        $this->assertTrue($result['blocked']);
+        $this->assertSame([], $result['extra_claims']);
+    }
+
+    /**
+     * A non-array extra_claims value (string, int, ...) must be ignored
+     * gracefully without breaking the response shape.
+     */
+    public function testPreTokenExtraClaimsNonArrayIgnored(): void
+    {
+        global $hookmanager;
+        $hookmanager = $this->createMockHookManager(function ($hook, $params, &$object, $action) use (&$hookmanager) {
+            if ($hook === 'smartmaker_oauth_pre_token') {
+                $hookmanager->resArray = ['extra_claims' => 'oops_a_string'];
+                return 0;
+            }
+            return 0;
+        });
+
+        $result = HookHelper::runBlockingHook('smartmaker_oauth_pre_token', [
+            'user_id' => 7,
+            'client_id' => 'captodo',
+            'client_pk' => 42,
+            'scopes' => ['openid'],
+            'grant_type' => 'authorization_code',
+        ]);
+
+        $this->assertFalse($result['blocked']);
+        $this->assertSame([], $result['extra_claims']);
+    }
+
+    /**
+     * When the hook is silent on extra_claims, the returned value is an
+     * empty array (not missing, not null).
+     */
+    public function testPreTokenExtraClaimsDefaultEmpty(): void
+    {
+        global $hookmanager;
+        $hookmanager = $this->createMockHookManager(function ($hook, $params, &$object, $action) {
+            return 0;
+        });
+
+        $result = HookHelper::runBlockingHook('smartmaker_oauth_pre_token', [
+            'user_id' => 7,
+            'client_id' => 'captodo',
+            'client_pk' => 42,
+            'scopes' => ['openid'],
+            'grant_type' => 'authorization_code',
+        ]);
+
+        $this->assertArrayHasKey('extra_claims', $result);
+        $this->assertSame([], $result['extra_claims']);
+    }
+
+    // ---------------------------------------------------------------------
     // runClaimsHook (covers smartmaker_oauth_userinfo_claims)
     // ---------------------------------------------------------------------
 

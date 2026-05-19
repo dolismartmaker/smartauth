@@ -249,11 +249,48 @@ class DmMappingClassesTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test that dmMapping classes reference valid Dolibarr classes
+     * Test that object mappers explicitly declare $dolibarrClassName.
      *
-     * This test verifies that dolibarrClassName (explicit or derived) matches
-     * an existing Dolibarr class. It would have caught the bug where dmThirdparty
-     * tried to instantiate 'Thirdparty' instead of 'Societe'.
+     * Implicit deduction from the mapper class name (dmXxx -> Xxx) is no
+     * longer supported because it masks bugs when the Dolibarr class name
+     * differs (e.g. dmThirdparty should map to Societe, not Thirdparty).
+     * See documentation/MAPPERS_CONVENTIONS.md.
+     *
+     * @dataProvider objectClassProvider
+     */
+    public function testObjectClassDeclaresDolibarrClassNameExplicitly(string $className): void
+    {
+        $fullClassName = 'SmartAuth\\DolibarrMapping\\' . $className;
+        $reflection = new ReflectionClass($fullClassName);
+
+        $this->assertTrue(
+            $reflection->hasProperty('dolibarrClassName'),
+            "$className must declare 'protected \$dolibarrClassName = \"XxxDolibarrClass\";'"
+        );
+
+        $prop = $reflection->getProperty('dolibarrClassName');
+        $prop->setAccessible(true);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $declaredValue = $prop->getValue($instance);
+
+        $this->assertNotEmpty(
+            $declaredValue,
+            "$className declares \$dolibarrClassName but it is empty/null. "
+            . "Set it explicitly (e.g. protected \$dolibarrClassName = 'Facture';)."
+        );
+
+        $this->assertIsString(
+            $declaredValue,
+            "$className: \$dolibarrClassName must be a string, got " . gettype($declaredValue)
+        );
+    }
+
+    /**
+     * Test that the Dolibarr class declared by an object mapper actually exists.
+     *
+     * Catches missing require_once or typos in $dolibarrClassName. Would have
+     * caught the original dmThirdparty -> Thirdparty bug (Thirdparty class
+     * does not exist in Dolibarr; the real class is Societe).
      *
      * @dataProvider objectClassProvider
      */
@@ -262,25 +299,60 @@ class DmMappingClassesTest extends DolibarrRealTestCase
         $fullClassName = 'SmartAuth\\DolibarrMapping\\' . $className;
         $reflection = new ReflectionClass($fullClassName);
 
-        // Get the dolibarrClassName that will be used by boot()
-        $expectedDolibarrClass = null;
-        if ($reflection->hasProperty('dolibarrClassName')) {
-            $prop = $reflection->getProperty('dolibarrClassName');
-            $prop->setAccessible(true);
-            $instance = $reflection->newInstanceWithoutConstructor();
-            $expectedDolibarrClass = $prop->getValue($instance);
-        }
+        $prop = $reflection->getProperty('dolibarrClassName');
+        $prop->setAccessible(true);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $declaredValue = $prop->getValue($instance);
 
-        // If no explicit dolibarrClassName, it will be derived from class name
-        if ($expectedDolibarrClass === null) {
-            $expectedDolibarrClass = preg_replace('/.*\\\\dm/', '', $fullClassName);
-        }
-
-        // Verify the Dolibarr class exists
         $this->assertTrue(
-            class_exists($expectedDolibarrClass),
-            "$className expects Dolibarr class '$expectedDolibarrClass' which does not exist. " .
-            "Add 'protected \$dolibarrClassName = \"RealClassName\";' to fix this."
+            class_exists($declaredValue),
+            "$className declares \$dolibarrClassName = '$declaredValue' but this class does not exist. "
+            . "Add the matching 'require_once DOL_DOCUMENT_ROOT . \"/.../xxx.class.php\";' at the top of the mapper file."
+        );
+    }
+
+    /**
+     * Test that no mapper misuses $parentClassName as a substitute for
+     * $dolibarrClassName.
+     *
+     * $parentClassName is only meaningful for sub-objects / lines
+     * (e.g. a hypothetical dmFichinterLigne with parentClassName='Fichinter').
+     * Declaring $parentClassName equal to $dolibarrClassName is meaningless
+     * (an object cannot be its own parent) and indicates the SmartPOS-style
+     * misuse where the author put the Dolibarr class name in the wrong field.
+     *
+     * @dataProvider mappingClassProvider
+     */
+    public function testParentClassNameNotEqualToDolibarrClassName(string $className): void
+    {
+        $fullClassName = 'SmartAuth\\DolibarrMapping\\' . $className;
+        $reflection = new ReflectionClass($fullClassName);
+
+        if (!$reflection->hasProperty('parentClassName')) {
+            $this->assertTrue(true);
+            return;
+        }
+
+        $parentProp = $reflection->getProperty('parentClassName');
+        $parentProp->setAccessible(true);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $parentValue = $parentProp->getValue($instance);
+
+        if (empty($parentValue)) {
+            $this->assertTrue(true);
+            return;
+        }
+
+        $dolibarrProp = $reflection->getProperty('dolibarrClassName');
+        $dolibarrProp->setAccessible(true);
+        $dolibarrValue = $dolibarrProp->getValue($instance);
+
+        $this->assertNotEquals(
+            $dolibarrValue,
+            $parentValue,
+            "$className: \$parentClassName ('$parentValue') cannot equal \$dolibarrClassName. "
+            . "\$parentClassName is reserved for sub-objects (e.g. FichinterLigne -> Fichinter). "
+            . "For a top-level mapper, remove \$parentClassName entirely."
         );
     }
 
