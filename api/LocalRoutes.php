@@ -27,6 +27,7 @@ use SmartAuth\Api\ObjectDocumentController;
 use SmartAuth\Api\PwaController;
 use SmartAuth\Api\UploadController;
 use SmartAuth\Api\QrPairController;
+use SmartAuth\Api\ThirdpartyMediaController;
 use SmartAuth\Api\Account\UserDeviceController;
 
 // ========== Auth Routes ========== //
@@ -129,6 +130,29 @@ Route::get('object/{type}/{id}/document/{path}', ObjectDocumentController::class
 
 // Download a document binary via path segment (legacy)
 Route::get('object/{type}/{id}/document/{path}/binary', ObjectDocumentController::class, 'downloadBinary', true);
+
+// ========== Media Routes ========== //
+//
+// Convention: media/{object_type}/{id}/{variant}[/{sub_variant}].
+// The media/ prefix reserves the URL namespace for all binary asset
+// streams smartauth serves (logos, photos, avatars, ...). Each object
+// type has its own controller so the entity-isolation and Dolibarr
+// permission rules stay localised. PWAs pair these with
+// useAuthenticatedImage() from smartcommon for IndexedDB caching.
+
+// Thirdparty logo (full + mini). Replaces the legacy base64 transport
+// that lived in dmThirdparty::fieldFilterValueLogo(). Cached aggressively
+// (1 day fresh + 30 days stale-while-revalidate) with ETag for cheap
+// revalidation on the rare cases the logo actually changes.
+Route::get('media/thirdparty/{id}/logo', ThirdpartyMediaController::class, 'logo', true);
+Route::get('media/thirdparty/{id}/logo/mini', ThirdpartyMediaController::class, 'logoMini', true);
+
+// Routes futures (placeholders documentaires, a decommenter quand
+// les controllers correspondants seront crees) :
+// Route::get('media/product/{id}/photo', ProductMediaController::class, 'photo', true);
+// Route::get('media/product/{id}/photo/mini', ProductMediaController::class, 'photoMini', true);
+// Route::get('media/user/{id}/avatar', UserMediaController::class, 'avatar', true);
+// Route::get('media/contact/{id}/photo', ContactMediaController::class, 'photo', true);
 
 // ========== PWA Routes ========== //
 
