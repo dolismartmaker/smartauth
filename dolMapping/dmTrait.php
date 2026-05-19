@@ -154,6 +154,30 @@ trait dmTrait
 				);
 			}
 		}
+
+		// $writableFields must list Dolibarr-side keys (the LEFT side of
+		// $listOfPublishedFields), not API-side names. The bug pattern
+		// 'doli_field' => 'api_field' in published, then 'api_field' in
+		// writable, causes importMappedData() to silently reject every input
+		// because $reverseMap is keyed by appside but never finds doliside.
+		// Caught silently 3 times on Dolipocket mappers (dmThirdParty.nom,
+		// dmContact.civility_code, dmAgenda with 4 entries); this check
+		// makes it loud at boot for every consumer that includes the trait.
+		if (!empty($this->writableFields) && !empty($this->listOfPublishedFields)) {
+			$publishedKeys = array_keys($this->listOfPublishedFields);
+			$invalid = array_values(array_diff($this->writableFields, $publishedKeys));
+			if (!empty($invalid)) {
+				throw new \LogicException(
+					"$mapperClass: \$writableFields contains entries that are not Dolibarr-side keys "
+					. "of \$listOfPublishedFields: ['" . implode("', '", $invalid) . "']. "
+					. "\$writableFields must list the LEFT side of \$listOfPublishedFields "
+					. "(Dolibarr column names), not the RIGHT side (API field names). "
+					. "Bug pattern: 'doli_field' => 'api_field' in published, then 'api_field' in writable "
+					. "makes importMappedData() silently reject every input. "
+					. "See documentation/MAPPERS_API.md."
+				);
+			}
+		}
 	}
 
 	/**
