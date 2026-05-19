@@ -23,6 +23,25 @@ namespace SmartAuth\Api\OAuth2;
 class HookHelper
 {
     /**
+     * Claims that SmartAuth itself controls when minting an access/id_token
+     * via TokenService::createAccessToken() / addUserClaims(). A hook that
+     * tries to write these via resArray['extra_claims'] is dropped (with
+     * a warning log) so a misbehaving module cannot forge identity claims,
+     * extend token lifetime or shadow OIDC profile fields. PERFS.md §3.3.
+     */
+    private const RESERVED_TOKEN_CLAIMS = [
+        // Identity / lifetime / audience
+        'iss', 'sub', 'aud', 'exp', 'iat', 'nbf', 'jti', 'auth_time',
+        // OAuth2 / OIDC standard token claims emitted by SmartAuth
+        'scope', 'client_id', 'grant_type', 'token_type',
+        'at_hash', 'nonce',
+        // OIDC profile / email / groups (controlled by addUserClaims)
+        'name', 'family_name', 'given_name', 'updated_at',
+        'email', 'email_verified',
+        'groups', 'roles',
+    ];
+
+    /**
      * Run a blocking hook (pre_authorize / pre_token).
      *
      * Convention:
@@ -30,10 +49,17 @@ class HookHelper
      *  - module sets resArray['error'] and resArray['error_description']
      *  - return value < 0 = internal error, treated as 500/server_error
      *
+     * When the hook returns 0 (allow), the helper also harvests
+     * resArray['extra_claims'] (PERFS.md §3.3): a sanitized associative
+     * array of additional claims to merge into the JWT payload before
+     * signature. Reserved claims and invalid value types are dropped with
+     * a warning log so a misbehaving module cannot forge identity claims
+     * or smuggle nested objects.
+     *
      * @param string                       $hookName    Hook name (e.g. smartmaker_oauth_pre_authorize)
      * @param array                        $parameters  Hook parameters
      * @param \SmartAuthOAuthClient|null   $client      Optional client object passed as $object
-     * @return array{blocked:bool, error:?string, error_description:?string, internal_error:bool}
+     * @return array{blocked:bool, error:?string, error_description:?string, internal_error:bool, extra_claims:array}
      */
     public static function runBlockingHook(string $hookName, array $parameters, $client = null): array
     {
@@ -44,6 +70,7 @@ class HookHelper
             'error' => null,
             'error_description' => null,
             'internal_error' => false,
+            'extra_claims' => [],
         ];
 
         if (!is_object($hookmanager) || !method_exists($hookmanager, 'executeHooks')) {
@@ -70,19 +97,106 @@ class HookHelper
             return $result;
         }
 
+        $resArray = property_exists($hookmanager, 'resArray') && is_array($hookmanager->resArray)
+            ? $hookmanager->resArray
+            : [];
+
         if ($reshook >= 1) {
             $result['blocked'] = true;
-            $resArray = property_exists($hookmanager, 'resArray') && is_array($hookmanager->resArray)
-                ? $hookmanager->resArray
-                : [];
             $result['error'] = isset($resArray['error']) ? (string) $resArray['error'] : 'access_denied';
             $result['error_description'] = isset($resArray['error_description'])
                 ? (string) $resArray['error_description']
                 : '';
             dol_syslog('SmartAuth HookHelper: Hook ' . $hookName . ' blocked with error=' . $result['error'], LOG_INFO);
+            return $result;
+        }
+
+        // Hook allowed the flow. Harvest extra_claims if any.
+        if (isset($resArray['extra_claims'])) {
+            if (is_array($resArray['extra_claims'])) {
+                $result['extra_claims'] = self::sanitizeExtraClaims($resArray['extra_claims'], $hookName);
+            } else {
+                dol_syslog(
+                    'SmartAuth HookHelper: ' . $hookName . ' returned non-array extra_claims, ignored',
+                    LOG_WARNING
+                );
+            }
         }
 
         return $result;
+    }
+
+    /**
+     * Filter an extra_claims array contributed by a hook before it is merged
+     * into the JWT payload.
+     *
+     * Rules (PERFS.md §3.3):
+     *  - keys must be non-empty strings.
+     *  - keys in RESERVED_TOKEN_CLAIMS are dropped with a warning (SmartAuth
+     *    owns them and a module forging them would break OIDC contract or
+     *    enable privilege escalation).
+     *  - values must be string|int|bool, or an array whose elements are all
+     *    strings. Anything else (objects, nested arrays, arrays of mixed
+     *    types) is dropped with a warning. The constraint keeps the JWT
+     *    compact and unambiguous to decode on the resource server side.
+     *
+     * @param array  $extraClaims Raw resArray['extra_claims']
+     * @param string $hookName    Hook name (for logging)
+     * @return array Filtered claims (associative)
+     */
+    private static function sanitizeExtraClaims(array $extraClaims, string $hookName): array
+    {
+        $clean = [];
+        foreach ($extraClaims as $key => $value) {
+            if (!is_string($key) || $key === '') {
+                dol_syslog(
+                    'SmartAuth HookHelper: ' . $hookName . ' extra_claims has non-string key, dropped',
+                    LOG_WARNING
+                );
+                continue;
+            }
+            if (in_array($key, self::RESERVED_TOKEN_CLAIMS, true)) {
+                dol_syslog(
+                    'SmartAuth HookHelper: ' . $hookName . ' attempted to inject reserved claim "'
+                    . $key . '" via extra_claims - dropped',
+                    LOG_WARNING
+                );
+                continue;
+            }
+            if (!self::isValidClaimValue($value)) {
+                dol_syslog(
+                    'SmartAuth HookHelper: ' . $hookName . ' extra_claims "' . $key
+                    . '" has invalid value type - dropped',
+                    LOG_WARNING
+                );
+                continue;
+            }
+            $clean[$key] = $value;
+        }
+        return $clean;
+    }
+
+    /**
+     * Tell whether a value is acceptable as an extra_claim value.
+     * Allowed: string, int, bool, or array of strings only (PERFS.md §3.3).
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    private static function isValidClaimValue($value): bool
+    {
+        if (is_string($value) || is_int($value) || is_bool($value)) {
+            return true;
+        }
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                if (!is_string($item)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
