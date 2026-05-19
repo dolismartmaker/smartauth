@@ -20,6 +20,8 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+require_once DOL_DOCUMENT_ROOT . '/ticket/class/cticketcategory.class.php';
+
 /**
  * Mapping for Dolibarr c_ticket_category dictionary -> API TicketCategory
  */
@@ -27,7 +29,8 @@ class dmCticketcategory extends dmBase
 {
 	use dmTrait;
 
-	protected $type = "dictionary";
+	protected $type = "dict";
+	protected $dolibarrClassName = 'CTicketCategory';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

@@ -28,6 +28,7 @@ class dmCcountry extends dmBase
 	use dmTrait;
 
 	protected $type = "dict";
+	protected $dolibarrClassName = 'Ccountry';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

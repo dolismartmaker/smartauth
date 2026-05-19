@@ -20,6 +20,8 @@
 
 namespace SmartAuth\DolibarrMapping;
 
+require_once DOL_DOCUMENT_ROOT . '/core/class/ctypent.class.php';
+
 /**
  * Mapping for Dolibarr c_typent dictionary -> API CompanyType
  */
@@ -27,7 +29,8 @@ class dmCtypent extends dmBase
 {
 	use dmTrait;
 
-	protected $type = "dictionary";
+	protected $type = "dict";
+	protected $dolibarrClassName = 'Ctypent';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

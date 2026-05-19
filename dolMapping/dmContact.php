@@ -28,6 +28,7 @@ class dmContact extends dmBase
 
 	protected $type = "object";
 	protected $dolibarrClassName = 'Contact';
+	protected $parentTableElementToUseForExtraFields = 'socpeople';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -47,6 +48,7 @@ class dmContact extends dmBase
 		'note_public' 		=> 'public_note',
 		'note_private' 		=> 'private_note',
 		'fk_soc'            => 'thirdparty',
+		'poste'             => 'job_title',
 	];
 	// 'fk_c_type_contact' => 'contact_type',
 
@@ -65,6 +67,7 @@ class dmContact extends dmBase
 		'phone_mobile',
 		'email',
 		'fk_soc',
+		'poste',
 		'note_public',
 		'note_private',
 	];
