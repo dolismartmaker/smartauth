@@ -1043,7 +1043,13 @@ class AuthController
 	{
 		static $dummy = null;
 		if ($dummy === null) {
-			$dummy = password_hash('SmartAuthDummyTimingHash:' . random_bytes(16), PASSWORD_BCRYPT);
+			// bin2hex() so the input never contains a null byte. PHP 8.3+
+			// throws ValueError("Bcrypt password must not contain null
+			// character") when password_hash() receives raw random_bytes
+			// output that happens to include 0x00 (probability ~6% per
+			// call). The static cache would never populate, making this
+			// failure recur intermittently across requests.
+			$dummy = password_hash('SmartAuthDummyTimingHash:' . bin2hex(random_bytes(16)), PASSWORD_BCRYPT);
 		}
 		return $dummy;
 	}
