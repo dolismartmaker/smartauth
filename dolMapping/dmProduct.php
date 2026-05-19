@@ -53,8 +53,12 @@ class dmProduct extends dmBase
 		'note_public'        => 'public_note',
 		'note_private'       => 'private_note',
 		'datec'              => 'created_at',
-		'tosell'             => 'for_sale',
-		'tobuy'              => 'for_purchase',
+		// Product::fetch (product.class.php line 2511-2512) reads the SQL
+		// columns 'tosell'/'tobuy' INTO $this->status / $this->status_buy
+		// (renamed at fetch time). The mapper must read the PHP property
+		// names, not the SQL column names.
+		'status'             => 'for_sale',
+		'status_buy'         => 'for_purchase',
 	];
 
 	// Allowlist for importMappedData() (Dolibarr field names).
@@ -76,8 +80,8 @@ class dmProduct extends dmBase
 		'length',
 		'width',
 		'height',
-		'tosell',
-		'tobuy',
+		'status',
+		'status_buy',
 		'note_public',
 		'note_private',
 	];

@@ -47,8 +47,15 @@ class dmContract extends dmBase
 		'fk_soc'            => 'thirdparty',
 		'fk_projet'         => 'project',
 		'fk_user_author'    => 'created_by',
-		'fk_commercial_signature' => 'commercial_signature',
-		'fk_commercial_suivi' => 'commercial_followup',
+		// Contrat::fetch (contrat.class.php line 715-716) reads the SQL
+		// columns 'fk_commercial_signature' / 'fk_commercial_suivi' INTO
+		// $this->commercial_signature_id / $this->commercial_suivi_id
+		// (legacy PHP alias). Reading the SQL names yields null. For
+		// writes, Contrat::update() aliases commercial_signature_id back
+		// to fk_commercial_signature automatically (line 1314), so the
+		// PHP name works for both read and write paths.
+		'commercial_signature_id' => 'commercial_signature',
+		'commercial_suivi_id'     => 'commercial_followup',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
 		'statut'            => 'status',
@@ -62,8 +69,8 @@ class dmContract extends dmBase
 		'date_contrat',
 		'fk_soc',
 		'fk_projet',
-		'fk_commercial_signature',
-		'fk_commercial_suivi',
+		'commercial_signature_id',
+		'commercial_suivi_id',
 		'note_public',
 		'note_private',
 	];

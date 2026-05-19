@@ -327,6 +327,13 @@ class DmLinesTraitTest extends DolibarrRealTestCase
 
         $this->assertArrayHasKey('ref', $mapping);
         $this->assertEquals('ref', $mapping['ref']);
+
+        // SupplierInvoiceLine::fetch populates $line->description directly
+        // (not $line->desc). The mapper overrides the common 'desc' key
+        // and uses 'description' on the doli side.
+        $this->assertArrayHasKey('description', $mapping);
+        $this->assertEquals('description', $mapping['description']);
+        $this->assertArrayNotHasKey('desc', $mapping);
     }
 
     /**
@@ -441,8 +448,11 @@ class DmLinesTraitTest extends DolibarrRealTestCase
         $this->assertArrayHasKey('fk_fichinter', $mapping);
         $this->assertEquals('intervention_id', $mapping['fk_fichinter']);
 
-        $this->assertArrayHasKey('duree', $mapping);
-        $this->assertEquals('duration', $mapping['duree']);
+        // FichinterLigne::fetch renames the SQL column 'duree' INTO
+        // $line->duration. The mapper reads the PHP property name.
+        $this->assertArrayHasKey('duration', $mapping);
+        $this->assertEquals('duration', $mapping['duration']);
+        $this->assertArrayNotHasKey('duree', $mapping);
 
         $this->assertArrayHasKey('date', $mapping);
         $this->assertEquals('date', $mapping['date']);
