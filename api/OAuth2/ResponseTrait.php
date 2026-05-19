@@ -157,6 +157,73 @@ trait ResponseTrait
     }
 
     /**
+     * Send JSON response with caller-controlled headers.
+     *
+     * Unlike sendJsonResponse(), this variant does NOT force Cache-Control:
+     * no-store: the caller decides. Useful for endpoints meant to be polled
+     * with conditional GETs (ETag / If-None-Match) such as /oauth/revoked-jti.
+     *
+     * The Content-Type is set to application/json by default but can be
+     * overridden by the caller.
+     *
+     * @param array $data    Response data
+     * @param int   $status  HTTP status code
+     * @param array $headers Headers to send (e.g. ['ETag' => ..., 'Cache-Control' => ...])
+     * @return void
+     * @throws ResponseException In test mode
+     */
+    protected function sendJsonResponseWithHeaders(array $data, int $status, array $headers): void
+    {
+        if (!array_key_exists('Content-Type', $headers)) {
+            $headers['Content-Type'] = 'application/json;charset=UTF-8';
+        }
+
+        if (self::$testMode) {
+            throw new ResponseException($data, $status, $headers);
+        }
+
+        http_response_code($status);
+        foreach ($headers as $name => $value) {
+            header("$name: $value");
+        }
+
+        echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /**
+     * Send a 304 Not Modified response, optionally echoing back the ETag the
+     * client validated against. RFC 7232 §4.1 requires the same validators
+     * the client used (ETag and/or Last-Modified) to be present.
+     *
+     * @param string|null $etag        ETag value to echo back (with quotes)
+     * @param string|null $cacheControl Cache-Control directive (default:
+     *                                  'public, max-age=0, must-revalidate'
+     *                                  so backends always revalidate the
+     *                                  freshness on their next poll).
+     * @return void
+     * @throws ResponseException In test mode
+     */
+    protected function sendNotModified(?string $etag = null, ?string $cacheControl = null): void
+    {
+        $headers = [];
+        if ($etag !== null && $etag !== '') {
+            $headers['ETag'] = $etag;
+        }
+        $headers['Cache-Control'] = $cacheControl ?? 'public, max-age=0, must-revalidate';
+
+        if (self::$testMode) {
+            throw new ResponseException([], 304, $headers);
+        }
+
+        http_response_code(304);
+        foreach ($headers as $name => $value) {
+            header("$name: $value");
+        }
+        exit;
+    }
+
+    /**
      * Send empty success response (for revocation endpoint)
      *
      * @return void
