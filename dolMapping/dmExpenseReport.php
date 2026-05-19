@@ -31,6 +31,7 @@ class dmExpenseReport extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'ExpenseReport';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -71,6 +72,18 @@ class dmExpenseReport extends dmBase
 		'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
 		'multicurrency_total_tva' => 'multicurrency_total_vat',
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// 'fk_user_author' and 'fk_user_validator' are intentionally excluded
+	// (case-by-case, conservative -- can be tightened later via dedicated endpoint).
+	protected $writableFields = [
+		'date_debut',
+		'date_fin',
+		'fk_c_paiement',
+		'note_public',
+		'note_private',
 	];
 
 	// Configuration for lines support

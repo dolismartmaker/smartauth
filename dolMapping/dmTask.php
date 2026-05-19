@@ -27,6 +27,7 @@ class dmTask extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Task';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -45,6 +46,21 @@ class dmTask extends dmBase
 		'progress'          => 'progress',
 		'priority'          => 'priority',
 		'fk_user_creat'     => 'created_by',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref',
+		'label',
+		'description',
+		'fk_projet',
+		'fk_task_parent',
+		'date_start',
+		'date_end',
+		'planned_workload',
+		'progress',
+		'priority',
 	];
 
 	/**

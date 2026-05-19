@@ -53,6 +53,25 @@ class dmWarehouse extends dmBase
 		'statut'            => 'status',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// 'statut' is intentionally excluded per Rule 1 strict (status = state machine).
+	protected $writableFields = [
+		'ref',
+		'label',
+		'description',
+		'lieu',
+		'address',
+		'zip',
+		'town',
+		'fk_departement',
+		'fk_pays',
+		'phone',
+		'fax',
+		'fk_parent',
+		'fk_projet',
+	];
+
 	/**
 	 * object constructor
 	 *

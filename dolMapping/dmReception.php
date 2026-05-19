@@ -33,6 +33,7 @@ class dmReception extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Reception';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -67,6 +68,30 @@ class dmReception extends dmBase
 		'note_private'      => 'private_note',
 		'statut'            => 'status',
 		'billed'            => 'billed',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref_supplier',
+		'socid',
+		'fk_projet',
+		'date_reception',
+		'date_delivery',
+		'entrepot_id',
+		'fk_shipping_method',
+		'tracking_number',
+		'tracking_url',
+		'trueWeight',
+		'weight_units',
+		'trueWidth',
+		'width_units',
+		'trueHeight',
+		'height_units',
+		'trueDepth',
+		'depth_units',
+		'note_public',
+		'note_private',
 	];
 
 	// Configuration for lines support - Reception uses CommandeFournisseurDispatch for lines

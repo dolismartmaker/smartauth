@@ -74,6 +74,34 @@ class dmMember extends dmBase
 		'note_private'      => 'private_note',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'civility_id',
+		'lastname',
+		'firstname',
+		'gender',
+		'birth',
+		'company',
+		'address',
+		'zip',
+		'town',
+		'state_id',
+		'country_id',
+		'email',
+		'url',
+		'phone',
+		'phone_perso',
+		'phone_pro',
+		'phone_mobile',
+		'login',
+		'morphy',
+		'typeid',
+		'fk_soc',
+		'note_public',
+		'note_private',
+	];
+
 	/**
 	 * object constructor
 	 *

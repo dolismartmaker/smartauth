@@ -74,6 +74,30 @@ class dmShipment extends dmBase
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref_customer',
+		'socid',
+		'fk_projet',
+		'date_expedition',
+		'date_delivery',
+		'entrepot_id',
+		'fk_shipping_method',
+		'tracking_number',
+		'tracking_url',
+		'trueWeight',
+		'weight_units',
+		'trueWidth',
+		'width_units',
+		'trueHeight',
+		'height_units',
+		'trueDepth',
+		'depth_units',
+		'note_public',
+		'note_private',
+	];
+
 	// Configuration for lines support
 	protected $parentClassNameForLines = 'ExpeditionLigne';
 	protected $parentLabelForLines = 'ShipmentLines';

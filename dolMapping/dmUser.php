@@ -27,6 +27,7 @@ class dmUser extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'User';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -48,6 +49,25 @@ class dmUser extends dmBase
 		'country_id'        => 'country',
 		'datec'             => 'created_at',
 		'statut'            => 'status',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// 'login', 'pass*', 'admin', 'rights_*', 'statut' excluded (sensitive / state machine).
+	protected $writableFields = [
+		'civility_code',
+		'lastname',
+		'firstname',
+		'gender',
+		'email',
+		'office_phone',
+		'user_mobile',
+		'job',
+		'address',
+		'zip',
+		'town',
+		'state_id',
+		'country_id',
 	];
 
 	/**

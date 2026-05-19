@@ -25,7 +25,42 @@ abstract class dmBase
     protected $type;
 
     /**
-     * name of class for parent object, for exemple Fichinter
+     * Name of the Dolibarr class this mapper represents.
+     *
+     * MANDATORY for every concrete mapper. The class MUST exist (i.e. its
+     * source file MUST be loaded via `require_once DOL_DOCUMENT_ROOT . '/...';`
+     * at the top of the mapper file).
+     *
+     * Example: dmInvoice (which maps Dolibarr Facture) declares:
+     *   protected $dolibarrClassName = 'Facture';
+     *
+     * Do NOT confuse with $parentClassName (see below). $dolibarrClassName
+     * answers "what class is THIS mapper for", whereas $parentClassName
+     * answers "what is the parent class of this object" -- only relevant
+     * for sub-objects / lines.
+     *
+     * Boot-time validation (dmTrait::_validateDeclaration()) throws a
+     * LogicException if this property is missing or points to a non-existing
+     * class. See documentation/MAPPERS_CONVENTIONS.md.
+     *
+     * @var string
+     */
+    protected $dolibarrClassName;
+
+    /**
+     * Name of the parent Dolibarr class -- ONLY for sub-objects / lines.
+     *
+     * For example, a hypothetical dmFichinterLigne mapper (sub-object of
+     * Fichinter) would declare:
+     *   protected $dolibarrClassName = 'FichinterLigne';
+     *   protected $parentClassName   = 'Fichinter';
+     *
+     * Most mappers (header objects like dmInvoice, dmThirdparty, dmProduct...)
+     * do NOT have a parent and MUST NOT set this property. Setting
+     * $parentClassName equal to $dolibarrClassName is a misuse and will
+     * trigger a LogicException at boot time -- this guards against a known
+     * mistake (declaring $parentClassName = 'Product' on a top-level
+     * dmProduct mapper).
      *
      * @var string
      */
@@ -75,6 +110,31 @@ abstract class dmBase
      * @var array
      */
     protected $listOfPublishedFields;
+
+    /**
+     * Allowlist of Dolibarr field names this mapper accepts on import (write).
+     *
+     * Used by dmTrait::importMappedData() to reject any input field that is
+     * not explicitly declared here -- safe-by-default: a mapper that does
+     * not declare $writableFields is read-only via the import path.
+     *
+     * Values are Dolibarr field names (the KEYS of $listOfPublishedFields),
+     * NOT the API names. Example for dmInvoice:
+     *   protected $writableFields = [
+     *       'ref_customer', 'date', 'date_lim_reglement',
+     *       'fk_cond_reglement', 'fk_mode_reglement',
+     *       'note_public', 'note_private',
+     *   ];
+     *
+     * Lines / sub-objects are NOT covered by this mechanism in v1 of
+     * importMappedData -- they must be managed via the Dolibarr object's
+     * own addLine() / updateLine() / deleteLine() methods.
+     *
+     * See documentation/MAPPERS_API.md for the full import contract.
+     *
+     * @var array
+     */
+    protected $writableFields = [];
 
     /**
      * name of class for lines, for exemple FichinterLigne or InventoryLine

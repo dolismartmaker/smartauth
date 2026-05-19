@@ -27,6 +27,7 @@ class dmProduct extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Product';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -54,6 +55,31 @@ class dmProduct extends dmBase
 		'datec'              => 'created_at',
 		'tosell'             => 'for_sale',
 		'tobuy'              => 'for_purchase',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// 'stock_reel' (computed) and 'seuil_stock_alerte' (case-by-case, conservative) excluded.
+	protected $writableFields = [
+		'ref',
+		'label',
+		'description',
+		'type',
+		'price',
+		'price_ttc',
+		'price_min',
+		'price_min_ttc',
+		'price_base_type',
+		'tva_tx',
+		'barcode',
+		'weight',
+		'length',
+		'width',
+		'height',
+		'tosell',
+		'tobuy',
+		'note_public',
+		'note_private',
 	];
 
 	/**

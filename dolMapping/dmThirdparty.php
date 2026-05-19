@@ -51,6 +51,22 @@ class dmThirdparty extends dmBase
 		'logo'              => 'logo'
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'nom',
+		'address',
+		'zip',
+		'town',
+		'fk_departement',
+		'fk_pays',
+		'phone',
+		'url',
+		'email',
+		'note_public',
+		'note_private',
+	];
+
 	/**
 	 * object constructor
 	 *

@@ -54,6 +54,20 @@ class dmContract extends dmBase
 		'statut'            => 'status',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref_customer',
+		'ref_supplier',
+		'date_contrat',
+		'fk_soc',
+		'fk_projet',
+		'fk_commercial_signature',
+		'fk_commercial_suivi',
+		'note_public',
+		'note_private',
+	];
+
 	// Configuration for lines support
 	protected $parentClassNameForLines = 'ContratLigne';
 	protected $parentLabelForLines = 'ContractLines';

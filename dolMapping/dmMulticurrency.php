@@ -30,6 +30,7 @@ class dmMulticurrency extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'MultiCurrency';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -40,6 +41,14 @@ class dmMulticurrency extends dmBase
 		'rate'              => 'rate',
 		'date_create'       => 'created_at',
 		'fk_user'           => 'created_by',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'code',
+		'name',
+		'rate',
 	];
 
 	/**
