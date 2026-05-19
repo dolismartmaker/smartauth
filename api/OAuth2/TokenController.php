@@ -267,7 +267,9 @@ class TokenController
         $scopes = $authCode->getScopesArray();
 
         // Pre-token hook: external modules may re-evaluate access right
-        if (!$this->runPreTokenHook($authCode->fk_user, $scopes, 'authorization_code')) {
+        // and inject extra claims (PERFS.md §3.3).
+        $hookResult = $this->runPreTokenHook($authCode->fk_user, $scopes, 'authorization_code');
+        if (!$hookResult['allowed']) {
             return;
         }
 
@@ -275,7 +277,7 @@ class TokenController
         $authCode->markAsUsed();
 
         // Generate tokens
-        $tokens = $this->generateTokens($authCode->fk_user, $scopes, $authCode->nonce);
+        $tokens = $this->generateTokens($authCode->fk_user, $scopes, $authCode->nonce, $hookResult['extra_claims']);
 
         // Send response
         $this->sendTokenResponse($tokens, $scopes);
@@ -330,8 +332,10 @@ class TokenController
             $scopes = $originalScopes;
         }
 
-        // Pre-token hook: external modules may re-evaluate access right (e.g. contract closed since last refresh)
-        if (!$this->runPreTokenHook($tokenRecord->fk_user, $scopes, 'refresh_token')) {
+        // Pre-token hook: external modules may re-evaluate access right
+        // (e.g. contract closed since last refresh) and inject extra claims.
+        $hookResult = $this->runPreTokenHook($tokenRecord->fk_user, $scopes, 'refresh_token');
+        if (!$hookResult['allowed']) {
             return;
         }
 
@@ -343,7 +347,8 @@ class TokenController
             $tokenRecord->fk_user,
             $this->client->client_id,
             $scopes,
-            $this->client->access_token_lifetime
+            $this->client->access_token_lifetime,
+            $hookResult['extra_claims']
         );
 
         // Store access token for revocation tracking
@@ -444,18 +449,23 @@ class TokenController
             return;
         }
 
-        // Pre-token hook: external modules may block client_credentials too (gating may opt out per spec)
-        if (!$this->runPreTokenHook($serviceUserId, $scopes, 'client_credentials')) {
+        // Pre-token hook: external modules may block client_credentials too
+        // (gating may opt out per spec) and inject extra claims.
+        $hookResult = $this->runPreTokenHook($serviceUserId, $scopes, 'client_credentials');
+        if (!$hookResult['allowed']) {
             return;
         }
 
-        // Create access token with grant_type in extra claims
+        // Create access token. grant_type is a SmartAuth-controlled claim
+        // (HookHelper strips it from extra_claims), so the merge below cannot
+        // collide with hook-contributed claims.
+        $extraClaims = array_merge($hookResult['extra_claims'], ['grant_type' => 'client_credentials']);
         $accessToken = $this->tokenService->createAccessToken(
             $serviceUserId,
             $this->client->client_id,
             $scopes,
             $this->client->access_token_lifetime,
-            ['grant_type' => 'client_credentials']
+            $extraClaims
         );
 
         // Store access token for revocation tracking (no parent refresh token)
@@ -598,16 +608,19 @@ class TokenController
      * @param int $userId User ID
      * @param array $scopes Granted scopes
      * @param string|null $nonce OIDC nonce
+     * @param array $extraClaims Sanitized extra claims contributed by
+     *                           the pre_token hook (PERFS.md §3.3)
      * @return array Token data
      */
-    private function generateTokens(int $userId, array $scopes, ?string $nonce): array
+    private function generateTokens(int $userId, array $scopes, ?string $nonce, array $extraClaims = []): array
     {
         // Generate access token
         $accessToken = $this->tokenService->createAccessToken(
             $userId,
             $this->client->client_id,
             $scopes,
-            $this->client->access_token_lifetime
+            $this->client->access_token_lifetime,
+            $extraClaims
         );
 
         $tokens = [
@@ -694,9 +707,12 @@ class TokenController
      * @param int    $userId    User ID (or service user ID for client_credentials)
      * @param array  $scopes    Scopes that will be granted
      * @param string $grantType Grant type label ('authorization_code', 'refresh_token', 'client_credentials')
-     * @return bool True if the hook allows the flow to continue, false otherwise
+     * @return array{allowed:bool, extra_claims:array} 'allowed' is false when the
+     *         flow must stop (the error response has already been sent). When
+     *         'allowed' is true, 'extra_claims' carries the sanitized claims
+     *         the hook injected for inclusion in the access token JWT.
      */
-    private function runPreTokenHook(int $userId, array $scopes, string $grantType): bool
+    private function runPreTokenHook(int $userId, array $scopes, string $grantType): array
     {
         $result = HookHelper::runBlockingHook(
             'smartmaker_oauth_pre_token',
@@ -712,17 +728,17 @@ class TokenController
 
         if ($result['internal_error']) {
             $this->sendError('server_error', 'Internal error during token authorization', 500);
-            return false;
+            return ['allowed' => false, 'extra_claims' => []];
         }
 
         if ($result['blocked']) {
             $error = $result['error'] ?: 'invalid_grant';
             $description = $result['error_description'] ?: 'Access denied for this grant';
             $this->sendError($error, $description, 400);
-            return false;
+            return ['allowed' => false, 'extra_claims' => []];
         }
 
-        return true;
+        return ['allowed' => true, 'extra_claims' => $result['extra_claims']];
     }
 
     /**
