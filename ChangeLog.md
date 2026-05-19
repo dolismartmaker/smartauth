@@ -1,11 +1,22 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.18 -- 20260520
+
+ - Mappers Dolibarr -> API
+ - Next step for dolMapping objects
+ - Include dolMapping of dictionaries
+ - Handle extrafields
+ - Add tests coverage
+ - OAuth2 hook smartmaker_oauth_pre_token
+ - TokenService::createAccessToken
+ - TokenController propagates the harvested extra_claims
+ - JWT revocation list
+ - ResponseTrait gains sendJsonResponseWithHeaders() and sendNotModified()
+
 ## 2.0.16 -- 20260513
 
- - Add Idempotency-Key support on POST /upload
- - Better auto tests
- - Add extrafield for ecmfiles annotations
- - Add qr code pairing process + mail warning
+ - Add Idempotency-Key support on POST /upload (replays the 2xx response on retry instead of creating duplicate files when the PWA loses the network mid-upload). New table llx_smartauth_upload_idempotency with auto-purge in doScheduledJob (24h for completed, 10min for stale processing). Backend contract for the smartcommon useUploadQueue hook (cf documentation/SPEC_UPLOAD_IDEMPOTENCY.md).
+ - Test harness: cleanSmartAuthTables() now discovers smartauth tables at runtime via sqlite_master / SHOW TABLES, no more hard-coded list to maintain.
 
 ## 2.0.14 -- 20260507
 
