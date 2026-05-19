@@ -773,4 +773,184 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
             $this->assertNotEmpty($config['element'], "syncableObject '$type' element should not be empty");
         }
     }
+
+    // =========================================================================
+    //  Push contract: api keys, FK validation, unknown-key filtering
+    //  These tests pin down the contract established by the
+    //  SyncController -> dm* migration (see SPEC_SMARTAUTH_AUTHORIZATION
+    //  section 8.2 invariant I-1).
+    // =========================================================================
+
+    /**
+     * The client sends API key names (eg 'name'), not Dolibarr column
+     * names ('nom'). Push must route them through dmThirdparty to
+     * resolve to the right PHP property; Societe::create then writes
+     * the SQL column 'nom'.
+     */
+    public function testPushCreateRespectsApiKeyNames(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $apiName = 'API-Push-' . uniqid();
+        $result = $this->controller->push([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [
+                [
+                    'action' => 'create',
+                    'temp_id' => 'tmp-1',
+                    'data'   => [
+                        'name'  => $apiName,
+                        'email' => 'push-' . uniqid() . '@example.test',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertNotEmpty($result[0]['success'], 'create should succeed');
+        $newId = (int) $result[0]['success'][0];
+        $this->assertGreaterThan(0, $newId);
+
+        // Verify the SQL column 'nom' was written from the api key 'name'.
+        $resql = $this->db->query(
+            'SELECT nom, email FROM ' . MAIN_DB_PREFIX . 'societe WHERE rowid = ' . $newId
+        );
+        $this->assertNotFalse($resql);
+        $row = $this->db->fetch_object($resql);
+        $this->assertNotNull($row, 'created row must exist');
+        $this->assertSame(
+            $apiName,
+            $row->nom,
+            'api key "name" must end up in SQL column "nom" (via $this->name)'
+        );
+    }
+
+    /**
+     * The mapper accepts 'country' (-> fk_pays) but the FK target must
+     * exist in c_country. A push pointing at a non-existent country id
+     * must NOT store the orphan FK on the resulting row.
+     */
+    public function testPushCreateRejectsForeignKeyToMissingTarget(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        // Pick a FK target that does not exist in c_country.
+        $orphanCountryId = 999999;
+        $resql = $this->db->query(
+            'SELECT rowid FROM ' . MAIN_DB_PREFIX . 'c_country WHERE rowid = ' . $orphanCountryId
+        );
+        $this->assertNotFalse($resql);
+        $this->assertSame(0, (int) $this->db->num_rows($resql), 'precondition: orphan id must be absent');
+
+        $apiName = 'FK-Reject-' . uniqid();
+        $result = $this->controller->push([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [
+                [
+                    'action' => 'create',
+                    'temp_id' => 'tmp-1',
+                    'data'   => [
+                        'name'    => $apiName,
+                        'country' => $orphanCountryId,
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertNotEmpty(
+            $result[0]['success'],
+            'create still succeeds; only the FK assignment is dropped'
+        );
+        $newId = (int) $result[0]['success'][0];
+
+        // The created row must NOT carry the orphan fk_pays.
+        $resql = $this->db->query(
+            'SELECT nom, fk_pays FROM ' . MAIN_DB_PREFIX . 'societe WHERE rowid = ' . $newId
+        );
+        $row = $this->db->fetch_object($resql);
+        $this->assertSame($apiName, $row->nom);
+        $this->assertNotEquals(
+            $orphanCountryId,
+            (int) $row->fk_pays,
+            'fk_pays must not point at a non-existent c_country row'
+        );
+    }
+
+    /**
+     * Unknown api keys must be silently dropped (with a LOG_WARNING),
+     * not propagated to the Dolibarr object. The current writableFields
+     * of dmThirdparty does not declare 'reputation', so it must be
+     * filtered out without aborting the create.
+     */
+    public function testPushCreateFiltersUnknownApiKeys(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $apiName = 'Unknown-Key-' . uniqid();
+        $result = $this->controller->push([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [
+                [
+                    'action' => 'create',
+                    'temp_id' => 'tmp-1',
+                    'data'   => [
+                        'name'             => $apiName,
+                        'reputation'       => 'champion',
+                        'arbitrary_secret' => 'should never reach Societe',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertNotEmpty($result[0]['success']);
+        $newId = (int) $result[0]['success'][0];
+
+        // Defensive: 'reputation' is also a Dolibarr column on
+        // llx_societe in some versions; make sure the unknown api key
+        // did not bleed through.
+        $resql = $this->db->query(
+            'SELECT * FROM ' . MAIN_DB_PREFIX . 'societe WHERE rowid = ' . $newId
+        );
+        $row = $this->db->fetch_object($resql);
+        $this->assertSame($apiName, $row->nom);
+        // The exact set of columns depends on the schema, so we only
+        // assert that no value our payload tried to inject ever shows
+        // up. 'champion' came in via 'reputation', 'arbitrary_secret'
+        // via a wholly fictitious key.
+        foreach ((array) $row as $colName => $colValue) {
+            if ($colName === 'nom') {
+                continue;
+            }
+            $this->assertNotSame(
+                'champion',
+                (string) $colValue,
+                "Unknown api key 'reputation' value leaked into column '$colName'"
+            );
+            $this->assertNotSame(
+                'should never reach Societe',
+                (string) $colValue,
+                "Wholly-fictitious api key value leaked into column '$colName'"
+            );
+        }
+    }
 }
