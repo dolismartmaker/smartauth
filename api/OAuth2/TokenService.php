@@ -38,6 +38,15 @@ use SmartAuth\Api\JwtKeyHelper;
 class TokenService
 {
     /**
+     * Maximum size of the JSON-encoded JWT payload before signature, in bytes.
+     * Leaves ~1 KB of margin under the 4 KB HTTP header / cookie limit so a
+     * signed JWT (payload + header + signature, base64url-encoded) stays well
+     * under the practical upper bound enforced by proxies and browsers.
+     * PERFS.md §3.3.
+     */
+    const MAX_JWT_PAYLOAD_BYTES = 3072;
+
+    /**
      * Database connection
      * @var \DoliDB
      */
@@ -81,9 +90,36 @@ class TokenService
             'scope' => implode(' ', $scopes),
         ];
 
-        // Merge extra claims (e.g. grant_type for client_credentials)
+        // Merge extra claims (e.g. grant_type for client_credentials, or
+        // module-contributed claims harvested by HookHelper::runBlockingHook).
+        // SmartAuth-owned claims (iss, sub, aud, exp, etc.) win on collision
+        // because they are set before the merge in $payload, and HookHelper
+        // already strips reserved claims from $extraClaims; we keep the same
+        // win order here as a defense-in-depth in case extra claims sneak in
+        // by another code path.
         if (!empty($extraClaims)) {
-            $payload = array_merge($payload, $extraClaims);
+            $payload = array_merge($extraClaims, $payload);
+        }
+
+        // PERFS.md §3.3: enforce a hard cap on the JSON-encoded payload size
+        // to keep the final base64url-encoded JWT well under the practical
+        // 4 KB HTTP header / cookie limit. A misbehaving hook or runaway
+        // claims list must fail loudly, not silently produce a token that
+        // breaks downstream proxies and browsers.
+        $payloadJson = json_encode($payload);
+        if ($payloadJson === false) {
+            dol_syslog('SmartAuth TokenService: createAccessToken json_encode failed: ' . json_last_error_msg(), LOG_ERR);
+            throw new \RuntimeException('Failed to encode JWT payload');
+        }
+        $payloadSize = strlen($payloadJson);
+        if ($payloadSize > self::MAX_JWT_PAYLOAD_BYTES) {
+            dol_syslog(
+                'SmartAuth TokenService: createAccessToken payload too large (' . $payloadSize
+                . ' bytes > ' . self::MAX_JWT_PAYLOAD_BYTES . ' bytes max) for user=' . $userId
+                . ' client=' . $clientId,
+                LOG_ERR
+            );
+            throw new \RuntimeException('JWT payload exceeds the maximum allowed size');
         }
 
         $jwt = $this->encodeJwt($payload);
@@ -568,6 +604,224 @@ class TokenService
         }
         dol_syslog('SmartAuth TokenService: Revoked ' . $count . ' tokens for user ' . $fk_user, LOG_INFO);
         return $count;
+    }
+
+    // =========================================================================
+    // Revoked-JTI list (PERFS.md §3.4 hybrid revocation: TTL + revocation list)
+    // =========================================================================
+
+    /**
+     * Add a JTI to the published revocation list.
+     *
+     * Idempotent: re-adding an already-known jti is a no-op. Resource
+     * servers poll GET /oauth/revoked-jti and reject any access token
+     * whose jti appears in the list -- this is what closes the window
+     * between the TTL-based revocation (up to access_token_lifetime) and
+     * the actual contract-closure event (a few minutes via the poll).
+     *
+     * @param string $jti        JWT ID, as emitted by createAccessToken
+     * @param int    $expiresAt  Original exp claim of the token (unix ts).
+     *                           Once this is past, the token is rejected
+     *                           anyway by the standard exp check -- so the
+     *                           row can be purged.
+     * @param string $reason     Free-form short label, kept for audit
+     *                           (e.g. 'contract_closed', 'manual',
+     *                           'credential_compromise').
+     * @return int  1 if inserted, 0 if jti already in list, -1 on error
+     */
+    public function addRevokedJti(string $jti, int $expiresAt, string $reason): int
+    {
+        $jti = trim($jti);
+        if ($jti === '' || $expiresAt <= 0) {
+            dol_syslog('SmartAuth TokenService: addRevokedJti rejected empty jti or non-positive expiresAt', LOG_WARNING);
+            return -1;
+        }
+
+        // Idempotence: check existence first. PK on jti would catch a
+        // duplicate INSERT anyway, but a clean SELECT lets us log the
+        // no-op path distinctly without producing a SQL error.
+        $sql = "SELECT jti FROM " . MAIN_DB_PREFIX . "smartauth_revoked_jti"
+            . " WHERE jti = '" . $this->db->escape($jti) . "'";
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog('SmartAuth TokenService: addRevokedJti SELECT failed: ' . $this->db->lasterror(), LOG_ERR);
+            return -1;
+        }
+        $exists = ($this->db->num_rows($resql) > 0);
+        $this->db->free($resql);
+        if ($exists) {
+            return 0;
+        }
+
+        global $conf;
+        $entity = isset($conf->entity) ? (int) $conf->entity : 1;
+        $reason = substr((string) $reason, 0, 64);
+
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_revoked_jti"
+            . " (jti, revoked_at, expires_at, reason, entity)"
+            . " VALUES ("
+            . "'" . $this->db->escape($jti) . "',"
+            . "'" . $this->db->idate(dol_now()) . "',"
+            . "'" . $this->db->idate($expiresAt) . "',"
+            . "'" . $this->db->escape($reason) . "',"
+            . $entity
+            . ")";
+
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog('SmartAuth TokenService: addRevokedJti INSERT failed for jti=' . $jti . ': ' . $this->db->lasterror(), LOG_ERR);
+            return -1;
+        }
+        dol_syslog('SmartAuth TokenService: jti revoked (jti=' . $jti . ', reason=' . $reason . ')', LOG_INFO);
+        return 1;
+    }
+
+    /**
+     * List the currently-active access tokens for a (user, client) couple,
+     * returning each jti and its original exp claim.
+     *
+     * "Currently active" means: token_type = access, revoked_at IS NULL,
+     * expires_at in the future. This is the set a trigger (e.g. capsso
+     * LINECONTRACT_CLOSE) wants to publish to the revocation list before
+     * calling revokeAllForUserAndClient.
+     *
+     * Caller workflow:
+     *   $jtis = $svc->listRevokedJtiActiveForUserAndClient($u, $c);
+     *   foreach ($jtis as $row) { $svc->addRevokedJti($row['jti'], $row['expires_at'], 'contract_closed'); }
+     *   $svc->revokeAllForUserAndClient($u, $c);
+     *
+     * @param int $fk_user      User row ID
+     * @param int $fk_client_pk OAuth client row ID
+     * @return array<int, array{jti: string, expires_at: int}> Empty array on error or no match
+     */
+    public function listRevokedJtiActiveForUserAndClient(int $fk_user, int $fk_client_pk): array
+    {
+        $results = [];
+
+        $sql = "SELECT jti, expires_at FROM " . MAIN_DB_PREFIX . "smartauth_oauth_tokens"
+            . " WHERE fk_user = " . ((int) $fk_user)
+            . " AND fk_client = " . ((int) $fk_client_pk)
+            . " AND token_type = '" . \SmartAuthOAuthToken::TOKEN_TYPE_ACCESS . "'"
+            . " AND revoked_at IS NULL"
+            . " AND expires_at > '" . $this->db->idate(dol_now()) . "'"
+            . " AND jti IS NOT NULL AND jti <> ''";
+
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog('SmartAuth TokenService: listRevokedJtiActiveForUserAndClient SQL failed: ' . $this->db->lasterror(), LOG_ERR);
+            return $results;
+        }
+        while ($obj = $this->db->fetch_object($resql)) {
+            $exp = $obj->expires_at;
+            $expTs = is_numeric($exp) ? (int) $exp : (int) strtotime((string) $exp);
+            $results[] = [
+                'jti' => (string) $obj->jti,
+                'expires_at' => $expTs,
+            ];
+        }
+        $this->db->free($resql);
+        return $results;
+    }
+
+    /**
+     * Same idea as listRevokedJtiActiveForUserAndClient, but across every
+     * client. Used by user-scope triggers (USER_DISABLE / USER_DELETE /
+     * COMPANY_DELETE) that revoke the user globally and want to publish
+     * every still-unexpired jti.
+     *
+     * @param int $fk_user User row ID
+     * @return array<int, array{jti: string, expires_at: int}>
+     */
+    public function listRevokedJtiActiveForUser(int $fk_user): array
+    {
+        $results = [];
+
+        $sql = "SELECT jti, expires_at FROM " . MAIN_DB_PREFIX . "smartauth_oauth_tokens"
+            . " WHERE fk_user = " . ((int) $fk_user)
+            . " AND token_type = '" . \SmartAuthOAuthToken::TOKEN_TYPE_ACCESS . "'"
+            . " AND revoked_at IS NULL"
+            . " AND expires_at > '" . $this->db->idate(dol_now()) . "'"
+            . " AND jti IS NOT NULL AND jti <> ''";
+
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog('SmartAuth TokenService: listRevokedJtiActiveForUser SQL failed: ' . $this->db->lasterror(), LOG_ERR);
+            return $results;
+        }
+        while ($obj = $this->db->fetch_object($resql)) {
+            $exp = $obj->expires_at;
+            $expTs = is_numeric($exp) ? (int) $exp : (int) strtotime((string) $exp);
+            $results[] = [
+                'jti' => (string) $obj->jti,
+                'expires_at' => $expTs,
+            ];
+        }
+        $this->db->free($resql);
+        return $results;
+    }
+
+    /**
+     * Fetch the published revocation list, filtered by an optional "since"
+     * timestamp (unix seconds, comparing against revoked_at). Rows whose
+     * expires_at is already in the past are excluded since the underlying
+     * access token would be rejected by the exp check anyway.
+     *
+     * Used by GET /oauth/revoked-jti to feed resource servers' poll.
+     *
+     * @param int $sinceTs Unix timestamp; 0 means "from the beginning"
+     * @return array<int, array{jti: string, revoked_at_ts: int}>
+     */
+    public function listRevokedJtiSince(int $sinceTs = 0): array
+    {
+        $results = [];
+
+        $nowSql = $this->db->idate(dol_now());
+
+        $sql = "SELECT jti, revoked_at FROM " . MAIN_DB_PREFIX . "smartauth_revoked_jti"
+            . " WHERE expires_at > '" . $nowSql . "'";
+        if ($sinceTs > 0) {
+            $sql .= " AND revoked_at > '" . $this->db->idate($sinceTs) . "'";
+        }
+        $sql .= " ORDER BY revoked_at ASC, jti ASC";
+
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog('SmartAuth TokenService: listRevokedJtiSince SQL failed: ' . $this->db->lasterror(), LOG_ERR);
+            return $results;
+        }
+        while ($obj = $this->db->fetch_object($resql)) {
+            $rev = $obj->revoked_at;
+            $revTs = is_numeric($rev) ? (int) $rev : (int) strtotime((string) $rev);
+            $results[] = [
+                'jti' => (string) $obj->jti,
+                'revoked_at_ts' => $revTs,
+            ];
+        }
+        $this->db->free($resql);
+        return $results;
+    }
+
+    /**
+     * Purge rows whose expires_at has passed. Cheap, can be called from a
+     * scheduled job or lazily before reading the list (PERFS.md §3.4).
+     *
+     * @return int Number of rows deleted, or -1 on error.
+     */
+    public function purgeExpiredRevokedJti(): int
+    {
+        $sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_revoked_jti"
+            . " WHERE expires_at < '" . $this->db->idate(dol_now()) . "'";
+
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog('SmartAuth TokenService: purgeExpiredRevokedJti SQL failed: ' . $this->db->lasterror(), LOG_ERR);
+            return -1;
+        }
+        $affected = (int) $this->db->affected_rows($resql);
+        if ($affected > 0) {
+            dol_syslog('SmartAuth TokenService: purged ' . $affected . ' expired revoked_jti rows', LOG_INFO);
+        }
+        return $affected;
     }
 
     /**
