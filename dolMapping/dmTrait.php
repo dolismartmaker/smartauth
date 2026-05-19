@@ -566,6 +566,22 @@ trait dmTrait
 			}
 		}
 
+		// Derived fields: computed from the object but not backed by a Dolibarr
+		// column. fieldFilterValueXxx() is invoked unconditionally (no source
+		// value check). Opt-in: only mappers that declare $listOfDerivedFields
+		// trigger this loop. Use case: exposing multiple representations of the
+		// same underlying asset (logo / logo_mini / logo_data_url). Method name
+		// is derived from the key via snake_case -> CamelCase conversion, eg.
+		// 'logo_mini' -> fieldFilterValueLogoMini.
+		if (isset($this->listOfDerivedFields) && is_array($this->listOfDerivedFields)) {
+			foreach ($this->listOfDerivedFields as $key => $appside) {
+				$user_function = "fieldFilterValue" . str_replace('_', '', ucwords($key, '_'));
+				if (is_callable([$this, $user_function])) {
+					$mapped->$appside = call_user_func([$this, $user_function], $obj);
+				}
+			}
+		}
+
 		//export lines content
 		if (isset($obj->lines) && count($obj->lines) > 0) {
 			foreach ($obj->lines as $line) {
