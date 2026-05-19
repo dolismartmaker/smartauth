@@ -31,6 +31,7 @@ class dmMo extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Mo';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -55,6 +56,24 @@ class dmMo extends dmBase
 		'status'            => 'status',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref',
+		'label',
+		'mrptype',
+		'qty',
+		'date_start_planned',
+		'date_end_planned',
+		'fk_warehouse',
+		'fk_soc',
+		'fk_product',
+		'fk_bom',
+		'fk_project',
+		'note_public',
+		'note_private',
 	];
 
 	// Configuration for lines support

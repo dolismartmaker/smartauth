@@ -72,7 +72,22 @@ class dmInvoice extends dmBase
 		'multicurrency_total_tva' => 'multicurrency_total_vat',
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
 	];
-		
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref_customer',
+		'fk_soc',
+		'fk_projet',
+		'date',
+		'date_lim_reglement',
+		'delivery_date',
+		'fk_cond_reglement',
+		'fk_mode_reglement',
+		'note_public',
+		'note_private',
+	];
+
 	// 'fk_contrat'        => 'contract',
 	// Configuration for lines support
 	protected $parentClassNameForLines = 'FactureLigne';

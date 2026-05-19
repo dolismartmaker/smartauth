@@ -31,6 +31,7 @@ class dmBom extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'BOM';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -54,6 +55,22 @@ class dmBom extends dmBase
 		'status'            => 'status',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref',
+		'label',
+		'bomtype',
+		'description',
+		'fk_warehouse',
+		'fk_product',
+		'qty',
+		'duration',
+		'efficiency',
+		'note_public',
+		'note_private',
 	];
 
 	// Configuration for lines support

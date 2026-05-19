@@ -72,6 +72,22 @@ class dmSupplierOrder extends dmBase
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref_supplier',
+		'socid',
+		'fk_projet',
+		'date',
+		'date_commande',
+		'delivery_date',
+		'cond_reglement_id',
+		'mode_reglement_id',
+		'fk_account',
+		'note_public',
+		'note_private',
+	];
+
 	// Configuration for lines support
 	protected $parentClassNameForLines = 'CommandeFournisseurLigne';
 	protected $parentLabelForLines = 'SupplierOrderLines';

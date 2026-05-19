@@ -50,6 +50,18 @@ class dmCategory extends dmBase
 		'fk_user_modif'     => 'updated_by',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'fk_parent',
+		'label',
+		'description',
+		'color',
+		'visible',
+		'type',
+		'socid',
+	];
+
 	/**
 	 * object constructor
 	 *

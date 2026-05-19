@@ -31,6 +31,7 @@ class dmSupplierProposal extends dmBase
 	use dmLinesTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'SupplierProposal';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -64,6 +65,20 @@ class dmSupplierProposal extends dmBase
 		'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
 		'multicurrency_total_tva' => 'multicurrency_total_vat',
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref_supplier',
+		'socid',
+		'fk_projet',
+		'date',
+		'delivery_date',
+		'cond_reglement_id',
+		'mode_reglement_id',
+		'note_public',
+		'note_private',
 	];
 
 	// Configuration for lines support

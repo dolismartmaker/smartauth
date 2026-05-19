@@ -58,6 +58,23 @@ class dmIntervention extends dmBase
 		'statut'            => 'status',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// 'datec' is intentionally excluded (case-by-case, conservative).
+	protected $writableFields = [
+		'ref_client',
+		'fk_soc',
+		'fk_projet',
+		'fk_contrat',
+		'datei',
+		'dateo',
+		'datee',
+		'duree',
+		'description',
+		'note_public',
+		'note_private',
+	];
+
 	// Configuration for lines support
 	protected $parentClassNameForLines = 'FichinterLigne';
 	protected $parentLabelForLines = 'InterventionLines';

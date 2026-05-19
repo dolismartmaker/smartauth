@@ -56,6 +56,24 @@ class dmMemberType extends dmBase
 		'status'            => 'status',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// 'status' is intentionally excluded per Rule 1 strict (status = state machine).
+	protected $writableFields = [
+		'label',
+		'morphy',
+		'subscription',
+		'amount',
+		'caneditamount',
+		'vote',
+		'duration_value',
+		'duration_unit',
+		'description',
+		'mail_valid',
+		'note_public',
+		'note',
+	];
+
 	/**
 	 * object constructor
 	 *

@@ -57,6 +57,23 @@ class dmAgendaEvent extends dmBase
 		'priority'          => 'priority',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'label',
+		'datep',
+		'datef',
+		'duree',
+		'fk_soc',
+		'fk_contact',
+		'fk_projet',
+		'location',
+		'percent',
+		'priority',
+		'note_public',
+		'note_private',
+	];
+
 	/**
 	 * object constructor
 	 *

@@ -27,6 +27,7 @@ class dmContact extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Contact';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -48,6 +49,25 @@ class dmContact extends dmBase
 		'fk_soc'            => 'thirdparty',
 	];
 	// 'fk_c_type_contact' => 'contact_type',
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'civility',
+		'lastname',
+		'firstname',
+		'address',
+		'zip',
+		'town',
+		'fk_departement',
+		'fk_pays',
+		'phone',
+		'phone_mobile',
+		'email',
+		'fk_soc',
+		'note_public',
+		'note_private',
+	];
 
 	/**
 	 * object constructor

@@ -66,6 +66,27 @@ class dmDonation extends dmBase
 		'note_private'      => 'private_note',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'date',
+		'amount',
+		'societe',
+		'lastname',
+		'firstname',
+		'address',
+		'zip',
+		'town',
+		'country_id',
+		'email',
+		'phone',
+		'phone_mobile',
+		'fk_typepayment',
+		'fk_project',
+		'note_public',
+		'note_private',
+	];
+
 	/**
 	 * object constructor
 	 *

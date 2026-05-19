@@ -27,6 +27,7 @@ class dmProject extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Project';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -41,6 +42,19 @@ class dmProject extends dmBase
 		'description'       => 'description',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref',
+		'title',
+		'description',
+		'dateo',
+		'datee',
+		'fk_soc',
+		'note_public',
+		'note_private',
 	];
 
 	/**

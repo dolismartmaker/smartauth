@@ -74,6 +74,24 @@ class dmProposal extends dmBase
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
 	];
 
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'ref_client',
+		'fk_soc',
+		'fk_projet',
+		'date',
+		'fin_validite',
+		'delivery_date',
+		'fk_cond_reglement',
+		'fk_mode_reglement',
+		'fk_availability',
+		'fk_shipping_method',
+		'fk_input_reason',
+		'note_public',
+		'note_private',
+	];
+
 	// Configuration for lines support
 	protected $parentClassNameForLines = 'PropaleLigne';
 	protected $parentLabelForLines = 'ProposalLines';

@@ -30,6 +30,7 @@ class dmSubscription extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Subscription';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -44,6 +45,18 @@ class dmSubscription extends dmBase
 		'amount'            => 'amount',
 		'fk_bank'           => 'bank_line',
 		'note'              => 'note',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	protected $writableFields = [
+		'fk_adherent',
+		'fk_type',
+		'dateh',
+		'datef',
+		'amount',
+		'fk_bank',
+		'note',
 	];
 
 	/**

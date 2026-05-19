@@ -81,12 +81,79 @@ trait dmTrait
 		$this->_dolmapping = new dmHelper();
 		//ex: dmSmartinter or dmSociete
 		$this->_dolmapclassname = static::class;
-		//ex: Smartinter or Societe
-		$this->_dolobjectclassname = $this->dolibarrClassName
-			?? preg_replace('/.*\\\\dm/', '', static::class);
+
+		$this->_validateDeclaration();
+
+		//ex: Smartinter or Societe. Object mappers always declare it
+		//explicitly (enforced by _validateDeclaration). Dictionary mappers
+		//(type=dict/dictionary) are still allowed to omit it for now and
+		//rely on the legacy deduction -- see documentation/MAPPERS_CONVENTIONS.md
+		//section "Exception : mappers de type dictionary".
+		$this->_dolobjectclassname = !empty($this->dolibarrClassName)
+			? $this->dolibarrClassName
+			: preg_replace('/.*\\\\dm/', '', static::class);
 
 		// dol_syslog("SmartAuth ".get_class($this) . " is booting, call _objectDesc for " . $this->_dolmapclassname . " and dolibarr base object " . $this->_dolobjectclassname . ", mappping=" . get_class($this->_dolmapping));
 		$this->_cacheDesc = $this->_objectDesc();
+	}
+
+	/**
+	 * Validate mapper declaration at boot time.
+	 *
+	 * Enforces the conventions documented in documentation/MAPPERS_CONVENTIONS.md:
+	 *  - object mappers MUST declare protected $dolibarrClassName pointing
+	 *    to an existing Dolibarr class (no more silent deduction from the
+	 *    mapper class name, which used to mask mismatches like
+	 *    dmThirdparty -> Thirdparty instead of dmThirdparty -> Societe).
+	 *  - if $parentClassName is set (only meaningful for sub-objects / lines),
+	 *    it must differ from $dolibarrClassName and reference an existing class.
+	 *
+	 * Dictionary mappers ($type = 'dict' or 'dictionary') are NOT required to
+	 * declare $dolibarrClassName -- they describe table-row shapes, not
+	 * Dolibarr CommonObjects, and may be consumed without instantiation.
+	 *
+	 * @return void
+	 *
+	 * @throws \LogicException when a mapper is misdeclared.
+	 */
+	private function _validateDeclaration()
+	{
+		$mapperClass = static::class;
+		$isObject = ($this->type === 'object');
+
+		if ($isObject && empty($this->dolibarrClassName)) {
+			throw new \LogicException(
+				"$mapperClass must declare 'protected \$dolibarrClassName = \"XxxDolibarrClass\";' "
+				. "(see documentation/MAPPERS_CONVENTIONS.md). "
+				. "Silent deduction from the mapper class name is no longer supported because it "
+				. "masks bugs when the Dolibarr class is named differently (e.g. dmThirdparty -> Societe)."
+			);
+		}
+
+		if (!empty($this->dolibarrClassName) && !class_exists($this->dolibarrClassName)) {
+			throw new \LogicException(
+				"$mapperClass declares \$dolibarrClassName = '{$this->dolibarrClassName}' "
+				. "but this class does not exist. Did you forget the matching "
+				. "'require_once DOL_DOCUMENT_ROOT . \"/.../xxx.class.php\";' at the top of the mapper file?"
+			);
+		}
+
+		if (!empty($this->parentClassName)) {
+			if ($this->parentClassName === $this->dolibarrClassName) {
+				throw new \LogicException(
+					"$mapperClass: \$parentClassName ('{$this->parentClassName}') cannot equal "
+					. "\$dolibarrClassName. \$parentClassName is for sub-objects only "
+					. "(e.g. a FichinterLigne mapper with parentClassName='Fichinter'). "
+					. "For a top-level mapper, remove \$parentClassName."
+				);
+			}
+			if (!class_exists($this->parentClassName)) {
+				throw new \LogicException(
+					"$mapperClass declares \$parentClassName = '{$this->parentClassName}' "
+					. "but this class does not exist."
+				);
+			}
+		}
 	}
 
 	/**
@@ -285,6 +352,134 @@ trait dmTrait
 		}
 
 		return $fieldDef;
+	}
+
+	/**
+	 * Import an API payload into a sanitized Dolibarr-shaped object.
+	 *
+	 * Inverse of exportMappedData(). Takes an associative array keyed by
+	 * API field names (the VALUES of $listOfPublishedFields), filters it
+	 * against the mapper's writable allowlist ($writableFields, keyed by
+	 * Dolibarr field name), reverse-maps API names to Dolibarr names, and
+	 * casts each value to the type declared in the Dolibarr class's
+	 * $fields array.
+	 *
+	 * Strict by design : any input field that is not declared writable
+	 * causes a MapperValidationException listing every offending field.
+	 * The exception MUST be caught at the HTTP boundary (controller) and
+	 * translated to a 400 response with $e->getErrors() in the body.
+	 *
+	 * Lines / sub-objects are NOT supported in v1 -- the presence of a
+	 * 'lines' key in the input is reported as a validation error. Manage
+	 * lines via the Dolibarr object's addLine() / updateLine() / deleteLine().
+	 *
+	 * Type coercion is best-effort, based on the Dolibarr $fields type
+	 * descriptor (integer, double, date, boolean, varchar). Bad input
+	 * (e.g. 'abc' for an integer field) silently casts to 0 -- the Dolibarr
+	 * persistence layer is responsible for the final validation.
+	 *
+	 * Example, dmInvoice with writable [ref_client, fk_cond_reglement] :
+	 *   $obj = $mapper->importMappedData([
+	 *       'customer_ref'  => 'CMD-001',
+	 *       'payment_terms' => '42',
+	 *   ]);
+	 *   // $obj->ref_client === 'CMD-001'
+	 *   // $obj->fk_cond_reglement === 42 (int, cast from string)
+	 *
+	 * See documentation/MAPPERS_API.md for the full contract.
+	 *
+	 * @param   array<string,mixed>  $input  API payload (API field names as keys)
+	 *
+	 * @return  \stdClass  sanitized object using Dolibarr field names
+	 *
+	 * @throws  MapperValidationException  when any input field is rejected
+	 */
+	public function importMappedData(array $input)
+	{
+		$errors = [];
+		$output = new \stdClass();
+
+		if (array_key_exists('lines', $input)) {
+			$errors['lines'] = 'Lines import is not supported by importMappedData() in v1. '
+				. 'Manage lines via the Dolibarr object methods (addLine, updateLine, deleteLine).';
+			unset($input['lines']);
+		}
+
+		$writableSet = array_flip($this->writableFields ?? []);
+		$reverseMap = [];
+		foreach ($this->listOfPublishedFields as $doliside => $appside) {
+			if (isset($writableSet[$doliside])) {
+				$reverseMap[$appside] = $doliside;
+			}
+		}
+
+		foreach ($input as $apiKey => $apiValue) {
+			if (!isset($reverseMap[$apiKey])) {
+				$errors[$apiKey] = sprintf(
+					"Field '%s' is not writable on %s.",
+					$apiKey,
+					static::class
+				);
+			}
+		}
+
+		if (!empty($errors)) {
+			throw new MapperValidationException($errors);
+		}
+
+		$doliBaseClass = new $this->_dolobjectclassname($this->_db);
+		foreach ($input as $apiKey => $apiValue) {
+			$doliField = $reverseMap[$apiKey];
+			$fieldDef = $this->_getFieldDefinition($doliBaseClass, $doliField);
+			$output->{$doliField} = $this->_castInputValue($apiValue, $fieldDef);
+		}
+
+		return $output;
+	}
+
+	/**
+	 * Cast an input value to the type declared by a Dolibarr field definition.
+	 *
+	 * Best-effort. Unknown/missing field defs return the value untouched
+	 * so unknown property paths don't lose data.
+	 *
+	 * @param   mixed       $value     raw input value
+	 * @param   array|null  $fieldDef  Dolibarr field descriptor (with 'type' key)
+	 *
+	 * @return  mixed                  coerced value
+	 */
+	private function _castInputValue($value, $fieldDef)
+	{
+		if ($value === null) {
+			return null;
+		}
+		if (!is_array($fieldDef) || empty($fieldDef['type'])) {
+			return $value;
+		}
+		$type = strtolower($fieldDef['type']);
+
+		if (strpos($type, 'integer') === 0 || strpos($type, 'int') === 0) {
+			return (int) $value;
+		}
+		if (strpos($type, 'double') === 0
+			|| strpos($type, 'float') === 0
+			|| strpos($type, 'real') === 0
+			|| strpos($type, 'price') === 0
+			|| strpos($type, 'decimal') === 0) {
+			return (float) $value;
+		}
+		if (strpos($type, 'bool') === 0) {
+			return ((bool) $value) ? 1 : 0;
+		}
+		if (strpos($type, 'date') === 0 || strpos($type, 'timestamp') === 0) {
+			if (is_numeric($value)) {
+				return (int) $value;
+			}
+			$ts = strtotime((string) $value);
+			return $ts === false ? $value : $ts;
+		}
+
+		return (string) $value;
 	}
 
 	/**

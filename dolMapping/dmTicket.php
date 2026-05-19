@@ -30,6 +30,7 @@ class dmTicket extends dmBase
 	use dmTrait;
 
 	protected $type = "object";
+	protected $dolibarrClassName = 'Ticket';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -62,6 +63,24 @@ class dmTicket extends dmBase
 		'status'            => 'status',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
+	];
+
+	// Allowlist for importMappedData() (Dolibarr field names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// fk_user_assign is intentionally writable (business assignment, not audit-trail).
+	protected $writableFields = [
+		'subject',
+		'message',
+		'fk_soc',
+		'fk_project',
+		'fk_user_assign',
+		'type_code',
+		'category_code',
+		'severity_code',
+		'resolution',
+		'progress',
+		'note_public',
+		'note_private',
 	];
 
 	/**
