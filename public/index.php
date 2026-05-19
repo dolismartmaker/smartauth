@@ -133,6 +133,7 @@ dol_include_once('/smartauth/api/OAuth2/TokenService.php');
 dol_include_once('/smartauth/api/OAuth2/TokenController.php');
 dol_include_once('/smartauth/api/OAuth2/UserinfoController.php');
 dol_include_once('/smartauth/api/OAuth2/RevocationController.php');
+dol_include_once('/smartauth/api/OAuth2/RevokedJtiController.php');
 dol_include_once('/smartauth/api/OAuth2/LogoutController.php');
 dol_include_once('/smartauth/api/Account/EmailValidationToken.php');
 dol_include_once('/smartauth/api/Account/RegistrationService.php');
@@ -148,6 +149,7 @@ use SmartAuth\Api\OAuth2\AuthorizationController;
 use SmartAuth\Api\OAuth2\TokenController;
 use SmartAuth\Api\OAuth2\UserinfoController;
 use SmartAuth\Api\OAuth2\RevocationController;
+use SmartAuth\Api\OAuth2\RevokedJtiController;
 use SmartAuth\Api\OAuth2\LogoutController;
 use SmartAuth\Api\Account\RegisterController;
 use SmartAuth\Api\Account\AccountController;
@@ -250,6 +252,15 @@ if (!$handled && strpos($requestPath, '/oauth/') === 0) {
         case 'revoke':
             $revocationController = new RevocationController($db);
             $revocationController->handleRevoke();
+            $handled = true;
+            break;
+
+        case 'revoked-jti':
+            // Published revocation list (PERFS.md §3.4). Polled by resource
+            // servers on a short cycle so a contract closure propagates
+            // faster than the access_token TTL.
+            $revokedJtiController = new RevokedJtiController($db);
+            $revokedJtiController->handleList();
             $handled = true;
             break;
 
