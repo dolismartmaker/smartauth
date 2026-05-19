@@ -29,6 +29,7 @@ class DmMappingClassesTest extends DolibarrRealTestCase
      */
     private static $mappingClasses = [
         'dmAgendaEvent' => ['object', false, 'dmActionComm'],
+        'dmBank' => ['object', false, 'dmAccountLine'],
         'dmBankAccount' => ['object', false, 'dmAccount'],
         'dmBom' => ['object', true, null],
         'dmCactiontype' => ['dictionary', false, null],
@@ -53,6 +54,7 @@ class DmMappingClassesTest extends DolibarrRealTestCase
         'dmCtypecontact' => ['dictionary', false, null],
         'dmCtypent' => ['dictionary', false, null],
         'dmCunits' => ['dictionary', false, null],
+        'dmDeliveryNote' => ['object', false, 'dmLivraison'],
         'dmDonation' => ['object', false, null],
         'dmExpenseReport' => ['object', true, null],
         'dmIntervention' => ['object', true, 'dmFichinter'],
