@@ -1824,8 +1824,23 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         $this->assertEquals(200, $result[1]);
 
-        // Verify the XSS attempt is sanitized/escaped
-        $this->assertTrue(true); // If we got here, it didn't execute malicious code
+        // Verify the XSS attempt is actually neutralised in the persisted
+        // device row: the raw <script> tag must not survive in the label
+        // column. Fetch the device fresh from BDD and assert the stored
+        // value cannot trigger script execution when echoed in HTML.
+        $device = new \SmartAuthDevices($this->db);
+        $fetched = $device->fetch(0, null, $deviceUuid);
+        $this->assertGreaterThan(0, $fetched, 'device row should exist after device() call');
+        $this->assertStringNotContainsString(
+            '<script>',
+            (string) $device->label,
+            'XSS payload must not survive verbatim in the persisted label'
+        );
+        $this->assertStringNotContainsString(
+            '</script>',
+            (string) $device->label,
+            'XSS payload must not survive verbatim in the persisted label'
+        );
 
         unset($_SERVER['HTTP_AUTHORIZATION']);
         unset($_SERVER['HTTP_X_DEVICEID']);

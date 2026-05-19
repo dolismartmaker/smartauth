@@ -886,13 +886,40 @@ class dmHelperTest extends TestCase
     }
 
     /**
-     * Test _customFilterAttributeContacts (currently empty)
+     * Test _customFilterAttributeContacts is an intentional empty-array
+     * extension point. The contract is:
+     *   1. The method MUST exist (so is_callable() returns true in
+     *      propertiesFilter / extrafieldsFilter and the default
+     *      $ret[$key] = $val branch is bypassed). This prevents raw
+     *      Dolibarr contact lists from leaking into the API payload.
+     *   2. The method MUST return [] (not null): callers use foreach on
+     *      the result, and foreach(null) raises a TypeError on PHP 8+.
+     *   3. Subclasses may override to expose a well-shaped contacts
+     *      payload; the base class returns an empty array on purpose.
      */
-    public function testCustomFilterAttributeContactsReturnsNothing(): void
+    public function testCustomFilterAttributeContactsReturnsEmptyArray(): void
     {
+        $this->assertTrue(
+            is_callable([$this->helper, '_customFilterAttributeContacts']),
+            'Stub must remain callable to suppress default mapping for the contacts attribute'
+        );
+
         $result = $this->helper->_customFilterAttributeContacts('test');
 
-        $this->assertNull($result);
+        $this->assertSame(
+            [],
+            $result,
+            'Stub must return [] (not null) so foreach() in callers stays type-safe on PHP 8+'
+        );
+
+        // Defensive: simulate the foreach loop the callers perform.
+        // This proves the contract is type-safe even if a future change
+        // accidentally reintroduces an implicit null return.
+        $consumed = [];
+        foreach ($result as $k => $v) {
+            $consumed[$k] = $v;
+        }
+        $this->assertSame([], $consumed);
     }
 
     /**

@@ -669,11 +669,49 @@ class RouteControllerTest extends TestCase
             define('PHPUNIT_RUNNING', true);
         }
 
-        // Should not throw or cause issues
+        // Snapshot the current header bag. In CLI/PHPUnit, header() calls do not
+        // actually populate headers_list(), but if some buffering layer ever
+        // started to capture them we still want to assert that handleCORS adds
+        // nothing on top of the baseline. xdebug_get_headers() is preferred when
+        // available since it does capture header() calls in CLI.
+        $useXdebug = function_exists('xdebug_get_headers');
+        $before = $useXdebug ? xdebug_get_headers() : headers_list();
+
+        // Force the OPTIONS branch as well: without the early return, the
+        // function would call exit; on REQUEST_METHOD=OPTIONS. Reaching the
+        // assertions after the call proves the PHPUNIT_RUNNING guard fired.
+        $backupOrigin = $_SERVER['HTTP_ORIGIN'] ?? null;
+        $backupMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+        $_SERVER['HTTP_ORIGIN'] = 'https://example.com';
+        $_SERVER['REQUEST_METHOD'] = 'OPTIONS';
+
         RouteController::handleCORS();
 
-        // If we reach here, the test passed (no fatal error from header already sent)
-        $this->assertTrue(true);
+        $after = $useXdebug ? xdebug_get_headers() : headers_list();
+
+        // No CORS or any other header should have been emitted while running
+        // under PHPUnit. Diffing before/after avoids false positives from
+        // unrelated headers a previous test may have left in the bag.
+        $diff = array_values(array_diff($after, $before));
+        $this->assertSame([], $diff, 'handleCORS must not emit any header when PHPUNIT_RUNNING is defined');
+
+        // Also ensure no Access-Control-* header slipped through, even if the
+        // baseline happened to contain one.
+        foreach ($after as $hdr) {
+            $this->assertStringStartsNotWith('Access-Control-', $hdr, 'No CORS header expected: ' . $hdr);
+        }
+
+        // Restore globals
+        if ($backupOrigin !== null) {
+            $_SERVER['HTTP_ORIGIN'] = $backupOrigin;
+        } else {
+            unset($_SERVER['HTTP_ORIGIN']);
+        }
+        if ($backupMethod !== null) {
+            $_SERVER['REQUEST_METHOD'] = $backupMethod;
+        } else {
+            unset($_SERVER['REQUEST_METHOD']);
+        }
     }
 
     // =============================================
@@ -866,7 +904,19 @@ class RouteControllerTest extends TestCase
         // on the real Dolibarr SQLite handle (e.g. dmHelperTest expects
         // $db->query() to exist).
         $dbBackup = $db;
-        $db = $this->createMock(\stdClass::class);
+
+        // Tracking mock: every call to query() is recorded so we can assert
+        // that insertLogs() bailed out before issuing any INSERT against
+        // llx_smartauth_logs when SMARTAUTH_COLLECT_LOGS is empty.
+        $db = new class {
+            public array $executedQueries = [];
+            public function escape($val) { return $val; }
+            public function query($sql) {
+                $this->executedQueries[] = $sql;
+                return true;
+            }
+            public function lasterror() { return ''; }
+        };
 
         // Ensure logging is disabled
         if (!is_object($conf)) {
@@ -885,8 +935,22 @@ class RouteControllerTest extends TestCase
             // Should return early without inserting
             RouteController::insertLogs(1, 200, 'Test', 1);
 
-            // If no exception thrown, test passes
-            $this->assertTrue(true);
+            // Assert no SQL was sent to the database at all (insertLogs must
+            // short-circuit before reaching query() when collection is off).
+            $this->assertSame(
+                [],
+                $db->executedQueries,
+                'insertLogs() must not run any SQL when SMARTAUTH_COLLECT_LOGS is empty'
+            );
+
+            // Defence in depth: explicitly check no INSERT touched smartauth_logs.
+            foreach ($db->executedQueries as $sql) {
+                $this->assertStringNotContainsStringIgnoringCase(
+                    'INSERT INTO ' . MAIN_DB_PREFIX . 'smartauth_logs',
+                    $sql,
+                    'No INSERT into smartauth_logs expected when logging is disabled'
+                );
+            }
         } finally {
             $db = $dbBackup;
         }

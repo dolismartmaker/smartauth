@@ -342,9 +342,19 @@ class SmartLogsClassTest extends DolibarrRealTestCase
      */
     public function testInitAsSpecimen(): void
     {
+        // Pre-conditions: id and specimen should not yet be populated
+        $this->assertEmpty($this->smartLogs->id);
+        $this->assertEmpty($this->smartLogs->specimen);
+
         $this->smartLogs->initAsSpecimen();
-        // Should not throw exception
-        $this->assertTrue(true);
+
+        // initAsSpecimenCommon() (called by initAsSpecimen) must mark the
+        // object as a specimen with id reset to 0. These are the only two
+        // side effects that apply to SmartLogs because its $fields array
+        // does not declare any of the common specimen keys (label, ref,
+        // description, ...) nor any 'default' values.
+        $this->assertSame(0, $this->smartLogs->id);
+        $this->assertSame(1, $this->smartLogs->specimen);
     }
 
     /**

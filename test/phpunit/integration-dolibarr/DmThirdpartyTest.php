@@ -21,68 +21,6 @@ use SmartAuth\DolibarrMapping\dmHelper;
 use ReflectionClass;
 
 /**
- * Test mapper class that mimics dmThirdparty but without boot()
- */
-class TestDmThirdpartyMapper extends dmBase
-{
-    use dmTrait;
-
-    protected $type = "object";
-
-    protected $listOfPublishedFields = [
-        'rowid'             => 'id',
-        'nom'               => 'name',
-        'address'           => 'address',
-        'zip'               => 'zip',
-        'town'              => 'city',
-        'fk_departement'    => 'state',
-        'fk_pays'           => 'country',
-        'phone'             => 'phone',
-        'url'               => 'website',
-        'email'             => 'email',
-        'note_public'       => 'public_note',
-        'note_private'      => 'private_note',
-        'logo'              => 'logo'
-    ];
-
-    public function __construct($db)
-    {
-        $this->_db = $db;
-        $this->_dolmapping = new dmHelper();
-        $this->_dolmapclassname = static::class;
-        $this->_dolobjectclassname = 'Societe';
-        $this->_cacheDesc = new \stdClass();
-    }
-
-    /**
-     * logo is stored as varchar dolibarr side (file name) but app need a base64 encoded data
-     */
-    public function fieldFilterValueLogo($societe)
-    {
-        global $conf;
-        $dir = $conf->societe->multidir_output[$societe->entity] . "/" . $societe->id . "/logos/thumbs";
-        $logo = $dir . '/' . $this->miniLogoFileName($societe->logo);
-        $logoBase64 = "";
-        if (file_exists($logo)) {
-            $type = pathinfo($logo, PATHINFO_EXTENSION);
-        } else {
-            $logo = dol_buildpath("/smartlivraisons/img/logo.png", 0);
-            $type = pathinfo($logo, PATHINFO_EXTENSION);
-        }
-        $logoBase64 = 'data:image/' . $type . ';base64,' . base64_encode(file_get_contents($logo));
-        return $logoBase64;
-    }
-
-    /**
-     * return mini logo file
-     */
-    public function miniLogoFileName($logoFileName)
-    {
-        return str_replace(['.jpg', '.jpeg', '.png'], ['_mini.jpg','_mini.jpg','_mini.png'], $logoFileName);
-    }
-}
-
-/**
  * @covers \SmartAuth\DolibarrMapping\dmThirdparty
  * @covers \SmartAuth\DolibarrMapping\dmSociete
  */
@@ -93,15 +31,15 @@ class DmThirdpartyTest extends DolibarrRealTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->mapper = new TestDmThirdpartyMapper($this->db);
+        $this->mapper = new dmThirdparty();
     }
 
     /**
-     * Test TestDmThirdpartyMapper instantiation
+     * Test dmThirdparty instantiation
      */
     public function testDmThirdpartyInstantiation(): void
     {
-        $this->assertInstanceOf(TestDmThirdpartyMapper::class, $this->mapper);
+        $this->assertInstanceOf(dmThirdparty::class, $this->mapper);
     }
 
     /**
@@ -110,6 +48,16 @@ class DmThirdpartyTest extends DolibarrRealTestCase
     public function testDmThirdpartyClassExists(): void
     {
         $this->assertTrue(class_exists('SmartAuth\DolibarrMapping\dmThirdparty'));
+    }
+
+    /**
+     * Test backward-compat alias dmSociete still resolves to dmThirdparty
+     */
+    public function testDmSocieteAliasResolves(): void
+    {
+        $this->assertTrue(class_exists('SmartAuth\DolibarrMapping\dmSociete'));
+        $alias = new \SmartAuth\DolibarrMapping\dmSociete();
+        $this->assertInstanceOf(dmThirdparty::class, $alias);
     }
 
     /**
@@ -181,135 +129,100 @@ class DmThirdpartyTest extends DolibarrRealTestCase
         $this->assertArrayHasKey('note_private', $fields);
         $this->assertEquals('private_note', $fields['note_private']);
 
-        // Logo
-        $this->assertArrayHasKey('logo', $fields);
-        $this->assertEquals('logo', $fields['logo']);
+        // logo is NOT in listOfPublishedFields anymore: it moved to
+        // listOfDerivedFields since 2.1.0 (URL-based transport).
+        $this->assertArrayNotHasKey('logo', $fields);
     }
 
     /**
-     * Test miniLogoFileName method converts jpg
+     * Test listOfDerivedFields advertises the three logo variants
      */
-    public function testMiniLogoFileNameConvertsJpg(): void
+    public function testListOfDerivedFieldsExposesLogoVariants(): void
     {
-        $result = $this->mapper->miniLogoFileName('company_logo.jpg');
-        $this->assertEquals('company_logo_mini.jpg', $result);
+        $reflection = new ReflectionClass($this->mapper);
+        $property = $reflection->getProperty('listOfDerivedFields');
+        $property->setAccessible(true);
+        $derived = $property->getValue($this->mapper);
+
+        $this->assertArrayHasKey('logo', $derived);
+        $this->assertEquals('logo', $derived['logo']);
+
+        $this->assertArrayHasKey('logo_mini', $derived);
+        $this->assertEquals('logo_mini', $derived['logo_mini']);
+
+        // logo_data_url is the deprecated legacy base64 transport.
+        // Will be removed in smartauth 2.2.0.
+        $this->assertArrayHasKey('logo_data_url', $derived);
+        $this->assertEquals('logo_data_url', $derived['logo_data_url']);
     }
 
     /**
-     * Test miniLogoFileName for jpeg extension
+     * Test fieldFilterValueLogo returns the relative JWT binary URL
      */
-    public function testMiniLogoFileNameConvertsJpeg(): void
+    public function testFieldFilterValueLogoReturnsRelativeUrl(): void
     {
-        $result = $this->mapper->miniLogoFileName('company_logo.jpeg');
-        $this->assertEquals('company_logo_mini.jpg', $result);
-    }
-
-    /**
-     * Test miniLogoFileName for png extension
-     */
-    public function testMiniLogoFileNameConvertsPng(): void
-    {
-        $result = $this->mapper->miniLogoFileName('company_logo.png');
-        $this->assertEquals('company_logo_mini.png', $result);
-    }
-
-    /**
-     * Test miniLogoFileName with complex filename
-     */
-    public function testMiniLogoFileNameWithComplexFilename(): void
-    {
-        $result = $this->mapper->miniLogoFileName('my.company.logo.png');
-        $this->assertEquals('my.company.logo_mini.png', $result);
-    }
-
-    /**
-     * Test miniLogoFileName with uppercase extension
-     */
-    public function testMiniLogoFileNameWithUppercaseExtension(): void
-    {
-        // Note: str_replace is case-sensitive, so uppercase won't be converted
-        $result = $this->mapper->miniLogoFileName('company_logo.PNG');
-        $this->assertEquals('company_logo.PNG', $result);  // Unchanged
-    }
-
-    /**
-     * Test fieldFilterValueLogo returns base64 data
-     */
-    public function testFieldFilterValueLogoReturnsBase64(): void
-    {
-        global $conf;
-
-        // Create a temporary directory structure
-        $tmpDir = sys_get_temp_dir() . '/smartauth_test_' . uniqid();
-        mkdir($tmpDir . '/1/logos/thumbs', 0755, true);
-
-        // Create a minimal test PNG file
-        $testLogo = $tmpDir . '/1/logos/thumbs/test_logo_mini.png';
-        $pngContent = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
-        file_put_contents($testLogo, $pngContent);
-
-        // Mock societe object
         $societe = new \stdClass();
-        $societe->id = 1;
+        $societe->id = 42;
         $societe->entity = 1;
-        $societe->logo = 'test_logo.png';
-
-        // Backup and set conf
-        $originalMultidir = $conf->societe->multidir_output ?? null;
-        $conf->societe = new \stdClass();
-        $conf->societe->multidir_output = [1 => $tmpDir];
+        $societe->logo = 'company_logo.png';
 
         $result = $this->mapper->fieldFilterValueLogo($societe);
 
-        // Restore conf
-        if ($originalMultidir !== null) {
-            $conf->societe->multidir_output = $originalMultidir;
-        }
-
-        // Cleanup
-        unlink($testLogo);
-        rmdir($tmpDir . '/1/logos/thumbs');
-        rmdir($tmpDir . '/1/logos');
-        rmdir($tmpDir . '/1');
-        rmdir($tmpDir);
-
-        $this->assertStringStartsWith('data:image/png;base64,', $result);
-        $this->assertNotEmpty($result);
+        $this->assertSame('media/thirdparty/42/logo', $result);
     }
 
     /**
-     * Test fieldFilterValueLogo with non-existent file uses fallback
+     * Test fieldFilterValueLogoMini returns the mini variant URL
      */
-    public function testFieldFilterValueLogoWithNonExistentFileUsesFallback(): void
+    public function testFieldFilterValueLogoMiniReturnsRelativeUrl(): void
     {
-        global $conf;
-
-        // Mock societe object with non-existent logo
         $societe = new \stdClass();
-        $societe->id = 999;
+        $societe->id = 42;
         $societe->entity = 1;
-        $societe->logo = 'nonexistent_logo.png';
+        $societe->logo = 'company_logo.png';
 
-        // Set conf to a directory that won't have the file
-        $originalMultidir = $conf->societe->multidir_output ?? null;
-        $conf->societe = new \stdClass();
-        $conf->societe->multidir_output = [1 => '/nonexistent/path'];
+        $result = $this->mapper->fieldFilterValueLogoMini($societe);
 
-        // The method will try to use a fallback from smartlivraisons module
-        // This may fail if the module doesn't exist, but we can still test the flow
-        try {
-            $result = $this->mapper->fieldFilterValueLogo($societe);
-            // If it succeeds, it should return base64 data
-            $this->assertStringStartsWith('data:image/', $result);
-        } catch (\Exception $e) {
-            // If fallback fails, that's expected in test environment
-            $this->assertTrue(true);
-        }
+        $this->assertSame('media/thirdparty/42/logo/mini', $result);
+    }
 
-        // Restore conf
-        if ($originalMultidir !== null) {
-            $conf->societe->multidir_output = $originalMultidir;
-        }
+    /**
+     * Test fieldFilterValueLogo returns null when no logo is set
+     */
+    public function testFieldFilterValueLogoReturnsNullWhenLogoEmpty(): void
+    {
+        $societe = new \stdClass();
+        $societe->id = 7;
+        $societe->entity = 1;
+        $societe->logo = '';
+
+        $this->assertNull($this->mapper->fieldFilterValueLogo($societe));
+    }
+
+    /**
+     * Test fieldFilterValueLogo returns null when id is missing
+     */
+    public function testFieldFilterValueLogoReturnsNullWhenIdEmpty(): void
+    {
+        $societe = new \stdClass();
+        $societe->id = 0;
+        $societe->entity = 1;
+        $societe->logo = 'company_logo.png';
+
+        $this->assertNull($this->mapper->fieldFilterValueLogo($societe));
+    }
+
+    /**
+     * Test fieldFilterValueLogoMini returns null when no logo is set
+     */
+    public function testFieldFilterValueLogoMiniReturnsNullWhenLogoEmpty(): void
+    {
+        $societe = new \stdClass();
+        $societe->id = 7;
+        $societe->entity = 1;
+        $societe->logo = '';
+
+        $this->assertNull($this->mapper->fieldFilterValueLogoMini($societe));
     }
 
     /**
@@ -326,6 +239,19 @@ class DmThirdpartyTest extends DolibarrRealTestCase
     }
 
     /**
+     * Test dolibarrClassName is set to Societe
+     */
+    public function testDolibarrClassNameIsSociete(): void
+    {
+        $reflection = new ReflectionClass($this->mapper);
+        $property = $reflection->getProperty('dolibarrClassName');
+        $property->setAccessible(true);
+        $className = $property->getValue($this->mapper);
+
+        $this->assertSame('Societe', $className);
+    }
+
+    /**
      * Test field mapping count
      */
     public function testFieldMappingCount(): void
@@ -335,8 +261,8 @@ class DmThirdpartyTest extends DolibarrRealTestCase
         $property->setAccessible(true);
         $fields = $property->getValue($this->mapper);
 
-        // Should have 13 mapped fields
-        $this->assertCount(13, $fields);
+        // 12 mapped fields after logo moved to listOfDerivedFields in 2.1.0
+        $this->assertCount(12, $fields);
     }
 
     /**
@@ -376,5 +302,33 @@ class DmThirdpartyTest extends DolibarrRealTestCase
         $fields = $property->getValue($this->mapper);
 
         $this->assertEquals('website', $fields['url']);
+    }
+
+    /**
+     * Test writableFields advertises the expected import allowlist
+     */
+    public function testWritableFieldsAdvertisesImportAllowlist(): void
+    {
+        $reflection = new ReflectionClass($this->mapper);
+        $property = $reflection->getProperty('writableFields');
+        $property->setAccessible(true);
+        $writable = $property->getValue($this->mapper);
+
+        $this->assertContains('nom', $writable);
+        $this->assertContains('address', $writable);
+        $this->assertContains('zip', $writable);
+        $this->assertContains('town', $writable);
+        $this->assertContains('fk_departement', $writable);
+        $this->assertContains('fk_pays', $writable);
+        $this->assertContains('phone', $writable);
+        $this->assertContains('url', $writable);
+        $this->assertContains('email', $writable);
+        $this->assertContains('note_public', $writable);
+        $this->assertContains('note_private', $writable);
+
+        // rowid must never be writable through importMappedData
+        $this->assertNotContains('rowid', $writable);
+        // logo writes go through a dedicated upload route, not import
+        $this->assertNotContains('logo', $writable);
     }
 }
