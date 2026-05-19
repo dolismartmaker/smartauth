@@ -53,10 +53,14 @@ class dmProduct extends dmBase
 		'note_public'        => 'public_note',
 		'note_private'       => 'private_note',
 		'datec'              => 'created_at',
-		// Product::fetch (product.class.php line 2511-2512) reads the SQL
-		// columns 'tosell'/'tobuy' INTO $this->status / $this->status_buy
-		// (renamed at fetch time). The mapper must read the PHP property
-		// names, not the SQL column names.
+		// Product::fetch() (htdocs/product/class/product.class.php
+		// lines 2511-2512) renames the SQL columns 'tosell'/'tobuy' into
+		// the PHP properties $status / $status_buy. Product::update()
+		// (lines 1217-1218) does the inverse: it reads $this->status /
+		// $this->status_buy and writes the 'tosell'/'tobuy' SQL columns.
+		// The mapper MUST address the PHP property names on both read
+		// and write paths -- using 'tosell'/'tobuy' here would yield null
+		// values on a Product fetched through fetch().
 		'status'             => 'for_sale',
 		'status_buy'         => 'for_purchase',
 	];
@@ -64,6 +68,8 @@ class dmProduct extends dmBase
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
 	// 'stock_reel' (computed) and 'seuil_stock_alerte' (case-by-case, conservative) excluded.
+	// 'status'/'status_buy' are the PHP property names: see comment on
+	// listOfPublishedFields above and Product::update() lines 1217-1218.
 	protected $writableFields = [
 		'ref',
 		'label',
