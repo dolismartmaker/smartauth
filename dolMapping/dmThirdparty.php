@@ -32,6 +32,7 @@ class dmThirdparty extends dmBase
 
 	protected $type = "object";
 	protected $dolibarrClassName = 'Societe';
+	protected $parentTableElementToUseForExtraFields = 'societe';
 
 	// Dolibarr PHP property name => Front API key
 	// See documentation/api-naming-convention.md.
@@ -47,6 +48,7 @@ class dmThirdparty extends dmBase
 	protected $listOfPublishedFields = [
 		'rowid'             => 'id',
 		'name'              => 'name',
+		'name_alias'        => 'name_alias',
 		'address'           => 'address',
 		'zip'               => 'zip',
 		'town'              => 'city',
@@ -55,6 +57,15 @@ class dmThirdparty extends dmBase
 		'phone'             => 'phone',
 		'url'               => 'website',
 		'email'             => 'email',
+		'client'            => 'is_customer',
+		'fournisseur'       => 'is_supplier',
+		'code_client'       => 'customer_code',
+		'code_fournisseur'  => 'supplier_code',
+		'siren'             => 'siren',
+		'siret'             => 'siret',
+		'ape'               => 'ape',
+		'idprof4'           => 'idprof4',
+		'tva_intra'         => 'vat_intra',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
 	];
@@ -80,6 +91,7 @@ class dmThirdparty extends dmBase
 	// the raw SQL column names.
 	protected $writableFields = [
 		'name',
+		'name_alias',
 		'address',
 		'zip',
 		'town',
@@ -88,6 +100,15 @@ class dmThirdparty extends dmBase
 		'phone',
 		'url',
 		'email',
+		'client',
+		'fournisseur',
+		'code_client',
+		'code_fournisseur',
+		'siren',
+		'siret',
+		'ape',
+		'idprof4',
+		'tva_intra',
 		'note_public',
 		'note_private',
 	];

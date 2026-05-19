@@ -33,6 +33,14 @@ class dmOrder extends dmBase
 
 	protected $type = "object";
 	protected $dolibarrClassName = 'Commande';
+	protected $parentTableElementToUseForExtraFields = 'commande';
+
+	// Hints front-side: render these FKs as sellists wired to the
+	// matching Dolibarr dictionary tables.
+	protected $parentFieldsOverride = [
+		'fk_cond_reglement' => ['type' => 'sellist:c_payment_term:libelle:rowid', 'label' => 'PaymentConditionsShort'],
+		'fk_mode_reglement' => ['type' => 'sellist:c_paiement:libelle:id', 'label' => 'PaymentMode'],
+	];
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md

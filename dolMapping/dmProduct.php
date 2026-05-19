@@ -28,6 +28,7 @@ class dmProduct extends dmBase
 
 	protected $type = "object";
 	protected $dolibarrClassName = 'Product';
+	protected $parentTableElementToUseForExtraFields = 'product';
 
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
@@ -53,6 +54,8 @@ class dmProduct extends dmBase
 		'note_public'        => 'public_note',
 		'note_private'       => 'private_note',
 		'datec'              => 'created_at',
+		'tms'                => 'updated_at',
+		'country_code'       => 'country_code',
 		// Product::fetch() (htdocs/product/class/product.class.php
 		// lines 2511-2512) renames the SQL columns 'tosell'/'tobuy' into
 		// the PHP properties $status / $status_buy. Product::update()
