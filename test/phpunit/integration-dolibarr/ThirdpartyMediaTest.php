@@ -19,6 +19,13 @@ require_once __DIR__ . '/../../../dolMapping/dmHelper.php';
 require_once __DIR__ . '/../../../dolMapping/dmTrait.php';
 require_once __DIR__ . '/../../../dolMapping/dmThirdparty.php';
 
+// Needed at file-load time for the SmartAuthTestCaptureLogHandler class
+// declared at the bottom of this file (it extends Dolibarr's LogHandler
+// and implements LogHandlerInterface, both global-namespace symbols).
+// The bootstrap has already defined DOL_DOCUMENT_ROOT by the time PHPUnit
+// loads this test file.
+require_once DOL_DOCUMENT_ROOT . '/core/modules/syslog/logHandler.php';
+
 use SmartAuth\Api\ThirdpartyMediaController;
 use SmartAuth\DolibarrMapping\dmThirdparty;
 use Societe;
@@ -595,6 +602,8 @@ class ThirdpartyMediaTest extends DolibarrRealTestCase
 
 	public function testDmThirdpartyLogoDataUrlReturnsBase64Legacy(): void
 	{
+		global $conf;
+
 		$soc = $this->createTestSociete();
 		// Need the mini file present on disk -- the legacy code reads the
 		// thumb variant (not the full one).
@@ -609,23 +618,96 @@ class ThirdpartyMediaTest extends DolibarrRealTestCase
 		$obj->entity = 1;
 		$obj->logo = $logo['filename'];
 
-		$value = $mapper->fieldFilterValueLogoDataUrl($obj);
+		// --------------------------------------------------------------
+		// Wire up an in-memory LogHandler so we can assert that the
+		// deprecation warning is actually emitted via dol_syslog().
+		//
+		// dol_syslog() short-circuits on three conditions we must lift:
+		//   1. isModEnabled('syslog') must be true
+		//      -> set $conf->modules['syslog'] = 1
+		//   2. SYSLOG_LEVEL global must be >= LOG_WARNING
+		//      -> set $conf->global->SYSLOG_LEVEL = LOG_DEBUG (7)
+		//   3. $conf->loghandlers must contain at least one handler
+		//      -> push an instance of SmartAuthTestCaptureLogHandler
+		//
+		// Everything is restored in the finally block to keep this test
+		// hermetic and avoid leaking state into sibling tests.
+		// LogHandler/LogHandlerInterface are loaded once at the top of
+		// this file (see the require_once near the use statements).
+		// --------------------------------------------------------------
+		$savedSyslogModule = $conf->modules['syslog'] ?? null;
+		$savedSyslogLevel  = $conf->global->SYSLOG_LEVEL ?? null;
+		$savedLogHandlers  = isset($conf->loghandlers) ? $conf->loghandlers : null;
 
-		$this->assertIsString($value);
-		$this->assertStringStartsWith('data:image/png;base64,', $value);
-		// Strip the prefix and verify the remainder is valid base64.
-		$b64 = substr($value, strlen('data:image/png;base64,'));
-		$decoded = base64_decode($b64, true);
-		$this->assertNotFalse($decoded, 'Suffix after "data:image/png;base64," must be valid base64.');
-		$this->assertNotEmpty($decoded);
+		$conf->modules['syslog']    = 1;
+		$conf->global->SYSLOG_LEVEL = LOG_DEBUG;
 
-		// dol_syslog capture is not wired up in the integration-dolibarr
-		// bootstrap (the syslog module is disabled, see
-		// test/phpunit/integration-dolibarr/bootstrap.php). We mark the
-		// "deprecation warning is logged" sub-assertion as TODO so a
-		// future iteration can plug a custom LogHandlerInterface into
-		// $conf->loghandlers and assert on the captured messages. The
-		// data-URI/base64 behaviour is fully covered above.
+		$captureHandler     = new SmartAuthTestCaptureLogHandler();
+		$conf->loghandlers  = array($captureHandler);
+
+		try {
+			$value = $mapper->fieldFilterValueLogoDataUrl($obj);
+
+			$this->assertIsString($value);
+			$this->assertStringStartsWith('data:image/png;base64,', $value);
+			// Strip the prefix and verify the remainder is valid base64.
+			$b64 = substr($value, strlen('data:image/png;base64,'));
+			$decoded = base64_decode($b64, true);
+			$this->assertNotFalse($decoded, 'Suffix after "data:image/png;base64," must be valid base64.');
+			$this->assertNotEmpty($decoded);
+
+			// Now the deprecation-warning sub-assertion: exactly one
+			// dol_syslog() call at LOG_WARNING level mentioning the
+			// deprecated logo_data_url field for our thirdparty id.
+			$warningMessages = array();
+			foreach ($captureHandler->messages as $entry) {
+				if ((int) $entry['level'] === LOG_WARNING) {
+					$warningMessages[] = $entry['message'];
+				}
+			}
+			$this->assertNotEmpty(
+				$warningMessages,
+				'fieldFilterValueLogoDataUrl() must emit at least one LOG_WARNING via dol_syslog().'
+			);
+
+			$found = false;
+			foreach ($warningMessages as $msg) {
+				if (
+					strpos($msg, 'fieldFilterValueLogoDataUrl') !== false
+					&& strpos($msg, 'deprecated') !== false
+					&& strpos($msg, 'thirdparty ' . (int) $obj->id) !== false
+					&& strpos($msg, '2.2.0') !== false
+				) {
+					$found = true;
+					break;
+				}
+			}
+			$this->assertTrue(
+				$found,
+				'Expected a LOG_WARNING mentioning fieldFilterValueLogoDataUrl, '
+				. '"deprecated", "thirdparty ' . (int) $obj->id . '" and the '
+				. '"2.2.0" removal milestone. Got: '
+				. var_export($warningMessages, true)
+			);
+		} finally {
+			// Restore $conf state regardless of test outcome so other
+			// tests are not contaminated by the syslog wiring above.
+			if ($savedSyslogModule === null) {
+				unset($conf->modules['syslog']);
+			} else {
+				$conf->modules['syslog'] = $savedSyslogModule;
+			}
+			if ($savedSyslogLevel === null) {
+				unset($conf->global->SYSLOG_LEVEL);
+			} else {
+				$conf->global->SYSLOG_LEVEL = $savedSyslogLevel;
+			}
+			if ($savedLogHandlers === null) {
+				unset($conf->loghandlers);
+			} else {
+				$conf->loghandlers = $savedLogHandlers;
+			}
+		}
 	}
 
 	public function testDmThirdpartyDerivedFieldsExportedViaMapper(): void
@@ -658,5 +740,66 @@ class ThirdpartyMediaTest extends DolibarrRealTestCase
 		$this->assertObjectHasProperty('logo_data_url', $exported);
 		$this->assertIsString($exported->logo_data_url);
 		$this->assertStringStartsWith('data:image/png;base64,', $exported->logo_data_url);
+	}
+}
+
+/**
+ * In-memory LogHandler used by testDmThirdpartyLogoDataUrlReturnsBase64Legacy()
+ * to capture dol_syslog() output and assert on the deprecation warning.
+ *
+ * Extends Dolibarr's LogHandler base class (loaded on demand in the test
+ * via require_once 'core/modules/syslog/logHandler.php') and implements
+ * the LogHandlerInterface contract. Both live in the global namespace,
+ * hence the leading backslashes.
+ *
+ * dol_syslog() calls $handler->export($data, $suffixinfilename) where
+ * $data is an associative array (keys: message, script, level, user, ip).
+ * The interface declares export($content) with a single argument; we
+ * accept the optional second one to match the actual call site without
+ * triggering a strict-signature mismatch.
+ */
+class SmartAuthTestCaptureLogHandler extends \LogHandler implements \LogHandlerInterface
+{
+	/** @var string Code referenced by dol_syslog()'s restricttologhandler filter. */
+	public $code = 'smartauth_test_capture';
+
+	/** @var array<int,array{message:string,level:int,script:mixed,user:mixed,ip:mixed}> */
+	public $messages = array();
+
+	public function getName()
+	{
+		return 'SmartAuthTestCapture';
+	}
+
+	public function getVersion()
+	{
+		return 'test';
+	}
+
+	public function isActive()
+	{
+		return true;
+	}
+
+	public function export($content, $suffixinfilename = '')
+	{
+		// dol_syslog() always passes an array; keep a defensive fallback.
+		if (is_array($content)) {
+			$this->messages[] = array(
+				'message' => isset($content['message']) ? (string) $content['message'] : '',
+				'level'   => isset($content['level'])   ? (int) $content['level']      : 0,
+				'script'  => $content['script'] ?? null,
+				'user'    => $content['user']   ?? null,
+				'ip'      => $content['ip']     ?? null,
+			);
+		} else {
+			$this->messages[] = array(
+				'message' => (string) $content,
+				'level'   => 0,
+				'script'  => null,
+				'user'    => null,
+				'ip'      => null,
+			);
+		}
 	}
 }

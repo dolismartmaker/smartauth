@@ -1580,13 +1580,39 @@ class SmartAuthDevicesClassTest extends DolibarrRealTestCase
     }
 
     /**
-     * Test fetchAll returns error on database failure
+     * Test fetchAll returns -1 and populates errors on database failure.
+     *
+     * Forces $this->db->query() to return false by swapping the device's
+     * db handle with an anonymous DB stub for the duration of the call.
+     * fetchAll() must catch the error cleanly: return -1 and push a message
+     * onto $this->errors.
      */
     public function testFetchAllDatabaseError(): void
     {
-        // This test would require mocking the database to force an error
-        // Skip for now as it requires more complex setup
-        $this->assertTrue(true);
+        $device = new SmartAuthDevices($this->db);
+
+        $brokenDb = new class ($this->db) {
+            private $inner;
+            public function __construct($inner) { $this->inner = $inner; }
+            public function prefix() { return $this->inner->prefix(); }
+            public function escape($v) { return $this->inner->escape($v); }
+            public function escapeforlike($v) { return $this->inner->escapeforlike($v); }
+            public function sanitize($v) { return $this->inner->sanitize($v); }
+            public function idate($v) { return $this->inner->idate($v); }
+            public function order($sf, $so) { return $this->inner->order($sf, $so); }
+            public function plimit($l, $o) { return $this->inner->plimit($l, $o); }
+            public function query($sql) { return false; }
+            public function lasterror() { return 'forced query failure for testFetchAllDatabaseError'; }
+        };
+
+        $device->db = $brokenDb;
+
+        $result = $device->fetchAll('', '', 0, 0, []);
+
+        $this->assertSame(-1, $result, 'fetchAll must return -1 when the underlying query fails');
+        $this->assertNotEmpty($device->errors, 'fetchAll must push the database error onto $errors');
+        $this->assertIsString($device->errors[0]);
+        $this->assertStringContainsString('forced query failure', $device->errors[0]);
     }
 
     // ========================================

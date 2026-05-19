@@ -132,6 +132,48 @@ class TestDmTraitClass extends dmBase
 }
 
 /**
+ * Fully-booted variant of TestDmTraitClass.
+ *
+ * Calls boot() so that $listOfForeignKeys, _cacheDesc, _dolmapping and
+ * _dolobjectclassname are populated the same way a real mapper (e.g.
+ * dmThirdparty) is. Required by tests that exercise exportData() and
+ * exportExtrafieldData() because both rely on $listOfForeignKeys filled
+ * by _objectDesc() during boot.
+ *
+ * Adds fk_pays to the published mapping because Societe::fields declares
+ * 'fk_pays' => 'integer:Ccountry:core/class/ccountry.class.php', i.e. a
+ * real FK that propertiesFilter() registers in $listOfForeignKeys. The
+ * base TestDmTraitClass has no usable FK column (fk_soc is not a property
+ * nor a field of Societe), so $listOfForeignKeys would stay empty even
+ * after boot().
+ *
+ * Also declares $parentTableElementToUseForExtraFields = 'societe' so
+ * exportExtrafieldData() can resolve the extrafield param row.
+ */
+class TestDmTraitClassBooted extends TestDmTraitClass
+{
+    protected $type = 'object';
+    protected $dolibarrClassName = 'Societe';
+    protected $parentTableElementToUseForExtraFields = 'societe';
+
+    protected $listOfPublishedFields = [
+        'rowid'        => 'id',
+        'nom'          => 'name',
+        'address'      => 'address',
+        'fk_pays'      => 'country_id',
+        'options_test' => 'test_extra',
+    ];
+
+    public function __construct($db)
+    {
+        // Reuse parent's manual conf bootstrap, then run the real boot()
+        // pipeline so _cacheDesc and listOfForeignKeys are populated.
+        parent::__construct($db);
+        $this->boot();
+    }
+}
+
+/**
  * @covers \SmartAuth\DolibarrMapping\dmTrait
  * @covers \SmartAuth\DolibarrMapping\dmBase
  */
@@ -465,39 +507,43 @@ class DmTraitTest extends DolibarrRealTestCase
 
     /**
      * Test exportData method
+     *
+     * Uses the booted mapper variant so that $listOfForeignKeys is populated
+     * by boot()->_objectDesc(). The FK we follow is fk_pays (Societe ->
+     * Ccountry), declared as 'integer:Ccountry:core/class/ccountry.class.php'
+     * in Societe::fields.
      */
     public function testExportData(): void
     {
-        $this->markTestSkipped('exportData requires proper listOfForeignKeys setup which needs boot() initialization');
+        $mapper = new TestDmTraitClassBooted($this->db);
 
-        // Create a test third-party
-        $societe = new \Societe($this->db);
-        $societe->name = 'Test Export Company';
-        $societe->client = 1;
-        $societe->entity = 1;
-        $socid = $societe->create($this->testUser);
+        // Fetch a real Ccountry row (France, rowid 1 in Dolibarr seeds)
+        $countryId = 1;
 
-        $this->assertGreaterThan(0, $socid);
+        // exportData($doliFieldName, $objectId) follows the FK and returns
+        // the mapped target object via dmCcountry::exportMappedData().
+        $result = $mapper->exposeExportData('fk_pays', $countryId);
 
-        // Export data
-        $result = $this->mapper->exposeExportData('Societe', $socid);
-
+        // dmCcountry maps code+label only -> result is a stdClass with code
         $this->assertInstanceOf(\stdClass::class, $result);
-        $this->assertEquals('TEST EXPORT COMPANY', $result->name);
-        $this->assertEquals($socid, $result->id);
+        $this->assertObjectHasProperty('code', $result);
     }
 
     /**
      * Test exportData with invalid object ID
+     *
+     * When the target object cannot be fetched, exportData returns null
+     * (the inner if block is never entered). This validates the FK path
+     * does not throw when the target row is missing.
      */
     public function testExportDataWithInvalidId(): void
     {
-        $this->markTestSkipped('exportData requires proper listOfForeignKeys setup which needs boot() initialization');
+        $mapper = new TestDmTraitClassBooted($this->db);
 
-        $result = $this->mapper->exposeExportData('Societe', 999999);
+        $result = $mapper->exposeExportData('fk_pays', 999999);
 
-        // Should return empty object or null
-        $this->assertIsObject($result);
+        // Should return null (silent miss) -- no exception
+        $this->assertNull($result);
     }
 
     /**
@@ -1960,46 +2006,93 @@ class DmTraitTest extends DolibarrRealTestCase
 
     /**
      * Test exportMappedData with foreign key export
+     *
+     * After boot() the mapper's listOfForeignKeys MUST contain fk_pays
+     * (registered by dmHelper::propertiesFilter() from Societe::fields
+     * 'fk_pays' => 'integer:Ccountry:core/class/ccountry.class.php').
+     *
+     * Note on the framework behavior: exportMappedData() only invokes
+     * exportData() (the FK-following branch) when the source field is
+     * empty, which is why we assert listOfForeignKeys via reflection
+     * instead of exercising the recursion path here. The exportData()
+     * path itself is covered by testExportData() above.
      */
     public function testExportMappedDataWithForeignKeyExport(): void
     {
-        // This test is skipped because it requires complex setup of listOfForeignKeys
-        $this->markTestSkipped('Foreign key export requires boot() initialization with proper class structure');
+        $mapper = new TestDmTraitClassBooted($this->db);
 
-        // Create a mapper with foreign key config
-        $mapper = new class($this->db) extends TestDmTraitClass {
-            protected $listOfPublishedFields = [
-                'rowid' => 'id',
-                'nom' => 'name',
-                'fk_soc' => 'thirdparty',
-            ];
-        };
+        // Verify boot() populated listOfForeignKeys with the FK declared
+        // by Societe::fields (fk_pays -> Ccountry). The property is private
+        // on the trait, so reflection must target the parent class that
+        // uses the trait, not the booted subclass.
+        $fkProp = new \ReflectionProperty(TestDmTraitClass::class, 'listOfForeignKeys');
+        $fkProp->setAccessible(true);
+        $listOfForeignKeys = $fkProp->getValue($mapper);
 
-        // Would need to set up listOfForeignKeys via _dolmapping
+        $this->assertIsArray($listOfForeignKeys);
+        $this->assertArrayHasKey('fk_pays', $listOfForeignKeys);
+        $this->assertStringContainsString('Ccountry', $listOfForeignKeys['fk_pays']);
+
+        // exportMappedData with a populated fk_pays returns the raw value
+        // (the FK branch is gated behind empty($doliVal) in dmTrait).
         $obj = new \stdClass();
         $obj->id = 1;
+        $obj->rowid = 1;
         $obj->nom = 'Test';
-        $obj->fk_soc = 123;
+        $obj->address = '';
+        $obj->fk_pays = 1; // France
         $obj->array_options = [];
 
         $result = $mapper->exposeExportMappedData($obj);
 
-        // Should export the foreign object
         $this->assertInstanceOf(\stdClass::class, $result);
+        $this->assertObjectHasProperty('country_id', $result);
     }
 
     /**
      * Test exportExtrafieldData with simple sellist
+     *
+     * Inserts a sellist extrafield definition into llx_extrafields, then
+     * verifies that exportExtrafieldData() resolves the sellist label by
+     * following the param descriptor (table:label:rowid).
+     *
+     * Note: this test deliberately uses TestDmTraitClass (no boot()) with
+     * a subclass that just sets $parentTableElementToUseForExtraFields.
+     * exportExtrafieldData() only needs $_dolmapclassname, $_db and the
+     * parent-element property; it does not require $listOfForeignKeys.
+     * Avoiding boot() here also avoids an upstream "Undefined array key
+     * placeholder" notice in dmHelper::extrafieldsFilter() that fires
+     * when iterating extrafields whose param shape is not yet fully
+     * normalized (placeholder is in _mappingExtrafieldsAttributes but
+     * never loaded by Dolibarr's ExtraFields::fetch_name_optionals_label).
      */
     public function testExportExtrafieldDataWithSellist(): void
     {
-        // This requires database setup with extrafields table
-        $this->markTestSkipped('Requires extrafields database setup');
+        $mapper = new class($this->db) extends TestDmTraitClass {
+            protected $parentTableElementToUseForExtraFields = 'societe';
+        };
 
-        $result = $this->mapper->exposeExportExtrafieldData('options_test', 1);
+        // Use the c_country dictionary as the sellist target -- it is
+        // guaranteed to exist in Dolibarr's seed data. The param string
+        // matches Dolibarr's sellist syntax: table:label:key (no class.php).
+        $param = serialize(['options' => ['c_country:label:rowid::' => null]]);
 
-        // Should return the label value
-        $this->assertIsString($result);
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "extrafields (name, entity, elementtype, label, type, param, pos, list)";
+        $sql .= " VALUES ('test', 1, 'societe', 'Test sellist', 'sellist', '" . $this->db->escape($param) . "', 100, '1')";
+        $res = $this->db->query($sql);
+        $this->assertNotFalse($res, 'Failed to insert extrafield row: ' . $this->db->lasterror());
+
+        try {
+            // Resolve label for c_country.rowid=1 (France) via sellist.
+            $result = $mapper->exposeExportExtrafieldData('options_test', 1);
+
+            // Should return the label string from c_country WHERE rowid=1
+            $this->assertIsString($result);
+            $this->assertNotEmpty($result);
+        } finally {
+            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        }
     }
 
     /**
@@ -2020,15 +2113,22 @@ class DmTraitTest extends DolibarrRealTestCase
 
     /**
      * Test exportData with invalid class path
+     *
+     * When the FK name is not present in $listOfForeignKeys, the lookup
+     * yields an empty descriptor and class_exists() fails. The method
+     * must return null gracefully (no exception).
      */
     public function testExportDataWithInvalidClassPath(): void
     {
-        $this->markTestSkipped('Requires listOfForeignKeys setup');
+        $mapper = new TestDmTraitClassBooted($this->db);
 
-        // Would need to mock listOfForeignKeys with invalid path
-        $result = $this->mapper->exposeExportData('invalid_fk', 123);
+        // Silence the expected "Undefined array key" warning while still
+        // exercising the exportData() null-path. Without @, PHPUnit may
+        // promote the warning into a risky-test failure depending on the
+        // error_reporting level.
+        $result = @$mapper->exposeExportData('invalid_fk', 123);
 
-        // Should handle gracefully
+        // Should handle gracefully -- no exception, no fatal
         $this->assertTrue(is_null($result) || is_object($result));
     }
 
