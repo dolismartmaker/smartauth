@@ -33,11 +33,20 @@ class dmThirdparty extends dmBase
 	protected $type = "object";
 	protected $dolibarrClassName = 'Societe';
 
-	// Dolibarr field => Front field
-	// See documentation/api-naming-convention.md
+	// Dolibarr PHP property name => Front API key
+	// See documentation/api-naming-convention.md.
+	//
+	// Note on 'name' (not 'nom'): the Societe SQL column is `nom`, but
+	// Societe::fetch (htdocs/societe/class/societe.class.php line 1736)
+	// SELECTs `s.nom as name`, populating $this->name, and Societe::update
+	// (line 1448) writes the SQL column FROM $this->name. The PHP
+	// property is the source of truth on both read and write paths.
+	// Mirroring that here keeps the mapper aligned with the modern
+	// Dolibarr contract (same pattern as dmProduct using 'status' rather
+	// than the SQL column 'tosell').
 	protected $listOfPublishedFields = [
 		'rowid'             => 'id',
-		'nom'               => 'name',
+		'name'              => 'name',
 		'address'           => 'address',
 		'zip'               => 'zip',
 		'town'              => 'city',
@@ -65,10 +74,12 @@ class dmThirdparty extends dmBase
 		'logo_data_url' => 'logo_data_url',
 	];
 
-	// Allowlist for importMappedData() (Dolibarr field names).
-	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// Allowlist for importMappedData() (Dolibarr PHP property names).
+	// See documentation/SPEC_A_WRITABLEFIELDS.md and the note on 'name'
+	// above for why this list uses the PHP property names rather than
+	// the raw SQL column names.
 	protected $writableFields = [
-		'nom',
+		'name',
 		'address',
 		'zip',
 		'town',
