@@ -167,6 +167,17 @@ class SyncController
                 $this->syncableObjects = array_merge($this->syncableObjects, $objects);
             }
         }
+
+        // Self-stamp the object_type key onto each config so downstream
+        // helpers (mapper resolution, FK validation) can recover the
+        // type from a $config alone without having to thread an extra
+        // parameter through every call site.
+        foreach ($this->syncableObjects as $type => &$cfg) {
+            if (is_array($cfg)) {
+                $cfg['object_type'] = $type;
+            }
+        }
+        unset($cfg);
     }
 
     /**
@@ -819,28 +830,55 @@ class SyncController
     }
 
     /**
-     * Format object for sync response
+     * Format object for sync response.
+     *
+     * Routes the raw SELECT * row through the matching dm* mapper so that
+     * the API response only carries declared, named fields (Invariant I-1
+     * in documentation/SPEC_SMARTAUTH_AUTHORIZATION.md section 8.2).
+     *
+     * The pull() SQL gives us a raw row (SQL column names, no fetch()
+     * post-processing). We re-hydrate through the Dolibarr class so the
+     * mapper sees the PHP property names it expects (eg Product::fetch
+     * renames the SQL columns tosell/tobuy into $status/$status_buy).
+     *
+     * The per-object 'tms' field is preserved post-mapping because the
+     * front (smartcommon SyncEngine.js) snapshots it as base_tms for the
+     * conflict-detection branch of the next push. It is taken from the
+     * raw row directly (the SELECT * already pulled it), independently
+     * of whether the Dolibarr fetch() populates it on the PHP object.
+     *
+     * Performance note: this re-hydrates the object via fetch() once per
+     * row, adding one SELECT per item. For a paginated pull of 1000
+     * items that adds ~1000 queries. Acceptable for the current scope;
+     * a future optimisation could batch-fetch or feed the mapper a
+     * fetched-like object directly from the raw row.
      */
     private function formatObjectForSync($obj, $object_type, $withFiles = false)
     {
-        // Convert to array and include tms
-        $data = (array) $obj;
+        $config = $this->syncableObjects[$object_type] ?? [];
+        $rowid = isset($obj->rowid) ? (int) $obj->rowid : 0;
+        $rawTms = $obj->tms ?? null;
 
-        // Ensure tms is in ISO format
-        if (isset($data['tms'])) {
-            $data['tms'] = date('c', strtotime($data['tms']));
+        $data = $this->mapObjectThroughMapper($obj, $object_type, $config, $rowid);
+
+        // Inject tms per-object in ISO format. SyncEngine.js snapshots
+        // this value as base_tms for conflict detection on the next
+        // push. Always sourced from the raw SELECT row, independent of
+        // whether the Dolibarr class's fetch() populated $obj->tms on
+        // the PHP object.
+        if (!empty($rawTms)) {
+            $data['tms'] = date('c', strtotime($rawTms));
         }
 
-        // Rename rowid to id for consistency
-        if (isset($data['rowid'])) {
-            $data['id'] = (int) $data['rowid'];
-            unset($data['rowid']);
+        // Defensive: the raw fallback path may not set 'id'.
+        $objectId = (int) ($data['id'] ?? 0);
+        if ($objectId === 0 && $rowid > 0) {
+            $data['id'] = $rowid;
+            $objectId = $rowid;
         }
 
         // Add linked files count from ECM
-        $config = $this->syncableObjects[$object_type] ?? [];
         $element = $config['element'] ?? '';
-        $objectId = $data['id'] ?? 0;
         if (!empty($element) && $objectId > 0) {
             if ($withFiles) {
                 $files = $this->fetchLinkedFiles($objectId, $element);
@@ -859,6 +897,127 @@ class SyncController
             }
         }
         return $data;
+    }
+
+    /**
+     * Map a raw SQL row through the dm* mapper for the given object
+     * type, falling back to a raw (array) cast when no mapper is
+     * registered or when the Dolibarr re-fetch fails. Every fallback
+     * path logs a warning so production telemetry surfaces the gap.
+     *
+     * @param object $obj         Raw row from SELECT * (stdClass)
+     * @param string $object_type Sync object type key
+     * @param array  $config      Entry from $this->syncableObjects
+     * @param int    $rowid       Resolved rowid from the raw row
+     * @return array              Payload array (id renamed from rowid)
+     */
+    private function mapObjectThroughMapper($obj, $object_type, array $config, $rowid)
+    {
+        $mapperClass = $this->resolveMapperClass($object_type);
+        if ($mapperClass === null || !class_exists($mapperClass) || $rowid <= 0) {
+            dol_syslog(
+                "SmartAuth SyncController::mapObjectThroughMapper: no dm* "
+                . "mapper for object_type='" . $object_type . "', falling "
+                . "back to raw (array) cast. Invariant I-1 not enforced "
+                . "for this type.",
+                LOG_WARNING
+            );
+            return $this->rawCastFallback($obj);
+        }
+
+        $doliClass = $config['class'] ?? '';
+        $doliFile = $config['file'] ?? '';
+        if (empty($doliClass) || empty($doliFile)) {
+            dol_syslog(
+                "SmartAuth SyncController::mapObjectThroughMapper: missing "
+                . "'class' or 'file' in syncableObjects['" . $object_type
+                . "'], falling back to raw cast.",
+                LOG_WARNING
+            );
+            return $this->rawCastFallback($obj);
+        }
+
+        if (!class_exists($doliClass) && file_exists($doliFile)) {
+            require_once $doliFile;
+        }
+        if (!class_exists($doliClass)) {
+            dol_syslog(
+                "SmartAuth SyncController::mapObjectThroughMapper: Dolibarr "
+                . "class " . $doliClass . " could not be loaded (file="
+                . $doliFile . "), falling back to raw cast.",
+                LOG_WARNING
+            );
+            return $this->rawCastFallback($obj);
+        }
+
+        $fresh = new $doliClass($this->db);
+        $fetchResult = $fresh->fetch($rowid);
+        if ($fetchResult <= 0) {
+            dol_syslog(
+                "SmartAuth SyncController::mapObjectThroughMapper: fetch "
+                . "failed for " . $doliClass . " id=" . $rowid . " ("
+                . ($fresh->error ?? 'no error message') . "), falling back "
+                . "to raw cast.",
+                LOG_WARNING
+            );
+            return $this->rawCastFallback($obj);
+        }
+
+        $mapper = new $mapperClass();
+        $exported = $mapper->exportMappedData($fresh);
+        return (array) $exported;
+    }
+
+    /**
+     * Legacy raw cast path: leaks Dolibarr internal fields. Used only
+     * when the mapper path cannot run (no mapper registered, class
+     * missing, fetch failed). Each call site logs a LOG_WARNING.
+     *
+     * @param object $obj Raw row from SELECT *
+     * @return array     {id: int, ...other SQL columns}
+     */
+    private function rawCastFallback($obj)
+    {
+        $data = (array) $obj;
+        if (isset($data['rowid'])) {
+            $data['id'] = (int) $data['rowid'];
+            unset($data['rowid']);
+        }
+        return $data;
+    }
+
+    /**
+     * Resolve the fully qualified dm* mapper class name for a given
+     * object_type. Returns null when no mapper is registered (the caller
+     * then falls back to the raw cast path and logs a warning).
+     *
+     * Built-in mappings only for now. If a future module registers a
+     * custom object_type via the smartmaker_registerSyncableObjects
+     * hook, this resolver can be extended to read a 'mapper' key from
+     * the $syncableObjects config -- the hook payload already supports
+     * arbitrary keys so the contract extension is non-breaking.
+     *
+     * @param string $object_type Sync object type key
+     * @return string|null        Fully qualified mapper class name
+     */
+    private function resolveMapperClass($object_type)
+    {
+        $map = [
+            'thirdparty' => '\\SmartAuth\\DolibarrMapping\\dmThirdparty',
+            'contact'    => '\\SmartAuth\\DolibarrMapping\\dmContact',
+            'product'    => '\\SmartAuth\\DolibarrMapping\\dmProduct',
+            'category'   => '\\SmartAuth\\DolibarrMapping\\dmCategory',
+        ];
+        if (isset($map[$object_type])) {
+            return $map[$object_type];
+        }
+        // Honour an explicit mapper class declared by a hook-registered
+        // syncable object: $syncableObjects['xxx']['mapper'] = '\\Ns\\dmXxx'.
+        $cfgMapper = $this->syncableObjects[$object_type]['mapper'] ?? null;
+        if (is_string($cfgMapper) && $cfgMapper !== '') {
+            return $cfgMapper;
+        }
+        return null;
     }
 
     /**
@@ -947,34 +1106,188 @@ class SyncController
     private static $sensitiveFieldsDenylistRegex = '/^(pass|password|salt|api_key|token|secret)/i';
 
     /**
-     * Apply payload data to a Dolibarr object after gating each key through
-     * the per-type whitelist and the universal denylist.
+     * Universal table for foreign-key existence validation in the push
+     * path: when a dm* mapper accepts a fk_* assignment, the caller
+     * MUST exist in the referenced table or we refuse the write to
+     * avoid storing orphan rows.
      *
-     * Returns the list of rejected keys for logging (do not silently drop
-     * sensitive fields - CLAUDE.md "no silent failures").
+     * Only foreign keys actually writable through any dm*::writableFields
+     * are listed here. fk_user_* are intentionally absent because they
+     * sit on $sensitiveFieldsDenylist (audit-trail forgery prevention).
+     *
+     * If a hook-registered object_type exposes additional FKs, extend
+     * this map or fall back to the legacy applyDataLegacy() path.
+     */
+    private static $fkValidationMap = [
+        'fk_soc'         => 'societe',
+        'fk_pays'        => 'c_country',
+        'fk_country'     => 'c_country',
+        'fk_departement' => 'c_departements',
+        'fk_state'       => 'c_departements',
+        'fk_product'     => 'product',
+        'fk_project'     => 'projet',
+        'fk_projet'      => 'projet',
+        'fk_categorie'   => 'categorie',
+        'fk_warehouse'   => 'entrepot',
+    ];
+
+    /**
+     * Apply payload data to a Dolibarr object.
+     *
+     * Two paths:
+     *  - Mapper path: when a dm* mapper is registered for the object_type
+     *    (resolveMapperClass), the incoming data array is assumed to use
+     *    API key names (see api-naming-convention.md). It is fed through
+     *    $mapper->importMappedData() which:
+     *      a) rejects keys not in $writableFields
+     *      b) converts API keys to Dolibarr property names
+     *      c) casts values to the declared field types
+     *    Each fk_* field is then validated against $fkValidationMap so
+     *    we never store an orphan reference.
+     *  - Legacy path: kept for hook-registered object_types that lack
+     *    a mapper. Uses the per-type 'allowed_fields' whitelist plus
+     *    the universal denylist. Same behaviour as before the migration.
+     *
+     * In both paths the universal denylist is applied as defence in
+     * depth (no silent failure -- every rejection is logged).
      *
      * @param object $object Dolibarr object
-     * @param array $data Caller-provided data
-     * @param array $config Syncable object config (must contain 'allowed_fields')
-     * @return string[] Names of rejected keys
+     * @param array $data Caller-provided data (api keys when mapper, else Dolibarr keys)
+     * @param array $config Syncable object config (carries object_type stamped by loadSyncableObjects)
+     * @return string[] Names of rejected keys (for caller-side logging or push error reporting)
      */
     private function applyDataToObject($object, array $data, array $config): array
+    {
+        $object_type = $config['object_type'] ?? null;
+        $mapperClass = $object_type !== null ? $this->resolveMapperClass($object_type) : null;
+
+        if ($mapperClass !== null && class_exists($mapperClass)) {
+            return $this->applyDataViaMapper($object, $data, $config, $mapperClass);
+        }
+
+        return $this->applyDataLegacy($object, $data, $config);
+    }
+
+    /**
+     * Mapper-based assignment path. See applyDataToObject() for the
+     * contract.
+     *
+     * Filter strategy: dmTrait::importMappedData() is strict (throws on
+     * the first unknown api key). The sync push contract is laxer: skip
+     * unknown / denied keys silently with a LOG_WARNING and continue
+     * with the rest. We therefore filter the input down to writable api
+     * keys BEFORE feeding the mapper, so importMappedData() never sees
+     * a key it would reject.
+     *
+     * @return string[] Names of rejected keys
+     */
+    private function applyDataViaMapper($object, array $data, array $config, $mapperClass): array
+    {
+        $writableApiKeys = $this->getWritableApiKeys($mapperClass);
+
+        // Two-step filter: universal denylist first (CR-6 defence in
+        // depth), then writable-api-keys whitelist from the mapper.
+        $rejected = [];
+        $clean = [];
+        foreach ($data as $key => $value) {
+            if (in_array($key, self::$sensitiveFieldsDenylist, true)
+                || preg_match(self::$sensitiveFieldsDenylistRegex, (string) $key)) {
+                $rejected[] = $key;
+                continue;
+            }
+            if (!in_array($key, $writableApiKeys, true)) {
+                $rejected[] = $key;
+                continue;
+            }
+            $clean[$key] = $value;
+        }
+        if (!empty($rejected)) {
+            dol_syslog(
+                'SmartAuth SyncController::applyDataViaMapper: rejected '
+                . 'mass-assignment keys for ' . ($config['class'] ?? '?')
+                . ': ' . implode(',', $rejected),
+                LOG_WARNING
+            );
+        }
+
+        if (empty($clean)) {
+            return $rejected;
+        }
+
+        $mapper = new $mapperClass();
+        $mapped = $mapper->importMappedData($clean);
+
+        $fkErrors = [];
+        foreach ((array) $mapped as $field => $value) {
+            if (isset(self::$fkValidationMap[$field]) && !empty($value)) {
+                if (!$this->validateForeignKeyExists($field, (int) $value)) {
+                    $fkErrors[] = $field;
+                    continue;
+                }
+            }
+            if (property_exists($object, $field)) {
+                $object->$field = $value;
+            }
+        }
+        if (!empty($fkErrors)) {
+            dol_syslog(
+                'SmartAuth SyncController::applyDataViaMapper: foreign '
+                . 'key validation failed for ' . get_class($mapper) . ': '
+                . implode(',', $fkErrors),
+                LOG_WARNING
+            );
+        }
+
+        return array_merge($rejected, $fkErrors);
+    }
+
+    /**
+     * List the API key names that a given mapper accepts via
+     * importMappedData(): every entry of $listOfPublishedFields whose
+     * Dolibarr-side key is also in $writableFields.
+     *
+     * Read via reflection on default properties to stay cheap (no
+     * mapper instantiation, no boot()).
+     *
+     * @param string $mapperClass Fully qualified dm* class name
+     * @return string[]           Allowed API key names
+     */
+    private function getWritableApiKeys($mapperClass)
+    {
+        $ref = new \ReflectionClass($mapperClass);
+        $defaults = $ref->getDefaultProperties();
+        $listOfPublishedFields = $defaults['listOfPublishedFields'] ?? [];
+        $writableSet = array_flip($defaults['writableFields'] ?? []);
+
+        $apiKeys = [];
+        foreach ($listOfPublishedFields as $doliSide => $appSide) {
+            if (isset($writableSet[$doliSide])) {
+                $apiKeys[] = $appSide;
+            }
+        }
+        return $apiKeys;
+    }
+
+    /**
+     * Legacy assignment path: per-type allowed_fields + universal
+     * denylist, with Dolibarr-side key names assumed. Used when no
+     * dm* mapper is registered for the object_type (typically the
+     * hook-registered ones).
+     *
+     * @return string[] Names of rejected keys
+     */
+    private function applyDataLegacy($object, array $data, array $config): array
     {
         $allowedFields = $config['allowed_fields'] ?? null;
         $rejected = [];
 
         foreach ($data as $key => $value) {
-            // Universal denylist - always wins.
             if (in_array($key, self::$sensitiveFieldsDenylist, true)
                 || preg_match(self::$sensitiveFieldsDenylistRegex, (string) $key)) {
                 $rejected[] = $key;
                 continue;
             }
 
-            // Per-type whitelist when defined.
-            // For external modules registered via smartmaker_registerSyncableObjects
-            // without an allowed_fields key, fall back to denylist-only mode and
-            // log so the missing whitelist is visible.
             if (is_array($allowedFields) && !in_array($key, $allowedFields, true)) {
                 $rejected[] = $key;
                 continue;
@@ -986,13 +1299,49 @@ class SyncController
         }
 
         if (!empty($rejected)) {
-            dol_syslog('SmartAuth SyncController: rejected mass-assignment keys for ' . ($config['class'] ?? '?') . ': ' . implode(',', $rejected), LOG_WARNING);
+            dol_syslog('SmartAuth SyncController::applyDataLegacy: rejected mass-assignment keys for ' . ($config['class'] ?? '?') . ': ' . implode(',', $rejected), LOG_WARNING);
         }
         if (!is_array($allowedFields)) {
-            dol_syslog('SmartAuth SyncController: no allowed_fields whitelist for ' . ($config['class'] ?? '?') . ' - denylist-only mode', LOG_WARNING);
+            dol_syslog('SmartAuth SyncController::applyDataLegacy: no allowed_fields whitelist for ' . ($config['class'] ?? '?') . ' - denylist-only mode', LOG_WARNING);
         }
 
         return $rejected;
+    }
+
+    /**
+     * Verify that a foreign-key target row exists in the referenced
+     * Dolibarr table. Returns false on missing row, missing FK mapping,
+     * or SQL error (conservative: better refuse a write than store an
+     * orphan).
+     *
+     * @param string $field Dolibarr field name (eg 'fk_soc')
+     * @param int    $id    Target rowid to check
+     * @return bool         True only when the row exists
+     */
+    private function validateForeignKeyExists($field, $id)
+    {
+        $table = self::$fkValidationMap[$field] ?? null;
+        if ($table === null) {
+            return true;
+        }
+        if ($id <= 0) {
+            return false;
+        }
+        $sql = 'SELECT rowid FROM ' . MAIN_DB_PREFIX . $table
+            . ' WHERE rowid = ' . (int) $id;
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog(
+                'SmartAuth SyncController::validateForeignKeyExists: SQL '
+                . 'error checking ' . $field . ' -> ' . $table
+                . '.rowid=' . $id . ': ' . $this->db->lasterror(),
+                LOG_WARNING
+            );
+            return false;
+        }
+        $count = $this->db->num_rows($resql);
+        $this->db->free($resql);
+        return $count > 0;
     }
 
     /**
