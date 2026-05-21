@@ -1,5 +1,11 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.20 -- 20260521
+
+ - Missing public folder
+ - Product / Services mapping
+ - Handle "" and zero values
+
 ## 2.0.18 -- 20260520
 
  - Mappers Dolibarr -> API
