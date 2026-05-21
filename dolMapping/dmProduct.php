@@ -96,6 +96,60 @@ class dmProduct extends dmBase
 	];
 
 	/**
+	 * Front-side string aliases for Dolibarr's int product type column
+	 * (fk_product_type). Dolibarr stores 0 for a physical product and 1
+	 * for a service; the public API exposes these as readable strings so
+	 * consumers (PWA browsers, REST clients) don't have to know the int
+	 * convention. Keep these in sync with \Product::TYPE_PRODUCT /
+	 * \Product::TYPE_SERVICE.
+	 */
+	public const TYPE_PRODUCT = 'product';
+	public const TYPE_SERVICE = 'service';
+
+	/**
+	 * Map a Dolibarr product type int to the front-side string alias.
+	 * Unknown ints fall back to TYPE_PRODUCT (safer default than a null
+	 * that would surface as a missing field on the wire).
+	 */
+	public static function mapTypeToFront($doliType): string
+	{
+		switch ((int) $doliType) {
+			case \Product::TYPE_SERVICE:
+				return self::TYPE_SERVICE;
+			case \Product::TYPE_PRODUCT:
+			default:
+				return self::TYPE_PRODUCT;
+		}
+	}
+
+	/**
+	 * Inverse of mapTypeToFront(). Accepts the canonical string alias OR
+	 * the raw int / numeric string so the import path is forgiving with
+	 * older clients that still send the Dolibarr int.
+	 */
+	public static function mapTypeFromFront($frontType): int
+	{
+		if (is_numeric($frontType)) {
+			return ((int) $frontType) === \Product::TYPE_SERVICE
+				? \Product::TYPE_SERVICE
+				: \Product::TYPE_PRODUCT;
+		}
+		return ((string) $frontType) === self::TYPE_SERVICE
+			? \Product::TYPE_SERVICE
+			: \Product::TYPE_PRODUCT;
+	}
+
+	/**
+	 * exportMappedData() hook: convert the Dolibarr int type to its front
+	 * string alias. Invoked automatically by dmTrait::exportMappedData()
+	 * when the 'type' field is published.
+	 */
+	public function fieldFilterValueType($obj, $doliVal): string
+	{
+		return self::mapTypeToFront($doliVal);
+	}
+
+	/**
 	 * object constructor
 	 *
 	 * @return  [type]  [return description]
