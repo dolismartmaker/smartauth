@@ -556,7 +556,15 @@ trait dmTrait
 			} else {
 				$doliVal = $obj->$doliside ?? null;
 			}
-			if (!empty($doliVal)) {
+			// Use a strict null check rather than PHP empty(): empty() returns
+			// true for 0, '0', '', false -- all of which are LEGITIMATE values
+			// that must be exported (e.g. fk_product_type=0 for a "product",
+			// status=0 for "draft", any boolean flag in its off position). The
+			// old !empty() guard silently dropped these from the API payload,
+			// forcing every consumer to special-case the missing field. We
+			// still skip null so unset Dolibarr properties don't pollute the
+			// output, and so downstream FK/extrafield branches keep working.
+			if ($doliVal !== null) {
 				//try to apply a function as data filter for example for logo to base64 encoded logo (Societe / dmSociete)
 				$user_function = "fieldFilterValue" . ucfirst($doliside);
 				// dol_syslog("SmartAuth Call user function $user_function on object " . get_class($this));
