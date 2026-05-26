@@ -640,8 +640,10 @@ class TokenService
         // Idempotence: check existence first. PK on jti would catch a
         // duplicate INSERT anyway, but a clean SELECT lets us log the
         // no-op path distinctly without producing a SQL error.
+        // Scoped by entity: the revocation list is per-entity.
         $sql = "SELECT jti FROM " . MAIN_DB_PREFIX . "smartauth_revoked_jti"
-            . " WHERE jti = '" . $this->db->escape($jti) . "'";
+            . " WHERE jti = '" . $this->db->escape($jti) . "'"
+            . " AND entity IN (" . getEntity('smartauthrevokedjti') . ")";
         $resql = $this->db->query($sql);
         if (!$resql) {
             dol_syslog('SmartAuth TokenService: addRevokedJti SELECT failed: ' . $this->db->lasterror(), LOG_ERR);
@@ -704,7 +706,8 @@ class TokenService
             . " AND token_type = '" . \SmartAuthOAuthToken::TOKEN_TYPE_ACCESS . "'"
             . " AND revoked_at IS NULL"
             . " AND expires_at > '" . $this->db->idate(dol_now()) . "'"
-            . " AND jti IS NOT NULL AND jti <> ''";
+            . " AND jti IS NOT NULL AND jti <> ''"
+            . " AND entity IN (" . getEntity('smartauthoauthtoken') . ")";
 
         $resql = $this->db->query($sql);
         if (!$resql) {
@@ -741,7 +744,8 @@ class TokenService
             . " AND token_type = '" . \SmartAuthOAuthToken::TOKEN_TYPE_ACCESS . "'"
             . " AND revoked_at IS NULL"
             . " AND expires_at > '" . $this->db->idate(dol_now()) . "'"
-            . " AND jti IS NOT NULL AND jti <> ''";
+            . " AND jti IS NOT NULL AND jti <> ''"
+            . " AND entity IN (" . getEntity('smartauthoauthtoken') . ")";
 
         $resql = $this->db->query($sql);
         if (!$resql) {
@@ -778,7 +782,8 @@ class TokenService
         $nowSql = $this->db->idate(dol_now());
 
         $sql = "SELECT jti, revoked_at FROM " . MAIN_DB_PREFIX . "smartauth_revoked_jti"
-            . " WHERE expires_at > '" . $nowSql . "'";
+            . " WHERE expires_at > '" . $nowSql . "'"
+            . " AND entity IN (" . getEntity('smartauthrevokedjti') . ")";
         if ($sinceTs > 0) {
             $sql .= " AND revoked_at > '" . $this->db->idate($sinceTs) . "'";
         }
@@ -810,7 +815,8 @@ class TokenService
     public function purgeExpiredRevokedJti(): int
     {
         $sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_revoked_jti"
-            . " WHERE expires_at < '" . $this->db->idate(dol_now()) . "'";
+            . " WHERE expires_at < '" . $this->db->idate(dol_now()) . "'"
+            . " AND entity IN (" . getEntity('smartauthrevokedjti') . ")";
 
         $resql = $this->db->query($sql);
         if (!$resql) {
