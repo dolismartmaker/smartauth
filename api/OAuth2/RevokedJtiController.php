@@ -76,8 +76,14 @@ class RevokedJtiController
 
         // Optional ?since=<unix ts>: backend only wants entries revoked
         // strictly after this timestamp. Negative or non-numeric values are
-        // tolerated (treated as 0 = full list).
-        $sinceRaw = isset($_GET['since']) ? trim((string) $_GET['since']) : '';
+        // tolerated (treated as 0 = full list). Length-capped before any
+        // string work so a hostile client cannot tie up the PHP-FPM worker
+        // with a megabyte-long parameter.
+        $sinceRaw = isset($_GET['since']) ? (string) $_GET['since'] : '';
+        if (strlen($sinceRaw) > 20) {
+            $sinceRaw = '';
+        }
+        $sinceRaw = trim($sinceRaw);
         $sinceTs = (ctype_digit($sinceRaw) ? (int) $sinceRaw : 0);
         if ($sinceTs < 0) {
             $sinceTs = 0;
