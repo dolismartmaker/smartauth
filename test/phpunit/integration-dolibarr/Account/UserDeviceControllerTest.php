@@ -233,6 +233,219 @@ class UserDeviceControllerTest extends DolibarrRealTestCase
         $this->assertSame(410, $resp[1]);
     }
 
+    public function testCreateDerivesViewportModeFromIconPhone(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $resp = $this->controller->create($this->makePayload([
+            'label' => 'phone-device',
+            'icon' => 'phone',
+            'jwt_device_id' => $tech,
+        ]));
+        $this->assertSame(201, $resp[1]);
+        $this->assertSame('mobile', $resp[0]['viewport_mode']);
+    }
+
+    public function testCreateDerivesViewportModeFromIconTablet(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $resp = $this->controller->create($this->makePayload([
+            'label' => 'tablet-device',
+            'icon' => 'tablet',
+            'jwt_device_id' => $tech,
+        ]));
+        $this->assertSame(201, $resp[1]);
+        $this->assertSame('tablet', $resp[0]['viewport_mode']);
+    }
+
+    public function testCreateDerivesViewportModeFromIconDesktop(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $resp = $this->controller->create($this->makePayload([
+            'label' => 'desktop-device',
+            'icon' => 'desktop',
+            'jwt_device_id' => $tech,
+        ]));
+        $this->assertSame(201, $resp[1]);
+        $this->assertSame('desktop', $resp[0]['viewport_mode']);
+    }
+
+    public function testCreateExplicitViewportModeOverridesIconDefault(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $resp = $this->controller->create($this->makePayload([
+            'label' => 'docked-ipad',
+            'icon' => 'tablet',
+            'viewport_mode' => 'desktop',
+            'jwt_device_id' => $tech,
+        ]));
+        $this->assertSame(201, $resp[1]);
+        $this->assertSame('tablet', $resp[0]['icon']);
+        $this->assertSame('desktop', $resp[0]['viewport_mode']);
+    }
+
+    public function testCreateAcceptsAutoViewportMode(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $resp = $this->controller->create($this->makePayload([
+            'label' => 'auto-device',
+            'icon' => 'phone',
+            'viewport_mode' => 'auto',
+            'jwt_device_id' => $tech,
+        ]));
+        $this->assertSame(201, $resp[1]);
+        $this->assertSame('auto', $resp[0]['viewport_mode']);
+    }
+
+    public function testCreateRejectsInvalidViewportMode(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $resp = $this->controller->create($this->makePayload([
+            'label' => 'bad-device',
+            'icon' => 'phone',
+            'viewport_mode' => 'foo',
+            'jwt_device_id' => $tech,
+        ]));
+        $this->assertSame(400, $resp[1]);
+        $this->assertSame('invalid_viewport_mode', $resp[0]['error']);
+    }
+
+    public function testSetViewportModeHappyPath(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $created = $this->controller->create($this->makePayload([
+            'label' => 'switch-device',
+            'icon' => 'phone',
+            'jwt_device_id' => $tech,
+        ]));
+        $userDeviceId = (int) $created[0]['id'];
+
+        $resp = $this->controller->setViewportMode($this->makePayload([
+            'id' => $userDeviceId,
+            'viewport_mode' => 'tablet',
+        ]));
+        $this->assertSame(200, $resp[1]);
+        $this->assertSame('tablet', $resp[0]['viewport_mode']);
+
+        $row = $this->repo->findById($userDeviceId, 1);
+        $this->assertSame('tablet', $row['viewport_mode']);
+    }
+
+    public function testSetViewportModeRejectsInvalidValue(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $created = $this->controller->create($this->makePayload([
+            'label' => 'invalid-mode-device',
+            'icon' => 'phone',
+            'jwt_device_id' => $tech,
+        ]));
+        $userDeviceId = (int) $created[0]['id'];
+
+        $resp = $this->controller->setViewportMode($this->makePayload([
+            'id' => $userDeviceId,
+            'viewport_mode' => 'phone',
+        ]));
+        $this->assertSame(400, $resp[1]);
+        $this->assertSame('invalid_viewport_mode', $resp[0]['error']);
+
+        // Original value preserved.
+        $row = $this->repo->findById($userDeviceId, 1);
+        $this->assertSame('mobile', $row['viewport_mode']);
+    }
+
+    public function testSetViewportModeEmptyClearsToNull(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $created = $this->controller->create($this->makePayload([
+            'label' => 'clear-device',
+            'icon' => 'phone',
+            'jwt_device_id' => $tech,
+        ]));
+        $userDeviceId = (int) $created[0]['id'];
+
+        $resp = $this->controller->setViewportMode($this->makePayload([
+            'id' => $userDeviceId,
+            'viewport_mode' => '',
+        ]));
+        $this->assertSame(200, $resp[1]);
+        $this->assertNull($resp[0]['viewport_mode']);
+
+        $row = $this->repo->findById($userDeviceId, 1);
+        $this->assertNull($row['viewport_mode']);
+    }
+
+    public function testSetViewportModeRejectsOtherUserDevice(): void
+    {
+        $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $created = $this->controller->create($this->makePayload([
+            'label' => 'owned-device',
+            'icon' => 'phone',
+            'jwt_device_id' => $tech,
+        ]));
+        $userDeviceId = (int) $created[0]['id'];
+
+        $otherUser = $this->createTestUser(['login' => 'other_' . uniqid()]);
+        $resp = $this->controller->setViewportMode([
+            'user' => $otherUser,
+            'user_id' => (int) $otherUser->id,
+            'entity' => 1,
+            'jwt_device_id' => 0,
+            'id' => $userDeviceId,
+            'viewport_mode' => 'desktop',
+        ]);
+        $this->assertSame(404, $resp[1]);
+
+        // Owner's value untouched.
+        $row = $this->repo->findById($userDeviceId, 1);
+        $this->assertSame('mobile', $row['viewport_mode']);
+    }
+
+    public function testIndexIncludesViewportMode(): void
+    {
+        $tech1 = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $tech2 = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-2');
+        $this->controller->create($this->makePayload([
+            'label' => 'phone-A',
+            'icon' => 'phone',
+            'jwt_device_id' => $tech1,
+        ]));
+        $this->controller->create($this->makePayload([
+            'label' => 'tablet-B',
+            'icon' => 'tablet',
+            'jwt_device_id' => $tech2,
+        ]));
+
+        $list = $this->controller->index($this->makePayload());
+        $this->assertSame(200, $list[1]);
+        $this->assertCount(2, $list[0]['devices']);
+        $byLabel = [];
+        foreach ($list[0]['devices'] as $d) {
+            $byLabel[$d['label']] = $d;
+        }
+        $this->assertArrayHasKey('viewport_mode', $byLabel['phone-A']);
+        $this->assertArrayHasKey('viewport_mode', $byLabel['tablet-B']);
+        $this->assertSame('mobile', $byLabel['phone-A']['viewport_mode']);
+        $this->assertSame('tablet', $byLabel['tablet-B']['viewport_mode']);
+    }
+
+    public function testLinkReturnsViewportMode(): void
+    {
+        $tech1 = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $created = $this->controller->create($this->makePayload([
+            'label' => 'linked-device',
+            'icon' => 'tablet',
+            'jwt_device_id' => $tech1,
+        ]));
+        $userDeviceId = (int) $created[0]['id'];
+
+        $tech2 = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-2');
+        $resp = $this->controller->link($this->makePayload([
+            'id' => $userDeviceId,
+            'jwt_device_id' => $tech2,
+        ]));
+        $this->assertSame(200, $resp[1]);
+        $this->assertSame('tablet', $resp[0]['viewport_mode']);
+    }
+
     /**
      * @param array<string,mixed> $overrides
      * @return array<string,mixed>

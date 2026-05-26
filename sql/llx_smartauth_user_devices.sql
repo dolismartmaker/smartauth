@@ -35,6 +35,7 @@ CREATE TABLE llx_smartauth_user_devices (
     fk_user         INTEGER NOT NULL,
     label           VARCHAR(100) NOT NULL,
     icon            VARCHAR(32) DEFAULT 'phone' NOT NULL,
+    viewport_mode   VARCHAR(10) NULL DEFAULT NULL,
     date_creation   DATETIME NOT NULL,
     date_lastseen   DATETIME NULL,
     status          INTEGER DEFAULT 1 NOT NULL,

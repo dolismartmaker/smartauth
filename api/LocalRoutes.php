@@ -177,6 +177,11 @@ Route::post('account/user-devices/{id}/link', UserDeviceController::class, 'link
 // Rename a logical device. Body: { label }
 Route::post('account/user-devices/{id}/rename', UserDeviceController::class, 'rename', true);
 
+// Update the persistent viewport mode (auto | mobile | tablet | desktop)
+// of a logical device. Shared across every SmartMaker PWA on this device.
+// Body: { viewport_mode }
+Route::post('account/user-devices/{id}/viewport-mode', UserDeviceController::class, 'setViewportMode', true);
+
 // Cascade-revoke a logical device: every PWA session attached to it is
 // terminated in one shot.
 Route::delete('account/user-devices/{id}', UserDeviceController::class, 'revoke', true);

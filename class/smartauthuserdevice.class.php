@@ -34,6 +34,11 @@ class SmartAuthUserDevice
     public const ICON_LAPTOP  = 'laptop';
     public const ICON_DESKTOP = 'desktop';
 
+    public const VIEWPORT_AUTO    = 'auto';
+    public const VIEWPORT_MOBILE  = 'mobile';
+    public const VIEWPORT_TABLET  = 'tablet';
+    public const VIEWPORT_DESKTOP = 'desktop';
+
     public const LABEL_MAX_LENGTH = 100;
 
     private const TABLE = 'smartauth_user_devices';
@@ -101,11 +106,64 @@ class SmartAuthUserDevice
     }
 
     /**
+     * Allowed viewport_mode values. NULL is also acceptable in DB and
+     * means "never set" (legacy / pre-feature row).
+     *
+     * @return string[]
+     */
+    public static function allowedViewportModes(): array
+    {
+        return [
+            self::VIEWPORT_AUTO,
+            self::VIEWPORT_MOBILE,
+            self::VIEWPORT_TABLET,
+            self::VIEWPORT_DESKTOP,
+        ];
+    }
+
+    /**
+     * Normalise a viewport_mode raw value. Returns one of the allowed
+     * strings, or null if input is empty / unknown. Distinct from
+     * normaliseIcon which defaults to ICON_PHONE: here we WANT to keep
+     * the NULL semantic, so an unknown value collapses to null instead
+     * of being silently rewritten to a default.
+     *
+     * @param mixed $raw
+     */
+    public static function normaliseViewportMode($raw): ?string
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        $v = strtolower(trim((string) $raw));
+        if ($v === '') {
+            return null;
+        }
+        return in_array($v, self::allowedViewportModes(), true) ? $v : null;
+    }
+
+    /**
+     * Map an icon to its natural viewport_mode default. Used by create()
+     * when the caller does not specify viewport_mode explicitly.
+     */
+    public static function defaultViewportModeForIcon(string $icon): string
+    {
+        $icon = self::normaliseIcon($icon);
+        if ($icon === self::ICON_TABLET) {
+            return self::VIEWPORT_TABLET;
+        }
+        if ($icon === self::ICON_LAPTOP || $icon === self::ICON_DESKTOP) {
+            return self::VIEWPORT_DESKTOP;
+        }
+        return self::VIEWPORT_MOBILE;
+    }
+
+    /**
      * Insert a new logical device. Returns the rowid on success, -1 on
      * database failure, -2 on uniqueness violation (label already taken
      * by this user in this entity).
      */
-    public function create(int $fkUser, string $label, string $icon, int $entity = 1): int
+    public function create(int $fkUser, string $label, string $icon, int $entity = 1, ?string $viewportMode = null): int
     {
         $label = self::normaliseLabel($label);
         if ($label === '') {
@@ -113,17 +171,26 @@ class SmartAuthUserDevice
         }
         $icon = self::normaliseIcon($icon);
 
+        // If no explicit (or no recognized) choice, derive a sensible
+        // default from the icon. The caller can override by passing one
+        // of the allowed VIEWPORT_* strings explicitly.
+        $viewportMode = self::normaliseViewportMode($viewportMode);
+        if ($viewportMode === null) {
+            $viewportMode = self::defaultViewportModeForIcon($icon);
+        }
+
         if ($this->findByLabel($fkUser, $label, $entity) !== null) {
             return -2;
         }
 
         $now = dol_now();
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . self::TABLE;
-        $sql .= " (fk_user, label, icon, date_creation, date_lastseen, status, entity)";
+        $sql .= " (fk_user, label, icon, viewport_mode, date_creation, date_lastseen, status, entity)";
         $sql .= " VALUES (";
         $sql .= (int) $fkUser . ",";
         $sql .= " '" . $this->db->escape($label) . "',";
         $sql .= " '" . $this->db->escape($icon) . "',";
+        $sql .= " '" . $this->db->escape($viewportMode) . "',";
         $sql .= " '" . $this->db->idate($now) . "',";
         $sql .= " '" . $this->db->idate($now) . "',";
         $sql .= " " . self::STATUS_ACTIVE . ",";
@@ -142,7 +209,7 @@ class SmartAuthUserDevice
      */
     public function findById(int $rowid, int $entity = 1): ?array
     {
-        $sql = "SELECT rowid, fk_user, label, icon, date_creation, date_lastseen, status, entity";
+        $sql = "SELECT rowid, fk_user, label, icon, viewport_mode, date_creation, date_lastseen, status, entity";
         $sql .= " FROM " . MAIN_DB_PREFIX . self::TABLE;
         $sql .= " WHERE rowid = " . (int) $rowid;
         $sql .= " AND entity = " . (int) $entity;
@@ -170,7 +237,7 @@ class SmartAuthUserDevice
         if ($label === '') {
             return null;
         }
-        $sql = "SELECT rowid, fk_user, label, icon, date_creation, date_lastseen, status, entity";
+        $sql = "SELECT rowid, fk_user, label, icon, viewport_mode, date_creation, date_lastseen, status, entity";
         $sql .= " FROM " . MAIN_DB_PREFIX . self::TABLE;
         $sql .= " WHERE fk_user = " . (int) $fkUser;
         $sql .= " AND label = '" . $this->db->escape($label) . "'";
@@ -200,7 +267,7 @@ class SmartAuthUserDevice
      */
     public function listForUser(int $fkUser, int $entity = 1, bool $includeRevoked = false): array
     {
-        $sql = "SELECT ud.rowid, ud.fk_user, ud.label, ud.icon, ud.date_creation, ud.date_lastseen, ud.status, ud.entity,";
+        $sql = "SELECT ud.rowid, ud.fk_user, ud.label, ud.icon, ud.viewport_mode, ud.date_creation, ud.date_lastseen, ud.status, ud.entity,";
         $sql .= " (SELECT COUNT(*) FROM " . MAIN_DB_PREFIX . self::DEVICES_TABLE . " d";
         $sql .= " WHERE d.fk_user_device = ud.rowid";
         $sql .= " AND d.status != " . self::DEVICE_STATUS_CANCELED . ") AS session_count";
@@ -271,6 +338,34 @@ class SmartAuthUserDevice
         $sql .= " AND entity = " . (int) $entity;
         if (!$this->db->query($sql)) {
             dol_syslog('SmartAuthUserDevice: setIcon failed', LOG_ERR);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Update the viewport_mode of a logical device. Verifies ownership.
+     * Pass null / empty / unknown to clear it back to NULL (legacy
+     * "never set" state); any other allowed string is stored as-is.
+     *
+     * Returns true on success.
+     *
+     * @param mixed $viewportMode
+     */
+    public function setViewportMode(int $rowid, int $expectedFkUser, $viewportMode, int $entity = 1): bool
+    {
+        $normalised = self::normaliseViewportMode($viewportMode);
+        $sql = "UPDATE " . MAIN_DB_PREFIX . self::TABLE;
+        if ($normalised === null) {
+            $sql .= " SET viewport_mode = NULL";
+        } else {
+            $sql .= " SET viewport_mode = '" . $this->db->escape($normalised) . "'";
+        }
+        $sql .= " WHERE rowid = " . (int) $rowid;
+        $sql .= " AND fk_user = " . (int) $expectedFkUser;
+        $sql .= " AND entity = " . (int) $entity;
+        if (!$this->db->query($sql)) {
+            dol_syslog('SmartAuthUserDevice: setViewportMode failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
             return false;
         }
         return true;
@@ -465,11 +560,16 @@ class SmartAuthUserDevice
      */
     private function hydrate($obj): array
     {
+        $viewportMode = null;
+        if (isset($obj->viewport_mode) && $obj->viewport_mode !== null && $obj->viewport_mode !== '') {
+            $viewportMode = (string) $obj->viewport_mode;
+        }
         return [
             'rowid' => (int) $obj->rowid,
             'fk_user' => (int) $obj->fk_user,
             'label' => (string) $obj->label,
             'icon' => (string) $obj->icon,
+            'viewport_mode' => $viewportMode,
             'date_creation' => $obj->date_creation,
             'date_lastseen' => $obj->date_lastseen,
             'status' => (int) $obj->status,

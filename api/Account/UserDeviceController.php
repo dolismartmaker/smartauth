@@ -17,11 +17,12 @@
  * technical rows share the same fk_user_device parent. Revoking "mon
  * iPhone" cascades through every PWA session at once.
  *
- *   GET    /account/user-devices               list active devices
- *   POST   /account/user-devices               body {label, icon} -> create + link
- *   POST   /account/user-devices/{id}/link     link current JWT device to existing user_device
- *   POST   /account/user-devices/{id}/rename   body {label}
- *   DELETE /account/user-devices/{id}          cascade revoke
+ *   GET    /account/user-devices                       list active devices
+ *   POST   /account/user-devices                       body {label, icon, viewport_mode?} -> create + link
+ *   POST   /account/user-devices/{id}/link             link current JWT device to existing user_device
+ *   POST   /account/user-devices/{id}/rename           body {label}
+ *   POST   /account/user-devices/{id}/viewport-mode    body {viewport_mode} (auto|mobile|tablet|desktop or null)
+ *   DELETE /account/user-devices/{id}                  cascade revoke
  *
  * All routes are JWT-protected and operate on the authenticated user
  * only; user_id from the JWT payload is the only source of truth.
@@ -84,13 +85,22 @@ class UserDeviceController
     /**
      * @api {post} /account/user-devices Create a new logical device and link the current JWT device to it
      *
-     * Body: { label: string (1..100), icon?: 'phone'|'tablet'|'laptop'|'desktop' }
+     * Body: {
+     *   label:          string (1..100),
+     *   icon?:          'phone'|'tablet'|'laptop'|'desktop',
+     *   viewport_mode?: 'auto'|'mobile'|'tablet'|'desktop'
+     * }
      *
      * Always tries to link the current JWT device row (the technical
      * smartauth_devices row corresponding to the X-DEVICEID UUID used to
      * authenticate this request). If the JWT was issued without a known
      * device_id (e.g. ancient token), the device is still created and
      * returned with `linked: false` so the caller can react.
+     *
+     * If viewport_mode is omitted, the row is created with a sensible
+     * default derived from `icon` (phone -> mobile, tablet -> tablet,
+     * laptop/desktop -> desktop). An explicit but unrecognized value
+     * yields a 400 rather than a silent fallback.
      */
     public function create($payload)
     {
@@ -109,8 +119,18 @@ class UserDeviceController
         }
         $icon = SmartAuthUserDevice::normaliseIcon($iconRaw);
 
+        $viewportModeRaw = isset($payload['viewport_mode']) ? (string) $payload['viewport_mode'] : null;
+        // Explicit-but-invalid -> 400 instead of silent fallback to the
+        // icon default. Empty / missing -> let create() derive it.
+        if ($viewportModeRaw !== null && $viewportModeRaw !== '') {
+            if (SmartAuthUserDevice::normaliseViewportMode($viewportModeRaw) === null) {
+                dol_syslog("SmartAuth UserDeviceController::create rejected invalid viewport_mode='$viewportModeRaw' user=$userId", LOG_WARNING);
+                return [['error' => 'invalid_viewport_mode'], 400];
+            }
+        }
+
         $repo = $this->resolveRepo();
-        $rowid = $repo->create($userId, $label, $icon, $entity);
+        $rowid = $repo->create($userId, $label, $icon, $entity, $viewportModeRaw);
         if ($rowid === -2) {
             return [['error' => 'label_already_used'], 409];
         }
@@ -124,13 +144,20 @@ class UserDeviceController
             $linked = $repo->linkTechnicalDevice($rowid, $jwtDeviceId, $userId, $entity);
         }
 
-        dol_syslog("SmartAuth UserDeviceController::create rowid=$rowid user=$userId label='$label' linked=" . ($linked ? '1' : '0'), LOG_INFO);
+        // Re-fetch to surface the final stored viewport_mode (derived
+        // from the icon when not provided). Cheap single-row lookup,
+        // worth the round-trip so the client gets the canonical value.
+        $row = $repo->findById($rowid, $entity);
+        $viewportMode = $row['viewport_mode'] ?? null;
+
+        dol_syslog("SmartAuth UserDeviceController::create rowid=$rowid user=$userId label='$label' viewport_mode='" . ($viewportMode ?? '') . "' linked=" . ($linked ? '1' : '0'), LOG_INFO);
 
         return [
             [
                 'id' => $rowid,
                 'label' => $label,
                 'icon' => $icon,
+                'viewport_mode' => $viewportMode,
                 'linked' => $linked,
             ],
             201,
@@ -178,6 +205,7 @@ class UserDeviceController
                 'id' => $userDeviceId,
                 'label' => $target['label'],
                 'icon' => $target['icon'],
+                'viewport_mode' => $target['viewport_mode'] ?? null,
                 'linked' => true,
             ],
             200,
@@ -232,6 +260,66 @@ class UserDeviceController
                 'id' => $userDeviceId,
                 'label' => $newLabel,
                 'icon' => $row['icon'],
+            ],
+            200,
+        ];
+    }
+
+    /**
+     * @api {post} /account/user-devices/{id}/viewport-mode Update the persistent viewport mode of a logical device
+     *
+     * Body: { viewport_mode: 'auto'|'mobile'|'tablet'|'desktop' | null | '' }
+     *
+     * Empty / null / missing -> clear back to NULL (legacy "never
+     * set" state). Anything else not in the allowed list -> 400.
+     * Scoped to the authenticated user; a device that belongs to
+     * another user 404s.
+     */
+    public function setViewportMode($payload)
+    {
+        $userId = $this->resolveUserId($payload);
+        if ($userId <= 0) {
+            return [['error' => 'unauthorized'], 401];
+        }
+        $entity = (int) ($payload['entity'] ?? 1);
+
+        $userDeviceId = (int) ($payload['id'] ?? 0);
+        if ($userDeviceId <= 0) {
+            return [['error' => 'invalid_id'], 400];
+        }
+
+        $repo = $this->resolveRepo();
+        $row = $repo->findById($userDeviceId, $entity);
+        if ($row === null || (int) $row['fk_user'] !== $userId) {
+            dol_syslog("SmartAuth UserDeviceController::setViewportMode not_found user_device=$userDeviceId user=$userId", LOG_WARNING);
+            return [['error' => 'not_found'], 404];
+        }
+
+        $modeRaw = $payload['viewport_mode'] ?? null;
+        // Explicit-but-invalid -> 400. Empty / null / missing -> clear
+        // back to NULL (handled by the repo via normaliseViewportMode).
+        if ($modeRaw !== null && $modeRaw !== '') {
+            if (SmartAuthUserDevice::normaliseViewportMode($modeRaw) === null) {
+                dol_syslog("SmartAuth UserDeviceController::setViewportMode rejected invalid mode='" . (string) $modeRaw . "' user_device=$userDeviceId user=$userId", LOG_WARNING);
+                return [['error' => 'invalid_viewport_mode'], 400];
+            }
+        }
+
+        if (!$repo->setViewportMode($userDeviceId, $userId, $modeRaw, $entity)) {
+            return [['error' => 'update_failed'], 500];
+        }
+
+        // Re-fetch so the client gets the canonical stored value (null
+        // when cleared, otherwise the normalised string).
+        $row = $repo->findById($userDeviceId, $entity);
+        $stored = $row['viewport_mode'] ?? null;
+
+        dol_syslog("SmartAuth UserDeviceController::setViewportMode user_device=$userDeviceId user=$userId mode='" . ($stored ?? '') . "'", LOG_INFO);
+
+        return [
+            [
+                'id' => $userDeviceId,
+                'viewport_mode' => $stored,
             ],
             200,
         ];
@@ -306,6 +394,7 @@ class UserDeviceController
             'id' => (int) $row['rowid'],
             'label' => (string) $row['label'],
             'icon' => (string) $row['icon'],
+            'viewport_mode' => $row['viewport_mode'] ?? null,
             'date_creation' => $row['date_creation'],
             'date_lastseen' => $row['date_lastseen'],
             'session_count' => (int) ($row['session_count'] ?? 0),
