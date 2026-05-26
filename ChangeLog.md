@@ -1,5 +1,12 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.21 -- 20260526
+
+ - TokenService now scopes its JTI and access-token lookups by entity
+ - RevokedJtiController caps the ?since= parameter length to 20 chars
+ - Add viewport_mode column to llx_smartauth_user_devices
+ - Handle viewport-mode (smartphone / tablet / desktop)
+
 ## 2.0.20 -- 20260521
 
  - Missing public folder
