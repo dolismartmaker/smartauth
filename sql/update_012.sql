@@ -1,0 +1,17 @@
+-- Migration: add viewport_mode to llx_smartauth_user_devices.
+--
+-- Lets a user persist his preferred UI mode (mobile / tablet /
+-- desktop) per physical device, shared across every SmartMaker PWA
+-- installed on it. The auto-detection in @cap-rel/smartcommon is right
+-- in ~95% of cases but misses on Surface Pro, iPad + Magic Keyboard,
+-- narrow desktop windows, and foldables. The user can override via
+-- the ViewportSwitcher; this column makes that override survive across
+-- apps installed on the same device.
+--
+-- Value semantics:
+--   NULL      -- never set (legacy device, pre-feature)
+--   'auto'    -- user explicitly chose auto-detect
+--   'mobile'  -- force mobile
+--   'tablet'  -- force tablet
+--   'desktop' -- force desktop
+ALTER TABLE llx_smartauth_user_devices ADD COLUMN viewport_mode VARCHAR(10) NULL DEFAULT NULL;

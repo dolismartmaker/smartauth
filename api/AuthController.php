@@ -599,6 +599,11 @@ class AuthController
 	 *
 	 * @apiBody {String} uuid Device UUID to associate
 	 * @apiBody {String} [label] Device name/label (for naming the device)
+	 * @apiBody {String} [viewport_mode] Persistent UI mode for this logical device.
+	 *   One of 'auto' | 'mobile' | 'tablet' | 'desktop'. Applied to the logical
+	 *   user_device row that the rename path attaches this technical device to.
+	 *   Empty / missing leaves whatever value the row already carries; an
+	 *   explicit but unrecognized value yields a 400 invalid_viewport_mode.
 	 *
 	 * @apiSuccess {String} [message] Status message
 	 * @apiSuccess {String} [token] New access token (if device switched)
@@ -637,6 +642,23 @@ class AuthController
 		$current_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '') ?? '';
 		$new_uuid = InputSanitizer::sanitizeUUID($payload['uuid'] ?? '') ?? '';
 		$new_name = InputSanitizer::sanitizeString($payload['label'] ?? '', 100);
+
+		// Optional viewport_mode (DeviceIdentificationComponent passes it
+		// together with the label at first sign-in). Applied to the
+		// logical user_device row that the rename path resolves a parent
+		// for this technical device. Empty / missing leaves whatever
+		// value the row already carries; explicit-but-unknown -> 400 to
+		// match the dedicated POST /account/user-devices/{id}/viewport-mode
+		// endpoint and avoid a silent fallback.
+		$viewport_mode_raw = isset($payload['viewport_mode']) ? (string) $payload['viewport_mode'] : '';
+		$viewport_mode = null;
+		if ($viewport_mode_raw !== '') {
+			$viewport_mode = SmartAuthUserDevice::normaliseViewportMode($viewport_mode_raw);
+			if ($viewport_mode === null) {
+				dol_syslog("SmartAuth AuthController::device rejected invalid viewport_mode='$viewport_mode_raw'", LOG_WARNING);
+				return [['error' => 'invalid_viewport_mode'], 400];
+			}
+		}
 
 		$ret = null;
 
@@ -677,7 +699,8 @@ class AuthController
 							(int) $user->id,
 							(int) $device->id,
 							(string) $new_name,
-							$deviceEntity
+							$deviceEntity,
+							$viewport_mode
 						);
 					}
 					$ret = [
@@ -2181,6 +2204,7 @@ class AuthController
 				'id' => (int) $row['rowid'],
 				'label' => (string) $row['label'],
 				'icon' => (string) $row['icon'],
+				'viewport_mode' => $row['viewport_mode'] ?? null,
 				'date_creation' => $row['date_creation'],
 				'date_lastseen' => $row['date_lastseen'],
 				'session_count' => (int) ($row['session_count'] ?? 0),
@@ -2217,7 +2241,7 @@ class AuthController
 	 * they hit /device themselves with the same label, they'll converge
 	 * onto the same parent.
 	 */
-	private function _syncLogicalDeviceForRenamedTechnical(int $userId, int $technicalDeviceId, string $label, int $entity): void
+	private function _syncLogicalDeviceForRenamedTechnical(int $userId, int $technicalDeviceId, string $label, int $entity, ?string $viewportMode = null): void
 	{
 		global $db;
 		$label = SmartAuthUserDevice::normaliseLabel($label);
@@ -2225,10 +2249,16 @@ class AuthController
 			return;
 		}
 
+		// Caller is expected to have validated $viewportMode (the
+		// controller raises 400 for explicit-but-invalid input); we
+		// still pass through normaliseViewportMode here to defend
+		// against a future caller that forgets to validate.
+		$normalisedViewport = SmartAuthUserDevice::normaliseViewportMode($viewportMode);
+
 		$repo = new SmartAuthUserDevice($db);
 		$existing = $repo->findByLabel($userId, $label, $entity);
 		if ($existing === null) {
-			$rowid = $repo->create($userId, $label, SmartAuthUserDevice::ICON_PHONE, $entity);
+			$rowid = $repo->create($userId, $label, SmartAuthUserDevice::ICON_PHONE, $entity, $normalisedViewport);
 			if ($rowid <= 0) {
 				dol_syslog("SmartAuth _syncLogicalDeviceForRenamedTechnical: create returned $rowid for user=$userId label='$label'", LOG_WARNING);
 				return;
@@ -2239,6 +2269,14 @@ class AuthController
 			if ((int) $existing['status'] !== SmartAuthUserDevice::STATUS_ACTIVE) {
 				dol_syslog("SmartAuth _syncLogicalDeviceForRenamedTechnical: existing user_device $userDeviceId is revoked, skipping link", LOG_WARNING);
 				return;
+			}
+			// Only overwrite the existing viewport_mode when the caller
+			// actually supplied a value; an empty / missing field on the
+			// /device call must not clear a previously stored choice.
+			if ($normalisedViewport !== null) {
+				if (!$repo->setViewportMode($userDeviceId, $userId, $normalisedViewport, $entity)) {
+					dol_syslog("SmartAuth _syncLogicalDeviceForRenamedTechnical: setViewportMode failed user_device=$userDeviceId mode='$normalisedViewport'", LOG_WARNING);
+				}
 			}
 		}
 

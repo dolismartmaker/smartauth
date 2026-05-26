@@ -1532,6 +1532,160 @@ class AuthControllerTest extends DolibarrRealTestCase
     }
 
     /**
+     * Test device endpoint accepts viewport_mode in the body and
+     * persists it on the logical user_device row created by the
+     * rename path.
+     */
+    public function testDeviceEndpointAcceptsViewportMode(): void
+    {
+        global $conf, $db;
+        $conf->global->SMARTAUTH_DEFAULT_USER = 1;
+
+        $testUser = $this->createTestUser([
+            'login' => 'devvp_' . uniqid(),
+            'email' => 'devvp_' . uniqid() . '@example.com',
+            'pass' => 'TestPass123!',
+            'statut' => 1
+        ]);
+
+        $deviceUuid = $this->generateUUID();
+        $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
+
+        $loginResult = $this->controller->login([
+            'email' => $testUser->email,
+            'password' => 'TestPass123!',
+            'entity' => 1,
+            'rememberMe' => 0
+        ]);
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $loginResult[0]['access_token'];
+
+        ob_start();
+        $result = $this->controller->device([
+            'user' => $testUser,
+            'uuid' => $deviceUuid,
+            'label' => 'docked iPad',
+            'viewport_mode' => 'desktop',
+            'entity' => 1,
+        ]);
+        ob_end_clean();
+
+        $this->assertEquals(200, $result[1]);
+
+        $sql = "SELECT viewport_mode FROM " . MAIN_DB_PREFIX . "smartauth_user_devices";
+        $sql .= " WHERE fk_user = " . (int) $testUser->id . " AND label = 'docked iPad'";
+        $resql = $db->query($sql);
+        $row = $db->fetch_object($resql);
+        $this->assertNotFalse($row, 'logical user_device row not created');
+        $this->assertSame('desktop', (string) $row->viewport_mode);
+
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+        unset($_SERVER['HTTP_X_DEVICEID']);
+    }
+
+    /**
+     * Test device endpoint rejects an explicit-but-unknown viewport_mode.
+     */
+    public function testDeviceEndpointRejectsInvalidViewportMode(): void
+    {
+        global $conf;
+        $conf->global->SMARTAUTH_DEFAULT_USER = 1;
+
+        $testUser = $this->createTestUser([
+            'login' => 'devvpbad_' . uniqid(),
+            'email' => 'devvpbad_' . uniqid() . '@example.com',
+            'pass' => 'TestPass123!',
+            'statut' => 1
+        ]);
+
+        $deviceUuid = $this->generateUUID();
+        $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
+
+        $loginResult = $this->controller->login([
+            'email' => $testUser->email,
+            'password' => 'TestPass123!',
+            'entity' => 1,
+            'rememberMe' => 0
+        ]);
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $loginResult[0]['access_token'];
+
+        ob_start();
+        $result = $this->controller->device([
+            'user' => $testUser,
+            'uuid' => $deviceUuid,
+            'label' => 'iphone',
+            'viewport_mode' => 'foo',
+            'entity' => 1,
+        ]);
+        ob_end_clean();
+
+        $this->assertEquals(400, $result[1]);
+        $this->assertSame('invalid_viewport_mode', $result[0]['error']);
+
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+        unset($_SERVER['HTTP_X_DEVICEID']);
+    }
+
+    /**
+     * Test device endpoint with empty viewport_mode preserves the
+     * value already stored on the logical user_device row.
+     */
+    public function testDeviceEndpointEmptyViewportModePreservesExisting(): void
+    {
+        global $conf, $db;
+        $conf->global->SMARTAUTH_DEFAULT_USER = 1;
+
+        $testUser = $this->createTestUser([
+            'login' => 'devvpkeep_' . uniqid(),
+            'email' => 'devvpkeep_' . uniqid() . '@example.com',
+            'pass' => 'TestPass123!',
+            'statut' => 1
+        ]);
+
+        $deviceUuid = $this->generateUUID();
+        $_SERVER['HTTP_X_DEVICEID'] = $deviceUuid;
+
+        $loginResult = $this->controller->login([
+            'email' => $testUser->email,
+            'password' => 'TestPass123!',
+            'entity' => 1,
+            'rememberMe' => 0
+        ]);
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $loginResult[0]['access_token'];
+
+        // First call: store viewport_mode='tablet' on the logical row.
+        ob_start();
+        $this->controller->device([
+            'user' => $testUser,
+            'uuid' => $deviceUuid,
+            'label' => 'sticky-device',
+            'viewport_mode' => 'tablet',
+            'entity' => 1,
+        ]);
+        ob_end_clean();
+
+        // Second call with same uuid + label, no viewport_mode: must
+        // NOT clear the previously stored value.
+        ob_start();
+        $this->controller->device([
+            'user' => $testUser,
+            'uuid' => $deviceUuid,
+            'label' => 'sticky-device',
+            'entity' => 1,
+        ]);
+        ob_end_clean();
+
+        $sql = "SELECT viewport_mode FROM " . MAIN_DB_PREFIX . "smartauth_user_devices";
+        $sql .= " WHERE fk_user = " . (int) $testUser->id . " AND label = 'sticky-device'";
+        $resql = $db->query($sql);
+        $row = $db->fetch_object($resql);
+        $this->assertNotFalse($row, 'logical user_device row missing');
+        $this->assertSame('tablet', (string) $row->viewport_mode);
+
+        unset($_SERVER['HTTP_AUTHORIZATION']);
+        unset($_SERVER['HTTP_X_DEVICEID']);
+    }
+
+    /**
      * Test device endpoint switches to different device
      */
     public function testDeviceEndpointSwitchesDevice(): void
