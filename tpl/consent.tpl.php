@@ -36,22 +36,23 @@ include __DIR__ . '/layout.tpl.php';
                  class="client-logo"
                  onerror="this.style.display='none'">
             <?php endif; ?>
+            <p class="page-eyebrow">Portail SSO</p>
             <h1>Demande d'autorisation</h1>
         </div>
 
         <div class="consent-intro">
             <p>
                 <strong><?= htmlspecialchars($clientName, ENT_QUOTES, 'UTF-8') ?></strong>
-                souhaite acceder a votre compte.
+                souhaite accéder à votre compte.
             </p>
             <p class="user-info">
-                Connecte en tant que <strong><?= htmlspecialchars($userName, ENT_QUOTES, 'UTF-8') ?></strong>
+                Connecté en tant que <strong><?= htmlspecialchars($userName, ENT_QUOTES, 'UTF-8') ?></strong>
                 (<?= htmlspecialchars($userLogin, ENT_QUOTES, 'UTF-8') ?>)
             </p>
         </div>
 
         <div class="consent-scopes">
-            <h2>Cette application demande l'acces a :</h2>
+            <h2>Cette application demande l'accès à :</h2>
             <ul class="scope-list">
                 <?php foreach ($scopeInfo as $info): ?>
                 <li class="scope-item">
@@ -115,8 +116,8 @@ include __DIR__ . '/layout.tpl.php';
 
         <div class="consent-footer">
             <p class="security-notice">
-                En autorisant cette application, vous lui permettez d'acceder aux informations listees ci-dessus.
-                Vous pouvez revoquer cet acces a tout moment depuis les parametres de votre compte.
+                En autorisant cette application, vous lui permettez d'accéder aux informations listées ci-dessus.
+                Vous pouvez révoquer cet accès à tout moment depuis les paramètres de votre compte.
             </p>
         </div>
     </div>
@@ -299,5 +300,4 @@ include __DIR__ . '/layout.tpl.php';
 .icon.fa-clock::before { content: "T"; font-size: 10px; }
 .icon.fa-circle-check::before { content: "v"; font-size: 10px; }
 </style>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

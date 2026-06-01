@@ -43,9 +43,6 @@ namespace SmartAuth\Tests\Http;
 
 require_once __DIR__ . '/HttpTestCase.php';
 
-use Symfony\Component\HttpClient\HttpClient;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
-
 class OAuthFrontControllerSmokeTest extends HttpTestCase
 {
     /** @var int Reserved start port for the OAuth smoke server. */
@@ -61,7 +58,12 @@ class OAuthFrontControllerSmokeTest extends HttpTestCase
 
         $projectRoot = dirname(__DIR__, 3);
         self::$routerPath = $projectRoot . '/test/http/oauth_smoke_router.php';
-        self::$documentRoot = $projectRoot;
+        // Serve from public/ to mirror the production vhost: the OAuth2
+        // portal is meant to be exposed under a vhost whose document root
+        // points at <smartauth>/public/. Same-origin asset references like
+        // /assets/css/smartauth.css resolve to <project>/public/assets/...
+        // exactly as they do on the deployed server.
+        self::$documentRoot = $projectRoot . '/public';
 
         self::$serverPort = self::findAvailablePort(self::SMOKE_PORT_START);
         self::$baseUrl = 'http://127.0.0.1:' . self::$serverPort;
@@ -222,5 +224,126 @@ class OAuthFrontControllerSmokeTest extends HttpTestCase
         $response = $this->get('/oauth/authorize');
         $this->assertNoPhpFatal($response, '/oauth/authorize');
         $this->assertNotSame(500, $response['statusCode'], 'Unexpected 500 on /oauth/authorize. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * /login serves the OAuth2 login HTML page. Catches missing includes
+     * in LoginController, broken templates, and (most importantly) a CSP
+     * that would block the same-origin CSS / logo that the page references.
+     */
+    public function testLoginPageRendersHtmlWithFriendlyCsp(): void
+    {
+        $response = $this->get('/login');
+        $this->assertNoPhpFatal($response, '/login');
+        $this->assertSame(200, $response['statusCode'], 'Login page not 200. Body: ' . substr($response['body'], 0, 500));
+        $this->assertHeaderContains('content-type', 'text/html', $response);
+
+        // The page references /assets/css/smartauth.css and /assets/img/logo.svg
+        // via plain same-origin URLs. The CSP must allow style-src 'self'
+        // and img-src 'self' otherwise the browser refuses to fetch them.
+        $this->assertArrayHasKey('content-security-policy', $response['headers']);
+        $csp = $response['headers']['content-security-policy'][0] ?? '';
+        $this->assertStringContainsString("style-src 'self'", $csp, "CSP missing style-src 'self': $csp");
+        $this->assertStringContainsString("img-src 'self'", $csp, "CSP missing img-src 'self': $csp");
+        $this->assertStringNotContainsString("default-src 'none'", $csp, "CSP still set to JSON-API tight default: $csp");
+
+        $this->assertStringContainsString('<form', $response['body'], 'Login HTML body missing the login <form>');
+        // Branded credits footer must be on every public HTML view, not
+        // only the landing. Asserted here as a representative sample.
+        $this->assertStringContainsString('CAP-REL', $response['body'], 'Login page missing the CAP-REL credit');
+        $this->assertStringContainsString('Portail SSO', $response['body'], 'Login page missing the "Portail SSO" eyebrow');
+    }
+
+    /**
+     * The default stylesheet must be reachable as a same-origin static
+     * asset under /assets/css/. The smoke server is configured with
+     * documentRoot = public/, mirroring the production vhost.
+     */
+    public function testLoginStylesheetIsReachable(): void
+    {
+        $response = $this->get('/assets/css/smartauth.css');
+        $this->assertSame(200, $response['statusCode'], 'CSS not served. Body: ' . substr($response['body'], 0, 200));
+        $this->assertHeaderContains('content-type', 'css', $response);
+    }
+
+    /**
+     * The default logo must be reachable. We do NOT assert on the SVG
+     * payload itself - shipping a different default logo is fine - but
+     * the file must exist under public/assets/img/ and be served.
+     */
+    public function testLoginLogoIsReachable(): void
+    {
+        $response = $this->get('/assets/img/logo.svg');
+        $this->assertSame(200, $response['statusCode'], 'Logo not served. Body: ' . substr($response['body'], 0, 200));
+        $this->assertHeaderContains('content-type', 'image', $response);
+    }
+
+    /**
+     * The root URL must serve the public landing HTML, not the JSON 404
+     * fallback. It must include the 3 action cards (login is always
+     * shown, register/account default to enabled) and link to /login,
+     * /register and /account. Catches a missing LandingController
+     * include, a broken template, or a regression in the / dispatch.
+     */
+    public function testLandingPageRendersThreeCards(): void
+    {
+        $response = $this->get('/');
+        $this->assertNoPhpFatal($response, '/');
+        $this->assertSame(200, $response['statusCode'], 'Landing not 200. Body: ' . substr($response['body'], 0, 500));
+        $this->assertHeaderContains('content-type', 'text/html', $response);
+
+        $body = $response['body'];
+        $this->assertStringContainsString('Portail SSO', $body, 'Landing missing the "Portail SSO" eyebrow');
+        $this->assertStringContainsString('Se connecter', $body, 'Landing missing the login card label');
+        $this->assertStringContainsString('href="/login"', $body, 'Landing missing the /login link');
+        $this->assertStringContainsString('Créer un compte', $body, 'Landing missing the register card label');
+        $this->assertStringContainsString('href="/register"', $body, 'Landing missing the /register link');
+        $this->assertStringContainsString('Mon compte', $body, 'Landing missing the account card label');
+        $this->assertStringContainsString('href="/account"', $body, 'Landing missing the /account link');
+
+        // Credits footer: must surface the CAP-REL brand, the AGPL
+        // license, the public source-code repo and the OIDC discovery
+        // link for devs.
+        $this->assertStringContainsString('CAP-REL', $body, 'Landing missing the CAP-REL credit');
+        $this->assertStringContainsString('cap-rel.fr', $body, 'Landing missing the CAP-REL link target');
+        $this->assertStringContainsString('inligit.fr/cap-rel/dolibarr/plugin-smartauth', $body, 'Landing missing the source-code link');
+        $this->assertStringContainsString('agpl-3.0', $body, 'Landing missing the AGPL link');
+        $this->assertStringContainsString('/.well-known/openid-configuration', $body, 'Landing missing the OIDC discovery link');
+    }
+
+    /**
+     * /forgot-password renders the email-entry HTML form. Catches a
+     * missing dispatch in public/index.php, a missing template, or a
+     * load-time failure in PasswordHtmlController.
+     */
+    public function testForgotPasswordRendersEmailForm(): void
+    {
+        $response = $this->get('/forgot-password');
+        $this->assertNoPhpFatal($response, '/forgot-password');
+        $this->assertSame(200, $response['statusCode'], 'Forgot-password not 200. Body: ' . substr($response['body'], 0, 500));
+        $this->assertHeaderContains('content-type', 'text/html', $response);
+        $this->assertStringContainsString('<form', $response['body'], 'Forgot-password HTML missing the <form>');
+        $this->assertStringContainsString('name="email"', $response['body'], 'Forgot-password form missing email input');
+        $this->assertStringContainsString('CAP-REL', $response['body'], 'Forgot-password missing the credits footer');
+        $this->assertStringContainsString('Portail SSO', $response['body'], 'Forgot-password missing the eyebrow');
+    }
+
+    /**
+     * /reset-password renders the new-password HTML form, with the
+     * token and email from the query string pre-filled in the form.
+     */
+    public function testResetPasswordRendersNewPasswordForm(): void
+    {
+        $response = $this->get('/reset-password?token=dummy123.4000000000&email=foo%40bar.fr');
+        $this->assertNoPhpFatal($response, '/reset-password');
+        $this->assertSame(200, $response['statusCode'], 'Reset-password not 200. Body: ' . substr($response['body'], 0, 500));
+        $this->assertHeaderContains('content-type', 'text/html', $response);
+        $this->assertStringContainsString('<form', $response['body'], 'Reset-password HTML missing the <form>');
+        $this->assertStringContainsString('name="password"', $response['body'], 'Reset-password form missing password input');
+        $this->assertStringContainsString('name="password_confirm"', $response['body'], 'Reset-password form missing password confirmation input');
+        $this->assertStringContainsString('value="foo@bar.fr"', $response['body'], 'Reset-password form did not pre-fill email from the query string');
+        $this->assertStringContainsString('value="dummy123.4000000000"', $response['body'], 'Reset-password form did not pre-fill token from the query string');
+        $this->assertStringContainsString('CAP-REL', $response['body'], 'Reset-password missing the credits footer');
+        $this->assertStringContainsString('Portail SSO', $response['body'], 'Reset-password missing the eyebrow');
     }
 }

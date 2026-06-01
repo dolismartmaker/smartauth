@@ -18,7 +18,7 @@
  * License: AGPL-3.0+
  */
 
-$pageTitle = 'Creer un compte';
+$pageTitle = 'Créer un compte';
 $pageClass = 'register-page';
 
 $clientName = $clientName ?? '';
@@ -41,7 +41,8 @@ $h = function ($value) {
             <?php else: ?>
                 <img src="/assets/img/logo.svg" alt="SmartAuth" class="logo" onerror="this.style.display='none'">
             <?php endif; ?>
-            <h1>Creer un compte<?php if (!empty($clientName)): ?> <small> - <?= $h($clientName) ?></small><?php endif; ?></h1>
+            <p class="page-eyebrow">Portail SSO</p>
+            <h1>Créer un compte<?php if (!empty($clientName)): ?> <small> - <?= $h($clientName) ?></small><?php endif; ?></h1>
         </div>
 
         <?php if (!empty($errors['_global'])): ?>
@@ -73,7 +74,7 @@ $h = function ($value) {
             </div>
 
             <div class="form-group">
-                <label for="firstname">Prenom</label>
+                <label for="firstname">Prénom</label>
                 <input type="text"
                        id="firstname"
                        name="firstname"
@@ -99,7 +100,7 @@ $h = function ($value) {
                        autocomplete="new-password"
                        aria-describedby="password-hint"
                        aria-invalid="<?= isset($errors['password']) ? 'true' : 'false' ?>">
-                <span id="password-hint" class="form-hint">12 caracteres minimum, majuscules, minuscules et chiffres.</span>
+                <span id="password-hint" class="form-hint">12 caractères minimum, majuscules, minuscules et chiffres.</span>
                 <?php if (isset($errors['password'])): ?>
                     <span class="field-error" role="alert"><?= $h($errors['password']) ?></span>
                 <?php endif; ?>
@@ -125,19 +126,18 @@ $h = function ($value) {
                            value="1"
                            required
                            <?= !empty($values['accept_cgu']) ? 'checked' : '' ?>>
-                    J'accepte les conditions generales d'utilisation.
+                    J'accepte les conditions générales d'utilisation.
                 </label>
                 <?php if (isset($errors['accept_cgu'])): ?>
                     <span class="field-error" role="alert"><?= $h($errors['accept_cgu']) ?></span>
                 <?php endif; ?>
             </div>
 
-            <button type="submit" class="btn btn-primary">Creer mon compte</button>
+            <button type="submit" class="btn btn-primary">Créer mon compte</button>
         </form>
 
         <div class="login-footer">
-            <a href="/login<?= !empty($continueUrl) ? '?continue=' . urlencode($continueUrl) : '' ?>">J'ai deja un compte</a>
+            <a href="/login<?= !empty($continueUrl) ? '?continue=' . urlencode($continueUrl) : '' ?>">J'ai déjà un compte</a>
         </div>
     </div>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

@@ -12,7 +12,7 @@
  * License: AGPL-3.0+
  */
 
-$pageTitle = 'Compte active';
+$pageTitle = 'Compte activé';
 $pageClass = 'register-confirmed-page';
 
 $loginUrl = $loginUrl ?? '/login';
@@ -26,20 +26,20 @@ $h = function ($v) {
     <div class="login-container">
         <div class="login-header">
             <img src="/assets/img/logo.svg" alt="SmartAuth" class="logo" onerror="this.style.display='none'">
-            <h1>Compte active</h1>
+            <p class="page-eyebrow">Portail SSO</p>
+            <h1>Compte activé</h1>
         </div>
 
-        <p>Votre adresse e-mail a ete confirmee. Votre compte est desormais actif.</p>
+        <p>Votre adresse e-mail a été confirmée. Votre compte est désormais actif.</p>
 
         <p>
             <a href="<?= $h($loginUrl) ?>" class="btn btn-primary">Se connecter</a>
         </p>
 
         <p class="form-hint">
-            Vous serez redirige automatiquement dans 5 secondes.
+            Vous serez redirigé automatiquement dans 5 secondes.
         </p>
 
         <meta http-equiv="refresh" content="5;url=<?= $h($loginUrl) ?>">
     </div>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

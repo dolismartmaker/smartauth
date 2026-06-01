@@ -147,6 +147,8 @@ dol_include_once('/smartauth/api/Account/RegisterController.php');
 dol_include_once('/smartauth/api/Account/AccountService.php');
 dol_include_once('/smartauth/api/Account/AccountController.php');
 dol_include_once('/smartauth/api/Account/EmailAlternativeController.php');
+dol_include_once('/smartauth/api/Account/PasswordHtmlController.php');
+dol_include_once('/smartauth/api/LandingController.php');
 
 use SmartAuth\Api\OAuth2\OAuthConfig;
 use SmartAuth\Api\OAuth2\DiscoveryController;
@@ -160,6 +162,8 @@ use SmartAuth\Api\OAuth2\LogoutController;
 use SmartAuth\Api\Account\RegisterController;
 use SmartAuth\Api\Account\AccountController;
 use SmartAuth\Api\Account\EmailAlternativeController;
+use SmartAuth\Api\Account\PasswordHtmlController;
+use SmartAuth\Api\LandingController;
 
 // ============================================================================
 // Check if OAuth is enabled
@@ -185,9 +189,16 @@ if (!OAuthConfig::isEnabled() && !$isDiscoveryEndpoint) {
 // Handle OPTIONS requests (CORS preflight)
 // ============================================================================
 
-// Emit baseline security headers on every OAuth2 response (H-8)
+// Emit baseline security headers on every OAuth2 response (H-8).
+// public/index.php is the HTML SSO portal entry point, so we pass a
+// CSP that allows same-origin CSS, fonts, scripts and inline styles
+// (needed by tpl/layout.tpl.php). The API entry point (api.php) keeps
+// the default tight CSP ("default-src 'none'"). frame-ancestors stays
+// 'none' here too: the OAuth2 portal must never be embeddable.
 if (!(defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING)) {
-    \SmartAuth\Api\RouteController::emitSecurityHeaders();
+    \SmartAuth\Api\RouteController::emitSecurityHeaders(
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    );
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -280,6 +291,46 @@ if (!$handled && strpos($requestPath, '/oauth/') === 0) {
             // Unknown OAuth endpoint
             $handled = false;
     }
+}
+
+// Public landing page on the root URL: shows the company branding +
+// 3 action cards (Login / Register / Account). Skipped for non-GET so
+// a stray POST / does not get an HTML response instead of an API error.
+if (!$handled && ($requestPath === '/' || $requestPath === '') && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    $landingController = new LandingController();
+    $landingController->handle();
+    $handled = true;
+}
+
+// Password reset flow on the HTML portal. The /forgot-password page
+// gathers an email and triggers PasswordResetController::requestReset
+// (which sends the email containing /reset-password?token=...&email=...).
+// SMARTAUTH_APP_URL must be set to the portal vhost (e.g.
+// https://auth.example.com) for the link in the email to land back here.
+if (!$handled && $requestPath === '/forgot-password') {
+    $pwdController = new PasswordHtmlController();
+    $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($requestMethod === 'GET') {
+        $pwdController->handleForgotGet($_GET);
+    } elseif ($requestMethod === 'POST') {
+        $pwdController->handleForgotPost($_POST);
+    } else {
+        sendJsonError('method_not_allowed', 'Method not allowed', 405);
+    }
+    $handled = true;
+}
+
+if (!$handled && $requestPath === '/reset-password') {
+    $pwdController = new PasswordHtmlController();
+    $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($requestMethod === 'GET') {
+        $pwdController->handleResetGet($_GET);
+    } elseif ($requestMethod === 'POST') {
+        $pwdController->handleResetPost($_POST);
+    } else {
+        sendJsonError('method_not_allowed', 'Method not allowed', 405);
+    }
+    $handled = true;
 }
 
 // Login page

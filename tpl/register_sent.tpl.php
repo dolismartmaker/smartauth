@@ -13,7 +13,7 @@
  * License: AGPL-3.0+
  */
 
-$pageTitle = 'Verifiez votre boite mail';
+$pageTitle = 'Vérifiez votre boîte mail';
 $pageClass = 'register-sent-page';
 
 include __DIR__ . '/layout.tpl.php';
@@ -21,11 +21,12 @@ include __DIR__ . '/layout.tpl.php';
     <div class="login-container">
         <div class="login-header">
             <img src="/assets/img/logo.svg" alt="SmartAuth" class="logo" onerror="this.style.display='none'">
-            <h1>Verifiez votre boite mail</h1>
+            <p class="page-eyebrow">Portail SSO</p>
+            <h1>Vérifiez votre boîte mail</h1>
         </div>
 
         <p>
-            Si l'adresse fournie est valide et n'est pas deja associee a un compte,
+            Si l'adresse fournie est valide et n'est pas déjà associée à un compte,
             vous recevrez un e-mail de confirmation dans quelques instants.
         </p>
 
@@ -35,8 +36,7 @@ include __DIR__ . '/layout.tpl.php';
         </p>
 
         <div class="login-footer">
-            <a href="/login">Retour a la connexion</a>
+            <a href="/login">Retour à la connexion</a>
         </div>
     </div>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>
