@@ -49,8 +49,9 @@ include __DIR__ . '/layout.tpl.php';
 <style>
 /* Logout page specific styles */
 .logout-container {
+    width: 100%;
     max-width: 450px;
-    margin: 3rem auto;
+    margin: auto 1rem;
     padding: 2rem;
     background: #fff;
     border-radius: 8px;

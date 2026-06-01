@@ -15,15 +15,17 @@
  */
 ?>
     <footer class="portal-credits">
-        Made with <span class="portal-heart" aria-label="amour">❤</span> par
-        <a href="https://www.cap-rel.fr" rel="noopener external">CAP-REL</a>
-        -
-        SmartAuth, module gratuit pour Dolibarr sous licence
-        <a href="https://www.gnu.org/licenses/agpl-3.0.html" rel="noopener external">GNU AGPL</a>
-        -
-        <a href="https://inligit.fr/cap-rel/dolibarr/plugin-smartauth/" rel="noopener external">Code source</a>
-        -
-        <a href="/.well-known/openid-configuration" rel="nofollow">Configuration OpenID</a>
+        <div class="portal-credits-inner">
+            Made with <span class="portal-heart" aria-label="love">❤</span> by
+            <a href="https://www.cap-rel.fr" rel="noopener external">CAP-REL</a>
+            -
+            SmartAuth, module gratuit pour Dolibarr sous licence
+            <a href="https://www.gnu.org/licenses/agpl-3.0.html" rel="noopener external">GNU aGPL</a>
+            -
+            <a href="https://inligit.fr/cap-rel/dolibarr/plugin-smartauth/" rel="noopener external">Code source</a>
+            -
+            <a href="/.well-known/openid-configuration" rel="nofollow">Configuration OpenID</a>
+        </div>
     </footer>
 </body>
 </html>

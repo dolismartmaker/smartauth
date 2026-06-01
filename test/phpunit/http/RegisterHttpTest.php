@@ -63,7 +63,7 @@ class RegisterHttpTest extends HttpTestCase
 
         $this->assertStatusCode(200, $response);
         $this->assertHeaderContains('content-type', 'text/html', $response);
-        $this->assertBodyContains('Creer un compte', $response);
+        $this->assertBodyContains('Créer un compte', $response);
         $this->assertBodyContains('name="email"', $response);
         $this->assertBodyContains('name="password"', $response);
         $this->assertBodyContains('name="csrf_token"', $response);
@@ -75,7 +75,7 @@ class RegisterHttpTest extends HttpTestCase
         $response = $this->get('/register?client_id=does-not-exist');
 
         $this->assertStatusCode(200, $response);
-        $this->assertBodyContains('Creer un compte', $response);
+        $this->assertBodyContains('Créer un compte', $response);
         // No branded client name should appear
         $this->assertStringNotContainsString(self::BRANDED_CLIENT_NAME, $response['body']);
     }
