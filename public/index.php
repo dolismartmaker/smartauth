@@ -119,9 +119,15 @@ if (!$dolibarrLoaded) {
 // Load SmartAuth dependencies
 // ============================================================================
 
-// Load OAuth2 classes
+// Load OAuth2 classes.
+// RouteController is referenced via a fully-qualified name further down
+// (\SmartAuth\Api\RouteController::emitSecurityHeaders() and
+// ::resolveCorsOrigin()). In production Dolibarr there is no composer
+// PSR-4 autoloader, so the class MUST be explicitly required here -
+// otherwise the FQN reference fatals with "Class not found".
 dol_include_once('/smartauth/api/JwtKeyHelper.php');
 dol_include_once('/smartauth/api/RateLimiter.php');
+dol_include_once('/smartauth/api/RouteController.php');
 dol_include_once('/smartauth/api/OAuth2/OAuthConfig.php');
 dol_include_once('/smartauth/api/OAuth2/DiscoveryController.php');
 dol_include_once('/smartauth/api/OAuth2/SessionManager.php');
