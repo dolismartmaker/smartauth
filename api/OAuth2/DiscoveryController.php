@@ -28,6 +28,9 @@
 
 namespace SmartAuth\Api\OAuth2;
 
+dol_include_once('/smartauth/api/OAuth2/ResponseTrait.php');
+dol_include_once('/smartauth/api/OAuth2/ResponseException.php');
+
 use SmartAuth\Api\JwtKeyHelper;
 
 class DiscoveryController
