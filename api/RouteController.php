@@ -1182,7 +1182,7 @@ class RouteController
 	 * overridden via a Dolibarr global constant, and HSTS is opt-in to avoid
 	 * locking dev environments served over plain HTTP.
 	 */
-	public static function emitSecurityHeaders(): void
+	public static function emitSecurityHeaders(string $cspOverride = ''): void
 	{
 		if (defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING) {
 			return;
@@ -1208,9 +1208,16 @@ class RouteController
 		}
 
 		// Content-Security-Policy: tight default suitable for a JSON API.
-		// Override via SMARTAUTH_HEADER_CSP for embedded HTML pages, or set
-		// to empty to disable.
-		$csp = getDolGlobalString('SMARTAUTH_HEADER_CSP', "default-src 'none'; frame-ancestors 'none'");
+		// HTML entry points (public/index.php for the OAuth2/SSO portal)
+		// pass a relaxed override because the tight default ("default-src
+		// 'none'") blocks even same-origin CSS and images. The admin can
+		// still override globally via SMARTAUTH_HEADER_CSP, but the
+		// call-site override wins when supplied.
+		if ($cspOverride !== '') {
+			$csp = $cspOverride;
+		} else {
+			$csp = getDolGlobalString('SMARTAUTH_HEADER_CSP', "default-src 'none'; frame-ancestors 'none'");
+		}
 		if ($csp !== '') {
 			header('Content-Security-Policy: ' . $csp);
 		}

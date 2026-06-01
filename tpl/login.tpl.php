@@ -26,6 +26,7 @@ include __DIR__ . '/layout.tpl.php';
     <div class="login-container">
         <div class="login-header">
             <img src="/assets/img/logo.svg" alt="SmartAuth" class="logo" onerror="this.style.display='none'">
+            <p class="page-eyebrow">Portail SSO</p>
             <h1>Connexion</h1>
         </div>
 
@@ -70,8 +71,7 @@ include __DIR__ . '/layout.tpl.php';
         </form>
 
         <div class="login-footer">
-            <a href="/forgot-password">Mot de passe oublie ?</a>
+            <a href="/forgot-password">Mot de passe oublié ?</a>
         </div>
     </div>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

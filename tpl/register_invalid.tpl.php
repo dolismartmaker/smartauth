@@ -25,16 +25,17 @@ $h = function ($v) {
     <div class="login-container">
         <div class="login-header">
             <img src="/assets/img/logo.svg" alt="SmartAuth" class="logo" onerror="this.style.display='none'">
-            <h1>Lien invalide ou expire</h1>
+            <p class="page-eyebrow">Portail SSO</p>
+            <h1>Lien invalide ou expiré</h1>
         </div>
 
         <p>
-            Le lien de confirmation que vous avez utilise n'est plus valide.
-            Cela peut etre du a une expiration (24 heures) ou a une utilisation precedente.
+            Le lien de confirmation que vous avez utilisé n'est plus valide.
+            Cela peut être dû à une expiration (24 heures) ou à une utilisation précédente.
         </p>
 
         <p>
-            Vous pouvez demander un nouveau lien en saisissant l'adresse utilisee a l'inscription :
+            Vous pouvez demander un nouveau lien en saisissant l'adresse utilisée à l'inscription :
         </p>
 
         <form method="POST" action="/register/resend" class="login-form" autocomplete="off">
@@ -56,8 +57,7 @@ $h = function ($v) {
         </form>
 
         <div class="login-footer">
-            <a href="/login">Retour a la connexion</a>
+            <a href="/login">Retour à la connexion</a>
         </div>
     </div>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

@@ -26,6 +26,7 @@ include __DIR__ . '/layout.tpl.php';
             <span class="icon-warning">!</span>
         </div>
 
+        <p class="page-eyebrow">Portail SSO</p>
         <h1>Une erreur est survenue</h1>
 
         <div class="error-details">
@@ -38,12 +39,12 @@ include __DIR__ . '/layout.tpl.php';
         </div>
 
         <div class="error-actions">
-            <a href="/" class="btn btn-secondary">Retour a l'accueil</a>
+            <a href="/" class="btn btn-secondary">Retour à l'accueil</a>
         </div>
 
         <div class="error-footer">
             <p>
-                Si le probleme persiste, veuillez contacter l'administrateur.
+                Si le problème persiste, veuillez contacter l'administrateur.
             </p>
         </div>
     </div>
@@ -141,5 +142,4 @@ include __DIR__ . '/layout.tpl.php';
     color: #888;
 }
 </style>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

@@ -13,7 +13,7 @@
  * License: AGPL-3.0+
  */
 
-$pageTitle = 'Adresse alternative enregistree';
+$pageTitle = 'Adresse alternative enregistrée';
 $pageClass = 'email-alternative-page';
 
 include __DIR__ . '/layout.tpl.php';
@@ -25,11 +25,12 @@ $h = function ($v) {
     <div class="login-container">
         <div class="login-header">
             <img src="/assets/img/logo.svg" alt="SmartAuth" class="logo" onerror="this.style.display='none'">
-            <h1>Adresse alternative enregistree</h1>
+            <p class="page-eyebrow">Portail SSO</p>
+            <h1>Adresse alternative enregistrée</h1>
         </div>
 
         <p>
-            L'adresse <strong><?= $h($email ?? '') ?></strong> a bien ete enregistree
+            L'adresse <strong><?= $h($email ?? '') ?></strong> a bien été enregistrée
             <?php if (!empty($service)): ?>
                 comme alternative pour <strong><?= $h($service) ?></strong>.
             <?php else: ?>
@@ -38,12 +39,11 @@ $h = function ($v) {
         </p>
 
         <p>
-            Vous pouvez gerer vos adresses alternatives depuis la page <a href="/account">Mon compte</a>.
+            Vous pouvez gérer vos adresses alternatives depuis la page <a href="/account">Mon compte</a>.
         </p>
 
         <div class="login-footer">
-            <a href="/account">Retour a mon compte</a>
+            <a href="/account">Retour à mon compte</a>
         </div>
     </div>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

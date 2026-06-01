@@ -13,7 +13,7 @@
  */
 
 // Set page variables for layout
-$pageTitle = 'Deconnexion';
+$pageTitle = 'Déconnexion';
 $pageClass = 'logout-page';
 
 // Include layout header
@@ -24,14 +24,15 @@ include __DIR__ . '/layout.tpl.php';
             <span class="icon-check">&#10003;</span>
         </div>
 
-        <h1>Deconnexion reussie</h1>
+        <p class="page-eyebrow">Portail SSO</p>
+        <h1>Déconnexion réussie</h1>
 
         <p class="logout-message">
-            Vous avez ete deconnecte avec succes.
+            Vous avez été déconnecté avec succès.
         </p>
 
         <p class="logout-info">
-            Votre session a ete fermee et vos tokens d'acces ont ete revoques.
+            Votre session a été fermée et vos tokens d'accès ont été révoqués.
         </p>
 
         <div class="logout-actions">
@@ -40,7 +41,7 @@ include __DIR__ . '/layout.tpl.php';
 
         <div class="logout-footer">
             <p>
-                Vous pouvez fermer cette fenetre en toute securite.
+                Vous pouvez fermer cette fenêtre en toute sécurité.
             </p>
         </div>
     </div>
@@ -125,5 +126,4 @@ include __DIR__ . '/layout.tpl.php';
     color: #888;
 }
 </style>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

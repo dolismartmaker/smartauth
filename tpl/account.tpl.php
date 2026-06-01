@@ -34,6 +34,7 @@ $formatDate = function ($timestamp) {
 ?>
     <div class="account-container">
         <div class="account-header">
+            <p class="page-eyebrow">Portail SSO</p>
             <h1>Mon compte</h1>
             <p class="account-login"><?= $h($user->login ?? '') ?></p>
         </div>
@@ -46,13 +47,13 @@ $formatDate = function ($timestamp) {
 
         <!-- Identity section -->
         <section class="account-section">
-            <h2>Mon identite</h2>
+            <h2>Mon identité</h2>
             <form method="POST" action="/account" autocomplete="on">
                 <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
                 <input type="hidden" name="action" value="update_identity">
 
                 <div class="form-group">
-                    <label for="firstname">Prenom</label>
+                    <label for="firstname">Prénom</label>
                     <input type="text" id="firstname" name="firstname"
                            value="<?= $h($user->firstname ?? '') ?>"
                            autocomplete="given-name">
@@ -92,7 +93,7 @@ $formatDate = function ($timestamp) {
                     <input type="password" id="new_password" name="new_password"
                            required autocomplete="new-password"
                            aria-describedby="new-password-hint">
-                    <span id="new-password-hint" class="form-hint">12 caracteres minimum, majuscules, minuscules et chiffres.</span>
+                    <span id="new-password-hint" class="form-hint">12 caractères minimum, majuscules, minuscules et chiffres.</span>
                 </div>
 
                 <div class="form-group">
@@ -125,7 +126,7 @@ $formatDate = function ($timestamp) {
                             <thead>
                                 <tr>
                                     <th>Type</th>
-                                    <th>Cree le</th>
+                                    <th>Créé le</th>
                                     <th>Expire le</th>
                                     <th>Action</th>
                                 </tr>
@@ -141,7 +142,7 @@ $formatDate = function ($timestamp) {
                                             <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
                                             <input type="hidden" name="action" value="revoke_session">
                                             <input type="hidden" name="token_rowid" value="<?= (int) $token['rowid'] ?>">
-                                            <button type="submit" class="btn btn-danger btn-sm">Revoquer</button>
+                                            <button type="submit" class="btn btn-danger btn-sm">Révoquer</button>
                                         </form>
                                     </td>
                                 </tr>
@@ -155,8 +156,8 @@ $formatDate = function ($timestamp) {
                     <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
                     <input type="hidden" name="action" value="revoke_all">
                     <button type="submit" class="btn btn-danger"
-                            onclick="return confirm('Deconnecter toutes les sessions ?');">
-                        Deconnecter toutes mes sessions
+                            onclick="return confirm('Déconnecter toutes les sessions ?');">
+                        Déconnecter toutes mes sessions
                     </button>
                 </form>
             <?php endif; ?>
@@ -199,8 +200,8 @@ $formatDate = function ($timestamp) {
             <h2>Supprimer mon compte</h2>
             <?php if ($deletable): ?>
                 <p>
-                    Votre compte n'est pas encore lie a un contrat actif. Vous pouvez le
-                    supprimer ici. Cette action est irreversible.
+                    Votre compte n'est pas encore lié à un contrat actif. Vous pouvez le
+                    supprimer ici. Cette action est irréversible.
                 </p>
                 <form method="POST" action="/account">
                     <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
@@ -212,21 +213,20 @@ $formatDate = function ($timestamp) {
                     </div>
 
                     <button type="submit" class="btn btn-danger"
-                            onclick="return confirm('Supprimer definitivement votre compte ?');">
+                            onclick="return confirm('Supprimer définitivement votre compte ?');">
                         Supprimer mon compte
                     </button>
                 </form>
             <?php else: ?>
                 <p>
-                    Votre compte est lie a un client actif. Pour le supprimer, contactez
+                    Votre compte est lié à un client actif. Pour le supprimer, contactez
                     le support.
                 </p>
             <?php endif; ?>
         </section>
 
         <div class="account-footer">
-            <a href="/logout">Se deconnecter</a>
+            <a href="/logout">Se déconnecter</a>
         </div>
     </div>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>

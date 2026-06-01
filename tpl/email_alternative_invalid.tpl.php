@@ -19,13 +19,14 @@ include __DIR__ . '/layout.tpl.php';
     <div class="login-container">
         <div class="login-header">
             <img src="/assets/img/logo.svg" alt="SmartAuth" class="logo" onerror="this.style.display='none'">
-            <h1>Lien invalide ou expire</h1>
+            <p class="page-eyebrow">Portail SSO</p>
+            <h1>Lien invalide ou expiré</h1>
         </div>
 
         <p>
-            Le lien que vous avez utilise pour confirmer une adresse alternative
-            n'est plus valide. Cela peut etre du a une expiration (24 heures)
-            ou a une utilisation precedente.
+            Le lien que vous avez utilisé pour confirmer une adresse alternative
+            n'est plus valide. Cela peut être dû à une expiration (24 heures)
+            ou à une utilisation précédente.
         </p>
 
         <p>
@@ -34,8 +35,7 @@ include __DIR__ . '/layout.tpl.php';
         </p>
 
         <div class="login-footer">
-            <a href="/account">Retour a mon compte</a>
+            <a href="/account">Retour à mon compte</a>
         </div>
     </div>
-</body>
-</html>
+<?php include __DIR__ . '/layout-footer.tpl.php'; ?>
