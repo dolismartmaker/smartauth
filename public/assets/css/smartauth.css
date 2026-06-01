@@ -95,23 +95,28 @@ body {
    Layout
    ============================================================================ */
 
-.login-page,
-.consent-page,
-.error-page,
-.landing-page {
+/* Sticky-footer pattern: body is a flex column at min 100vh, the hero
+   card sits in the middle with margin:auto absorbing the free space,
+   and .portal-credits sticks to the bottom edge as a full-width band.
+   We match every body class ending with "-page" so newly added pages
+   inherit the layout automatically. */
+body[class*="-page"] {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     min-height: 100vh;
-    padding: var(--spacing-md);
+    margin: 0;
+    padding: 0;
 }
 
 .login-container,
 .consent-container,
-.error-container {
+.error-container,
+.account-container,
+.logout-container {
     width: 100%;
     max-width: 400px;
+    margin: auto var(--spacing-md);
     background-color: var(--color-white);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
@@ -121,6 +126,7 @@ body {
 .landing-container {
     width: 100%;
     max-width: 720px;
+    margin: auto var(--spacing-md);
     background-color: var(--color-white);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
@@ -546,18 +552,32 @@ input[type="password"]::placeholder {
     text-decoration: underline;
 }
 
+/* Classic web-site footer band: full viewport width, sits at the very
+   bottom of the page thanks to the sticky-footer flex layout above. The
+   align-self:stretch override neutralises the parent's align-items:center
+   so the band reaches both viewport edges. */
 .portal-credits {
-    margin: var(--spacing-lg) auto 0 auto;
-    padding: var(--spacing-md);
-    max-width: 720px;
-    color: var(--color-gray-400);
+    align-self: stretch;
+    flex-shrink: 0;
+    margin: var(--spacing-2xl) 0 0 0;
+    padding: var(--spacing-lg) var(--spacing-md);
+    background-color: var(--color-gray-50);
+    border-top: 1px solid var(--color-gray-200);
+    color: var(--color-gray-500);
     font-size: var(--font-size-sm);
     text-align: center;
-    line-height: 1.6;
+    line-height: 1.7;
+}
+
+/* Inner wrapper keeps the reading width comfortable on wide screens
+   while letting the background band stretch edge to edge. */
+.portal-credits-inner {
+    max-width: 720px;
+    margin: 0 auto;
 }
 
 .portal-credits a {
-    color: var(--color-gray-500);
+    color: var(--color-gray-600);
     text-decoration: none;
 }
 

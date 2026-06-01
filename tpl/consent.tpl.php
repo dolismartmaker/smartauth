@@ -5,20 +5,21 @@
  * Consent page template for SmartAuth OAuth2/OIDC.
  * Displays application permissions request to user.
  *
- * Expected variables:
- * - $csrfToken: CSRF token for form
- * - $client: SmartAuthOAuthClient object
- * - $clientName: Application name
- * - $clientLogo: Application logo URL (optional)
- * - $scopes: Array of requested scopes
- * - $scopeInfo: Array of scope information for display
- * - $userName: User's full name
- * - $userLogin: User's login
- * - $rememberConsent: Whether to show "remember" checkbox
- * - $issuer: Issuer URL
+ * Expected variables (injected via extract() in the controller):
  *
  * Copyright (c) 2025 Eric Seigne <eric.seigne@cap-rel.fr>
  * License: AGPL-3.0+
+ *
+ * @var string $csrfToken       CSRF token for form
+ * @var object $client          SmartAuthOAuthClient object
+ * @var string $clientName      Application name
+ * @var string $clientLogo      Application logo URL (optional, may be empty)
+ * @var array  $scopes          Array of requested scopes
+ * @var array  $scopeInfo       Array of scope information for display
+ * @var string $userName        User's full name
+ * @var string $userLogin       User's login
+ * @var bool   $rememberConsent Whether to show the "remember" checkbox
+ * @var string $issuer          Issuer URL
  */
 
 // Set page variables for layout
@@ -125,8 +126,9 @@ include __DIR__ . '/layout.tpl.php';
 <style>
 /* Consent page specific styles */
 .consent-container {
+    width: 100%;
     max-width: 500px;
-    margin: 2rem auto;
+    margin: auto 1rem;
     padding: 2rem;
     background: #fff;
     border-radius: 8px;
