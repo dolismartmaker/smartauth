@@ -26,9 +26,20 @@
  * harnesses can coexist on different ports.
  */
 
-if (!defined('PHPUNIT_RUNNING')) {
-    define('PHPUNIT_RUNNING', true);
-}
+// Deliberately do NOT define PHPUNIT_RUNNING here.
+//
+// public/index.php has at least one guard of the shape:
+//   if (!(defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING)) {
+//       \SmartAuth\Api\RouteController::emitSecurityHeaders();
+//   }
+// If we set PHPUNIT_RUNNING we skip that branch entirely, which means
+// any missing dol_include_once on the classes referenced inside is
+// invisible to the smoke. The whole purpose of this router is to
+// reproduce a fresh prod-like request, so we keep PHPUNIT_RUNNING
+// undefined. The price is that json_reply() exits the request when
+// reached (instead of throwing) - that is exactly what it does in
+// production, and the PHP built-in server forks per request so the
+// exit only ends the current response, not the whole server.
 
 $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
 $requestPath = parse_url($requestUri, PHP_URL_PATH);
