@@ -87,7 +87,7 @@ class TokenEndpointTest extends OAuthTestCase
         $payload = $this->tokenService->validateAccessToken($accessToken['token']);
 
         $this->assertNotNull($payload);
-        $this->assertEquals((string) $user->id, $payload['sub']);
+        $this->assertEquals('usr:' . $user->id, $payload['sub']);
         $this->assertEquals($client->client_id, $payload['client_id']);
         $this->assertStringContainsString('openid', $payload['scope']);
     }

@@ -36,6 +36,9 @@ namespace SmartAuth\Api\OAuth2;
 
 use SmartAuth\Api\RateLimiter;
 
+dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
+dol_include_once('/smartauth/api/OAuth2/SubjectAuthenticator.php');
+
 class LoginController
 {
     /**
@@ -87,6 +90,12 @@ class LoginController
     private $rateLimiter;
 
     /**
+     * Subject authenticator (societe_account + user)
+     * @var SubjectAuthenticator
+     */
+    private $subjectAuthenticator;
+
+    /**
      * Error messages for display (generic to prevent enumeration)
      * @var array
      */
@@ -108,6 +117,7 @@ class LoginController
         $this->db = $db;
         $this->sessionManager = new SessionManager($db);
         $this->rateLimiter = new RateLimiter($db);
+        $this->subjectAuthenticator = new SubjectAuthenticator($db);
     }
 
     /**
@@ -121,8 +131,8 @@ class LoginController
     public function handleGet(array $params = []): void
     {
         // Check if already logged in
-        $userId = $this->sessionManager->validateSession();
-        if ($userId !== null) {
+        $subject = $this->sessionManager->validateSession();
+        if ($subject !== null) {
             $continueUrl = $this->sanitizeContinueUrl($params['continue'] ?? '');
             if (!empty($continueUrl)) {
                 $this->redirect($continueUrl);
@@ -225,15 +235,30 @@ class LoginController
             return;
         }
 
-        // Attempt authentication
-        $userId = $this->authenticateUser($username, $password);
+        // Attempt authentication (societe_account and/or user, per config)
+        $subject = $this->subjectAuthenticator->authenticate($username, $password);
+        $success = ($subject !== null);
 
         // Record attempt for rate limiting
-        $this->rateLimiter->recordAttempt($clientIp, self::RATE_LIMIT_ACTION, $userId !== null);
-        $this->rateLimiter->recordAttempt('user:' . strtolower($username), self::RATE_LIMIT_ACTION, $userId !== null);
+        $this->rateLimiter->recordAttempt($clientIp, self::RATE_LIMIT_ACTION, $success);
+        $this->rateLimiter->recordAttempt('user:' . strtolower($username), self::RATE_LIMIT_ACTION, $success);
 
-        if ($userId === null) {
+        if (!$success) {
             dol_syslog('SmartAuth LoginController: Authentication failed for ' . $username, LOG_INFO);
+            $this->redirectWithError($errorRedirectBase, 'invalid_credentials');
+            return;
+        }
+
+        // Per-endpoint admission (DECISION_2026-06-02, "deux silos"): the
+        // OAuth2/SSO door admits only EXTERNAL subjects (acc: / mbr:). An
+        // internal Dolibarr user (usr:) belongs to the PWA/mobile JWT silo and
+        // must not obtain an SSO session here. Closed by default; flip
+        // SMARTAUTH_SSO_ALLOW_INTERNAL_USER to widen without a code change once
+        // the admission policy (per-endpoint vs per-client) is settled.
+        // Reported as a generic invalid_credentials to avoid leaking that the
+        // credentials were valid but the subject type was wrong.
+        if ($subject->isUser() && !getDolGlobalInt('SMARTAUTH_SSO_ALLOW_INTERNAL_USER', 0)) {
+            dol_syslog('SmartAuth LoginController: internal user subject refused at SSO door for ' . $username, LOG_WARNING);
             $this->redirectWithError($errorRedirectBase, 'invalid_credentials');
             return;
         }
@@ -243,9 +268,9 @@ class LoginController
         $this->rateLimiter->reset('user:' . strtolower($username), self::RATE_LIMIT_ACTION);
 
         // Create session
-        $this->sessionManager->createSession($userId);
+        $this->sessionManager->createSession($subject);
 
-        dol_syslog('SmartAuth LoginController: Login successful for user ' . $userId, LOG_INFO);
+        dol_syslog('SmartAuth LoginController: Login successful for subject ' . $subject->toSub(), LOG_INFO);
 
         // Redirect to continue URL or root
         if (!empty($continueUrl)) {
@@ -253,74 +278,6 @@ class LoginController
         } else {
             $this->redirect('/');
         }
-    }
-
-    /**
-     * Authenticate user against Dolibarr database
-     *
-     * @param string $username Login or email
-     * @param string $password Plain text password
-     * @return int|null User ID on success, null on failure
-     */
-    private function authenticateUser(string $username, string $password): ?int
-    {
-        require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
-
-        $user = new \User($this->db);
-
-        // Fetch user by login
-        $result = $user->fetch('', $username);
-
-        // If not found by login, try by email
-        if ($result <= 0) {
-            $result = $user->fetch('', '', '', 0, -1, $username);
-        }
-
-        if ($result <= 0) {
-            // User not found - perform a dummy password_verify against a
-            // valid bcrypt hash to equalise timing with the success path
-            //. The previous dummy was a
-            // syntactically invalid hash, so password_verify returned
-            // false instantly and the timing channel remained.
-            password_verify($password, self::getDummyBcryptHash());
-            return null;
-        }
-
-        // Check if user is active
-        if ($user->statut != 1) {
-            return null;
-        }
-
-        // Verify password using Dolibarr's password hash
-        // Dolibarr stores passwords with password_hash() in recent versions
-        $storedHash = $user->pass_indatabase_crypted;
-
-        if (empty($storedHash)) {
-            return null;
-        }
-
-        // Dolibarr may use different hash formats depending on version.
-        // Modern Dolibarr uses password_hash (bcrypt/argon2). Very old
-        // installs still store MD5 hashes; we accept that as a fallback,
-        // but using hash_equals to avoid the timing side channel exploited
-        // by H-4 of TODO-SECURITY-01. The previous '!==' comparison leaked
-        // the matching prefix length character by character.
-        if (!password_verify($password, $storedHash)) {
-            if (!hash_equals($storedHash, md5($password))) {
-                return null;
-            }
-            // Successful MD5 login - record so the admin can plan an upgrade.
-            // We do not auto-rehash here: the column shape varies across
-            // Dolibarr versions (pass_crypted vs pass_indatabase_crypted)
-            // and a wrong write could lock the user out.
-            dol_syslog(
-                'SmartAuth LoginController: legacy MD5 password matched for user_id=' . (int) $user->id
-                . ' - upgrade Dolibarr password storage (MAIN_SECURITY_USE_PASSWORD_HASH=1)',
-                LOG_WARNING
-            );
-        }
-
-        return (int) $user->id;
     }
 
     /**
@@ -452,23 +409,6 @@ class LoginController
      *
      * @return bool True if HTTPS
      */
-    /**
-     * Return a valid bcrypt hash to be used as a dummy target for
-     * password_verify() on the auth-failure path (H-5).
-     *
-     * Cached per process: only the first failed attempt pays the bcrypt
-     * cost. Must be syntactically valid (a malformed hash makes
-     * password_verify short-circuit, defeating the timing equalisation).
-     */
-    private static function getDummyBcryptHash(): string
-    {
-        static $dummy = null;
-        if ($dummy === null) {
-            $dummy = password_hash('SmartAuthDummyTimingHash:' . random_bytes(16), PASSWORD_BCRYPT);
-        }
-        return $dummy;
-    }
-
     private function isSecureContext(): bool
     {
         if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {

@@ -38,6 +38,8 @@ namespace SmartAuth\Api\OAuth2;
 
 use SmartAuth\Api\JwtKeyHelper;
 
+dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
+
 class SessionManager
 {
     /**
@@ -77,17 +79,22 @@ class SessionManager
     }
 
     /**
-     * Validate current session and return user ID
+     * Validate current session and return the authenticated subject.
      *
      * Checks:
      * 1. Cookie exists and is not empty
      * 2. JWT signature is valid
      * 3. JWT is not expired
-     * 4. User exists and is active in Dolibarr
+     * 4. The `sub` claim is a well-formed prefixed subject (acc:/usr:)
+     * 5. The underlying record (account or user) exists and is active
      *
-     * @return int|null User ID if session is valid, null otherwise
+     * A legacy numeric `sub` (pre-cutover) fails step 4 and is treated as an
+     * invalid session -> the cookie is cleared and the user must sign in again
+     * (SPEC_SMARTAUTH_SUBJECT.md decision 2).
+     *
+     * @return TokenSubject|null The subject if the session is valid, null otherwise
      */
-    public function validateSession(): ?int
+    public function validateSession(): ?TokenSubject
     {
         // Check if cookie exists
         // Read either the "__Host-" prefixed cookie (https) or the plain
@@ -116,15 +123,18 @@ class SessionManager
                 return null;
             }
 
-            // Validate user exists and is active
-            $userId = (int) ($payload['sub'] ?? 0);
-            if ($userId <= 0) {
+            // Parse and validate the subject (prefixed sub claim).
+            $sub = (string) ($payload['sub'] ?? '');
+            try {
+                $subject = TokenSubject::fromSub($sub);
+            } catch (\InvalidArgumentException $e) {
+                dol_syslog('SmartAuth SessionManager: invalid/legacy sub claim (' . $sub . '), forcing re-login', LOG_DEBUG);
                 $this->clearSession();
                 return null;
             }
 
-            if (!$this->isUserActive($userId)) {
-                dol_syslog('SmartAuth SessionManager: User ' . $userId . ' not found or inactive', LOG_DEBUG);
+            if (!$subject->isActive($this->db)) {
+                dol_syslog('SmartAuth SessionManager: subject ' . $sub . ' not found or inactive', LOG_DEBUG);
                 $this->clearSession();
                 return null;
             }
@@ -132,7 +142,7 @@ class SessionManager
             // Cache payload for getAuthTime()
             $this->cachedPayload = $payload;
 
-            return $userId;
+            return $subject;
         } catch (\Exception $e) {
             dol_syslog('SmartAuth SessionManager: Session validation error: ' . $e->getMessage(), LOG_WARNING);
             $this->clearSession();
@@ -141,21 +151,21 @@ class SessionManager
     }
 
     /**
-     * Create a new session for a user
+     * Create a new session for a subject (account or user).
      *
-     * Generates a signed JWT cookie with user information.
+     * Generates a signed JWT cookie whose `sub` is the prefixed subject id.
      *
-     * @param int $userId Dolibarr user ID
+     * @param TokenSubject $subject Authenticated subject
      * @return void
      */
-    public function createSession(int $userId): void
+    public function createSession(TokenSubject $subject): void
     {
         $now = time();
         $ttl = OAuthConfig::getSessionTTL();
 
         $payload = [
             'iss' => OAuthConfig::getIssuer(),
-            'sub' => (string) $userId,
+            'sub' => $subject->toSub(),
             'iat' => $now,
             'exp' => $now + $ttl,
             'auth_time' => $now,
@@ -183,7 +193,7 @@ class SessionManager
         // Cache the payload
         $this->cachedPayload = $payload;
 
-        dol_syslog('SmartAuth SessionManager: Session created for user ' . $userId, LOG_INFO);
+        dol_syslog('SmartAuth SessionManager: Session created for subject ' . $subject->toSub(), LOG_INFO);
     }
 
     /**
@@ -336,27 +346,6 @@ class SessionManager
         }
 
         return $payload;
-    }
-
-    /**
-     * Check if a user exists and is active
-     *
-     * @param int $userId User ID to check
-     * @return bool True if user exists and is active
-     */
-    private function isUserActive(int $userId): bool
-    {
-        require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
-
-        $user = new \User($this->db);
-        $result = $user->fetch($userId);
-
-        if ($result <= 0) {
-            return false;
-        }
-
-        // Check user status (statut = 1 means active)
-        return ($user->statut == 1);
     }
 
     /**

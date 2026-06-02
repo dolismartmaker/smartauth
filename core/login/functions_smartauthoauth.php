@@ -172,10 +172,27 @@ function smartauth_handle_callback($db, $conf, $entity)
         return false;
     }
 
-    // Load Dolibarr user by ID (sub claim contains user rowid)
+    // Parse the prefixed sub. Signing in to the Dolibarr backend requires a
+    // `user` subject (an actual llx_user); a portal `account` subject is not a
+    // Dolibarr backend user and is rejected.
     require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+    dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
+    try {
+        $oauthSubject = \SmartAuth\Api\OAuth2\TokenSubject::fromSub((string) $userinfo['sub']);
+    } catch (\InvalidArgumentException $e) {
+        dol_syslog("SmartAuth OAuth: malformed sub in userinfo (" . $userinfo['sub'] . ")", LOG_WARNING);
+        smartauth_clear_session();
+        return false;
+    }
+    if (!$oauthSubject->isUser()) {
+        dol_syslog("SmartAuth OAuth: portal account cannot sign in to the Dolibarr backend (sub=" . $userinfo['sub'] . ")", LOG_WARNING);
+        smartauth_clear_session();
+        return false;
+    }
+
+    // Load Dolibarr user by rowid (carried by the usr: subject)
     $user = new User($db);
-    $result = $user->fetch((int) $userinfo['sub']);
+    $result = $user->fetch($oauthSubject->getId());
 
     if ($result <= 0) {
         dol_syslog("SmartAuth OAuth: User not found with ID " . $userinfo['sub'], LOG_WARNING);

@@ -60,7 +60,7 @@ class RegistrationServiceTest extends DolibarrRealTestCase
         $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "smartauth_email_validation");
     }
 
-    public function testStartRegistrationCreatesProspectContactAndInactiveUser(): void
+    public function testStartRegistrationCreatesProspectContactAndInactiveAccount(): void
     {
         $email = 'newuser_' . uniqid() . '@example.com';
         $result = $this->service->startRegistration(
@@ -73,21 +73,25 @@ class RegistrationServiceTest extends DolibarrRealTestCase
         );
 
         $this->assertArrayNotHasKey('error', $result, 'Registration should succeed');
-        $this->assertArrayHasKey('user_id', $result);
+        $this->assertArrayHasKey('account_id', $result);
+        $this->assertSame('account', $result['subject_type']);
         $this->assertSame($email, $result['token_sent_to_email']);
 
-        $userId = (int) $result['user_id'];
-        $this->assertGreaterThan(0, $userId);
+        $accountId = (int) $result['account_id'];
+        $this->assertGreaterThan(0, $accountId);
 
-        // user external, inactive, fk_soc set
-        $row = $this->fetchUserRow($userId);
-        $this->assertNotNull($row);
-        $this->assertSame(0, (int) $row['statut'], 'New user must be inactive (statut=0)');
-        $this->assertSame($email, strtolower((string) $row['email']));
-        $this->assertGreaterThan(0, (int) $row['fk_soc'], 'External user must have fk_soc set');
+        // Portal account: inactive, login = email, site smartauth, fk_soc set,
+        // password verifiable.
+        $acc = $this->fetchAccountRow($accountId);
+        $this->assertNotNull($acc);
+        $this->assertSame(0, (int) $acc['status'], 'New account must be inactive (status=0)');
+        $this->assertSame($email, strtolower((string) $acc['login']));
+        $this->assertSame('smartauth', (string) $acc['site']);
+        $this->assertGreaterThan(0, (int) $acc['fk_soc'], 'Account must be linked to its thirdparty');
+        $this->assertTrue(dol_verifyHash('SuperLong1Password', (string) $acc['pass_crypted']), 'Stored password must verify');
 
         // thirdparty in prospect mode (Dolibarr encodes that as client=2)
-        $thirdpartyId = (int) $row['fk_soc'];
+        $thirdpartyId = (int) $acc['fk_soc'];
         $thirdparty = $this->fetchSocieteRow($thirdpartyId);
         $this->assertNotNull($thirdparty);
         $this->assertSame(2, (int) $thirdparty['client'], 'Thirdparty must be flagged as prospect (client=2)');
@@ -99,12 +103,13 @@ class RegistrationServiceTest extends DolibarrRealTestCase
         ]);
         $this->assertGreaterThanOrEqual(1, $contactCount, 'Contact must be attached to the thirdparty');
 
-        // a register token row exists
+        // a register token row exists, keyed to the account subject
         $tokenRows = $this->getTableCount('smartauth_email_validation', [
-            'fk_user' => $userId,
+            'fk_societe_account' => $accountId,
+            'subject_type' => 'account',
             'purpose' => 'register',
         ]);
-        $this->assertSame(1, $tokenRows, 'Exactly one register token must be stored');
+        $this->assertSame(1, $tokenRows, 'Exactly one account register token must be stored');
 
         // email was dispatched (via the injected sender)
         $this->assertCount(1, $this->sentEmails);
@@ -112,10 +117,10 @@ class RegistrationServiceTest extends DolibarrRealTestCase
         $this->assertStringContainsString('/register/confirm', (string) $this->sentEmails[0]['text']);
     }
 
-    public function testStartRegistrationDoesNotCreateUserOnTokenFailure(): void
+    public function testStartRegistrationDoesNotCreateAccountOnEmailFailure(): void
     {
         // Force the email sender to fail; the service must rollback so no
-        // partial thirdparty / user remains.
+        // partial thirdparty / account remains.
         $this->sentEmails = [];
         $service = new RegistrationService($this->db, function () {
             return false;
@@ -133,11 +138,11 @@ class RegistrationServiceTest extends DolibarrRealTestCase
 
         $this->assertSame(['error' => RegistrationService::ERR_EMAIL_FAILED], $result);
 
-        // No user matches that email after rollback
-        $sql = "SELECT COUNT(*) AS cnt FROM " . MAIN_DB_PREFIX . "user WHERE email = '" . $this->db->escape($email) . "'";
+        // No portal account matches that login after rollback
+        $sql = "SELECT COUNT(*) AS cnt FROM " . MAIN_DB_PREFIX . "societe_account WHERE login = '" . $this->db->escape($email) . "'";
         $resql = $this->db->query($sql);
         $obj = $this->db->fetch_object($resql);
-        $this->assertSame(0, (int) $obj->cnt, 'Failed registration must not leave a user row behind');
+        $this->assertSame(0, (int) $obj->cnt, 'Failed registration must not leave a societe_account row behind');
     }
 
     public function testStartRegistrationRefusesAlreadyKnownEmail(): void
@@ -159,10 +164,10 @@ class RegistrationServiceTest extends DolibarrRealTestCase
         $this->assertCount(0, $this->sentEmails);
     }
 
-    private function fetchUserRow(int $userId): ?array
+    private function fetchAccountRow(int $accountId): ?array
     {
-        $sql = "SELECT rowid, login, email, firstname, lastname, statut, fk_soc";
-        $sql .= " FROM " . MAIN_DB_PREFIX . "user WHERE rowid = " . ((int) $userId);
+        $sql = "SELECT rowid, login, pass_crypted, fk_soc, site, status";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "societe_account WHERE rowid = " . ((int) $accountId);
         $resql = $this->db->query($sql);
         if (!$resql) {
             return null;
@@ -174,11 +179,10 @@ class RegistrationServiceTest extends DolibarrRealTestCase
         return [
             'rowid' => (int) $obj->rowid,
             'login' => (string) $obj->login,
-            'email' => (string) $obj->email,
-            'firstname' => (string) $obj->firstname,
-            'lastname' => (string) $obj->lastname,
-            'statut' => (int) $obj->statut,
+            'pass_crypted' => (string) $obj->pass_crypted,
             'fk_soc' => (int) $obj->fk_soc,
+            'site' => (string) $obj->site,
+            'status' => (int) $obj->status,
         ];
     }
 

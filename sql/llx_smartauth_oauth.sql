@@ -67,7 +67,16 @@ CREATE TABLE llx_smartauth_oauth_codes (
 
     -- Relations
     fk_client               INTEGER NOT NULL,
+    -- Subject identity. subject_type discriminates the id-space:
+    --   'user'    -> fk_user holds llx_user.rowid (fk_societe_account = NULL)
+    --   'account' -> fk_societe_account holds llx_societe_account.rowid,
+    --                fk_user = 0 (sentinel; fk_user stays NOT NULL so the
+    --                migration needs no MODIFY COLUMN, which SQLite lacks).
+    --   'member'  -> fk_adherent holds llx_adherent.rowid, fk_user = 0.
     fk_user                 INTEGER NOT NULL,
+    subject_type            VARCHAR(16) DEFAULT 'user' NOT NULL,
+    fk_societe_account      INTEGER NULL DEFAULT NULL,
+    fk_adherent             INTEGER NULL DEFAULT NULL,
 
     -- Request parameters
     redirect_uri            VARCHAR(2048) NOT NULL,
@@ -98,7 +107,16 @@ CREATE TABLE llx_smartauth_oauth_tokens (
 
     -- Relations
     fk_client           INTEGER NOT NULL,
+    -- Subject identity. subject_type discriminates the id-space:
+    --   'user'    -> fk_user holds llx_user.rowid (fk_societe_account = NULL)
+    --   'account' -> fk_societe_account holds llx_societe_account.rowid,
+    --                fk_user = 0 (sentinel; fk_user stays NOT NULL so the
+    --                migration needs no MODIFY COLUMN, which SQLite lacks).
+    --   'member'  -> fk_adherent holds llx_adherent.rowid, fk_user = 0.
     fk_user             INTEGER NOT NULL,
+    subject_type        VARCHAR(16) DEFAULT 'user' NOT NULL,
+    fk_societe_account  INTEGER NULL DEFAULT NULL,
+    fk_adherent         INTEGER NULL DEFAULT NULL,
 
     -- Token data
     scopes              TEXT NOT NULL,

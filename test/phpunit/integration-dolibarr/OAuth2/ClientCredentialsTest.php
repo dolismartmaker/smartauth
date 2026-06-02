@@ -234,7 +234,7 @@ class ClientCredentialsTest extends OAuthTestCase
         $this->assertArrayHasKey('grant_type', $payload);
         $this->assertEquals('client_credentials', $payload['grant_type']);
         $this->assertEquals($client->client_id, $payload['client_id']);
-        $this->assertEquals((string) $this->serviceUser->id, $payload['sub']);
+        $this->assertEquals('usr:' . $this->serviceUser->id, $payload['sub']);
     }
 
     /**

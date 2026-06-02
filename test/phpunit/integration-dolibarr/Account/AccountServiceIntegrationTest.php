@@ -150,21 +150,12 @@ class AccountServiceIntegrationTest extends DolibarrRealTestCase
 
     public function testDeleteSelfServiceAccountAnonymisesAndDisables(): void
     {
-        // Self-register a fresh user (prospect, no contract -> deletable)
+        // A self-service user linked to a prospect (no contract -> deletable).
+        // deleteSelfServiceAccount is the legacy user-path flow, so the test
+        // builds a user directly rather than via startRegistration (which now
+        // provisions a societe_account portal subject instead).
         $email = 'todelete_' . uniqid() . '@example.com';
-        $start = $this->registrationService->startRegistration(
-            $email,
-            'SuperLong1Password',
-            'Marie',
-            'Dupont',
-            null,
-            '127.0.0.1'
-        );
-        $this->assertArrayNotHasKey('error', $start);
-        $userId = (int) $start['user_id'];
-
-        // Activate the user (mimic confirmRegistration outcome)
-        $this->db->query("UPDATE " . MAIN_DB_PREFIX . "user SET statut = 1 WHERE rowid = " . $userId);
+        $userId = $this->createSelfServiceUser($email);
 
         // Add an OAuth2 token + a consent + a pending email_validation row
         $client = $this->createOAuthClient();
@@ -205,15 +196,7 @@ class AccountServiceIntegrationTest extends DolibarrRealTestCase
     public function testDeleteSelfServiceAccountRefusedWhenThirdpartyIsCustomer(): void
     {
         $email = 'customer_' . uniqid() . '@example.com';
-        $start = $this->registrationService->startRegistration(
-            $email,
-            'SuperLong1Password',
-            'Bob',
-            'Customer',
-            null,
-            '127.0.0.1'
-        );
-        $userId = (int) $start['user_id'];
+        $userId = $this->createSelfServiceUser($email);
 
         // Promote the thirdparty to customer (bit 1 set) so deletion should be blocked.
         $row = $this->fetchUserRow($userId);
@@ -248,6 +231,22 @@ class AccountServiceIntegrationTest extends DolibarrRealTestCase
             throw new \Exception('Failed to create OAuth client: ' . implode(', ', (array) $client->errors));
         }
         return $client;
+    }
+
+    /**
+     * Create an active self-service user (statut=1) linked to a fresh prospect
+     * thirdparty (client=2). Mirrors the legacy self-service user shape that
+     * deleteSelfServiceAccount operates on.
+     */
+    private function createSelfServiceUser(string $email): int
+    {
+        $soc = $this->createTestSociete(['email' => $email, 'client' => 2]);
+        $user = $this->createTestUser(['email' => $email, 'pass' => 'SuperLong1Password', 'statut' => 1]);
+        $this->db->query(
+            "UPDATE " . MAIN_DB_PREFIX . "user SET fk_soc = " . (int) $soc->id
+            . " WHERE rowid = " . (int) $user->id
+        );
+        return (int) $user->id;
     }
 
     private function insertActiveTokenRow(

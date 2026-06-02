@@ -290,6 +290,18 @@ QrPairToggle=Collapse / expand the card
 Anonymous=anonymous
 SmartAuthHereIsYourLastLogs=Here are your last API connections. Follow this link to see the <a href="%s">complete list</a>
 
+# Public self-service portal
+SMARTAUTH_REGISTRATION_ENABLED=Allow self-registration (self-register)
+SMARTAUTH_REGISTRATION_ENABLEDTooltip=When enabled, any visitor can create their own account from the portal (the /register page). Disable it to close registration entirely: the registration pages then answer 404 and the "Create an account" button disappears from the portal. Sign-in for existing accounts stays available.
+SMARTAUTH_AUTH_SOURCE_ACCOUNT=Authenticate portal accounts (llx_societe_account)
+SMARTAUTH_AUTH_SOURCE_ACCOUNTTooltip=Allow client company portal accounts (llx_societe_account table, like onepagebasket) to sign in. This is the primary source. As long as none of the three sources has been saved, the legacy SMARTAUTH_AUTH_SOURCE constant is read instead; once you save this form, these three toggles take over.
+SMARTAUTH_AUTH_SOURCE_ADHERENT=Authenticate members (llx_adherent)
+SMARTAUTH_AUTH_SOURCE_ADHERENTTooltip=Allow association members (llx_adherent table) to sign in with their member login and password. Off by default.
+SMARTAUTH_AUTH_SOURCE_USER=Authenticate Dolibarr users (llx_user)
+SMARTAUTH_AUTH_SOURCE_USERTooltip=Allow internal Dolibarr users (llx_user table) to sign in. Keep it enabled so internal staff can still log in.
+SMARTAUTH_AUTH_SITES=Accepted sites for portal accounts
+SMARTAUTH_AUTH_SITESTooltip=Comma-separated list of llx_societe_account "site" column values accepted at login (default: smartauth). Multi-portal example: smartauth,onepagebasket. Lets a client of any CAP-REL portal sign in with their existing credentials.
+
 # New-login alert
 SMARTAUTH_NEW_LOGIN_NOTIFY=Notify the user on new sign-in
 SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=When enabled, an email is sent to the user whenever a token is issued from an IP address or a device that has not been seen recently. Inspired by Google's new sign-in alerts.

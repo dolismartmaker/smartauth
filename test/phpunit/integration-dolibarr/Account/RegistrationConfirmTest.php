@@ -45,7 +45,7 @@ class RegistrationConfirmTest extends DolibarrRealTestCase
         $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "smartauth_email_validation");
     }
 
-    public function testConfirmRegistrationActivatesUserAndConsumesToken(): void
+    public function testConfirmRegistrationActivatesAccountAndConsumesToken(): void
     {
         $email = 'tobeactivated_' . uniqid() . '@example.com';
         $start = $this->service->startRegistration(
@@ -59,33 +59,36 @@ class RegistrationConfirmTest extends DolibarrRealTestCase
         );
 
         $this->assertArrayNotHasKey('error', $start);
-        $userId = (int) $start['user_id'];
-        $this->assertSame(0, $this->fetchUserStatut($userId), 'User must be inactive before confirmation');
+        $accountId = (int) $start['account_id'];
+        $this->assertSame('account', $start['subject_type']);
+        $this->assertSame(0, $this->fetchAccountStatus($accountId), 'Account must be inactive before confirmation');
 
         // The plain token is not returned by startRegistration (it goes via
-        // email). Recover it by directly minting a fresh one (mirrors what
-        // resendConfirmation does internally).
+        // email). Mint a fresh account-subject token to drive confirmation.
         $tokens = new EmailValidationToken($this->db);
         $plain = EmailValidationToken::generatePlainToken();
-        $tokens->invalidateActiveForUser($userId, EmailValidationToken::PURPOSE_REGISTER);
         $tokenRowId = $tokens->create(
-            $userId,
+            0,
             EmailValidationToken::PURPOSE_REGISTER,
             EmailValidationToken::hashToken($plain),
             86400,
             '127.0.0.1',
-            ['continue' => 'https://app.example.com/cb?session=abc']
+            ['continue' => 'https://app.example.com/cb?session=abc'],
+            1,
+            'account',
+            $accountId,
+            null
         );
         $this->assertGreaterThan(0, $tokenRowId);
 
         $confirm = $this->service->confirmRegistration($plain);
 
         $this->assertArrayNotHasKey('error', $confirm, 'Confirmation should succeed');
-        $this->assertSame($userId, (int) $confirm['user_id']);
+        $this->assertSame($accountId, (int) $confirm['account_id']);
         $this->assertSame('https://app.example.com/cb?session=abc', $confirm['continue']);
 
-        // User is now active
-        $this->assertSame(1, $this->fetchUserStatut($userId), 'User must be activated (statut=1) after confirmation');
+        // Account is now active
+        $this->assertSame(1, $this->fetchAccountStatus($accountId), 'Account must be activated (status=1) after confirmation');
 
         // Token row must now be marked used (used_at not null)
         $this->assertSame(0, $this->getTableCount('smartauth_email_validation', [
@@ -100,25 +103,25 @@ class RegistrationConfirmTest extends DolibarrRealTestCase
 
     public function testConfirmRegistrationRejectsExpiredToken(): void
     {
-        $user = $this->createTestUser([
-            'pass' => 'SuperLong1Password',
-            'statut' => 0,
-        ]);
+        $accountId = $this->createInactivePortalAccountRow('expired_' . uniqid() . '@example.com');
 
-        // Insert an already-expired token directly (TTL 60s only, then
-        // backdate datec/expires_at via SQL UPDATE).
+        // Insert an account-subject token, then backdate it into the past.
         $tokens = new EmailValidationToken($this->db);
         $plain = EmailValidationToken::generatePlainToken();
         $rowId = $tokens->create(
-            $user->id,
+            0,
             EmailValidationToken::PURPOSE_REGISTER,
             EmailValidationToken::hashToken($plain),
             60,
-            '127.0.0.1'
+            '127.0.0.1',
+            null,
+            1,
+            'account',
+            $accountId,
+            null
         );
         $this->assertGreaterThan(0, $rowId);
 
-        // Backdate expires_at into the past
         $past = $this->db->idate(time() - 7200);
         $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_email_validation";
         $sql .= " SET expires_at = '" . $past . "'";
@@ -128,18 +131,30 @@ class RegistrationConfirmTest extends DolibarrRealTestCase
         $result = $this->service->confirmRegistration($plain);
 
         $this->assertSame(['error' => RegistrationService::ERR_TOKEN_INVALID], $result);
-        $this->assertSame(0, $this->fetchUserStatut($user->id), 'Expired confirmation must NOT activate the user');
+        $this->assertSame(0, $this->fetchAccountStatus($accountId), 'Expired confirmation must NOT activate the account');
     }
 
-    private function fetchUserStatut(int $userId): int
+    private function fetchAccountStatus(int $accountId): int
     {
-        $sql = "SELECT statut FROM " . MAIN_DB_PREFIX . "user WHERE rowid = " . ((int) $userId);
+        $sql = "SELECT status FROM " . MAIN_DB_PREFIX . "societe_account WHERE rowid = " . ((int) $accountId);
         $resql = $this->db->query($sql);
         if (!$resql) {
             return -1;
         }
         $obj = $this->db->fetch_object($resql);
-        return $obj ? (int) $obj->statut : -1;
+        return $obj ? (int) $obj->status : -1;
+    }
+
+    private function createInactivePortalAccountRow(string $login): int
+    {
+        $now = $this->db->idate(dol_now());
+        $sql = 'INSERT INTO ' . MAIN_DB_PREFIX . 'societe_account';
+        $sql .= ' (entity, login, site, status, fk_user_creat, date_creation)';
+        $sql .= " VALUES (1, '" . $this->db->escape($login) . "', 'smartauth', 0, " . (int) $this->testUser->id . ", '" . $now . "')";
+        if (!$this->db->query($sql)) {
+            throw new \Exception('Failed to insert societe_account: ' . $this->db->lasterror());
+        }
+        return (int) $this->db->last_insert_id(MAIN_DB_PREFIX . 'societe_account');
     }
 
     private function ensureEmailValidationTable(): void

@@ -775,7 +775,24 @@ class RouteController
 		$scopeString = $payload['scope'] ?? '';
 		$scopes = !empty($scopeString) ? explode(' ', $scopeString) : [];
 		$grantType = $payload['grant_type'] ?? 'authorization_code';
-		$userId = (int) ($payload['sub'] ?? 0);
+
+		// Parse the prefixed subject (acc:/usr:). These protected API routes are
+		// user-scoped (they load a Dolibarr \User), so only `user` subjects are
+		// accepted here; an `account` (portal) subject is rejected.
+		dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
+		try {
+			$subject = \SmartAuth\Api\OAuth2\TokenSubject::fromSub((string) ($payload['sub'] ?? ''));
+		} catch (\InvalidArgumentException $e) {
+			self::insertLogs(null, 401, 'Invalid subject in OAuth2 token', null);
+			\json_reply('Invalid token: bad subject', 401);
+			return false;
+		}
+		if (!$subject->isUser()) {
+			self::insertLogs(null, 401, 'Account subject not allowed on user-scoped route', null);
+			\json_reply('Invalid token: account subject not supported here', 401);
+			return false;
+		}
+		$userId = $subject->getId();
 
 		// Load OAuth client and verify it's still active
 		$client = new \SmartAuthOAuthClient($db);

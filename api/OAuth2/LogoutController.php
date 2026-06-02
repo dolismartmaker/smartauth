@@ -36,6 +36,7 @@ namespace SmartAuth\Api\OAuth2;
 dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
 dol_include_once('/smartauth/api/JwtKeyHelper.php');
+dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
 
 use SmartAuth\Api\JwtKeyHelper;
 
@@ -76,8 +77,11 @@ class LogoutController
         $postLogoutRedirectUri = $_GET['post_logout_redirect_uri'] ?? null;
         $state = $_GET['state'] ?? null;
 
-        // Get current user from session (before clearing it)
-        $userId = $this->sessionManager->validateSession();
+        // Get current subject from session (before clearing it). Token bulk
+        // revocation is keyed on fk_user, so it applies to user subjects only;
+        // an account subject still gets its session cookie cleared below.
+        $sessionSubject = $this->sessionManager->validateSession();
+        $sessionUserId = ($sessionSubject !== null && $sessionSubject->isUser()) ? $sessionSubject->getId() : null;
 
         // Extract user and client info from id_token_hint if provided
         $tokenUserId = null;
@@ -89,7 +93,7 @@ class LogoutController
         }
 
         // Determine which user to log out
-        $logoutUserId = $tokenUserId ?? $userId;
+        $logoutUserId = $tokenUserId ?? $sessionUserId;
 
         // Clear the session
         $this->sessionManager->clearSession();
@@ -179,9 +183,18 @@ class LogoutController
             return $result;
         }
 
-        // Extract user ID
+        // Extract user ID from the prefixed sub. Bulk revocation is keyed on
+        // fk_user, so only a `user` subject yields a userId here; an `account`
+        // subject leaves userId null (session cookie clearing still applies).
         if (!empty($payload['sub'])) {
-            $result['userId'] = (int) $payload['sub'];
+            try {
+                $hintSubject = TokenSubject::fromSub((string) $payload['sub']);
+                if ($hintSubject->isUser()) {
+                    $result['userId'] = $hintSubject->getId();
+                }
+            } catch (\InvalidArgumentException $e) {
+                dol_syslog('SmartAuth LogoutController: id_token_hint has malformed sub', LOG_WARNING);
+            }
         }
 
         // Extract client ID

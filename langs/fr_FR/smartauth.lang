@@ -268,6 +268,18 @@ QrPairToggle=Replier / déplier la carte
 Anonymous=anonyme
 SmartAuthHereIsYourLastLogs=Vous trouverez ci-dessous vos dernières connexions à l'API. Suivez ce lien pour consulter la <a href="%s">liste complète</a>
 
+# Public self-service portal
+SMARTAUTH_REGISTRATION_ENABLED=Autoriser l'auto-inscription (self-register)
+SMARTAUTH_REGISTRATION_ENABLEDTooltip=Quand cette option est active, n'importe quel visiteur peut créer son propre compte depuis le portail (page /register). Désactivez-la pour fermer entièrement l'inscription : les pages d'inscription répondent alors 404 et le bouton "Créer un compte" disparaît du portail. La connexion des comptes existants reste possible.
+SMARTAUTH_AUTH_SOURCE_ACCOUNT=Authentifier les comptes portail (llx_societe_account)
+SMARTAUTH_AUTH_SOURCE_ACCOUNTTooltip=Autorise la connexion des comptes portail de sociétés clientes (table llx_societe_account, comme onepagebasket). C'est la source principale. Tant qu'aucune des trois sources n'a été enregistrée, l'ancienne constante SMARTAUTH_AUTH_SOURCE est lue à la place ; dès que vous enregistrez ce formulaire, ces trois interrupteurs prennent le relais.
+SMARTAUTH_AUTH_SOURCE_ADHERENT=Authentifier les adhérents (llx_adherent)
+SMARTAUTH_AUTH_SOURCE_ADHERENTTooltip=Autorise la connexion des adhérents d'association (table llx_adherent) avec leur login et mot de passe de membre. Désactivé par défaut.
+SMARTAUTH_AUTH_SOURCE_USER=Authentifier les utilisateurs Dolibarr (llx_user)
+SMARTAUTH_AUTH_SOURCE_USERTooltip=Autorise la connexion des utilisateurs Dolibarr internes (table llx_user). À conserver activé pour que le personnel interne continue de se connecter.
+SMARTAUTH_AUTH_SITES=Sites acceptés pour les comptes portail
+SMARTAUTH_AUTH_SITESTooltip=Liste des valeurs de la colonne "site" de llx_societe_account acceptées à la connexion, séparées par des virgules (défaut : smartauth). Exemple multi-portail : smartauth,onepagebasket. Permet à un client de n'importe quel portail CAP-REL de se connecter avec ses identifiants existants.
+
 # New-login alert
 SMARTAUTH_NEW_LOGIN_NOTIFY=Notifier l'utilisateur lors d'une nouvelle connexion
 SMARTAUTH_NEW_LOGIN_NOTIFYTooltip=Quand cette option est active, un e-mail est envoyé à l'utilisateur dès qu'un jeton est émis depuis une adresse IP ou un appareil non vu récemment. Inspiré du système d'alerte de Google.

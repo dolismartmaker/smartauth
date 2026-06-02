@@ -50,7 +50,7 @@ class UserinfoEndpointTest extends OAuthTestCase
         $payload = $this->tokenService->validateAccessToken($accessToken['token']);
 
         $this->assertNotNull($payload);
-        $this->assertEquals((string) $user->id, $payload['sub']);
+        $this->assertEquals('usr:' . $user->id, $payload['sub']);
     }
 
     /**
@@ -194,7 +194,7 @@ class UserinfoEndpointTest extends OAuthTestCase
         $payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
 
         // Required claims
-        $this->assertEquals((string) $user->id, $payload['sub']);
+        $this->assertEquals('usr:' . $user->id, $payload['sub']);
         $this->assertArrayHasKey('iss', $payload);
         $this->assertArrayHasKey('aud', $payload);
         $this->assertArrayHasKey('exp', $payload);

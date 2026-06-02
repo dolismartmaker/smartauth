@@ -97,19 +97,27 @@ class MediumFindingsPoCTest extends DolibarrRealTestCase
 
     public function testM2_PasswordResetTokenIsHashed(): void
     {
+        // The reset token is now stored (hashed) in llx_smartauth_email_validation
+        // via EmailValidationToken, which keeps sha256(plain) and never the plain
+        // value. The controller looks it up by hash, not by a plaintext compare.
         $src = $this->source('api/PasswordResetController.php');
-        $this->assertStringContainsString("hash('sha256', \$token)", $src);
-        $this->assertStringContainsString('hash_equals', $src);
+        $this->assertStringContainsString('EmailValidationToken::hashToken', $src);
+        $this->assertStringContainsString('PURPOSE_PASSWORD_RESET', $src);
+        // No plaintext token comparison must survive.
         $this->assertStringNotContainsString('$obj->pass_temp !== $token', $src);
+
+        $tokenSrc = $this->source('api/Account/EmailValidationToken.php');
+        $this->assertStringContainsString("hash('sha256', \$plain)", $tokenSrc);
     }
 
     public function testM3_PasswordResetRevokesExistingTokens(): void
     {
         $src = $this->source('api/PasswordResetController.php');
-        $body = $this->functionBody($src, 'revokeAllUserTokens');
-        $this->assertNotEmpty($body, 'M-3: revokeAllUserTokens helper must exist');
+        $body = $this->functionBody($src, 'revokeAllSubjectTokens');
+        $this->assertNotEmpty($body, 'M-3: revokeAllSubjectTokens helper must exist');
         $this->assertStringContainsString('smartauth_auth', $body);
-        $this->assertStringContainsString('SmartAuthOAuthToken::revokeAllForUser', $body);
+        // Subject-aware revocation (account/member carry fk_user = 0).
+        $this->assertStringContainsString('SmartAuthOAuthToken::revokeAllForSubject', $body);
     }
 
     public function testM4_LogoutReadsJwtFamilyId(): void

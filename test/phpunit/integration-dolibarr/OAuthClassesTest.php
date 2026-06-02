@@ -380,6 +380,46 @@ class OAuthClassesTest extends DolibarrRealTestCase
         $client->delete($user);
     }
 
+    public function testTokenMemberSubjectPersistence()
+    {
+        global $db, $user;
+
+        $client = new SmartAuthOAuthClient($db);
+        $client->ref = 'TOKEN-MEMBER-CLIENT';
+        $client->name = 'Token Member Client';
+        $client->setRedirectUrisArray(array('https://example.com/callback'));
+        $client->setAllowedScopesArray(array('openid'));
+        $client->setAllowedGrantsArray(array('authorization_code', 'refresh_token'));
+        $clientResult = $client->create($user);
+        $this->assertGreaterThan(0, $clientResult);
+
+        $plain = SmartAuthOAuthToken::generateRefreshToken();
+        $token = new SmartAuthOAuthToken($db);
+        $token->token_hash = SmartAuthOAuthToken::hashToken($plain);
+        $token->token_type = SmartAuthOAuthToken::TOKEN_TYPE_REFRESH;
+        $token->fk_client = $clientResult;
+        // Member subject invariant: fk_user=0, fk_adherent>0, fk_societe_account NULL.
+        $token->fk_user = 0;
+        $token->subject_type = 'member';
+        $token->fk_adherent = 4242;
+        $token->fk_societe_account = null;
+        $token->setScopesArray(array('openid'));
+        $token->expires_at = dol_now() + 3600;
+
+        $result = $token->create($user);
+        $this->assertGreaterThan(0, $result, 'Member token creation should succeed');
+
+        $reloaded = new SmartAuthOAuthToken($db);
+        $reloaded->fetch($result);
+        $this->assertSame('member', $reloaded->subject_type);
+        $this->assertSame(0, (int) $reloaded->fk_user);
+        $this->assertSame(4242, (int) $reloaded->fk_adherent);
+        $this->assertTrue(empty($reloaded->fk_societe_account));
+
+        $token->delete($user);
+        $client->delete($user);
+    }
+
     /**
      * Test SmartAuthOAuthConsent CRUD and helpers
      */

@@ -5,12 +5,19 @@
  *
  * Self-service account registration for SmartAuth.
  *
- * Creates a Dolibarr prospect (`llx_societe` with client=0, prospect=1),
- * a contact (`llx_socpeople`) and an inactive external user
- * (`llx_user.statut=0, fk_soc=<thirdparty>`). Sends a one-shot
- * email-validation token (purpose 'register') with a 24h TTL.
+ * Creates a Dolibarr prospect (`llx_societe` with prospect flag), a contact
+ * (`llx_socpeople`) and an inactive portal account
+ * (`llx_societe_account.status=0, site='smartauth', fk_soc=<thirdparty>`,
+ * login=email). Sends a one-shot email-validation token (purpose 'register',
+ * subject_type 'account') with a 24h TTL. Confirmation flips the account to
+ * status=1.
  *
- * Confirmation, resend and lookup methods will be added in lot 6 (spec).
+ * Note: the self-service subject is now a portal account
+ * (llx_societe_account), aligned with the SmartAuth subject model (see
+ * documentation/SPEC_SMARTAUTH_SUBJECT.md). confirmRegistration still handles
+ * legacy 'user' tokens issued before this cutover. resendConfirmation and
+ * lookupByEmail still operate on the legacy llx_user path (known limitation:
+ * they do not yet cover the new account-based registrations).
  *
  * Copyright (c) 2026 Eric Seigne <eric.seigne@cap-rel.fr>
  *
@@ -93,6 +100,8 @@ class RegistrationService
         string $ip,
         ?string $continueUrl = null
     ): array {
+        global $conf;
+
         $email = strtolower(trim($email));
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -124,8 +133,8 @@ class RegistrationService
             return ['error' => self::ERR_CONTACT_FAILED];
         }
 
-        $userId = $this->createInactiveExternalUser($thirdpartyId, $contactId, $email, $password, $firstname, $lastname);
-        if ($userId <= 0) {
+        $accountId = $this->createInactivePortalAccount($thirdpartyId, $contactId, $email, $password);
+        if ($accountId <= 0) {
             $this->db->rollback();
             return ['error' => self::ERR_USER_FAILED];
         }
@@ -139,13 +148,19 @@ class RegistrationService
             $context['client_pk'] = $clientPkContext;
         }
 
+        // The self-service subject is now a portal account (llx_societe_account),
+        // so the register token carries an `account` subject (fk_user = 0).
         $tokenRowId = $this->tokens->create(
-            $userId,
+            0,
             EmailValidationToken::PURPOSE_REGISTER,
             EmailValidationToken::hashToken($plainToken),
             OAuthConfig::getRegisterTokenTTL(),
             $ip,
-            $context !== [] ? $context : null
+            $context !== [] ? $context : null,
+            (int) $conf->entity,
+            'account',
+            $accountId,
+            null
         );
         if ($tokenRowId <= 0) {
             $this->db->rollback();
@@ -159,10 +174,11 @@ class RegistrationService
 
         $this->db->commit();
 
-        dol_syslog('SmartAuth RegistrationService: registration started for user_id=' . $userId, LOG_INFO);
+        dol_syslog('SmartAuth RegistrationService: registration started for account_id=' . $accountId, LOG_INFO);
 
         return [
-            'user_id' => $userId,
+            'account_id' => $accountId,
+            'subject_type' => 'account',
             'token_sent_to_email' => $email,
         ];
     }
@@ -192,6 +208,38 @@ class RegistrationService
             return ['error' => self::ERR_TOKEN_INVALID];
         }
 
+        $subjectType = (string) ($row['subject_type'] ?? 'user');
+
+        // Activation target depends on the subject the token was issued for.
+        if ($subjectType === 'account') {
+            $accountId = (int) ($row['fk_societe_account'] ?? 0);
+            if ($accountId <= 0) {
+                return ['error' => self::ERR_TOKEN_INVALID];
+            }
+
+            $this->db->begin();
+            if (!$this->tokens->markUsed((int) $row['rowid'])) {
+                $this->db->rollback();
+                return ['error' => self::ERR_INTERNAL];
+            }
+            $sql = "UPDATE " . MAIN_DB_PREFIX . "societe_account SET status = 1 WHERE rowid = " . ((int) $accountId);
+            if (!$this->db->query($sql)) {
+                dol_syslog('SmartAuth RegistrationService: failed to activate account ' . $accountId, LOG_ERR);
+                $this->db->rollback();
+                return ['error' => self::ERR_INTERNAL];
+            }
+            $this->db->commit();
+
+            dol_syslog('SmartAuth RegistrationService: registration confirmed for account_id=' . $accountId, LOG_INFO);
+
+            return [
+                'account_id' => $accountId,
+                'subject_type' => 'account',
+                'continue' => $this->extractContinueUrl($row),
+            ];
+        }
+
+        // Legacy 'user' subject (registrations created before the societe_account cutover).
         $userId = (int) $row['fk_user'];
         if ($userId <= 0) {
             return ['error' => self::ERR_TOKEN_INVALID];
@@ -233,20 +281,30 @@ class RegistrationService
 
         $this->db->commit();
 
-        $continueUrl = null;
-        if (!empty($row['context'])) {
-            $decoded = json_decode((string) $row['context'], true);
-            if (is_array($decoded) && !empty($decoded['continue']) && is_string($decoded['continue'])) {
-                $continueUrl = $decoded['continue'];
-            }
-        }
-
         dol_syslog('SmartAuth RegistrationService: registration confirmed for user_id=' . $userId, LOG_INFO);
 
         return [
             'user_id' => $userId,
-            'continue' => $continueUrl,
+            'continue' => $this->extractContinueUrl($row),
         ];
+    }
+
+    /**
+     * Pull the optional `continue` URL out of a token row's JSON context.
+     *
+     * @param array $row
+     * @return string|null
+     */
+    private function extractContinueUrl(array $row): ?string
+    {
+        if (empty($row['context'])) {
+            return null;
+        }
+        $decoded = json_decode((string) $row['context'], true);
+        if (is_array($decoded) && !empty($decoded['continue']) && is_string($decoded['continue'])) {
+            return $decoded['continue'];
+        }
+        return null;
     }
 
     /**
@@ -657,6 +715,18 @@ class RegistrationService
             return true;
         }
 
+        // Portal accounts (llx_societe_account): the new self-service accounts
+        // live here, with login = email (the table has no email column).
+        $accountEntity = function_exists('getEntity') ? getEntity('societe_account') : '1';
+        $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "societe_account"
+            . " WHERE LOWER(login) = '" . $escaped . "'"
+            . " AND entity IN (" . $accountEntity . ")"
+            . " LIMIT 1";
+        $resql = $this->db->query($sql);
+        if ($resql && $this->db->fetch_object($resql)) {
+            return true;
+        }
+
         return false;
     }
 
@@ -740,112 +810,78 @@ class RegistrationService
     }
 
     /**
-     * Create an inactive external user attached to the thirdparty. Stores
-     * the password hashed via Dolibarr's standard setPassword.
+     * Create an inactive portal account (llx_societe_account) attached to the
+     * thirdparty/contact. This is the self-service subject base: login = email,
+     * password hashed with dol_hash (read back by dol_verifyHash at login),
+     * site = 'smartauth', status = 0 until the email is confirmed.
      *
-     * @param int         $thirdpartyId
-     * @param int         $contactId
-     * @param string      $email
-     * @param string      $password
-     * @param string|null $firstname
-     * @param string|null $lastname
-     * @return int User rowid, or <= 0 on failure
+     * @param int    $thirdpartyId
+     * @param int    $contactId
+     * @param string $email
+     * @param string $password
+     * @return int societe_account rowid, or <= 0 on failure
      */
-    private function createInactiveExternalUser(
+    private function createInactivePortalAccount(
         int $thirdpartyId,
         int $contactId,
         string $email,
-        string $password,
-        ?string $firstname,
-        ?string $lastname
+        string $password
     ): int {
-        if (!class_exists('User')) {
-            require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
-        }
+        global $conf;
 
         $admin = $this->getSystemUser();
         if ($admin === null) {
             return -1;
         }
 
-        $user = new \User($this->db);
-        // Note: fk_soc and fk_socpeople are NOT assigned here.
-        // User::create() ships a minimal INSERT that ignores them anyway
-        // (see comment above the UPDATE below), and \User does not
-        // declare these properties so assigning them would trigger
-        // a PHP 8.2 "Creation of dynamic property" deprecation. The
-        // explicit UPDATE further down materialises them in DB.
-        $user->login = $this->generateUniqueLogin($email);
-        $user->email = $email;
-        $user->firstname = $firstname ?? '';
-        $user->lastname = $lastname ?? '';
-        $user->statut = 0;
-        $user->employee = 0;
-        $user->admin = 0;
+        $login = $this->generateUniqueAccountLogin($email);
+        $hash = dol_hash($password);
+        $now = $this->db->idate(dol_now());
 
-        $result = $user->create($admin);
-        if ($result <= 0) {
-            dol_syslog('SmartAuth RegistrationService: user create failed: ' . ($user->error ?? ''), LOG_ERR);
-            return -1;
-        }
+        // Note: llx_societe_account has no fk_socpeople column; the contact link
+        // lives on the thirdparty side. The account carries fk_soc only.
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "societe_account";
+        $sql .= " (entity, login, pass_encoding, pass_crypted, fk_soc, site, status, fk_user_creat, date_creation)";
+        $sql .= " VALUES (" . (int) $conf->entity . ",";
+        $sql .= " '" . $this->db->escape($login) . "',";
+        $sql .= " 'dolhash',";
+        $sql .= " '" . $this->db->escape($hash) . "',";
+        $sql .= " " . ((int) $thirdpartyId) . ",";
+        $sql .= " 'smartauth',";
+        $sql .= " 0,";
+        $sql .= " " . ((int) $admin->id) . ",";
+        $sql .= " '" . $now . "')";
 
-        // Dolibarr User::create() ships a minimal INSERT (datec, login,
-        // ldap_sid, entity); statut, fk_soc, fk_socpeople, email and names
-        // are NOT written. Persist them explicitly to materialise the
-        // external-inactive user contract.
-        $sql = "UPDATE " . MAIN_DB_PREFIX . "user SET";
-        $sql .= " statut = 0,";
-        $sql .= " fk_soc = " . ((int) $thirdpartyId) . ",";
-        $sql .= " fk_socpeople = " . ((int) $contactId) . ",";
-        $sql .= " email = '" . $this->db->escape($email) . "',";
-        $sql .= " firstname = '" . $this->db->escape($firstname ?? '') . "',";
-        $sql .= " lastname = '" . $this->db->escape($lastname ?? '') . "',";
-        $sql .= " employee = 0,";
-        $sql .= " admin = 0";
-        $sql .= " WHERE rowid = " . ((int) $user->id);
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuth RegistrationService: failed to materialise external user fields for user ' . $user->id, LOG_ERR);
-            return -1;
-        }
-        // $statut is declared on \User, OK to assign for in-memory
-        // coherence. fk_soc / fk_socpeople are NOT declared on \User
-        // and the caller only uses $user->id from this method, so we
-        // skip them to avoid the PHP 8.2 dynamic-property deprecation
-        // (the DB row already carries the correct values via the UPDATE
-        // above).
-        $user->statut = 0;
-
-        $passwordResult = $user->setPassword($admin, $password, 0, 0, 1, 0);
-        if ($passwordResult < 0) {
-            dol_syslog('SmartAuth RegistrationService: setPassword failed for user ' . $user->id . ': ' . ($user->error ?? ''), LOG_ERR);
+            dol_syslog('SmartAuth RegistrationService: societe_account insert failed: ' . $this->db->lasterror(), LOG_ERR);
             return -1;
         }
 
-        return (int) $user->id;
+        return (int) $this->db->last_insert_id(MAIN_DB_PREFIX . "societe_account");
     }
 
     /**
-     * Generate a Dolibarr login that does not collide with existing ones.
-     * Uses the email local-part as a base, then suffixes a counter.
+     * Generate a portal-account login (llx_societe_account.login) that does not
+     * collide within the same site/entity. The email is the natural login;
+     * suffix a counter on the rare collision.
      *
      * @param string $email
      * @return string
      */
-    private function generateUniqueLogin(string $email): string
+    private function generateUniqueAccountLogin(string $email): string
     {
-        $base = strtolower(preg_replace('/[^a-z0-9._-]/i', '.', strstr($email, '@', true) ?: $email));
-        $base = trim($base, '.-_');
+        $base = strtolower(trim($email));
         if ($base === '') {
-            $base = 'user';
+            $base = 'account';
         }
 
         $candidate = $base;
         $suffix = 1;
-        while ($this->loginExists($candidate)) {
-            $candidate = $base . '_' . $suffix;
+        while ($this->accountLoginExists($candidate)) {
+            $candidate = $base . '+' . $suffix;
             $suffix++;
             if ($suffix > 1000) {
-                $candidate = $base . '_' . bin2hex(random_bytes(4));
+                $candidate = $base . '+' . bin2hex(random_bytes(4));
                 break;
             }
         }
@@ -853,14 +889,21 @@ class RegistrationService
     }
 
     /**
-     * Check if a Dolibarr login is already used.
+     * Check if a portal-account login is already used (site smartauth, current
+     * entity).
      *
      * @param string $login
      * @return bool
      */
-    private function loginExists(string $login): bool
+    private function accountLoginExists(string $login): bool
     {
-        $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "user WHERE login = '" . $this->db->escape($login) . "' LIMIT 1";
+        global $conf;
+
+        $sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "societe_account";
+        $sql .= " WHERE login = '" . $this->db->escape($login) . "'";
+        $sql .= " AND site = 'smartauth'";
+        $sql .= " AND entity = " . (int) $conf->entity;
+        $sql .= " LIMIT 1";
         $resql = $this->db->query($sql);
         if ($resql && $this->db->fetch_object($resql)) {
             return true;

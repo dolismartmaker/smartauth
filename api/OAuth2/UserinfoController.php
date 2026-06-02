@@ -32,6 +32,7 @@ namespace SmartAuth\Api\OAuth2;
 
 require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
 dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
+dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
 dol_include_once('/smartauth/api/OAuth2/ResponseTrait.php');
 dol_include_once('/smartauth/api/OAuth2/ResponseException.php');
 
@@ -92,24 +93,18 @@ class UserinfoController
             return;
         }
 
-        // Get user ID from token
-        $userId = (int) ($payload['sub'] ?? 0);
-        if ($userId <= 0) {
-            $this->sendBearerError('invalid_token', 'Token does not contain valid user identifier', 401);
+        // Parse the subject from the prefixed sub claim (acc:/usr:).
+        $sub = (string) ($payload['sub'] ?? '');
+        try {
+            $subject = TokenSubject::fromSub($sub);
+        } catch (\InvalidArgumentException $e) {
+            $this->sendBearerError('invalid_token', 'Token does not contain a valid subject identifier', 401);
             return;
         }
 
-        // Load user
-        $user = new \User($this->db);
-        $result = $user->fetch($userId);
-        if ($result <= 0) {
-            $this->sendBearerError('invalid_token', 'User not found', 401);
-            return;
-        }
-
-        // Check user is active
-        if ($user->statut != 1) {
-            $this->sendBearerError('invalid_token', 'User account is disabled', 401);
+        // The underlying account/user must still be active.
+        if (!$subject->isActive($this->db)) {
+            $this->sendBearerError('invalid_token', 'Account is disabled', 401);
             return;
         }
 
@@ -117,15 +112,38 @@ class UserinfoController
         $scopeString = $payload['scope'] ?? '';
         $scopes = ScopeManager::parseScopes($scopeString);
 
-        // Build claims based on scopes
-        $claims = $this->buildClaims($user, $scopes);
+        // Identity claims (sub/name/email) for the subject kind.
+        $claims = $subject->buildClaims($this->db, $scopes);
+
+        // Dolibarr group/role claims apply only to user subjects.
+        if ($subject->isUser()) {
+            $user = new \User($this->db);
+            if ($user->fetch($subject->getId()) > 0) {
+                if (in_array('groups', $scopes, true)) {
+                    $groups = $this->getUserGroups($user);
+                    if (!empty($groups)) {
+                        $claims['groups'] = $groups;
+                    }
+                }
+                if (in_array('roles', $scopes, true)) {
+                    $roles = $this->getUserRoles($user);
+                    if (!empty($roles)) {
+                        $claims['roles'] = $roles;
+                    }
+                }
+            }
+        }
 
         // Allow external modules to mutate claims (e.g. ssomanager email override)
         $clientId = isset($payload['client_id']) ? (string) $payload['client_id'] : (isset($payload['aud']) ? (string) $payload['aud'] : '');
         $clientPk = $this->resolveClientPk($clientId);
         $claims = HookHelper::runClaimsHook(
             [
-                'user_id' => $userId,
+                'user_id' => $subject->isUser() ? $subject->getId() : 0,
+                'subject_type' => $subject->getType(),
+                'fk_societe_account' => $subject->isAccount() ? $subject->getId() : 0,
+                'fk_adherent' => $subject->isMember() ? $subject->getId() : 0,
+                'fk_soc' => $subject->getFkSoc(),
                 'client_id' => $clientId,
                 'client_pk' => $clientPk,
                 'scopes' => $scopes,
@@ -134,7 +152,7 @@ class UserinfoController
             $claims
         );
 
-        dol_syslog('SmartAuth UserinfoController: Returning claims for user ' . $userId, LOG_INFO);
+        dol_syslog('SmartAuth UserinfoController: Returning claims for subject ' . $subject->toSub(), LOG_INFO);
 
         $this->sendJsonResponse($claims);
     }
@@ -222,79 +240,6 @@ class UserinfoController
 
         dol_syslog('SmartAuth UserinfoController::extractBearerToken - no token found', LOG_WARNING);
         return null;
-    }
-
-    /**
-     * Build claims based on user data and granted scopes
-     *
-     * Claims are filtered according to the scopes in the access token:
-     * - openid: sub (always included if openid scope)
-     * - profile: name, family_name, given_name, updated_at
-     * - email: email, email_verified
-     * - groups: groups (array of Dolibarr group names)
-     * - roles: roles (array of derived roles)
-     *
-     * @param \User $user Dolibarr user object
-     * @param array $scopes Array of granted scopes
-     * @return array Claims to return
-     */
-    private function buildClaims(\User $user, array $scopes): array
-    {
-        $claims = [];
-
-        // sub is always returned (required for userinfo)
-        $claims['sub'] = (string) $user->id;
-
-        // Profile scope: name, family_name, given_name, updated_at
-        if (in_array('profile', $scopes, true)) {
-            $fullName = trim(($user->firstname ?? '') . ' ' . ($user->lastname ?? ''));
-            if (!empty($fullName)) {
-                $claims['name'] = $fullName;
-            }
-            if (!empty($user->lastname)) {
-                $claims['family_name'] = $user->lastname;
-            }
-            if (!empty($user->firstname)) {
-                $claims['given_name'] = $user->firstname;
-            }
-            // updated_at: use tms (timestamp modification) or datec
-            $updatedAt = null;
-            if (!empty($user->tms)) {
-                $updatedAt = is_numeric($user->tms) ? (int)$user->tms : strtotime($user->tms);
-            } elseif (!empty($user->datec)) {
-                $updatedAt = is_numeric($user->datec) ? (int)$user->datec : strtotime($user->datec);
-            }
-            if ($updatedAt !== null && $updatedAt > 0) {
-                $claims['updated_at'] = $updatedAt;
-            }
-        }
-
-        // Email scope: email, email_verified
-        if (in_array('email', $scopes, true)) {
-            if (!empty($user->email)) {
-                $claims['email'] = $user->email;
-                // Dolibarr does not track email verification, assume verified
-                $claims['email_verified'] = true;
-            }
-        }
-
-        // Groups scope: groups array
-        if (in_array('groups', $scopes, true)) {
-            $groups = $this->getUserGroups($user);
-            if (!empty($groups)) {
-                $claims['groups'] = $groups;
-            }
-        }
-
-        // Roles scope: roles array
-        if (in_array('roles', $scopes, true)) {
-            $roles = $this->getUserRoles($user);
-            if (!empty($roles)) {
-                $claims['roles'] = $roles;
-            }
-        }
-
-        return $claims;
     }
 
     /**
