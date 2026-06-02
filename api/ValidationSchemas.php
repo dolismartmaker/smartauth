@@ -294,7 +294,7 @@ class ValidationSchemas
 	public static function getEnumWhitelists(): array
 	{
 		return [
-			'auth_element' => ['user', 'societe_account'],
+			'auth_element' => ['user', 'societe_account', 'adherent'],
 			'token_type' => ['access', 'refresh'],
 			'http_method' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
 			'content_type' => ['json', 'xml', 'form'],

@@ -131,105 +131,24 @@ class UserinfoControllerIntegrationTest extends DolibarrRealTestCase
     }
 
     // =========================================================================
-    // buildClaims() tests via reflection
+    // Identity claims assembly
+    //
+    // The identity claims (sub/name/email) moved from a private
+    // UserinfoController::buildClaims() to TokenSubject::buildClaims(), covered
+    // by TokenSubjectBuildClaimsTest with persisted data. The admin->ROLE_ADMIN
+    // mapping (which stays in UserinfoController) is asserted here via the
+    // still-present getUserRoles() helper.
     // =========================================================================
 
-    public function testBuildClaimsAlwaysIncludesSub(): void
+    public function testAdminUserHasRoleAdmin(): void
     {
-        $method = new \ReflectionMethod(UserinfoController::class, 'buildClaims');
-        $method->setAccessible(true);
-
-        $claims = $method->invoke($this->controller, $this->testUser, []);
-
-        $this->assertArrayHasKey('sub', $claims);
-        $this->assertEquals((string) $this->testUser->id, $claims['sub']);
-    }
-
-    public function testBuildClaimsWithProfileScope(): void
-    {
-        $method = new \ReflectionMethod(UserinfoController::class, 'buildClaims');
-        $method->setAccessible(true);
-
-        // Ensure user has firstname and lastname
-        $this->testUser->firstname = 'John';
-        $this->testUser->lastname = 'Doe';
-
-        $claims = $method->invoke($this->controller, $this->testUser, ['profile']);
-
-        $this->assertArrayHasKey('sub', $claims);
-        $this->assertArrayHasKey('name', $claims);
-        $this->assertEquals('John Doe', $claims['name']);
-        $this->assertArrayHasKey('given_name', $claims);
-        $this->assertEquals('John', $claims['given_name']);
-        $this->assertArrayHasKey('family_name', $claims);
-        $this->assertEquals('Doe', $claims['family_name']);
-    }
-
-    public function testBuildClaimsWithEmailScope(): void
-    {
-        $method = new \ReflectionMethod(UserinfoController::class, 'buildClaims');
-        $method->setAccessible(true);
-
-        $this->testUser->email = 'test@example.com';
-
-        $claims = $method->invoke($this->controller, $this->testUser, ['email']);
-
-        $this->assertArrayHasKey('email', $claims);
-        $this->assertEquals('test@example.com', $claims['email']);
-        $this->assertArrayHasKey('email_verified', $claims);
-        $this->assertTrue($claims['email_verified']);
-    }
-
-    public function testBuildClaimsWithoutEmailScope(): void
-    {
-        $method = new \ReflectionMethod(UserinfoController::class, 'buildClaims');
-        $method->setAccessible(true);
-
-        $this->testUser->email = 'test@example.com';
-
-        $claims = $method->invoke($this->controller, $this->testUser, ['profile']);
-
-        $this->assertArrayNotHasKey('email', $claims);
-    }
-
-    public function testBuildClaimsWithRolesScope(): void
-    {
-        $method = new \ReflectionMethod(UserinfoController::class, 'buildClaims');
-        $method->setAccessible(true);
-
-        $claims = $method->invoke($this->controller, $this->testUser, ['roles']);
-
-        $this->assertArrayHasKey('roles', $claims);
-        $this->assertIsArray($claims['roles']);
-        $this->assertContains('ROLE_USER', $claims['roles']);
-    }
-
-    public function testBuildClaimsAdminUserHasRoleAdmin(): void
-    {
-        $method = new \ReflectionMethod(UserinfoController::class, 'buildClaims');
+        $method = new \ReflectionMethod(UserinfoController::class, 'getUserRoles');
         $method->setAccessible(true);
 
         $this->testUser->admin = 1;
+        $roles = $method->invoke($this->controller, $this->testUser);
 
-        $claims = $method->invoke($this->controller, $this->testUser, ['roles']);
-
-        $this->assertContains('ROLE_ADMIN', $claims['roles']);
-    }
-
-    public function testBuildClaimsWithMultipleScopes(): void
-    {
-        $method = new \ReflectionMethod(UserinfoController::class, 'buildClaims');
-        $method->setAccessible(true);
-
-        $this->testUser->firstname = 'Jane';
-        $this->testUser->lastname = 'Smith';
-        $this->testUser->email = 'jane@example.com';
-
-        $claims = $method->invoke($this->controller, $this->testUser, ['openid', 'profile', 'email']);
-
-        $this->assertArrayHasKey('sub', $claims);
-        $this->assertArrayHasKey('name', $claims);
-        $this->assertArrayHasKey('email', $claims);
+        $this->assertContains('ROLE_ADMIN', $roles);
     }
 
     // =========================================================================

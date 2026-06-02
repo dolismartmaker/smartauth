@@ -35,6 +35,7 @@ namespace SmartAuth\Api\OAuth2;
 dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/class/smartauthoauthconsent.class.php');
 dol_include_once('/smartauth/class/smartauthoauthcode.class.php');
+dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
 
 class AuthorizationController
 {
@@ -67,10 +68,10 @@ class AuthorizationController
     private $client = null;
 
     /**
-     * Authenticated user ID
-     * @var int|null
+     * Authenticated subject (account or user)
+     * @var TokenSubject|null
      */
-    private $userId = null;
+    private $subject = null;
 
     /**
      * Constructor
@@ -198,8 +199,8 @@ class AuthorizationController
         }
 
         // Step 6: Check user session
-        $this->userId = $this->sessionManager->validateSession();
-        if ($this->userId === null) {
+        $this->subject = $this->sessionManager->validateSession();
+        if ($this->subject === null) {
             // Redirect to login with continue URL
             $this->redirectToLogin();
             return;
@@ -216,7 +217,11 @@ class AuthorizationController
         $hookResult = HookHelper::runBlockingHook(
             'smartmaker_oauth_pre_authorize',
             [
-                'user_id' => $this->userId,
+                'user_id' => $this->subject->isUser() ? $this->subject->getId() : 0,
+                'subject_type' => $this->subject->getType(),
+                'fk_societe_account' => $this->subject->isAccount() ? $this->subject->getId() : 0,
+                'fk_adherent' => $this->subject->isMember() ? $this->subject->getId() : 0,
+                'fk_soc' => $this->subject->getFkSoc(),
                 'client_id' => $this->client->client_id,
                 'client_pk' => $this->client->id,
                 'scopes' => $validatedScopes,
@@ -236,7 +241,7 @@ class AuthorizationController
         }
 
         // Step 7: Check existing consent
-        $hasConsent = $this->checkExistingConsent($this->userId, $this->client->id, $validatedScopes);
+        $hasConsent = $this->checkExistingConsent($this->subject, $this->client->id, $validatedScopes);
 
         // Handle prompt=none (no interaction allowed)
         if ($prompt === 'none') {
@@ -310,8 +315,8 @@ class AuthorizationController
         }
 
         // Check user session is still valid
-        $this->userId = $this->sessionManager->validateSession();
-        if ($this->userId === null) {
+        $this->subject = $this->sessionManager->validateSession();
+        if ($this->subject === null) {
             $this->redirectToLogin();
             return;
         }
@@ -332,7 +337,7 @@ class AuthorizationController
         // User allowed - save consent if remember checkbox is checked
         $remember = !empty($_POST['remember']);
         if ($remember && OAuthConfig::rememberConsent()) {
-            $this->saveConsent($this->userId, $this->client->id, $scopes);
+            $this->saveConsent($this->subject, $this->client->id, $scopes);
         }
 
         // Generate code and redirect
@@ -491,21 +496,29 @@ class AuthorizationController
     }
 
     /**
-     * Check if user has existing valid consent for the requested scopes
+     * Check if the subject has existing valid consent for the requested scopes.
      *
-     * @param int $userId User ID
+     * Consent persistence (llx_smartauth_oauth_consents) is keyed on fk_user, so
+     * only `user` subjects can have stored consent. An `account` subject (portal
+     * account) has no llx_user row: it always re-confirms consent for now (no
+     * persisted consent). See SPEC_SMARTAUTH_SUBJECT.md.
+     *
+     * @param TokenSubject $subject  Authenticated subject
      * @param int $clientId Client ID
      * @param array $scopes Requested scopes
      * @return bool True if consent exists for all scopes
      */
-    private function checkExistingConsent(int $userId, int $clientId, array $scopes): bool
+    private function checkExistingConsent(TokenSubject $subject, int $clientId, array $scopes): bool
     {
         if (!OAuthConfig::rememberConsent()) {
             return false;
         }
+        if (!$subject->isUser()) {
+            return false;
+        }
 
         $consent = new \SmartAuthOAuthConsent($this->db);
-        $result = $consent->fetchByClientAndUser($clientId, $userId);
+        $result = $consent->fetchByClientAndUser($clientId, $subject->getId());
 
         if ($result <= 0) {
             return false;
@@ -516,24 +529,93 @@ class AuthorizationController
     }
 
     /**
-     * Save user consent
+     * Save subject consent. No-op for `account` subjects (see checkExistingConsent).
      *
-     * @param int $userId User ID
+     * @param TokenSubject $subject  Authenticated subject
      * @param int $clientId Client ID
      * @param array $scopes Consented scopes
      * @return void
      */
-    private function saveConsent(int $userId, int $clientId, array $scopes): void
+    private function saveConsent(TokenSubject $subject, int $clientId, array $scopes): void
     {
+        if (!$subject->isUser()) {
+            dol_syslog('SmartAuth AuthorizationController: consent not persisted for account subject ' . $subject->toSub(), LOG_DEBUG);
+            return;
+        }
+
         $user = new \User($this->db);
-        $user->fetch($userId);
+        $user->fetch($subject->getId());
 
         $consent = new \SmartAuthOAuthConsent($this->db);
-        $result = $consent->findOrCreate($clientId, $userId, $scopes, $user);
+        $result = $consent->findOrCreate($clientId, $subject->getId(), $scopes, $user);
 
         if ($result < 0) {
             dol_syslog('SmartAuth AuthorizationController: Failed to save consent: ' . implode(', ', $consent->errors), LOG_ERR);
         }
+    }
+
+    /**
+     * Resolve a \User to act as the create() audit author (fk_user_creat).
+     *
+     * For a `user` subject this is the user itself. For an `account` subject
+     * there is no llx_user, so SMARTAUTH_DEFAULT_USER (fallback rowid 1) is used
+     * purely as the audit author of the code/token row.
+     *
+     * @return \User
+     */
+    private function authorUser(): \User
+    {
+        $user = new \User($this->db);
+        if ($this->subject !== null && $this->subject->isUser()) {
+            $user->fetch($this->subject->getId());
+            return $user;
+        }
+        $defaultId = (int) getDolGlobalInt('SMARTAUTH_DEFAULT_USER', 1);
+        $user->fetch($defaultId > 0 ? $defaultId : 1);
+        return $user;
+    }
+
+    /**
+     * Display name and login to show on the consent screen for the current
+     * subject. For a user: full name + login. For an account: the owning
+     * societe raison sociale (falling back to the login) + the portal login.
+     *
+     * @return array{0: string, 1: string} [displayName, displayLogin]
+     */
+    private function subjectDisplay(): array
+    {
+        if ($this->subject !== null && $this->subject->isUser()) {
+            $user = new \User($this->db);
+            $user->fetch($this->subject->getId());
+            return [$user->getFullName($GLOBALS['langs']), (string) $user->login];
+        }
+
+        // account subject
+        $login = '';
+        $socName = '';
+        if ($this->subject !== null) {
+            $sql = 'SELECT login, fk_soc FROM ' . MAIN_DB_PREFIX . 'societe_account WHERE rowid = ' . $this->subject->getId();
+            $resql = $this->db->query($sql);
+            if ($resql) {
+                $obj = $this->db->fetch_object($resql);
+                $this->db->free($resql);
+                if (is_object($obj)) {
+                    $login = (string) $obj->login;
+                    if ((int) $obj->fk_soc > 0) {
+                        $r2 = $this->db->query('SELECT nom FROM ' . MAIN_DB_PREFIX . 'societe WHERE rowid = ' . (int) $obj->fk_soc);
+                        if ($r2) {
+                            $o2 = $this->db->fetch_object($r2);
+                            $this->db->free($r2);
+                            if (is_object($o2)) {
+                                $socName = (string) $o2->nom;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        $displayName = $socName !== '' ? $socName : $login;
+        return [$displayName, $login];
     }
 
     /**
@@ -574,9 +656,8 @@ class AuthorizationController
             'timestamp' => time(),
         ];
 
-        // Load user info
-        $user = new \User($this->db);
-        $user->fetch($this->userId);
+        // Resolve display identity for the consent screen (account or user)
+        list($displayName, $displayLogin) = $this->subjectDisplay();
 
         // Prepare template variables
         $templateVars = [
@@ -586,8 +667,8 @@ class AuthorizationController
             'clientLogo' => $this->client->logo_url,
             'scopes' => $scopes,
             'scopeInfo' => ScopeManager::getScopeInfoForConsent($scopes),
-            'userName' => $user->getFullName($GLOBALS['langs']),
-            'userLogin' => $user->login,
+            'userName' => $displayName,
+            'userLogin' => $displayLogin,
             'rememberConsent' => OAuthConfig::rememberConsent(),
             'issuer' => OAuthConfig::getIssuer(),
         ];
@@ -618,15 +699,18 @@ class AuthorizationController
         $plainCode = \SmartAuthOAuthCode::generateCode();
         $codeHash = \SmartAuthOAuthCode::hashCode($plainCode);
 
-        // Get user for creation
-        $user = new \User($this->db);
-        $user->fetch($this->userId);
+        // Author user for the create() audit (fk_user_creat). For an account
+        // subject there is no llx_user, so a default author is used.
+        $author = $this->authorUser();
 
-        // Create code record
+        // Create code record, carrying the subject identity.
         $oauthCode = new \SmartAuthOAuthCode($this->db);
         $oauthCode->code_hash = $codeHash;
         $oauthCode->fk_client = $this->client->id;
-        $oauthCode->fk_user = $this->userId;
+        $oauthCode->subject_type = $this->subject->getType();
+        $oauthCode->fk_user = $this->subject->isUser() ? $this->subject->getId() : 0;
+        $oauthCode->fk_societe_account = $this->subject->isAccount() ? $this->subject->getId() : null;
+        $oauthCode->fk_adherent = $this->subject->isMember() ? $this->subject->getId() : null;
         $oauthCode->redirect_uri = $redirectUri;
         $oauthCode->setScopesArray($scopes);
         $oauthCode->state = $state;
@@ -635,14 +719,14 @@ class AuthorizationController
         $oauthCode->code_challenge_method = $codeChallengeMethod;
         $oauthCode->expires_at = dol_now() + OAuthConfig::getCodeTTL();
 
-        $result = $oauthCode->create($user);
+        $result = $oauthCode->create($author);
         if ($result < 0) {
             dol_syslog('SmartAuth AuthorizationController: Failed to create code: ' . implode(', ', $oauthCode->errors), LOG_ERR);
             $this->redirectWithError($redirectUri, 'server_error', 'Erreur lors de la generation du code.', $state);
             return;
         }
 
-        dol_syslog('SmartAuth AuthorizationController: Code generated for user ' . $this->userId . ' client ' . $this->client->client_id, LOG_INFO);
+        dol_syslog('SmartAuth AuthorizationController: Code generated for subject ' . $this->subject->toSub() . ' client ' . $this->client->client_id, LOG_INFO);
 
         // Build redirect URL
         $params = ['code' => $plainCode];

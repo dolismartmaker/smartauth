@@ -72,7 +72,13 @@ class SmartAuthOAuthToken extends CommonObject
         'token_hash' => array('type' => 'varchar(255)', 'label' => 'TokenHash', 'enabled' => 1, 'position' => 10, 'notnull' => 1, 'visible' => 0, 'noteditable' => 1, 'index' => 1, 'comment' => 'SHA256 hash of the token'),
         'token_type' => array('type' => 'varchar(20)', 'label' => 'TokenType', 'enabled' => 1, 'position' => 20, 'notnull' => 1, 'visible' => 1, 'index' => 1, 'comment' => 'access or refresh'),
         'fk_client' => array('type' => 'integer', 'label' => 'Client', 'enabled' => 1, 'position' => 30, 'notnull' => 1, 'visible' => 1, 'index' => 1, 'foreignkey' => 'smartauth_oauth_clients.rowid', 'comment' => 'OAuth client'),
-        'fk_user' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'User', 'enabled' => 1, 'position' => 40, 'notnull' => 1, 'visible' => 1, 'index' => 1, 'foreignkey' => 'user.rowid', 'comment' => 'Dolibarr user'),
+        // Plain integer (not an object-link type): an account subject stores
+        // the sentinel 0 here, and Dolibarr's createCommon must write 0 as-is
+        // rather than nullifying an "empty" object FK (the column is NOT NULL).
+        'fk_user' => array('type' => 'integer', 'label' => 'User', 'enabled' => 1, 'position' => 40, 'notnull' => 1, 'default' => 0, 'visible' => 1, 'index' => 1, 'comment' => 'Dolibarr user (0 when subject_type=account)'),
+        'subject_type' => array('type' => 'varchar(16)', 'label' => 'SubjectType', 'enabled' => 1, 'position' => 41, 'notnull' => 1, 'visible' => 0, 'default' => 'user', 'comment' => 'Token subject kind: user or account'),
+        'fk_societe_account' => array('type' => 'integer', 'label' => 'SocieteAccount', 'enabled' => 1, 'position' => 42, 'notnull' => 0, 'visible' => 0, 'index' => 1, 'comment' => 'Portal account rowid when subject_type=account'),
+        'fk_adherent' => array('type' => 'integer', 'label' => 'Adherent', 'enabled' => 1, 'position' => 43, 'notnull' => 0, 'visible' => 0, 'index' => 1, 'comment' => 'Adherent rowid when subject_type=member'),
         'scopes' => array('type' => 'text', 'label' => 'Scopes', 'enabled' => 1, 'position' => 50, 'notnull' => 1, 'visible' => 0, 'comment' => 'JSON array of granted scopes'),
         'jti' => array('type' => 'varchar(64)', 'label' => 'JTI', 'enabled' => 1, 'position' => 60, 'notnull' => 0, 'visible' => 0, 'index' => 1, 'comment' => 'JWT ID for access tokens'),
         'expires_at' => array('type' => 'datetime', 'label' => 'ExpiresAt', 'enabled' => 1, 'position' => 70, 'notnull' => 1, 'visible' => 1, 'index' => 1, 'comment' => 'Expiration time'),
@@ -105,9 +111,24 @@ class SmartAuthOAuthToken extends CommonObject
     public $fk_client;
 
     /**
-     * @var int Dolibarr user ID
+     * @var int Dolibarr user ID (0 when subject_type=account)
      */
     public $fk_user;
+
+    /**
+     * @var string Token subject kind: 'user', 'account' or 'member'
+     */
+    public $subject_type = 'user';
+
+    /**
+     * @var int|null Portal account rowid (llx_societe_account) when subject_type=account
+     */
+    public $fk_societe_account = null;
+
+    /**
+     * @var int|null Adherent rowid (llx_adherent) when subject_type=member
+     */
+    public $fk_adherent = null;
 
     /**
      * @var string JSON array of scopes
@@ -618,6 +639,91 @@ class SmartAuthOAuthToken extends CommonObject
         $sql .= " SET revoked_at = '" . $db->idate(dol_now()) . "'";
         $sql .= " WHERE fk_user = " . ((int) $userId);
         $sql .= " AND revoked_at IS NULL";
+        $sql .= $entityClause;
+
+        $resql = $db->query($sql);
+        if ($resql) {
+            return $db->affected_rows($resql);
+        }
+
+        return -1;
+    }
+
+    /**
+     * Build the WHERE predicate selecting the tokens of one subject.
+     *
+     * The subject id-space depends on subject_type, so a bare `fk_user = X`
+     * filter is wrong for external subjects (account/member carry fk_user = 0,
+     * the sentinel). This routes to the right column and pins subject_type so
+     * the sentinel 0 never collapses account and member rows together.
+     *
+     * @param DoliDB $db
+     * @param string $subjectType 'account' | 'member' | 'user'
+     * @param int    $subjectId   rowid in the table matching $subjectType
+     * @return string SQL fragment beginning with " AND ..."
+     */
+    private static function subjectWhereClause(DoliDB $db, $subjectType, $subjectId)
+    {
+        if ($subjectType === 'account') {
+            return " AND subject_type = 'account' AND fk_societe_account = " . ((int) $subjectId);
+        }
+        if ($subjectType === 'member') {
+            return " AND subject_type = 'member' AND fk_adherent = " . ((int) $subjectId);
+        }
+        return " AND subject_type = 'user' AND fk_user = " . ((int) $subjectId);
+    }
+
+    /**
+     * Revoke all active tokens for a subject (account/member/user). Multi-tenant
+     * safe like revokeAllForUser. Prefer this over revokeAllForUser when the
+     * subject may be external (account/member), to avoid the fk_user = 0
+     * sentinel matching every external token.
+     *
+     * @param DoliDB $db
+     * @param string $subjectType 'account' | 'member' | 'user'
+     * @param int    $subjectId
+     * @return int Number of revoked tokens or -1 on error
+     */
+    public static function revokeAllForSubject(DoliDB $db, $subjectType, $subjectId)
+    {
+        $entityClause = function_exists('getEntity')
+            ? " AND entity IN (" . getEntity('smartauthoauthtoken') . ")"
+            : '';
+
+        $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_oauth_tokens";
+        $sql .= " SET revoked_at = '" . $db->idate(dol_now()) . "'";
+        $sql .= " WHERE revoked_at IS NULL";
+        $sql .= self::subjectWhereClause($db, $subjectType, $subjectId);
+        $sql .= $entityClause;
+
+        $resql = $db->query($sql);
+        if ($resql) {
+            return $db->affected_rows($resql);
+        }
+
+        return -1;
+    }
+
+    /**
+     * Revoke all active tokens for a subject and a specific client.
+     *
+     * @param DoliDB $db
+     * @param string $subjectType 'account' | 'member' | 'user'
+     * @param int    $subjectId
+     * @param int    $clientId
+     * @return int Number of revoked tokens or -1 on error
+     */
+    public static function revokeAllForSubjectAndClient(DoliDB $db, $subjectType, $subjectId, $clientId)
+    {
+        $entityClause = function_exists('getEntity')
+            ? " AND entity IN (" . getEntity('smartauthoauthtoken') . ")"
+            : '';
+
+        $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_oauth_tokens";
+        $sql .= " SET revoked_at = '" . $db->idate(dol_now()) . "'";
+        $sql .= " WHERE revoked_at IS NULL";
+        $sql .= " AND fk_client = " . ((int) $clientId);
+        $sql .= self::subjectWhereClause($db, $subjectType, $subjectId);
         $sql .= $entityClause;
 
         $resql = $db->query($sql);

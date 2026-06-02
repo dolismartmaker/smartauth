@@ -70,7 +70,13 @@ class SmartAuthOAuthCode extends CommonObject
         'rowid' => array('type' => 'integer', 'label' => 'TechnicalID', 'enabled' => 1, 'position' => 1, 'notnull' => 1, 'visible' => 0, 'noteditable' => 1, 'index' => 1, 'comment' => 'Id'),
         'code_hash' => array('type' => 'varchar(255)', 'label' => 'CodeHash', 'enabled' => 1, 'position' => 10, 'notnull' => 1, 'visible' => 0, 'noteditable' => 1, 'index' => 1, 'comment' => 'SHA256 hash of the authorization code'),
         'fk_client' => array('type' => 'integer', 'label' => 'Client', 'enabled' => 1, 'position' => 20, 'notnull' => 1, 'visible' => 1, 'index' => 1, 'foreignkey' => 'smartauth_oauth_clients.rowid', 'comment' => 'OAuth client'),
-        'fk_user' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'User', 'enabled' => 1, 'position' => 30, 'notnull' => 1, 'visible' => 1, 'index' => 1, 'foreignkey' => 'user.rowid', 'comment' => 'Dolibarr user'),
+        // Plain integer (not an object-link type): an account subject stores
+        // the sentinel 0 here, and Dolibarr's createCommon must write 0 as-is
+        // rather than nullifying an "empty" object FK (the column is NOT NULL).
+        'fk_user' => array('type' => 'integer', 'label' => 'User', 'enabled' => 1, 'position' => 30, 'notnull' => 1, 'default' => 0, 'visible' => 1, 'index' => 1, 'comment' => 'Dolibarr user (0 when subject_type=account)'),
+        'subject_type' => array('type' => 'varchar(16)', 'label' => 'SubjectType', 'enabled' => 1, 'position' => 31, 'notnull' => 1, 'visible' => 0, 'default' => 'user', 'comment' => 'Code subject kind: user or account'),
+        'fk_societe_account' => array('type' => 'integer', 'label' => 'SocieteAccount', 'enabled' => 1, 'position' => 32, 'notnull' => 0, 'visible' => 0, 'index' => 1, 'comment' => 'Portal account rowid when subject_type=account'),
+        'fk_adherent' => array('type' => 'integer', 'label' => 'Adherent', 'enabled' => 1, 'position' => 33, 'notnull' => 0, 'visible' => 0, 'index' => 1, 'comment' => 'Adherent rowid when subject_type=member'),
         'redirect_uri' => array('type' => 'varchar(2048)', 'label' => 'RedirectURI', 'enabled' => 1, 'position' => 40, 'notnull' => 1, 'visible' => 0, 'comment' => 'Callback URI'),
         'scopes' => array('type' => 'text', 'label' => 'Scopes', 'enabled' => 1, 'position' => 50, 'notnull' => 1, 'visible' => 0, 'comment' => 'JSON array of requested scopes'),
         'state' => array('type' => 'varchar(255)', 'label' => 'State', 'enabled' => 1, 'position' => 60, 'notnull' => 0, 'visible' => 0, 'comment' => 'Original state parameter'),
@@ -99,9 +105,24 @@ class SmartAuthOAuthCode extends CommonObject
     public $fk_client;
 
     /**
-     * @var int Dolibarr user ID
+     * @var int Dolibarr user ID (0 when subject_type=account)
      */
     public $fk_user;
+
+    /**
+     * @var string Code subject kind: 'user', 'account' or 'member'
+     */
+    public $subject_type = 'user';
+
+    /**
+     * @var int|null Portal account rowid (llx_societe_account) when subject_type=account
+     */
+    public $fk_societe_account = null;
+
+    /**
+     * @var int|null Adherent rowid (llx_adherent) when subject_type=member
+     */
+    public $fk_adherent = null;
 
     /**
      * @var string Callback URI

@@ -125,10 +125,13 @@ if (!$dolibarrLoaded) {
 // ::resolveCorsOrigin()). In production Dolibarr there is no composer
 // PSR-4 autoloader, so the class MUST be explicitly required here -
 // otherwise the FQN reference fatals with "Class not found".
+dol_include_once('/smartauth/api/SmartAuthLogger.php');
 dol_include_once('/smartauth/api/JwtKeyHelper.php');
 dol_include_once('/smartauth/api/RateLimiter.php');
 dol_include_once('/smartauth/api/RouteController.php');
 dol_include_once('/smartauth/api/OAuth2/OAuthConfig.php');
+dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
+dol_include_once('/smartauth/api/OAuth2/SubjectAuthenticator.php');
 dol_include_once('/smartauth/api/OAuth2/DiscoveryController.php');
 dol_include_once('/smartauth/api/OAuth2/SessionManager.php');
 dol_include_once('/smartauth/api/OAuth2/LoginController.php');
@@ -142,6 +145,7 @@ dol_include_once('/smartauth/api/OAuth2/RevocationController.php');
 dol_include_once('/smartauth/api/OAuth2/RevokedJtiController.php');
 dol_include_once('/smartauth/api/OAuth2/LogoutController.php');
 dol_include_once('/smartauth/api/Account/EmailValidationToken.php');
+dol_include_once('/smartauth/api/Account/RegistrationGate.php');
 dol_include_once('/smartauth/api/Account/RegistrationService.php');
 dol_include_once('/smartauth/api/Account/RegisterController.php');
 dol_include_once('/smartauth/api/Account/AccountService.php');
@@ -348,6 +352,16 @@ if (!$handled && $requestPath === '/login') {
         sendJsonError('method_not_allowed', 'Method not allowed', 405);
     }
     $handled = true;
+}
+
+// Self-registration kill switch. When SMARTAUTH_REGISTRATION_ENABLED is off,
+// the whole self-provisioning surface answers 404 (the feature is hidden, not
+// just the landing-page card). Sign-in for existing accounts is unaffected.
+if (!$handled
+    && \SmartAuth\Api\Account\RegistrationGate::isRegistrationPath($requestPath)
+    && !\SmartAuth\Api\Account\RegistrationGate::isEnabled()) {
+    dol_syslog('smartauth: registration route ' . $requestPath . ' blocked, SMARTAUTH_REGISTRATION_ENABLED=0', LOG_NOTICE);
+    sendJsonError('not_found', 'Self-registration is disabled', 404);
 }
 
 // Public registration (Lot 5)

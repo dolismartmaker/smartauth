@@ -329,6 +329,26 @@ class OAuthFrontControllerSmokeTest extends HttpTestCase
     }
 
     /**
+     * POST /forgot-password with a valid-looking email. We do NOT assert
+     * that an email actually goes out - that requires SMTP plumbing the
+     * test environment doesn't have - but we DO assert that the request
+     * reaches the controller's happy path without a PHP fatal. This
+     * catches missing dol_include_once on classes only referenced inside
+     * the POST body (SmartAuthLogger, EmailValidationToken, CMailFile,
+     * ...) which the GET smoke alone never exercises.
+     */
+    public function testForgotPasswordPostNoFatal(): void
+    {
+        $response = $this->post('/forgot-password', ['email' => 'unknown_' . uniqid() . '@example.test']);
+        $this->assertNoPhpFatal($response, 'POST /forgot-password');
+        $this->assertSame(200, $response['statusCode'], 'POST /forgot-password not 200. Body: ' . substr($response['body'], 0, 500));
+        $this->assertHeaderContains('content-type', 'text/html', $response);
+        // The page must show the generic anti-enumeration confirmation
+        // ("si un compte est associe a cette adresse..."), not the form.
+        $this->assertStringContainsString('lien de réinitialisation', $response['body'], 'POST /forgot-password did not show the confirmation banner');
+    }
+
+    /**
      * /reset-password renders the new-password HTML form, with the
      * token and email from the query string pre-filled in the form.
      */
@@ -345,5 +365,136 @@ class OAuthFrontControllerSmokeTest extends HttpTestCase
         $this->assertStringContainsString('value="dummy123.4000000000"', $response['body'], 'Reset-password form did not pre-fill token from the query string');
         $this->assertStringContainsString('CAP-REL', $response['body'], 'Reset-password missing the credits footer');
         $this->assertStringContainsString('Portail SSO', $response['body'], 'Reset-password missing the eyebrow');
+    }
+
+    /**
+     * POST /reset-password with a syntactically valid but unknown token.
+     * Exercises confirmReset() down to its rejection path - catches a
+     * missing include in PasswordResetController's confirmReset code
+     * that the GET smoke (which only renders the form) would not see.
+     */
+    public function testResetPasswordPostInvalidTokenNoFatal(): void
+    {
+        // Token format: <32hex>.<unix_timestamp_future>
+        $token = str_repeat('a', 32) . '.' . (time() + 3600);
+        $response = $this->post('/reset-password', [
+            'token' => $token,
+            'email' => 'unknown_' . uniqid() . '@example.test',
+            'password' => 'AStrongP@ssw0rd123',
+            'password_confirm' => 'AStrongP@ssw0rd123',
+        ]);
+        $this->assertNoPhpFatal($response, 'POST /reset-password (invalid token)');
+        $this->assertSame(200, $response['statusCode'], 'POST /reset-password not 200. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * POST /login with empty credentials. We expect a 200 (form rendered
+     * with an error alert) or a 4xx, but NOT a 500. Catches missing
+     * includes in LoginController POST path.
+     */
+    public function testLoginPostNoFatal(): void
+    {
+        $response = $this->post('/login', [
+            'username' => '',
+            'password' => '',
+            'csrf_token' => 'invalid',
+        ]);
+        $this->assertNoPhpFatal($response, 'POST /login');
+        $this->assertLessThan(500, $response['statusCode'], 'POST /login 5xx. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * POST /register with empty fields. We expect a 200 (form rendered
+     * with field errors) or a 4xx, but NOT a 500. Catches missing
+     * includes in RegisterController POST path (RegistrationService,
+     * EmailValidationToken, ...).
+     */
+    public function testRegisterPostNoFatal(): void
+    {
+        $response = $this->post('/register', [
+            'email' => '',
+            'password' => '',
+            'password_confirm' => '',
+            'csrf_token' => 'invalid',
+        ]);
+        $this->assertNoPhpFatal($response, 'POST /register');
+        $this->assertLessThan(500, $response['statusCode'], 'POST /register 5xx. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * POST /register/resend with an unknown email. Anti-enumeration
+     * confirmation. Catches a missing include in the resend code path.
+     */
+    public function testRegisterResendPostNoFatal(): void
+    {
+        $response = $this->post('/register/resend', [
+            'email' => 'unknown_' . uniqid() . '@example.test',
+            'csrf_token' => 'invalid',
+        ]);
+        $this->assertNoPhpFatal($response, 'POST /register/resend');
+        $this->assertLessThan(500, $response['statusCode'], 'POST /register/resend 5xx. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * GET /register/confirm with an invalid token. Exercises the confirm
+     * code path. Catches missing includes that only surface on the
+     * confirm code path (EmailValidationToken, ...).
+     */
+    public function testRegisterConfirmGetNoFatal(): void
+    {
+        $response = $this->get('/register/confirm?token=' . urlencode(str_repeat('a', 32) . '.' . (time() + 3600)));
+        $this->assertNoPhpFatal($response, 'GET /register/confirm');
+        $this->assertLessThan(500, $response['statusCode'], 'GET /register/confirm 5xx. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * GET /logout when not authenticated. The current implementation
+     * clears the session and 302-redirects (default target /login).
+     * Catches missing includes in SessionManager / RouteController used
+     * in the redirect-target validation.
+     */
+    public function testLogoutGetNoFatal(): void
+    {
+        $response = $this->get('/logout');
+        $this->assertNoPhpFatal($response, 'GET /logout');
+        $this->assertSame(302, $response['statusCode'], 'GET /logout expected 302 redirect. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * GET /account when not authenticated. Should either redirect to
+     * /login or render a friendly error - never 5xx. Catches missing
+     * includes in AccountController.
+     */
+    public function testAccountGetAnonymousNoFatal(): void
+    {
+        $response = $this->get('/account');
+        $this->assertNoPhpFatal($response, 'GET /account');
+        $this->assertLessThan(500, $response['statusCode'], 'GET /account 5xx. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * POST /lookup-by-email with an unknown address. Always rendered as
+     * the anti-enumeration confirmation page. Catches missing includes
+     * in the lookup path. (GET on this route returns 405 - POST-only.)
+     */
+    public function testLookupByEmailPostNoFatal(): void
+    {
+        $response = $this->post('/lookup-by-email', [
+            'email' => 'unknown_' . uniqid() . '@example.test',
+            'csrf_token' => 'invalid',
+        ]);
+        $this->assertNoPhpFatal($response, 'POST /lookup-by-email');
+        $this->assertLessThan(500, $response['statusCode'], 'POST /lookup-by-email 5xx. Body: ' . substr($response['body'], 0, 500));
+    }
+
+    /**
+     * GET /email-alternative/confirm with an invalid token. Exercises
+     * the confirm path of EmailAlternativeController.
+     */
+    public function testEmailAlternativeConfirmGetNoFatal(): void
+    {
+        $response = $this->get('/email-alternative/confirm?token=' . urlencode(str_repeat('a', 32) . '.' . (time() + 3600)));
+        $this->assertNoPhpFatal($response, 'GET /email-alternative/confirm');
+        $this->assertLessThan(500, $response['statusCode'], 'GET /email-alternative/confirm 5xx. Body: ' . substr($response['body'], 0, 500));
     }
 }

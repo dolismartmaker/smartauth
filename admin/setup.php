@@ -115,6 +115,33 @@ $item = $formSetup->newItem('SMARTAUTH_COLLECT_LOGS')->setAsYesNo();
 
 $item = $formSetup->newItem('SMARTAUTH_CLEAN_LOGS')->setAsYesNo();
 
+// Public self-service portal: allow visitors to create their own account.
+// When disabled, the /register* endpoints answer 404 and the landing page
+// hides the "create an account" card.
+$item = $formSetup->newItem('SMARTAUTH_REGISTRATION_ENABLED')->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = $langs->transnoentities('SMARTAUTH_REGISTRATION_ENABLEDTooltip');
+
+// Authentication sources. Three independent on/off toggles decide which login
+// bases are tried, in the fixed priority order account > adherent > user.
+// Until at least one of these is saved, the legacy SMARTAUTH_AUTH_SOURCE enum
+// is read for backward compatibility (see SubjectAuthenticator).
+$item = $formSetup->newItem('SMARTAUTH_AUTH_SOURCE_ACCOUNT')->setAsYesNo();
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('SMARTAUTH_AUTH_SOURCE_ACCOUNTTooltip');
+
+$item = $formSetup->newItem('SMARTAUTH_AUTH_SOURCE_ADHERENT')->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = $langs->transnoentities('SMARTAUTH_AUTH_SOURCE_ADHERENTTooltip');
+
+$item = $formSetup->newItem('SMARTAUTH_AUTH_SOURCE_USER')->setAsYesNo();
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('SMARTAUTH_AUTH_SOURCE_USERTooltip');
+
+$item = $formSetup->newItem('SMARTAUTH_AUTH_SITES');
+$item->cssClass = 'minwidth400';
+$item->helpText = $langs->transnoentities('SMARTAUTH_AUTH_SITESTooltip');
+
 
 $days = [
 	'10' => '10',

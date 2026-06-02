@@ -39,6 +39,7 @@ namespace SmartAuth\Api\OAuth2;
 dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/class/smartauthoauthcode.class.php');
 dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
+dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
 dol_include_once('/smartauth/api/OAuth2/ResponseTrait.php');
 dol_include_once('/smartauth/api/OAuth2/ResponseException.php');
 
@@ -216,8 +217,23 @@ class TokenController
         // Check code has not been used (one-time use)
         if ($authCode->isUsed()) {
             dol_syslog('SmartAuth TokenController: Authorization code already used', LOG_WARNING);
-            // Per RFC 6749, if code is reused, revoke all tokens issued with it
-            \SmartAuthOAuthToken::revokeAllForUserAndClient($this->db, $authCode->fk_user, $authCode->fk_client);
+            // Per RFC 6749, if code is reused, revoke all tokens issued with it.
+            // Subject-aware: an external subject (account/member) carries
+            // fk_user = 0, so a fk_user-keyed revocation would wrongly hit every
+            // external token of this client.
+            if ($authCode->subject_type === 'account') {
+                $revokeSubjectId = (int) $authCode->fk_societe_account;
+            } elseif ($authCode->subject_type === 'member') {
+                $revokeSubjectId = (int) $authCode->fk_adherent;
+            } else {
+                $revokeSubjectId = (int) $authCode->fk_user;
+            }
+            \SmartAuthOAuthToken::revokeAllForSubjectAndClient(
+                $this->db,
+                $authCode->subject_type,
+                $revokeSubjectId,
+                $authCode->fk_client
+            );
             $this->sendError('invalid_grant', 'Authorization code has already been used', 400);
             return;
         }
@@ -266,9 +282,18 @@ class TokenController
         // Get scopes from authorization code (before pre_token hook so external modules can inspect them)
         $scopes = $authCode->getScopesArray();
 
+        // Rebuild the authenticated subject (account or user) from the code.
+        $subject = TokenSubject::fromRecord(
+            $this->db,
+            $authCode->subject_type,
+            (int) $authCode->fk_user,
+            $authCode->fk_societe_account !== null ? (int) $authCode->fk_societe_account : null,
+            $authCode->fk_adherent !== null ? (int) $authCode->fk_adherent : null
+        );
+
         // Pre-token hook: external modules may re-evaluate access right
         // and inject extra claims (PERFS.md §3.3).
-        $hookResult = $this->runPreTokenHook($authCode->fk_user, $scopes, 'authorization_code');
+        $hookResult = $this->runPreTokenHook($subject, $scopes, 'authorization_code');
         if (!$hookResult['allowed']) {
             return;
         }
@@ -277,7 +302,7 @@ class TokenController
         $authCode->markAsUsed();
 
         // Generate tokens
-        $tokens = $this->generateTokens($authCode->fk_user, $scopes, $authCode->nonce, $hookResult['extra_claims']);
+        $tokens = $this->generateTokens($subject, $scopes, $authCode->nonce, $hookResult['extra_claims']);
 
         // Send response
         $this->sendTokenResponse($tokens, $scopes);
@@ -332,9 +357,19 @@ class TokenController
             $scopes = $originalScopes;
         }
 
+        // Rebuild the subject from the stored refresh token.
+        $subject = TokenSubject::fromRecord(
+            $this->db,
+            $tokenRecord->subject_type,
+            (int) $tokenRecord->fk_user,
+            $tokenRecord->fk_societe_account !== null ? (int) $tokenRecord->fk_societe_account : null,
+            $tokenRecord->fk_adherent !== null ? (int) $tokenRecord->fk_adherent : null
+        );
+        $legacyUserId = $subject->isUser() ? $subject->getId() : 0;
+
         // Pre-token hook: external modules may re-evaluate access right
         // (e.g. contract closed since last refresh) and inject extra claims.
-        $hookResult = $this->runPreTokenHook($tokenRecord->fk_user, $scopes, 'refresh_token');
+        $hookResult = $this->runPreTokenHook($subject, $scopes, 'refresh_token');
         if (!$hookResult['allowed']) {
             return;
         }
@@ -344,21 +379,23 @@ class TokenController
 
         // Generate new access token
         $accessToken = $this->tokenService->createAccessToken(
-            $tokenRecord->fk_user,
+            $legacyUserId,
             $this->client->client_id,
             $scopes,
             $this->client->access_token_lifetime,
-            $hookResult['extra_claims']
+            $hookResult['extra_claims'],
+            $subject
         );
 
         // Store access token for revocation tracking
         $this->tokenService->storeAccessToken(
             $accessToken['jti'],
             $this->client->id,
-            $tokenRecord->fk_user,
+            $legacyUserId,
             $scopes,
             $accessToken['expires_at'],
-            $newRefreshToken['token_id']
+            $newRefreshToken['token_id'],
+            $subject
         );
 
         // Build response
@@ -375,16 +412,17 @@ class TokenController
             // Use original auth_time (we don't re-authenticate on refresh)
             $authTime = is_numeric($tokenRecord->datec) ? (int)$tokenRecord->datec : strtotime($tokenRecord->datec);
             $response['id_token'] = $this->tokenService->createIdToken(
-                $tokenRecord->fk_user,
+                $legacyUserId,
                 $this->client->client_id,
                 $scopes,
                 null, // No nonce on refresh
                 $authTime,
-                $accessToken['token']
+                $accessToken['token'],
+                $subject
             );
         }
 
-        dol_syslog('SmartAuth TokenController: Tokens refreshed for user ' . $tokenRecord->fk_user, LOG_INFO);
+        dol_syslog('SmartAuth TokenController: Tokens refreshed for subject ' . $subject->toSub(), LOG_INFO);
 
         $this->sendJsonResponse($response);
     }
@@ -449,9 +487,13 @@ class TokenController
             return;
         }
 
+        // The service user is the token subject (a user subject); carry its
+        // societe so capsso can gate it (or skip, per spec).
+        $subject = TokenSubject::user($serviceUserId, (int) $serviceUser->socid);
+
         // Pre-token hook: external modules may block client_credentials too
         // (gating may opt out per spec) and inject extra claims.
-        $hookResult = $this->runPreTokenHook($serviceUserId, $scopes, 'client_credentials');
+        $hookResult = $this->runPreTokenHook($subject, $scopes, 'client_credentials');
         if (!$hookResult['allowed']) {
             return;
         }
@@ -465,7 +507,8 @@ class TokenController
             $this->client->client_id,
             $scopes,
             $this->client->access_token_lifetime,
-            $extraClaims
+            $extraClaims,
+            $subject
         );
 
         // Store access token for revocation tracking (no parent refresh token)
@@ -475,7 +518,8 @@ class TokenController
             $serviceUserId,
             $scopes,
             $accessToken['expires_at'],
-            null
+            null,
+            $subject
         );
 
         // Build response: no refresh_token, no id_token (RFC 6749 Section 4.4.3)
@@ -605,22 +649,25 @@ class TokenController
     /**
      * Generate all tokens for a successful authorization
      *
-     * @param int $userId User ID
+     * @param TokenSubject $subject Authenticated subject (account or user)
      * @param array $scopes Granted scopes
      * @param string|null $nonce OIDC nonce
      * @param array $extraClaims Sanitized extra claims contributed by
      *                           the pre_token hook (PERFS.md §3.3)
      * @return array Token data
      */
-    private function generateTokens(int $userId, array $scopes, ?string $nonce, array $extraClaims = []): array
+    private function generateTokens(TokenSubject $subject, array $scopes, ?string $nonce, array $extraClaims = []): array
     {
+        $legacyUserId = $subject->isUser() ? $subject->getId() : 0;
+
         // Generate access token
         $accessToken = $this->tokenService->createAccessToken(
-            $userId,
+            $legacyUserId,
             $this->client->client_id,
             $scopes,
             $this->client->access_token_lifetime,
-            $extraClaims
+            $extraClaims,
+            $subject
         );
 
         $tokens = [
@@ -633,10 +680,12 @@ class TokenController
         // Generate refresh token if offline_access scope
         if (ScopeManager::requiresOfflineAccess($scopes)) {
             $refreshToken = $this->tokenService->createRefreshToken(
-                $userId,
+                $legacyUserId,
                 $this->client->id,
                 $scopes,
-                $this->client->refresh_token_lifetime
+                $this->client->refresh_token_lifetime,
+                null,
+                $subject
             );
             $tokens['refresh_token'] = $refreshToken['token'];
             $tokens['refresh_token_id'] = $refreshToken['token_id'];
@@ -646,22 +695,24 @@ class TokenController
         $this->tokenService->storeAccessToken(
             $accessToken['jti'],
             $this->client->id,
-            $userId,
+            $legacyUserId,
             $scopes,
             $accessToken['expires_at'],
-            $tokens['refresh_token_id'] ?? null
+            $tokens['refresh_token_id'] ?? null,
+            $subject
         );
 
         // Generate ID token if openid scope
         if (ScopeManager::requiresOpenId($scopes)) {
             $authTime = time();
             $tokens['id_token'] = $this->tokenService->createIdToken(
-                $userId,
+                $legacyUserId,
                 $this->client->client_id,
                 $scopes,
                 $nonce,
                 $authTime,
-                $accessToken['token']
+                $accessToken['token'],
+                $subject
             );
         }
 
@@ -704,7 +755,7 @@ class TokenController
      * If a module blocks the request, sends the OAuth2 error response
      * directly and returns false so the caller can stop processing.
      *
-     * @param int    $userId    User ID (or service user ID for client_credentials)
+     * @param TokenSubject $subject  Authenticated subject (account or user)
      * @param array  $scopes    Scopes that will be granted
      * @param string $grantType Grant type label ('authorization_code', 'refresh_token', 'client_credentials')
      * @return array{allowed:bool, extra_claims:array} 'allowed' is false when the
@@ -712,12 +763,16 @@ class TokenController
      *         'allowed' is true, 'extra_claims' carries the sanitized claims
      *         the hook injected for inclusion in the access token JWT.
      */
-    private function runPreTokenHook(int $userId, array $scopes, string $grantType): array
+    private function runPreTokenHook(TokenSubject $subject, array $scopes, string $grantType): array
     {
         $result = HookHelper::runBlockingHook(
             'smartmaker_oauth_pre_token',
             [
-                'user_id' => $userId,
+                'user_id' => $subject->isUser() ? $subject->getId() : 0,
+                'subject_type' => $subject->getType(),
+                'fk_societe_account' => $subject->isAccount() ? $subject->getId() : 0,
+                'fk_adherent' => $subject->isMember() ? $subject->getId() : 0,
+                'fk_soc' => $subject->getFkSoc(),
                 'client_id' => $this->client->client_id,
                 'client_pk' => $this->client->id,
                 'scopes' => $scopes,

@@ -32,6 +32,7 @@ namespace SmartAuth\Api\OAuth2;
 dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
 dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/api/JwtKeyHelper.php');
+dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
 
 use SmartAuth\Api\JwtKeyHelper;
 
@@ -72,8 +73,9 @@ class TokenService
      * @param array $extraClaims Additional claims to include in the JWT payload
      * @return array ['token' => JWT string, 'jti' => JWT ID, 'expires_in' => seconds]
      */
-    public function createAccessToken(int $userId, string $clientId, array $scopes, ?int $lifetime = null, array $extraClaims = []): array
+    public function createAccessToken(int $userId, string $clientId, array $scopes, ?int $lifetime = null, array $extraClaims = [], ?TokenSubject $subject = null): array
     {
+        $subject = $subject ?? TokenSubject::user($userId);
         $lifetime = $lifetime ?? OAuthConfig::getAccessTokenTTL();
         $now = time();
         $expiresAt = $now + $lifetime;
@@ -81,7 +83,7 @@ class TokenService
 
         $payload = [
             'iss' => OAuthConfig::getIssuer(),
-            'sub' => (string) $userId,
+            'sub' => $subject->toSub(),
             'aud' => $clientId,
             'exp' => $expiresAt,
             'iat' => $now,
@@ -226,8 +228,9 @@ class TokenService
      * @param int|null $parentTokenId Parent token ID (for rotation tracking)
      * @return array ['token' => plain text token, 'token_id' => database row ID]
      */
-    public function createRefreshToken(int $userId, int $clientRowId, array $scopes, ?int $lifetime = null, ?int $parentTokenId = null): array
+    public function createRefreshToken(int $userId, int $clientRowId, array $scopes, ?int $lifetime = null, ?int $parentTokenId = null, ?TokenSubject $subject = null): array
     {
+        $subject = $subject ?? TokenSubject::user($userId);
         $lifetime = $lifetime ?? OAuthConfig::getRefreshTokenTTL();
         $now = dol_now();
         $expiresAt = $now + $lifetime;
@@ -236,16 +239,19 @@ class TokenService
         $plainToken = \SmartAuthOAuthToken::generateRefreshToken();
         $tokenHash = \SmartAuthOAuthToken::hashToken($plainToken);
 
-        // Get user for creation
-        $user = new \User($this->db);
-        $user->fetch($userId);
+        // Author user for the create() audit (a user subject is its own author;
+        // an account subject has no llx_user, so a default author is used).
+        $user = $this->resolveAuthorUser($subject);
 
-        // Store in database
+        // Store in database, carrying the subject identity.
         $tokenRecord = new \SmartAuthOAuthToken($this->db);
         $tokenRecord->token_hash = $tokenHash;
         $tokenRecord->token_type = \SmartAuthOAuthToken::TOKEN_TYPE_REFRESH;
         $tokenRecord->fk_client = $clientRowId;
-        $tokenRecord->fk_user = $userId;
+        $tokenRecord->subject_type = $subject->getType();
+        $tokenRecord->fk_user = $subject->isUser() ? $subject->getId() : 0;
+        $tokenRecord->fk_societe_account = $subject->isAccount() ? $subject->getId() : null;
+        $tokenRecord->fk_adherent = $subject->isMember() ? $subject->getId() : null;
         $tokenRecord->setScopesArray($scopes);
         $tokenRecord->expires_at = $expiresAt;
         $tokenRecord->fk_parent = $parentTokenId;
@@ -379,12 +385,21 @@ class TokenService
             // Reflect the revoke locally so the rest of the codebase sees it
             $oldToken->revoked_at = dol_now();
 
+            // Carry the original subject onto the rotated refresh token.
+            $subject = TokenSubject::fromRecord(
+                $this->db,
+                $oldToken->subject_type,
+                (int) $oldToken->fk_user,
+                $oldToken->fk_societe_account !== null ? (int) $oldToken->fk_societe_account : null,
+                $oldToken->fk_adherent !== null ? (int) $oldToken->fk_adherent : null
+            );
             $newToken = $this->createRefreshToken(
-                $oldToken->fk_user,
+                (int) $oldToken->fk_user,
                 $oldToken->fk_client,
                 $scopes,
                 null,
-                $oldToken->id
+                $oldToken->id,
+                $subject
             );
 
             $this->db->commit();
@@ -416,19 +431,17 @@ class TokenService
         array $scopes,
         ?string $nonce,
         int $authTime,
-        ?string $accessTokenHash = null
+        ?string $accessTokenHash = null,
+        ?TokenSubject $subject = null
     ): string {
+        $subject = $subject ?? TokenSubject::user($userId);
         $now = time();
         $expiresAt = $now + OAuthConfig::getAccessTokenTTL();
-
-        // Load user for claims
-        $user = new \User($this->db);
-        $user->fetch($userId);
 
         // Build payload with standard OIDC claims
         $payload = [
             'iss' => OAuthConfig::getIssuer(),
-            'sub' => (string) $userId,
+            'sub' => $subject->toSub(),
             'aud' => $clientId,
             'exp' => $expiresAt,
             'iat' => $now,
@@ -445,14 +458,26 @@ class TokenService
             $payload['at_hash'] = $this->computeAtHash($accessTokenHash);
         }
 
-        // Add claims based on scopes
-        $payload = $this->addUserClaims($payload, $user, $scopes);
+        // Identity claims (sub/name/email) for the subject kind.
+        $payload = array_merge($payload, $subject->buildClaims($this->db, $scopes));
+
+        // Dolibarr group/role claims apply only to user subjects.
+        if ($subject->isUser()) {
+            $user = new \User($this->db);
+            if ($user->fetch($subject->getId()) > 0) {
+                $payload = $this->addGroupsAndRolesClaims($payload, $user, $scopes);
+            }
+        }
 
         // Allow external modules to mutate claims (id_token context)
         $clientPk = $this->resolveClientPk($clientId);
         $payload = HookHelper::runClaimsHook(
             [
-                'user_id' => $userId,
+                'user_id' => $subject->isUser() ? $subject->getId() : 0,
+                'subject_type' => $subject->getType(),
+                'fk_societe_account' => $subject->isAccount() ? $subject->getId() : 0,
+                'fk_adherent' => $subject->isMember() ? $subject->getId() : 0,
+                'fk_soc' => $subject->getFkSoc(),
                 'client_id' => $clientId,
                 'client_pk' => $clientPk,
                 'scopes' => $scopes,
@@ -502,16 +527,20 @@ class TokenService
         int $userId,
         array $scopes,
         int $expiresAt,
-        ?int $parentRefreshTokenId = null
+        ?int $parentRefreshTokenId = null,
+        ?TokenSubject $subject = null
     ): \SmartAuthOAuthToken {
-        $user = new \User($this->db);
-        $user->fetch($userId);
+        $subject = $subject ?? TokenSubject::user($userId);
+        $user = $this->resolveAuthorUser($subject);
 
         $tokenRecord = new \SmartAuthOAuthToken($this->db);
         $tokenRecord->token_hash = hash('sha256', $jti);
         $tokenRecord->token_type = \SmartAuthOAuthToken::TOKEN_TYPE_ACCESS;
         $tokenRecord->fk_client = $clientRowId;
-        $tokenRecord->fk_user = $userId;
+        $tokenRecord->subject_type = $subject->getType();
+        $tokenRecord->fk_user = $subject->isUser() ? $subject->getId() : 0;
+        $tokenRecord->fk_societe_account = $subject->isAccount() ? $subject->getId() : null;
+        $tokenRecord->fk_adherent = $subject->isMember() ? $subject->getId() : null;
         $tokenRecord->setScopesArray($scopes);
         $tokenRecord->jti = $jti;
         $tokenRecord->expires_at = $expiresAt;
@@ -930,39 +959,36 @@ class TokenService
     }
 
     /**
-     * Add user claims to ID token based on scopes
+     * Resolve a \User to act as the create() audit author for a token row.
+     * A user subject is its own author; an account subject has no llx_user, so
+     * SMARTAUTH_DEFAULT_USER (fallback rowid 1) is used purely as the author.
+     *
+     * @param TokenSubject $subject
+     * @return \User
+     */
+    private function resolveAuthorUser(TokenSubject $subject): \User
+    {
+        $user = new \User($this->db);
+        if ($subject->isUser()) {
+            $user->fetch($subject->getId());
+            return $user;
+        }
+        $defaultId = (int) getDolGlobalInt('SMARTAUTH_DEFAULT_USER', 1);
+        $user->fetch($defaultId > 0 ? $defaultId : 1);
+        return $user;
+    }
+
+    /**
+     * Add the Dolibarr-internal groups/roles claims (user subjects only). The
+     * identity claims (sub/name/email) come from TokenSubject::buildClaims.
      *
      * @param array $payload Current payload
      * @param \User $user Dolibarr user
      * @param array $scopes Granted scopes
      * @return array Updated payload with claims
      */
-    private function addUserClaims(array $payload, \User $user, array $scopes): array
+    private function addGroupsAndRolesClaims(array $payload, \User $user, array $scopes): array
     {
-        // Profile scope: name, family_name, given_name, updated_at
-        if (in_array('profile', $scopes, true)) {
-            $payload['name'] = trim($user->firstname . ' ' . $user->lastname);
-            if (!empty($user->lastname)) {
-                $payload['family_name'] = $user->lastname;
-            }
-            if (!empty($user->firstname)) {
-                $payload['given_name'] = $user->firstname;
-            }
-            if (!empty($user->datec)) {
-                $updatedAt = is_numeric($user->datec) ? $user->datec : strtotime($user->datec);
-                $payload['updated_at'] = $updatedAt;
-            }
-        }
-
-        // Email scope: email, email_verified
-        if (in_array('email', $scopes, true)) {
-            if (!empty($user->email)) {
-                $payload['email'] = $user->email;
-                // Dolibarr doesn't track email verification, assume true
-                $payload['email_verified'] = true;
-            }
-        }
-
         // Groups scope: groups
         if (in_array('groups', $scopes, true)) {
             $groups = $this->getUserGroups($user);

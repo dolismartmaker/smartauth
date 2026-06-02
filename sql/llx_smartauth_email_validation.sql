@@ -29,7 +29,17 @@
 CREATE TABLE llx_smartauth_email_validation (
     rowid           INTEGER AUTO_INCREMENT PRIMARY KEY NOT NULL,
     token_hash      VARCHAR(255) NOT NULL,
+    -- Subject identity (same model as the oauth tables). subject_type
+    -- discriminates which id column is meaningful:
+    --   'user'    -> fk_user holds llx_user.rowid (default).
+    --   'account' -> fk_societe_account holds llx_societe_account.rowid, fk_user = 0.
+    --   'member'  -> fk_adherent holds llx_adherent.rowid, fk_user = 0.
+    -- register / email_change tokens are always 'user'; password_reset tokens
+    -- can target any of the three.
     fk_user         INTEGER NOT NULL,
+    subject_type    VARCHAR(16) DEFAULT 'user' NOT NULL,
+    fk_societe_account INTEGER NULL DEFAULT NULL,
+    fk_adherent     INTEGER NULL DEFAULT NULL,
     purpose         VARCHAR(32) NOT NULL,
     expires_at      DATETIME NOT NULL,
     used_at         DATETIME NULL,

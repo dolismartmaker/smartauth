@@ -30,6 +30,10 @@
 
 namespace SmartAuth\Api;
 
+use SmartAuth\Api\Account\RegistrationGate;
+
+dol_include_once('/smartauth/api/Account/RegistrationGate.php');
+
 class LandingController
 {
     /**
@@ -60,7 +64,7 @@ class LandingController
         // Three actions, two of them gated by their own flag. Login is
         // always available - if it were not, the entire portal would be
         // pointless.
-        $registrationEnabled = (bool) getDolGlobalInt('SMARTAUTH_REGISTRATION_ENABLED', 1);
+        $registrationEnabled = RegistrationGate::isEnabled();
         $accountEnabled = (bool) getDolGlobalInt('SMARTAUTH_ACCOUNT_ENABLED', 1);
 
         $templateVars = [

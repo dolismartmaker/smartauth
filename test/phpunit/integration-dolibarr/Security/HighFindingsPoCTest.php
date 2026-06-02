@@ -364,7 +364,9 @@ class HighFindingsPoCTest extends DolibarrRealTestCase
      */
     public function testH4_LoginControllerMd5FallbackUsesHashEquals(): void
     {
-        $source = file_get_contents(dirname(__DIR__, 4) . '/api/OAuth2/LoginController.php');
+        // The OAuth web-login credential check (incl. the legacy MD5 fallback)
+        // moved from LoginController to SubjectAuthenticator (subject cutover).
+        $source = file_get_contents(dirname(__DIR__, 4) . '/api/OAuth2/SubjectAuthenticator.php');
 
         $this->assertStringContainsString(
             "hash_equals(\$storedHash, md5(\$password))",
@@ -396,7 +398,10 @@ class HighFindingsPoCTest extends DolibarrRealTestCase
     public function testH5_FailedAuthDoesDummyPasswordVerify(): void
     {
         $authSrc = file_get_contents(dirname(__DIR__, 4) . '/api/AuthController.php');
-        $oauthSrc = file_get_contents(dirname(__DIR__, 4) . '/api/OAuth2/LoginController.php');
+        // The OAuth web-login credential check moved from LoginController to
+        // SubjectAuthenticator (subject cutover); the dummy-hash guarantee
+        // lives there now.
+        $oauthSrc = file_get_contents(dirname(__DIR__, 4) . '/api/OAuth2/SubjectAuthenticator.php');
 
         // AuthController must call its dummy hash helper on the failure branch
         $this->assertStringContainsString(
@@ -421,7 +426,7 @@ class HighFindingsPoCTest extends DolibarrRealTestCase
         $this->assertMatchesRegularExpression(
             '/password_hash\(.*PASSWORD_BCRYPT.*\)/',
             $oauthSrc,
-            'H-5 fix: OAuth LoginController dummy hash must be a real bcrypt hash'
+            'H-5 fix: OAuth SubjectAuthenticator dummy hash must be a real bcrypt hash'
         );
 
         // Old broken dummy must be gone
@@ -430,6 +435,39 @@ class HighFindingsPoCTest extends DolibarrRealTestCase
             $oauthSrc,
             'H-5 fix: the syntactically invalid dummy bcrypt string must be removed'
         );
+    }
+
+    // =================================================================
+    //  Two-silo admission - SSO door refuses internal users (usr:)
+    //  (DECISION_2026-06-02_modele-identite-deux-silos.md)
+    // =================================================================
+
+    /**
+     * The OAuth2/SSO login door must admit only external subjects (acc:/mbr:).
+     * An internal Dolibarr user (usr:) belongs to the PWA/mobile JWT silo and
+     * must be refused at the SSO portal, closed by default (with a documented
+     * SMARTAUTH_SSO_ALLOW_INTERNAL_USER escape hatch).
+     */
+    public function testSsoDoorRefusesInternalUserSubject(): void
+    {
+        $src = file_get_contents(dirname(__DIR__, 4) . '/api/OAuth2/LoginController.php');
+
+        $this->assertStringContainsString(
+            '$subject->isUser()',
+            $src,
+            'SSO door must test for an internal user subject'
+        );
+        $this->assertStringContainsString(
+            "getDolGlobalInt('SMARTAUTH_SSO_ALLOW_INTERNAL_USER', 0)",
+            $src,
+            'SSO door must be closed by default to internal users (escape hatch defaults to 0)'
+        );
+        // The refusal must happen before the session is created.
+        $refusePos = strpos($src, "refused at SSO door");
+        $sessionPos = strpos($src, 'sessionManager->createSession');
+        $this->assertNotFalse($refusePos);
+        $this->assertNotFalse($sessionPos);
+        $this->assertLessThan($sessionPos, $refusePos, 'Internal-user refusal must precede session creation');
     }
 
     // =================================================================

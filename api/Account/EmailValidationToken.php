@@ -69,13 +69,17 @@ class EmailValidationToken
      *
      * Returns the row id of the inserted token, or -1 on database failure.
      *
-     * @param int         $fkUser    User row id (the account being validated)
+     * @param int         $fkUser    User row id (the account being validated;
+     *                               0 for an account/member subject)
      * @param string      $purpose   Token purpose (one of the PURPOSE_* constants)
      * @param string      $tokenHash sha256 of the plain token
      * @param int         $ttl       Token lifetime in seconds
      * @param string|null $ip        Source IP (audit, optional)
      * @param array|null  $context   Free-form payload (e.g. ['continue' => '...'])
      * @param int         $entity    Dolibarr entity id (default 1)
+     * @param string      $subjectType      'user' (default), 'account' or 'member'
+     * @param int|null    $fkSocieteAccount llx_societe_account.rowid when subject_type=account
+     * @param int|null    $fkAdherent       llx_adherent.rowid when subject_type=member
      * @return int Row id, or -1 on error
      */
     public function create(
@@ -85,15 +89,21 @@ class EmailValidationToken
         int $ttl,
         ?string $ip = null,
         ?array $context = null,
-        int $entity = 1
+        int $entity = 1,
+        string $subjectType = 'user',
+        ?int $fkSocieteAccount = null,
+        ?int $fkAdherent = null
     ): int {
         $now = dol_now();
         $expiresAt = $now + max(60, $ttl);
 
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . self::TABLE;
-        $sql .= " (token_hash, fk_user, purpose, expires_at, used_at, ip_address, context, datec, entity)";
+        $sql .= " (token_hash, fk_user, subject_type, fk_societe_account, fk_adherent, purpose, expires_at, used_at, ip_address, context, datec, entity)";
         $sql .= " VALUES ('" . $this->db->escape($tokenHash) . "',";
         $sql .= " " . ((int) $fkUser) . ",";
+        $sql .= " '" . $this->db->escape($subjectType) . "',";
+        $sql .= " " . ($fkSocieteAccount !== null ? ((int) $fkSocieteAccount) : "NULL") . ",";
+        $sql .= " " . ($fkAdherent !== null ? ((int) $fkAdherent) : "NULL") . ",";
         $sql .= " '" . $this->db->escape($purpose) . "',";
         $sql .= " '" . $this->db->idate($expiresAt) . "',";
         $sql .= " NULL,";
@@ -121,7 +131,7 @@ class EmailValidationToken
      */
     public function findActive(string $tokenHash, string $purpose, int $entity = 1): ?array
     {
-        $sql = "SELECT rowid, token_hash, fk_user, purpose, expires_at, used_at, context, entity";
+        $sql = "SELECT rowid, token_hash, fk_user, subject_type, fk_societe_account, fk_adherent, purpose, expires_at, used_at, context, entity";
         $sql .= " FROM " . MAIN_DB_PREFIX . self::TABLE;
         $sql .= " WHERE token_hash = '" . $this->db->escape($tokenHash) . "'";
         $sql .= " AND purpose = '" . $this->db->escape($purpose) . "'";
@@ -144,6 +154,9 @@ class EmailValidationToken
             'rowid' => (int) $obj->rowid,
             'token_hash' => (string) $obj->token_hash,
             'fk_user' => (int) $obj->fk_user,
+            'subject_type' => isset($obj->subject_type) ? (string) $obj->subject_type : 'user',
+            'fk_societe_account' => isset($obj->fk_societe_account) ? (int) $obj->fk_societe_account : null,
+            'fk_adherent' => isset($obj->fk_adherent) ? (int) $obj->fk_adherent : null,
             'purpose' => (string) $obj->purpose,
             'expires_at' => $obj->expires_at,
             'used_at' => $obj->used_at,

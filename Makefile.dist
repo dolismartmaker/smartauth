@@ -23,6 +23,7 @@ help:
 
 zip:
 	(php ./build/buildzip.php)
+	cp -f ChangeLog.md /tmp
 
 deploy-doc:
 	rsync -avLP docs/users/ $(DOC_HOST):$(DOC_PATH)/

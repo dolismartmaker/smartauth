@@ -180,7 +180,7 @@ class CriticalFindingsPoCTest extends OAuthTestCase
         // ---- Positive: a properly signed id_token is accepted ----
         $signed = $this->signJwtWithIdpKey([
             'iss' => OAuthConfig::getIssuer(),
-            'sub' => (string) $victim->id,
+            'sub' => 'usr:' . $victim->id,
             'aud' => $client->client_id,
             'exp' => time() + 3600,
             'iat' => time(),

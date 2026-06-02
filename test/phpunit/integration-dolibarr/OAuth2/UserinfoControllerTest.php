@@ -135,7 +135,7 @@ class UserinfoControllerTest extends OAuthTestCase
 
             $body = $e->getResponseBody();
             $this->assertArrayHasKey('sub', $body);
-            $this->assertEquals((string) $user->id, $body['sub']);
+            $this->assertEquals('usr:' . $user->id, $body['sub']);
         }
     }
 
