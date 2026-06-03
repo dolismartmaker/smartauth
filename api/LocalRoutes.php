@@ -28,6 +28,7 @@ use SmartAuth\Api\PwaController;
 use SmartAuth\Api\UploadController;
 use SmartAuth\Api\QrPairController;
 use SmartAuth\Api\ThirdpartyMediaController;
+use SmartAuth\Api\PushController;
 use SmartAuth\Api\Account\UserDeviceController;
 
 // ========== Auth Routes ========== //
@@ -195,3 +196,18 @@ Route::post('qr-pair/{pairing_id}/claim', QrPairController::class, 'claim');
 // Mobile polls the pairing until the PC user confirms; the first poll on a
 // confirmed row exchanges it for an access+refresh JWT pair (single-use).
 Route::post('qr-pair/{pairing_id}/poll', QrPairController::class, 'poll');
+
+// ========== Web Push Notifications ========== //
+
+// VAPID public key (public, read-only - needed before subscribing).
+Route::get('push/vapid-public-key', PushController::class, 'getVapidPublicKey', false);
+
+// Subscription management (JWT mobile -> subject-aware, silo A / usr: only).
+Route::post('push/subscribe', PushController::class, 'subscribe', true);
+Route::delete('push/unsubscribe', PushController::class, 'unsubscribe', true);
+Route::get('push/subscriptions', PushController::class, 'listSubscriptions', true);
+
+// NO 'push/send' route by default: sending is internal via PushSender
+// (triggers, cron, admin). A 'true' route would let any authenticated subject
+// push to any target. Only open a send route as 'oauth2' + scope
+// 'smartauth:push.send' for a confidential M2M client if ever required.

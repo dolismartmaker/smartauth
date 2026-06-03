@@ -1005,6 +1005,30 @@ class SmartAuth extends CommonObject
 			dol_syslog("SmartAuth::doScheduledJob upload_idempotency deleteStaleProcessing removed $idemStale rows");
 		}
 
+		// Web Push subscriptions: purge rows the push service marked dead.
+		// status=9 (expired: 404/410 or MAX_ERROR_COUNT consecutive failures)
+		// is always removed; rows with repeated errors whose last error is
+		// older than the retention window are removed too. Retention is
+		// configurable (default 7 days). Computed in PHP for SQLite/MySQL
+		// compatibility (no DATE_SUB()). affected_rows() takes the RESQL.
+		dol_include_once('/smartauth/api/PushSender.php');
+		$pushRetentionDays = (int) getDolGlobalString('SMARTAUTH_PUSH_SUBSCRIPTION_RETENTION_DAYS');
+		if ($pushRetentionDays <= 0) {
+			$pushRetentionDays = 7;
+		}
+		$pushCutoff = $this->db->idate(dol_now() - $pushRetentionDays * 24 * 3600);
+		$sql = "DELETE FROM ".MAIN_DB_PREFIX."smartauth_push_subscriptions";
+		$sql .= " WHERE status = 9";
+		$sql .= " OR (error_count >= ".((int) \SmartAuth\Api\PushSender::MAX_ERROR_COUNT);
+		$sql .= " AND date_last_error IS NOT NULL AND date_last_error < '".$this->db->escape($pushCutoff)."')";
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			$pushDeleted = (int) $this->db->affected_rows($resql);
+			dol_syslog("SmartAuth::doScheduledJob push_subscriptions cleanup deleted $pushDeleted rows");
+		} else {
+			dol_syslog("SmartAuth::doScheduledJob push_subscriptions cleanup error: ".$this->db->lasterror(), LOG_ERR);
+		}
+
 		$this->db->commit();
 		return $error;
 	}

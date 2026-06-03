@@ -168,14 +168,19 @@ class ValidationSchemasIntegrationTest extends DolibarrRealTestCase
         $this->assertArrayHasKey('index', $schemas);
         $this->assertArrayHasKey('ping', $schemas);
         $this->assertArrayHasKey('get_params', $schemas);
+        // Web Push schemas
+        $this->assertArrayHasKey('push_vapid_public_key', $schemas);
+        $this->assertArrayHasKey('push_subscribe', $schemas);
+        $this->assertArrayHasKey('push_unsubscribe', $schemas);
+        $this->assertArrayHasKey('push_subscriptions', $schemas);
     }
 
     public function testGetAllSchemasWithoutExternalModules(): void
     {
         $schemas = ValidationSchemas::getAllSchemas(false);
 
-        // Should only contain built-in schemas
-        $this->assertCount(7, $schemas);
+        // Should only contain built-in schemas (7 core + 4 Web Push).
+        $this->assertCount(11, $schemas);
     }
 
     // =========================================================================

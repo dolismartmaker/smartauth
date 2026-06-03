@@ -202,6 +202,55 @@ class ValidationSchemas
 				// No params
 			],
 
+			// GET /push/vapid-public-key (public, no body)
+			'push_vapid_public_key' => [
+				// No params
+			],
+
+			// POST /push/subscribe
+			// 'subscription' is the nested W3C object {endpoint, keys:{p256dh,auth}}.
+			// It MUST stay TYPE_RAW: the endpoint is a URL that can exceed 255
+			// chars and must reach the controller byte-for-byte (it is the UPSERT
+			// identity and the real delivery target). sanitizeString would
+			// strip_tags + truncate it. The controller validates it (HTTPS +
+			// base64url keys) and escapes via $db->escape downstream.
+			'push_subscribe' => [
+				'subscription' => [
+					'type' => InputSanitizer::TYPE_RAW,
+					'required' => true,
+				],
+				'label' => [
+					'type' => InputSanitizer::TYPE_STRING,
+					'maxLen' => 128,
+					'required' => false,
+				],
+				'device_id' => [
+					'type' => InputSanitizer::TYPE_INT,
+					'required' => false,
+					'min' => 0,
+				],
+			],
+
+			// DELETE /push/unsubscribe
+			// 'endpoint' is TYPE_RAW for the same reason as above (full URL,
+			// escaped downstream in the controller WHERE clause).
+			'push_unsubscribe' => [
+				'endpoint' => [
+					'type' => InputSanitizer::TYPE_RAW,
+					'required' => false,
+				],
+				'id' => [
+					'type' => InputSanitizer::TYPE_INT,
+					'required' => false,
+					'min' => 0,
+				],
+			],
+
+			// GET /push/subscriptions (no body)
+			'push_subscriptions' => [
+				// No params
+			],
+
 			// Generic GET params schema
 			'get_params' => [
 				'id' => [
@@ -267,6 +316,10 @@ class ValidationSchemas
 			'refresh' => 'refresh',
 			'index' => 'index',
 			'ping' => 'ping',
+			'push/vapid-public-key' => 'push_vapid_public_key',
+			'push/subscribe' => 'push_subscribe',
+			'push/unsubscribe' => 'push_unsubscribe',
+			'push/subscriptions' => 'push_subscriptions',
 		];
 
 		// Direct match

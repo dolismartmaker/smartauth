@@ -440,6 +440,14 @@ class modSmartauth extends DolibarrModules
 		// parsing this file. Same convention as PEPPOL_MODULE_VERSION etc.
 		dolibarr_set_const($this->db, 'SMARTAUTH_MODULE_VERSION', $this->version, 'chaine', 0, 'Active module version', $conf->entity);
 
+		// Generate the VAPID key pair for Web Push once, at install/enable time.
+		// ensureKeys() is re-entrant (no-op if keys already exist) and never
+		// aborts install if generation fails (it logs and leaves push
+		// unconfigured). Keys are global (entity 0). Voluntary rotation goes
+		// through the admin button (VapidKeyHelper::regenerateKeys).
+		dol_include_once('/smartauth/api/VapidKeyHelper.php');
+		\SmartAuth\Api\VapidKeyHelper::ensureKeys($this->db);
+
 		return $this->_init($sql, $options);
 	}
 
