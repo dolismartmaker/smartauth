@@ -1,5 +1,11 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.22 -- 20260603
+
+ - Add webpush subsystem for notificaitons on PWA
+ - Add sso portal
+ - Better log collect
+
 ## 2.0.21 -- 20260526
 
  - TokenService now scopes its JTI and access-token lookups by entity
