@@ -115,8 +115,88 @@ class VapidKeyHelper
     public static function generateKeys()
     {
         self::ensureWebPushLoaded();
-        // minishlink/web-push provides this method.
-        return VAPID::createVapidKeys();
+
+        try {
+            // minishlink/web-push provides this method. It relies on
+            // openssl_pkey_new(), which reads the host OPENSSL_CONF.
+            return VAPID::createVapidKeys();
+        } catch (\Throwable $e) {
+            // Some hosts ship a broken or templated openssl.cnf (unresolved
+            // placeholders, missing sections), which makes openssl_pkey_new()
+            // fail with no fault of ours. Retry once with a minimal,
+            // self-contained OpenSSL config so EC key generation does not
+            // depend on the host file.
+            dol_syslog('VapidKeyHelper::generateKeys default OpenSSL config failed, retrying with a minimal config: '.$e->getMessage(), LOG_WARNING);
+            return self::generateKeysWithFallbackOpensslConf();
+        }
+    }
+
+    /**
+     * Generate the VAPID key pair ourselves, passing an explicit minimal
+     * OpenSSL config to openssl_pkey_new(), bypassing a broken/templated host
+     * openssl.cnf.
+     *
+     * Note: OpenSSL 3.x caches its config on first use, so a process-wide
+     * putenv('OPENSSL_CONF=...') set late has no effect (and Dolibarr has
+     * already used OpenSSL by then). The reliable lever is the per-call
+     * 'config' argument, which web-token's VAPID::createVapidKeys() does not
+     * expose -- hence we build the P-256 key here and format it as VAPID
+     * expects: public = base64url(0x04 || X || Y), private = base64url(d).
+     *
+     * @return array{publicKey:string, privateKey:string}
+     */
+    private static function generateKeysWithFallbackOpensslConf()
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'satvapid_');
+        if ($tmp === false) {
+            throw new \RuntimeException('Cannot create a temporary OpenSSL config for VAPID key generation');
+        }
+        // Just enough for EC key generation; independent of the host file.
+        file_put_contents($tmp, "[req]\ndefault_bits = 2048\ndistinguished_name = req_dn\n[req_dn]\n");
+
+        try {
+            $res = openssl_pkey_new([
+                'curve_name'       => 'prime256v1',
+                'private_key_type' => OPENSSL_KEYTYPE_EC,
+                'config'           => $tmp,
+            ]);
+            if ($res === false) {
+                throw new \RuntimeException('openssl_pkey_new failed for EC P-256 with fallback config');
+            }
+            $details = openssl_pkey_get_details($res);
+            if ($details === false
+                || empty($details['ec']['x']) || empty($details['ec']['y']) || empty($details['ec']['d'])) {
+                throw new \RuntimeException('Unable to read EC key details for VAPID');
+            }
+
+            // P-256 field elements are 32 bytes; left-pad defensively.
+            $x = str_pad($details['ec']['x'], 32, "\x00", STR_PAD_LEFT);
+            $y = str_pad($details['ec']['y'], 32, "\x00", STR_PAD_LEFT);
+            $d = str_pad($details['ec']['d'], 32, "\x00", STR_PAD_LEFT);
+
+            // Drain any queued OpenSSL error so it does not surface elsewhere.
+            while (openssl_error_string() !== false) {
+                // no-op
+            }
+
+            return [
+                'publicKey'  => self::base64urlEncode("\x04".$x.$y),
+                'privateKey' => self::base64urlEncode($d),
+            ];
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    /**
+     * Base64url encode (no padding), as expected for VAPID keys.
+     *
+     * @param string $bin
+     * @return string
+     */
+    private static function base64urlEncode($bin)
+    {
+        return rtrim(strtr(base64_encode($bin), '+/', '-_'), '=');
     }
 
     /**
