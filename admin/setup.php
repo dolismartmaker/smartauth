@@ -349,6 +349,27 @@ if ($action == 'updateMask') {
 		$constforval = 'SMARTAUTH_'.strtoupper($tmpobjectkey).'_ADDON_PDF';
 		dolibarr_del_const($db, $constforval, $conf->entity);
 	}
+} elseif (($action == 'vapidgenerate' || $action == 'vapidregenerate') && !empty($user->admin)) {
+	// Generate (or rotate) the global VAPID key pair for Web Push. Never from a
+	// public route: this is an admin-only write. Regeneration invalidates all
+	// existing subscriptions. Wrapped so a broken OpenSSL config shows an error
+	// message instead of a fatal.
+	dol_include_once('/smartauth/api/VapidKeyHelper.php');
+	try {
+		if ($action == 'vapidregenerate') {
+			$vapidKeys = \SmartAuth\Api\VapidKeyHelper::regenerateKeys($db);
+		} else {
+			$vapidKeys = \SmartAuth\Api\VapidKeyHelper::ensureKeys($db);
+		}
+		if (!empty($vapidKeys['publicKey'])) {
+			setEventMessages($langs->trans("SmartauthVapidKeySaved"), null, 'mesgs');
+		} else {
+			setEventMessages($langs->trans("SmartauthVapidKeyGenerationFailed"), null, 'errors');
+		}
+	} catch (\Throwable $e) {
+		dol_syslog("SmartAuth setup VAPID key generation failed: ".$e->getMessage(), LOG_ERR);
+		setEventMessages($langs->trans("SmartauthVapidKeyGenerationFailed"), null, 'errors');
+	}
 }
 
 
@@ -651,6 +672,34 @@ foreach ($myTmpObjects as $myTmpObjectKey => $myTmpObjectArray) {
 		print '</table>';
 	}
 }
+
+// Web Push VAPID keys
+dol_include_once('/smartauth/api/VapidKeyHelper.php');
+$vapidPublicKey = \SmartAuth\Api\VapidKeyHelper::readPublicKey($db);
+
+print load_fiche_titre($langs->trans("SmartauthVapidKeys"), '', '');
+print '<table class="noborder centpercent">';
+print '<tr class="liste_titre"><td>'.$langs->trans("Parameter").'</td><td>'.$langs->trans("Value").'</td><td class="center"></td></tr>';
+print '<tr class="oddeven"><td>'.$langs->trans("SmartauthVapidPublicKey").'</td>';
+print '<td style="word-break:break-all;">';
+if (!empty($vapidPublicKey)) {
+	print '<span class="opacitymedium">'.dol_escape_htmltag($vapidPublicKey).'</span>';
+} else {
+	print '<span class="warning">'.$langs->trans("SmartauthVapidKeyNotConfigured").'</span>';
+}
+print '</td>';
+print '<td class="center">';
+if (!empty($user->admin)) {
+	if (empty($vapidPublicKey)) {
+		print '<a class="butAction" href="'.$_SERVER["PHP_SELF"].'?action=vapidgenerate&token='.newToken().'">'.$langs->trans("SmartauthVapidGenerate").'</a>';
+	} else {
+		print '<a class="butActionDelete" href="'.$_SERVER["PHP_SELF"].'?action=vapidregenerate&token='.newToken().'" onclick="return confirm(\''.dol_escape_js($langs->transnoentities("SmartauthVapidRegenerateConfirm")).'\');">'.$langs->trans("SmartauthVapidRegenerate").'</a>';
+	}
+}
+print '</td></tr>';
+print '</table>';
+print '<br>';
+$setupnotempty++;
 
 if (empty($setupnotempty)) {
 	print '<br>'.$langs->trans("NothingToSetup");
