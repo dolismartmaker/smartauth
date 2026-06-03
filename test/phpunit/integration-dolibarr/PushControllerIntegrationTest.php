@@ -215,6 +215,27 @@ class PushControllerIntegrationTest extends DolibarrRealTestCase
         $this->assertNotContains('https://x/errold', $kept);
     }
 
+    public function testGenerateKeysProducesValidVapidPair(): void
+    {
+        // Must yield a VAPID-valid P-256 pair even when the host openssl.cnf is
+        // broken (the fallback uses an explicit minimal OpenSSL config).
+        $keys = \SmartAuth\Api\VapidKeyHelper::generateKeys();
+        $this->assertNotEmpty($keys['publicKey']);
+        $this->assertNotEmpty($keys['privateKey']);
+        // base64url public key for an uncompressed P-256 point (65 bytes) -> 87 chars.
+        $this->assertSame(87, strlen($keys['publicKey']));
+        $this->assertSame(43, strlen($keys['privateKey']));
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_-]+$/', $keys['publicKey']);
+
+        // minishlink (the actual sender) must accept the pair.
+        $validated = \Minishlink\WebPush\VAPID::validate([
+            'subject' => 'mailto:test@example.com',
+            'publicKey' => $keys['publicKey'],
+            'privateKey' => $keys['privateKey'],
+        ]);
+        $this->assertIsArray($validated);
+    }
+
     public function testNoSendRouteExposedAndPushRoutesAreProtectedCorrectly(): void
     {
         // Register routes in isolation and inspect what LocalRoutes.php declares.
