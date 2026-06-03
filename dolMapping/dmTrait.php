@@ -992,7 +992,7 @@ trait dmTrait
 			$ret->gps = "";
 			$ret->src = "";
 		} else {
-			dol_syslog("SmartAuth dmHelper : file not found " . json_encode($ecm), \LOG_WARNING);
+			dol_syslog("SmartAuth dmHelper : no ECM metadata for img=" . $img . " element=" . $element . " parentid=" . $object->id . " entity=" . $object->entity . " (using defaults)", \LOG_DEBUG);
 		}
 
 		// dol_syslog("SmartAuth dmHelper : call for fieldFilterValueSmartPhoto, return " . json_encode($ret));
