@@ -829,8 +829,12 @@ trait dmTrait
 					$resql = $this->_db->query($sql);
 					if ($resql) {
 						$obj = $this->_db->fetch_object($resql);
-						return $obj->{$labelFieldName};
 						$this->_db->free($resql);
+						if (is_object($obj)) {
+							return $obj->{$labelFieldName};
+						}
+						// No row matched (orphan id referenced by the extrafield): fall back to the raw value
+						dol_syslog('SmartAuth exportExtrafieldData: no row for name=' . $name . ', objectid=' . $objectid . ' in table ' . $tableName . ', returning raw value', \LOG_WARNING);
 					} else {
 						dol_syslog('SmartAuth Error in request ' . $sql . ' ' . $this->_db->lasterror() . '. Check setup of extra parameters', \LOG_ERR);
 					}
