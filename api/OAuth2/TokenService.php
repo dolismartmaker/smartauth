@@ -103,6 +103,11 @@ class TokenService
             $payload = array_merge($extraClaims, $payload);
         }
 
+        // Token-type marker, set last so neither extraClaims nor a hook can
+        // override it. Consumers (validateAccessToken) reject a token whose
+        // 'tok' is present and not 'access', closing session/id-token reuse.
+        $payload['tok'] = 'access';
+
         // PERFS.md §3.3: enforce a hard cap on the JSON-encoded payload size
         // to keep the final base64url-encoded JWT well under the practical
         // 4 KB HTTP header / cookie limit. A misbehaving hook or runaway
@@ -184,6 +189,16 @@ class TokenService
         // Check issuer
         if (!isset($payload['iss']) || $payload['iss'] !== OAuthConfig::getIssuer()) {
             dol_syslog('SmartAuth TokenService: Invalid issuer', LOG_WARNING);
+            return null;
+        }
+
+        // Reject token-type confusion: a session cookie (tok=session) or an
+        // id_token (tok=id) must not be accepted as an access token. Access
+        // tokens minted before the 'tok' claim existed carry no 'tok' and are
+        // tolerated during the rollout window (they expire within the access
+        // token TTL).
+        if (isset($payload['tok']) && $payload['tok'] !== 'access') {
+            dol_syslog('SmartAuth TokenService: token type mismatch (tok=' . $payload['tok'] . ', expected access)', LOG_WARNING);
             return null;
         }
 
@@ -485,6 +500,11 @@ class TokenService
             ],
             $payload
         );
+
+        // Token-type marker, set last (after the claims hook) so it cannot be
+        // overridden. An id_token must not be accepted as an access token or
+        // a session cookie.
+        $payload['tok'] = 'id';
 
         return $this->encodeJwt($payload);
     }

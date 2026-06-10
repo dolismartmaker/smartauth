@@ -19,7 +19,21 @@
  */
 
 require_once __DIR__.'/api/tools.php';
-require_once __DIR__."/vendor/autoload.php";
+
+// vendor/ may be absent on a deployment where 'composer install' was not run.
+// Hard-requiring it would fatal every Dolibarr page that dol_include_once's
+// this autoload (e.g. modules consuming only the dm* mappers, which do not need
+// firebase/php-jwt or web-push). Degrade gracefully: log the cause, keep the
+// SmartAuth class autoloader below registered. Flows that truly need the vendor
+// libs (OAuth/JWT/push) will still fail, but with an explicit reason logged.
+$smartauthVendorAutoload = __DIR__."/vendor/autoload.php";
+if (is_file($smartauthVendorAutoload)) {
+    require_once $smartauthVendorAutoload;
+} elseif (function_exists('dol_syslog')) {
+    dol_syslog("SmartAuth autoload: vendor/autoload.php introuvable (" . $smartauthVendorAutoload . ") - dependances composer (JWT, web-push) indisponibles, lancer 'composer install --no-dev'. L'autoloader de classes SmartAuth reste actif.", LOG_WARNING);
+} else {
+    error_log("SmartAuth autoload: vendor/autoload.php introuvable (" . $smartauthVendorAutoload . "), lancer 'composer install --no-dev'.");
+}
 
 if (isset($_SERVER['HTTP_ORIGIN'])) {
     // Decide if the origin in $_SERVER['HTTP_ORIGIN'] is one

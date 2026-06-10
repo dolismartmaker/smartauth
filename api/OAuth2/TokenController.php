@@ -168,6 +168,32 @@ class TokenController
     }
 
     /**
+     * Revoke every token issued to the code's subject for this client, per
+     * RFC 6749 4.1.2 reuse handling. Subject-aware: an external subject
+     * (account/member) carries fk_user = 0, so a fk_user-keyed revocation
+     * would wrongly hit every external token of the client - route by type.
+     *
+     * @param \SmartAuthOAuthCode $authCode The reused authorization code
+     * @return void
+     */
+    private function revokeReusedCodeTokens(\SmartAuthOAuthCode $authCode): void
+    {
+        if ($authCode->subject_type === 'account') {
+            $revokeSubjectId = (int) $authCode->fk_societe_account;
+        } elseif ($authCode->subject_type === 'member') {
+            $revokeSubjectId = (int) $authCode->fk_adherent;
+        } else {
+            $revokeSubjectId = (int) $authCode->fk_user;
+        }
+        \SmartAuthOAuthToken::revokeAllForSubjectAndClient(
+            $this->db,
+            $authCode->subject_type,
+            $revokeSubjectId,
+            $authCode->fk_client
+        );
+    }
+
+    /**
      * Handle authorization_code grant
      *
      * @param array $params Request parameters
@@ -214,26 +240,12 @@ class TokenController
             return;
         }
 
-        // Check code has not been used (one-time use)
+        // Check code has not been used (one-time use). Fast path for the
+        // common sequential-replay case; the authoritative single-use gate is
+        // the atomic markAsUsed() below, which also catches concurrent races.
         if ($authCode->isUsed()) {
             dol_syslog('SmartAuth TokenController: Authorization code already used', LOG_WARNING);
-            // Per RFC 6749, if code is reused, revoke all tokens issued with it.
-            // Subject-aware: an external subject (account/member) carries
-            // fk_user = 0, so a fk_user-keyed revocation would wrongly hit every
-            // external token of this client.
-            if ($authCode->subject_type === 'account') {
-                $revokeSubjectId = (int) $authCode->fk_societe_account;
-            } elseif ($authCode->subject_type === 'member') {
-                $revokeSubjectId = (int) $authCode->fk_adherent;
-            } else {
-                $revokeSubjectId = (int) $authCode->fk_user;
-            }
-            \SmartAuthOAuthToken::revokeAllForSubjectAndClient(
-                $this->db,
-                $authCode->subject_type,
-                $revokeSubjectId,
-                $authCode->fk_client
-            );
+            $this->revokeReusedCodeTokens($authCode);
             $this->sendError('invalid_grant', 'Authorization code has already been used', 400);
             return;
         }
@@ -298,8 +310,16 @@ class TokenController
             return;
         }
 
-        // Mark code as used (only after hook approval, otherwise a blocked grant would burn the code)
-        $authCode->markAsUsed();
+        // Atomically consume the code (single-use), only after hook approval so
+        // a blocked grant does not burn the code. A return <= 0 means another
+        // concurrent request already claimed it: treat as reuse (RFC 6749
+        // 4.1.2), revoke the issued tokens and refuse rather than double-spend.
+        if ($authCode->markAsUsed() <= 0) {
+            dol_syslog('SmartAuth TokenController: Authorization code consumed concurrently - double-spend prevented', LOG_WARNING);
+            $this->revokeReusedCodeTokens($authCode);
+            $this->sendError('invalid_grant', 'Authorization code has already been used', 400);
+            return;
+        }
 
         // Generate tokens
         $tokens = $this->generateTokens($subject, $scopes, $authCode->nonce, $hookResult['extra_claims']);

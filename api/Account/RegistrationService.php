@@ -658,26 +658,18 @@ class RegistrationService
     }
 
     /**
-     * Password policy: at least 12 chars, mixing upper/lower/digit.
+     * Password policy. Delegates to the shared PasswordPolicy, which honours
+     * the rules configured in Dolibarr (Home > Setup > Security); when none is
+     * configured it falls back to the historical baseline (at least 12 chars
+     * mixing upper/lower/digit). Single source of truth shared with the reset
+     * and change-password flows.
      *
      * @param string $password
      * @return bool
      */
     public static function isPasswordStrongEnough(string $password): bool
     {
-        if (strlen($password) < 12) {
-            return false;
-        }
-        if (!preg_match('/[A-Z]/', $password)) {
-            return false;
-        }
-        if (!preg_match('/[a-z]/', $password)) {
-            return false;
-        }
-        if (!preg_match('/[0-9]/', $password)) {
-            return false;
-        }
-        return true;
+        return \SmartAuth\Api\PasswordPolicy::validate($password)['valid'];
     }
 
     /**

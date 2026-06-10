@@ -2002,18 +2002,27 @@ class AuthController
 		$salt2 = self::_getSalt2();
 		$key = $token_data->salt . $salt2 . JwtKeyHelper::getKey();
 
-		// Debug logging for signature verification
-		$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+		// Debug logging for signature verification. Keep it to a single concise
+		// line on the happy path: salt2 is derived symmetrically (here and at
+		// emission) from the X-DEVICEID header, so on a successful decode there
+		// is nothing to compare. The previous "expected salt2 from UA=..." line
+		// printed on EVERY request and read like a mismatch even when the token
+		// validated fine -- pure noise that derailed diagnosis. The UA-vs-used
+		// salt2 comparison only carries signal when the decode actually fails,
+		// so it now lives in the SignatureInvalidException branch below.
 		$httpDeviceId = $_SERVER['HTTP_X_DEVICEID'] ?? '';
-		SmartAuthLogger::debug("smartauth : _decodeJWT DEBUG: token_id=$token_id, salt=" . substr($token_data->salt, 0, 8) . "..., salt2=$salt2");
-		SmartAuthLogger::debug("smartauth : _decodeJWT DEBUG: HTTP_X_DEVICEID=" . ($httpDeviceId ?: '(empty)') . ", User-Agent=" . substr($userAgent, 0, 50) . "...");
-		SmartAuthLogger::debug("smartauth : _decodeJWT DEBUG: expected salt2 from UA=" . substr(hash('sha256', $userAgent), 0, 16));
+		SmartAuthLogger::debug("smartauth : _decodeJWT DEBUG: token_id=$token_id, salt=" . substr($token_data->salt, 0, 8) . "..., salt2=$salt2, X-DEVICEID=" . ($httpDeviceId ?: '(empty)'));
 
 		$decoded = null;
 		try {
 			$decoded = JWT::decode($jwt, new Key($key, 'HS256'));
 		} catch (SignatureInvalidException $e) {
-			dol_syslog("smartauth : jwt signature error : reset token please (salt2 used: $salt2)", LOG_ERR);
+			// Signature mismatch: surface the salt2 actually used vs the one the
+			// User-Agent would have produced, so a real X-DEVICEID/UA divergence
+			// (token emitted with one salt2 source, verified with another) is
+			// diagnosable. Logged here only, never on the happy path.
+			$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+			dol_syslog("smartauth : jwt signature error : reset token please (salt2 used: $salt2, salt2 from UA: " . substr(hash('sha256', $userAgent), 0, 16) . ", X-DEVICEID: " . ($httpDeviceId ?: '(empty)') . ")", LOG_ERR);
 			json_reply('Invalid token signature, please login', 401);
 		} catch (Exception $e) {
 			dol_syslog("smartauth : jwt error : " . $e->getMessage(), LOG_ERR);

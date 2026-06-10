@@ -722,58 +722,16 @@ class PasswordResetController
     }
 
     /**
-     * Validate password strength
+     * Validate password strength against the policy configured in Dolibarr
+     * (Home > Setup > Security). Delegates to the shared PasswordPolicy so the
+     * reset path enforces exactly the same rules as registration, and honours
+     * the admin-defined constraints instead of a weaker module-local default.
      *
      * @param string $password Password to validate
      * @return array ['valid' => bool, 'message' => string]
      */
     private function validatePasswordStrength(string $password): array
     {
-        // Minimum length
-        $minLength = getDolGlobalInt('USER_PASSWORD_MIN_LENGTH', 8);
-        if (strlen($password) < $minLength) {
-            return [
-                'valid' => false,
-                'message' => "Password must be at least $minLength characters long"
-            ];
-        }
-
-        // Check for required character types if configured
-        if (getDolGlobalInt('USER_PASSWORD_NEED_LETTER', 0) && !preg_match('/[a-zA-Z]/', $password)) {
-            return [
-                'valid' => false,
-                'message' => 'Password must contain at least one letter'
-            ];
-        }
-
-        if (getDolGlobalInt('USER_PASSWORD_NEED_DIGIT', 0) && !preg_match('/[0-9]/', $password)) {
-            return [
-                'valid' => false,
-                'message' => 'Password must contain at least one digit'
-            ];
-        }
-
-        if (getDolGlobalInt('USER_PASSWORD_NEED_SPECIAL', 0) && !preg_match('/[^a-zA-Z0-9]/', $password)) {
-            return [
-                'valid' => false,
-                'message' => 'Password must contain at least one special character'
-            ];
-        }
-
-        if (getDolGlobalInt('USER_PASSWORD_NEED_UPPERCASE', 0) && !preg_match('/[A-Z]/', $password)) {
-            return [
-                'valid' => false,
-                'message' => 'Password must contain at least one uppercase letter'
-            ];
-        }
-
-        if (getDolGlobalInt('USER_PASSWORD_NEED_LOWERCASE', 0) && !preg_match('/[a-z]/', $password)) {
-            return [
-                'valid' => false,
-                'message' => 'Password must contain at least one lowercase letter'
-            ];
-        }
-
-        return ['valid' => true, 'message' => ''];
+        return PasswordPolicy::validate($password);
     }
 }

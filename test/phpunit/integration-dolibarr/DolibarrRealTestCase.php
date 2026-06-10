@@ -68,6 +68,19 @@ abstract class DolibarrRealTestCase extends TestCase
             $user->fetch(1);
         }
 
+        // Mirror production: RouteController loads the user's rights via
+        // getrights() before any controller runs (RouteController.php:713/830).
+        $user->getrights('', 1);
+
+        // The in-RAM test schema does not seed llx_rights for the business
+        // modules, and they are not flagged enabled, so hasRight() returns 0
+        // even for the admin. Permission-gated paths (eg sync push, gated by
+        // SyncController::userHasSyncRight) would then wrongly fail. Enable the
+        // modules and grant the admin the rights those paths check, mirroring a
+        // real instance where these modules are active. Keep in sync with the
+        // 'rights' keys of SyncController::$syncableObjects.
+        $this->grantBusinessModuleRights($user);
+
         $this->testUser = $user;
 
         // Clean SmartAuth tables before each test
@@ -75,6 +88,57 @@ abstract class DolibarrRealTestCase extends TestCase
 
         // Create a default test device for FK constraints (fk_device_id is NOT NULL in many tables)
         $this->testDevice = $this->createTestDevice();
+    }
+
+    /**
+     * Enable the business modules and grant the given (admin) user the
+     * Dolibarr rights that the sync controller gates writes on. Test-only:
+     * the in-RAM schema seeds neither the module-enabled flags nor llx_rights.
+     *
+     * Rights paths follow Dolibarr conventions: product permissions live under
+     * the 'produit' rights class, contacts under the societe->contact subperm.
+     *
+     * @param User $user User to grant (modified in place)
+     * @return void
+     */
+    protected function grantBusinessModuleRights(User $user): void
+    {
+        global $conf;
+
+        if (!isset($conf->modules) || !is_array($conf->modules)) {
+            $conf->modules = [];
+        }
+        // isModEnabled('produit') maps to module 'product'; 'category' maps to
+        // 'categorie'. Enable under the keys hasRight()/isModEnabled() read.
+        foreach (['societe', 'product', 'categorie'] as $mod) {
+            $conf->modules[$mod] = 1;
+        }
+
+        if (!isset($user->rights) || !is_object($user->rights)) {
+            $user->rights = new \stdClass();
+        }
+
+        $grants = [
+            'societe'   => ['lire', 'creer', 'supprimer'],
+            'produit'   => ['lire', 'creer', 'supprimer'],
+            'categorie' => ['lire', 'creer', 'supprimer'],
+        ];
+        foreach ($grants as $path => $perms) {
+            if (!isset($user->rights->$path) || !is_object($user->rights->$path)) {
+                $user->rights->$path = new \stdClass();
+            }
+            foreach ($perms as $perm) {
+                $user->rights->$path->$perm = 1;
+            }
+        }
+
+        // Contacts use the societe->contact sub-permission.
+        if (!isset($user->rights->societe->contact) || !is_object($user->rights->societe->contact)) {
+            $user->rights->societe->contact = new \stdClass();
+        }
+        foreach (['lire', 'creer', 'supprimer'] as $perm) {
+            $user->rights->societe->contact->$perm = 1;
+        }
     }
 
     /**

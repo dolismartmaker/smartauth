@@ -324,9 +324,15 @@ class SmartAuthOAuthCode extends CommonObject
     }
 
     /**
-     * Mark code as used
+     * Atomically mark the code as used (single-use claim).
      *
-     * @return int <0 if KO, >0 if OK
+     * The UPDATE is guarded by "used_at IS NULL" so only the first caller to
+     * flip the flag wins. Concurrent token requests presenting the same code
+     * race here: the loser gets affected_rows = 0 and MUST be treated as a
+     * reuse (RFC 6749 4.1.2), not issued a second set of tokens.
+     *
+     * @return int <0 on SQL error, 1 if this call claimed the code, 0 if it
+     *             was already used (race lost / replay)
      */
     public function markAsUsed()
     {
@@ -335,14 +341,16 @@ class SmartAuthOAuthCode extends CommonObject
         $sql = "UPDATE " . MAIN_DB_PREFIX . $this->table_element;
         $sql .= " SET used_at = '" . $this->db->idate($this->used_at) . "'";
         $sql .= " WHERE rowid = " . ((int) $this->id);
+        $sql .= " AND used_at IS NULL";
 
         $resql = $this->db->query($sql);
-        if ($resql) {
-            return 1;
+        if (!$resql) {
+            $this->error = $this->db->lasterror();
+            return -1;
         }
 
-        $this->error = $this->db->lasterror();
-        return -1;
+        // >0 only when this very call flipped the flag.
+        return (int) $this->db->affected_rows($resql);
     }
 
     /**

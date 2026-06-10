@@ -73,6 +73,15 @@ class SyncController
                 'module' => 'societe',
                 'priority' => 'high',
                 'default_enabled' => true,
+                // Dolibarr permission required per write action. Arguments are
+                // forwarded as-is to User::hasRight($module, $perm1[, $perm2]).
+                // push() refuses any action whose right is not granted (CR: BFLA fix).
+                'rights' => [
+                    'read'   => ['societe', 'lire'],
+                    'create' => ['societe', 'creer'],
+                    'update' => ['societe', 'creer'],
+                    'delete' => ['societe', 'supprimer'],
+                ],
                 'allowed_fields' => [
                     'name', 'name_alias',
                     'email', 'phone', 'fax', 'url',
@@ -99,6 +108,13 @@ class SyncController
                 'module' => 'societe',
                 'priority' => 'high',
                 'default_enabled' => true,
+                // Contacts use the societe->contact sub-permission.
+                'rights' => [
+                    'read'   => ['societe', 'contact', 'lire'],
+                    'create' => ['societe', 'contact', 'creer'],
+                    'update' => ['societe', 'contact', 'creer'],
+                    'delete' => ['societe', 'contact', 'supprimer'],
+                ],
                 'allowed_fields' => [
                     'lastname', 'firstname', 'civility_id',
                     'address', 'zip', 'town', 'country_id',
@@ -118,6 +134,13 @@ class SyncController
                 'module' => 'product',
                 'priority' => 'medium',
                 'default_enabled' => true,
+                // Product permissions live under the 'produit' rights class.
+                'rights' => [
+                    'read'   => ['produit', 'lire'],
+                    'create' => ['produit', 'creer'],
+                    'update' => ['produit', 'creer'],
+                    'delete' => ['produit', 'supprimer'],
+                ],
                 'allowed_fields' => [
                     'ref', 'label', 'description',
                     'status', 'status_buy', 'status_batch',
@@ -143,6 +166,12 @@ class SyncController
                 'module' => 'categorie',
                 'priority' => 'low',
                 'default_enabled' => true,
+                'rights' => [
+                    'read'   => ['categorie', 'lire'],
+                    'create' => ['categorie', 'creer'],
+                    'update' => ['categorie', 'creer'],
+                    'delete' => ['categorie', 'supprimer'],
+                ],
                 'allowed_fields' => [
                     'label', 'description', 'color', 'type', 'fk_parent',
                 ],
@@ -468,6 +497,13 @@ class SyncController
             try {
                 switch ($action) {
                     case 'create':
+                        if (!$this->userHasSyncRight($config, 'create', $user)) {
+                            $result['errors'][] = [
+                                'temp_id' => $temp_id,
+                                'error' => 'Permission denied',
+                            ];
+                            break;
+                        }
                         $createResult = $this->processCreate($config, $data, $user);
                         if ($createResult['success']) {
                             $result['success'][] = $createResult['id'];
@@ -483,6 +519,13 @@ class SyncController
                         break;
 
                     case 'update':
+                        if (!$this->userHasSyncRight($config, 'update', $user)) {
+                            $result['errors'][] = [
+                                'id' => $id,
+                                'error' => 'Permission denied',
+                            ];
+                            break;
+                        }
                         $updateResult = $this->processUpdate($config, $id, $data, $base_tms, $client->rowid, $user);
                         if ($updateResult['success']) {
                             $result['success'][] = $id;
@@ -497,6 +540,13 @@ class SyncController
                         break;
 
                     case 'delete':
+                        if (!$this->userHasSyncRight($config, 'delete', $user)) {
+                            $result['errors'][] = [
+                                'id' => $id,
+                                'error' => 'Permission denied',
+                            ];
+                            break;
+                        }
                         $deleteResult = $this->processDelete($config, $id, $base_tms, $user);
                         if ($deleteResult['success']) {
                             $result['success'][] = $id;
@@ -1132,6 +1182,22 @@ class SyncController
     ];
 
     /**
+     * Subset of $fkValidationMap target tables that carry an `entity` column,
+     * mapped to the element code used by getEntity() for sharing resolution.
+     * Only these get an entity filter in validateForeignKeyExists(); the
+     * dictionary tables (c_country, c_departements) are entity-agnostic.
+     *
+     * @var array<string,string>
+     */
+    private static $fkEntityElementMap = [
+        'societe'  => 'societe',
+        'product'  => 'product',
+        'projet'   => 'project',
+        'categorie' => 'category',
+        'entrepot' => 'stock',
+    ];
+
+    /**
      * Apply payload data to a Dolibarr object.
      *
      * Two paths:
@@ -1329,6 +1395,13 @@ class SyncController
         }
         $sql = 'SELECT rowid FROM ' . MAIN_DB_PREFIX . $table
             . ' WHERE rowid = ' . (int) $id;
+        // Entity-scoped FK targets must belong to an accessible entity, so a
+        // cross-entity row cannot be referenced (eg attaching a contact to a
+        // societe of another entity). Dictionary tables (c_*) have no entity
+        // column and are left unfiltered.
+        if (isset(self::$fkEntityElementMap[$table])) {
+            $sql .= ' AND entity IN (' . getEntity(self::$fkEntityElementMap[$table]) . ')';
+        }
         $resql = $this->db->query($sql);
         if (!$resql) {
             dol_syslog(
@@ -1342,6 +1415,61 @@ class SyncController
         $count = $this->db->num_rows($resql);
         $this->db->free($resql);
         return $count > 0;
+    }
+
+    /**
+     * Check that the authenticated Dolibarr user holds the permission
+     * required to perform $action ('create'|'update'|'delete'|'read') on
+     * the given syncable object.
+     *
+     * Fail-closed: an object whose config declares no 'rights' mapping for
+     * the action is refused. Hook-registered syncable objects must therefore
+     * publish a 'rights' key to allow writes.
+     *
+     * @param array  $config Syncable object config
+     * @param string $action Logical action
+     * @param \User  $user   Authenticated user
+     * @return bool          True only when the right is granted
+     */
+    private function userHasSyncRight($config, $action, $user)
+    {
+        $type = $config['object_type'] ?? '?';
+        if (empty($config['rights'][$action]) || !is_array($config['rights'][$action])) {
+            dol_syslog(
+                'SmartAuth SyncController: no ' . $action . ' right mapping for '
+                . 'object_type ' . $type . ' - refusing write (fail-closed)',
+                LOG_WARNING
+            );
+            return false;
+        }
+
+        $args = $config['rights'][$action];
+        $granted = (bool) call_user_func_array([$user, 'hasRight'], $args);
+        if (!$granted) {
+            dol_syslog(
+                'SmartAuth SyncController: user ' . ((int) $user->id)
+                . ' lacks right ' . implode('->', $args) . ' for ' . $action
+                . ' on ' . $type . ' - denied',
+                LOG_WARNING
+            );
+        }
+        return $granted;
+    }
+
+    /**
+     * Whether the given entity id is within the set the current user may
+     * access for $element (current entity + shared entities). getEntity()
+     * is safe-by-default: an unknown element falls back to the current
+     * entity only, never broader.
+     *
+     * @param int|string $entity  Entity id carried by the target row
+     * @param string     $element Dolibarr element code (eg 'societe')
+     * @return bool               True when the row is in scope
+     */
+    private function isEntityAllowed($entity, $element)
+    {
+        $allowed = array_map('intval', explode(',', getEntity($element, 1)));
+        return in_array((int) $entity, $allowed, true);
     }
 
     /**
@@ -1388,6 +1516,23 @@ class SyncController
 
         $server_obj = $this->db->fetch_object($resql);
         $server_tms = $server_obj->tms;
+
+        // Entity isolation: refuse to touch (or even leak via a conflict
+        // record) a row that belongs to another entity than the token's.
+        // Checked before detectRealConflict/createConflictRecord so a
+        // cross-entity rowid never exfiltrates its full row.
+        if (isset($server_obj->entity)
+            && !$this->isEntityAllowed($server_obj->entity, $config['element'])) {
+            $this->db->rollback();
+            dol_syslog(
+                'SmartAuth SyncController::processUpdate: cross-entity write '
+                . 'refused for ' . ($config['object_type'] ?? '?') . ' rowid=' . (int) $id
+                . ' (row entity ' . (int) $server_obj->entity . ')',
+                LOG_WARNING
+            );
+            // Generic message: do not reveal the row exists in another entity.
+            return ['success' => false, 'error' => 'Object not found'];
+        }
 
         // Conflict detection: compare tms
         if ($base_tms && $server_tms != $base_tms) {
@@ -1509,6 +1654,18 @@ class SyncController
 
         $result = $object->fetch($id);
         if ($result <= 0) {
+            return ['success' => false, 'error' => 'Object not found'];
+        }
+
+        // Entity isolation: refuse deleting a row from another entity.
+        if (isset($object->entity)
+            && !$this->isEntityAllowed($object->entity, $config['element'])) {
+            dol_syslog(
+                'SmartAuth SyncController::processDelete: cross-entity delete '
+                . 'refused for ' . ($config['object_type'] ?? '?') . ' rowid=' . (int) $id
+                . ' (row entity ' . (int) $object->entity . ')',
+                LOG_WARNING
+            );
             return ['success' => false, 'error' => 'Object not found'];
         }
 
