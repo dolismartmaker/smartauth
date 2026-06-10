@@ -123,6 +123,17 @@ class SessionManager
                 return null;
             }
 
+            // Reject token-type confusion: only a cookie minted by
+            // createSession() (tok=session) is a valid session. An access
+            // token or id_token (same key, same iss/sub shape) must never be
+            // accepted here. Strict on purpose - legacy cookies without the
+            // claim are invalidated and the user simply re-authenticates.
+            if (($payload['tok'] ?? null) !== 'session') {
+                dol_syslog('SmartAuth SessionManager: cookie is not a session token (tok=' . ($payload['tok'] ?? 'none') . '), forcing re-login', LOG_WARNING);
+                $this->clearSession();
+                return null;
+            }
+
             // Parse and validate the subject (prefixed sub claim).
             $sub = (string) ($payload['sub'] ?? '');
             try {
@@ -169,6 +180,12 @@ class SessionManager
             'iat' => $now,
             'exp' => $now + $ttl,
             'auth_time' => $now,
+            // Token-type marker. The session cookie, access tokens and
+            // id_tokens are all RS256-signed with the same key and share the
+            // iss/sub/exp shape; without an explicit type a leaked access or
+            // id_token could be replayed as a session cookie. validateSession()
+            // requires this to equal 'session'.
+            'tok' => 'session',
         ];
 
         $jwt = $this->encodeJwt($payload);
@@ -188,7 +205,11 @@ class SessionManager
             'samesite' => 'Lax',
         ];
 
-        setcookie($cookieName, $jwt, $cookieOptions);
+        // Guard against "headers already sent": if any output started, setcookie
+        // would only emit a warning and fail anyway (cf api/tools.php).
+        if (!headers_sent()) {
+            setcookie($cookieName, $jwt, $cookieOptions);
+        }
 
         // Cache the payload
         $this->cachedPayload = $payload;
@@ -211,14 +232,19 @@ class SessionManager
         // whether the session was originally created in HTTPS / __Host- mode.
         foreach ([self::COOKIE_NAME_HOST, self::COOKIE_NAME_PLAIN] as $name) {
             $domain = $name === self::COOKIE_NAME_HOST ? '' : $this->getCookieDomain();
-            setcookie($name, '', [
-                'expires' => time() - 3600,
-                'path' => '/',
-                'domain' => $domain,
-                'secure' => $secure,
-                'httponly' => true,
-                'samesite' => 'Lax',
-            ]);
+            // Guard against "headers already sent" (cf api/tools.php): the
+            // expiry of the cookie is best-effort, the request-scope unset
+            // below is what matters within a running request.
+            if (!headers_sent()) {
+                setcookie($name, '', [
+                    'expires' => time() - 3600,
+                    'path' => '/',
+                    'domain' => $domain,
+                    'secure' => $secure,
+                    'httponly' => true,
+                    'samesite' => 'Lax',
+                ]);
+            }
         }
 
         // Clear cached payload

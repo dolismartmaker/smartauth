@@ -794,4 +794,326 @@ class CriticalFindingsPoCTest extends OAuthTestCase
             'CR-6 fix: pass* must be matched by the denylist regex'
         );
     }
+
+    // =================================================================
+    //  CR-7 - SyncController::push performed no Dolibarr permission check
+    //         (BFLA: any authenticated subject could write any object)
+    // =================================================================
+
+    /**
+     * Build a syncableObjects config by type via reflection.
+     */
+    private function syncConfig(string $type): array
+    {
+        $controller = new SyncController();
+        $reflection = new \ReflectionClass($controller);
+        $prop = $reflection->getProperty('syncableObjects');
+        $prop->setAccessible(true);
+        return $prop->getValue($controller)[$type];
+    }
+
+    /**
+     * CR-7a: userHasSyncRight() must deny when the user lacks the Dolibarr
+     * right, grant when present, and FAIL CLOSED when the object config
+     * declares no 'rights' mapping at all.
+     */
+    public function testCR7a_SyncRightGateDeniesGrantsAndFailsClosed(): void
+    {
+        global $db, $user;
+
+        $controller = new SyncController();
+        $config = $this->syncConfig('thirdparty');
+
+        // Granted: the admin (rights provisioned by the test base) passes.
+        $this->assertTrue(
+            $this->invokePrivate($controller, 'userHasSyncRight', [$config, 'create', $user]),
+            'CR-7 fix: a user holding societe->creer must be allowed to create'
+        );
+
+        // Denied: a user without the societe right is refused even though the
+        // societe module is enabled.
+        $nopriv = new \User($db);
+        $nopriv->id = 424242;
+        $nopriv->rights = new \stdClass(); // no societe right at all
+        $this->assertFalse(
+            $this->invokePrivate($controller, 'userHasSyncRight', [$config, 'create', $nopriv]),
+            'CR-7 fix: a user without societe->creer must be denied'
+        );
+
+        // Fail-closed: a hook-registered object without a 'rights' key is
+        // refused rather than allowed by default.
+        $configNoRights = $config;
+        unset($configNoRights['rights']);
+        $this->assertFalse(
+            $this->invokePrivate($controller, 'userHasSyncRight', [$configNoRights, 'create', $user]),
+            'CR-7 fix: missing rights mapping must fail closed'
+        );
+    }
+
+    /**
+     * CR-7b: end-to-end - push() must route a create whose right is missing
+     * into errors (Permission denied) and must NOT create the row, proving the
+     * dispatcher is actually wired to the gate.
+     */
+    public function testCR7b_PushCreateRefusedWithoutRightWritesNoRow(): void
+    {
+        global $db, $user;
+
+        $user = $this->testUser;
+
+        // Register a sync client owned by the current user. register()
+        // validates client_uuid through sanitizeUUID(), so it must be a real
+        // UUID v4 (mt_rand is fine: test-only, no security property here).
+        $device = $this->createTestDevice(['uuid' => 'cr7-dev-' . uniqid()]);
+        $clientUuid = sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
+        $controller = new SyncController();
+        $reg = $controller->register([
+            'user_id'       => $user->id,
+            'client_uuid'   => $clientUuid,
+            'jwt_device_id' => $device->id,
+            'app_version'   => '1.0.0',
+        ]);
+        $this->assertEquals(200, $reg[1], 'sync client registration failed');
+
+        // Temporarily strip the societe right to simulate a user that may sync
+        // but holds no thirdparty create permission.
+        $savedSociete = $user->rights->societe ?? null;
+        $user->rights->societe = new \stdClass();
+
+        $name = 'CR7-should-not-exist-' . uniqid();
+        try {
+            $result = $controller->push([
+                'user_id'     => $user->id,
+                'client_uuid' => $clientUuid,
+                'object_type' => 'thirdparty',
+                'changes'     => [[
+                    'action'  => 'create',
+                    'temp_id' => 'tmp-cr7',
+                    'data'    => ['name' => $name, 'client' => 1],
+                ]],
+            ]);
+        } finally {
+            $user->rights->societe = $savedSociete; // restore for later tests
+        }
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertEmpty($result[0]['success'], 'CR-7 fix: create must not succeed without right');
+        $this->assertNotEmpty($result[0]['errors'], 'CR-7 fix: refusal must be reported as an error');
+        $this->assertSame('Permission denied', $result[0]['errors'][0]['error']);
+
+        $resql = $db->query(
+            "SELECT COUNT(*) AS cnt FROM " . MAIN_DB_PREFIX . "societe WHERE nom = '" . $db->escape($name) . "'"
+        );
+        $row = $db->fetch_object($resql);
+        $this->assertSame(0, (int) $row->cnt, 'CR-7 fix: no thirdparty row may be written when denied');
+    }
+
+    // =================================================================
+    //  CR-8 - SyncController update/delete ignored the entity, allowing
+    //         cross-entity IDOR (and a full-row leak via conflict records)
+    // =================================================================
+
+    /**
+     * CR-8a: processUpdate must refuse a row from another entity (generic
+     * "Object not found"), and must not mutate it.
+     */
+    public function testCR8a_ProcessUpdateRefusesCrossEntityRow(): void
+    {
+        global $db, $user;
+
+        $soc = $this->createTestSociete(['name' => 'CR8-victim-' . uniqid()]);
+        $rowid = (int) $soc->id;
+        // Move the row into a foreign entity the token cannot access.
+        $db->query("UPDATE " . MAIN_DB_PREFIX . "societe SET entity = 99 WHERE rowid = " . $rowid);
+
+        $controller = new SyncController();
+        $config = $this->syncConfig('thirdparty');
+
+        $result = $this->invokePrivate(
+            $controller,
+            'processUpdate',
+            [$config, $rowid, ['name' => 'CR8-hacked'], null, 0, $user]
+        );
+
+        $this->assertFalse($result['success'], 'CR-8 fix: cross-entity update must be refused');
+        $this->assertSame('Object not found', $result['error'], 'CR-8 fix: response must stay generic');
+
+        $resql = $db->query("SELECT nom, entity FROM " . MAIN_DB_PREFIX . "societe WHERE rowid = " . $rowid);
+        $row = $db->fetch_object($resql);
+        $this->assertNotSame('CR8-hacked', $row->nom, 'CR-8 fix: cross-entity row must remain unchanged');
+        $this->assertSame(99, (int) $row->entity);
+    }
+
+    /**
+     * CR-8b: processDelete must refuse a row from another entity and leave it
+     * in place.
+     */
+    public function testCR8b_ProcessDeleteRefusesCrossEntityRow(): void
+    {
+        global $db, $user;
+
+        $soc = $this->createTestSociete(['name' => 'CR8-del-' . uniqid()]);
+        $rowid = (int) $soc->id;
+        $db->query("UPDATE " . MAIN_DB_PREFIX . "societe SET entity = 99 WHERE rowid = " . $rowid);
+
+        $controller = new SyncController();
+        $config = $this->syncConfig('thirdparty');
+
+        $result = $this->invokePrivate($controller, 'processDelete', [$config, $rowid, null, $user]);
+
+        $this->assertFalse($result['success'], 'CR-8 fix: cross-entity delete must be refused');
+        $this->assertSame('Object not found', $result['error']);
+
+        $resql = $db->query("SELECT COUNT(*) AS cnt FROM " . MAIN_DB_PREFIX . "societe WHERE rowid = " . $rowid);
+        $row = $db->fetch_object($resql);
+        $this->assertSame(1, (int) $row->cnt, 'CR-8 fix: cross-entity row must still exist after refused delete');
+    }
+
+    // =================================================================
+    //  CR-9 - Token-type confusion: access/id token replayed as a session
+    //         cookie (and vice-versa). Same RSA key, same iss/sub shape.
+    // =================================================================
+
+    /**
+     * CR-9a: SessionManager::validateSession must reject anything that is not
+     * an explicit session token (tok=session) - an access token or id_token
+     * posed as the session cookie must yield no session.
+     */
+    public function testCR9a_AccessAndIdTokenRejectedAsSessionCookie(): void
+    {
+        $user = $this->createTestUser(['login' => 'cr9_' . uniqid()]);
+        $client = $this->createTestClientFromFixture('confidential');
+        $subject = \SmartAuth\Api\OAuth2\TokenSubject::user($user->id);
+        $sub = 'usr:' . $user->id;
+
+        $access = $this->tokenService->createAccessToken(
+            $user->id, $client->client_id, ['openid'], null, [], $subject
+        )['token'];
+        $idToken = $this->tokenService->createIdToken(
+            $user->id, $client->client_id, ['openid'], null, time(), null, $subject
+        );
+
+        $session = new \SmartAuth\Api\OAuth2\SessionManager($this->db);
+        $cookie = \SmartAuth\Api\OAuth2\SessionManager::COOKIE_NAME_PLAIN;
+
+        // An access token as the session cookie must be refused.
+        $_COOKIE = [$cookie => $access];
+        $this->assertNull(
+            $session->validateSession(),
+            'CR-9 fix: an access token must not be accepted as a session'
+        );
+
+        // An id_token as the session cookie must be refused.
+        $_COOKIE = [$cookie => $idToken];
+        $this->assertNull(
+            (new \SmartAuth\Api\OAuth2\SessionManager($this->db))->validateSession(),
+            'CR-9 fix: an id_token must not be accepted as a session'
+        );
+
+        // A genuine session token (tok=session, same IdP key) is still valid.
+        $now = time();
+        $genuine = $this->signJwtWithIdpKey([
+            'iss' => OAuthConfig::getIssuer(),
+            'sub' => $sub,
+            'iat' => $now,
+            'exp' => $now + 3600,
+            'auth_time' => $now,
+            'tok' => 'session',
+        ]);
+        $_COOKIE = [$cookie => $genuine];
+        $resolved = (new \SmartAuth\Api\OAuth2\SessionManager($this->db))->validateSession();
+        $this->assertNotNull($resolved, 'CR-9 fix: a real session token must still validate');
+        $this->assertSame($sub, $resolved->toSub());
+
+        $_COOKIE = [];
+    }
+
+    /**
+     * CR-9b: symmetric direction - validateAccessToken must reject a session
+     * cookie or an id_token, while still accepting a real access token.
+     */
+    public function testCR9b_SessionAndIdTokenRejectedAsAccessToken(): void
+    {
+        $user = $this->createTestUser(['login' => 'cr9b_' . uniqid()]);
+        $client = $this->createTestClientFromFixture('confidential');
+        $subject = \SmartAuth\Api\OAuth2\TokenSubject::user($user->id);
+        $now = time();
+
+        $access = $this->tokenService->createAccessToken(
+            $user->id, $client->client_id, ['openid'], null, [], $subject
+        )['token'];
+        $idToken = $this->tokenService->createIdToken(
+            $user->id, $client->client_id, ['openid'], null, $now, null, $subject
+        );
+        $session = $this->signJwtWithIdpKey([
+            'iss' => OAuthConfig::getIssuer(),
+            'sub' => 'usr:' . $user->id,
+            'iat' => $now,
+            'exp' => $now + 3600,
+            'auth_time' => $now,
+            'tok' => 'session',
+        ]);
+
+        $this->assertNotNull(
+            $this->tokenService->validateAccessToken($access),
+            'CR-9 fix: a real access token must still validate'
+        );
+        $this->assertNull(
+            $this->tokenService->validateAccessToken($session),
+            'CR-9 fix: a session token must not be accepted as an access token'
+        );
+        $this->assertNull(
+            $this->tokenService->validateAccessToken($idToken),
+            'CR-9 fix: an id_token must not be accepted as an access token'
+        );
+    }
+
+    // =================================================================
+    //  CR-10 - Authorization code single-use was not atomic (TOCTOU):
+    //          isUsed() then markAsUsed() let two requests double-spend.
+    // =================================================================
+
+    /**
+     * CR-10: markAsUsed() must be an atomic claim. The first call wins
+     * (returns 1), any later call on the same code loses (returns 0) - this
+     * is what serialises concurrent token requests onto a single grant. A
+     * regression that drops "AND used_at IS NULL" makes the second call
+     * return 1 and this test fails.
+     */
+    public function testCR10_AuthCodeMarkAsUsedIsAtomicSingleClaim(): void
+    {
+        $client = $this->createTestClientFromFixture('confidential');
+        $user = $this->createTestUser(['login' => 'cr10_' . uniqid()]);
+
+        $created = $this->createAuthorizationCode($client, $user);
+        $record = $created['record'];
+
+        // First claim wins.
+        $this->assertSame(
+            1,
+            $record->markAsUsed(),
+            'CR-10 fix: the first markAsUsed() must claim the code (affected_rows=1)'
+        );
+
+        // Any subsequent claim on the same row loses the race.
+        $again = new \SmartAuthOAuthCode($this->db);
+        $again->fetchByCode($created['code']);
+        $this->assertSame(
+            0,
+            $again->markAsUsed(),
+            'CR-10 fix: a second markAsUsed() must claim nothing (affected_rows=0)'
+        );
+
+        // The row is effectively consumed.
+        $check = new \SmartAuthOAuthCode($this->db);
+        $check->fetchByCode($created['code']);
+        $this->assertTrue($check->isUsed(), 'CR-10: code must be marked used');
+    }
 }
