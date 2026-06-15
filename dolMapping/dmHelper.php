@@ -573,7 +573,16 @@ class dmHelper
 			if ($localDebug) dol_syslog("SmartAuth extrafieldsFilter special new object type");
 			if (substr($dolikey, 0, strlen($dolside)) == $dolside) {
 				$ret['type'] = $appside;
-				$ret['visible'] = ["create", "update", "read"];
+				// Respect the admin-configured visibility (todo l.31). The standard
+				// attribute loop above already mapped the extrafield 'visible' code
+				// into $ret['visible'] (e.g. 0 -> [] = hidden everywhere). Only fall
+				// back to the "visible in every context" default when NO visible
+				// attribute is declared at all, so a field explicitly set to
+				// "not visible" stays hidden on the app instead of being forced on.
+				$rawVisible = $extrafields->attributes[$objectElement]['visible'][str_replace('options_', '', $dolikey)] ?? null;
+				if ($rawVisible === null || $rawVisible === '') {
+					$ret['visible'] = ["create", "update", "read"];
+				}
 				if ($dolside == "smartphoto_") {
 					//add options
 					$co = new \stdClass();

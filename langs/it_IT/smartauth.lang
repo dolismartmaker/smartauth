@@ -25,6 +25,27 @@ Appuid=applicazione
 SmartAuthMainMenu=SmartAuth
 ListOfTokens=Elenco dei token attivi
 
+#
+# User tab
+#
+TokenRevoked=Token revocato con successo
+ErrorRevokingToken=Errore durante la revoca del token
+TokenNotFound=Token non trovato
+TokenDeleted=Token eliminato con successo
+ErrorDeletingToken=Errore durante l'eliminazione del token
+DeleteToken=Elimina token
+ConfirmDeleteToken=Sei sicuro di voler eliminare definitivamente questo token? Questa azione e irreversibile.
+DeviceRenamed=Dispositivo rinominato con successo
+RenameDevice=Rinomina dispositivo
+ViewHistory=Visualizza cronologia
+RevokeToken=Revoca token
+ConfirmRevokeToken=Sei sicuro di voler revocare questo token? Il dispositivo verra disconnesso.
+EnterDeviceName=Inserisci il nome del dispositivo:
+TokenActivityHistory=Cronologia attivita del token
+Endpoint=Endpoint
+NoHistory=Nessuna cronologia disponibile
+ErrorLoadingHistory=Errore durante il caricamento della cronologia
+
 # Module label 'ModuleSmartauthName'
 ModuleSmartauthName=Smartauth
 # Module description 'ModuleSmartauthDesc'

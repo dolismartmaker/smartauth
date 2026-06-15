@@ -826,6 +826,28 @@ class dmHelperTest extends TestCase
     }
 
     /**
+     * Regression (todo l.31): a smartphoto_ field explicitly set to "not visible"
+     * (Dolibarr visible code 0) must stay hidden on the app. The special-type
+     * branch used to force visible to all contexts, ignoring the admin setting.
+     */
+    public function testExtrafieldsFilterSmartphotoRespectsHiddenVisibility(): void
+    {
+        global $conf;
+        $conf->cache['smartmakers'] = [];
+
+        $extrafields = $this->createExtrafieldsMock('societe', 'smartphoto_image', [
+            'type' => 'varchar',
+            'label' => 'Photo',
+            'visible' => 0
+        ]);
+
+        $result = $this->helper->extrafieldsFilter('societe', 'smartphoto_image', 'frontkey', $extrafields);
+
+        $this->assertEquals('photos', $result['type']);
+        $this->assertEquals([], $result['visible']);
+    }
+
+    /**
      * Test extrafieldsFilter with smartaudio_ prefix
      */
     public function testExtrafieldsFilterWithSmartaudioPrefix(): void

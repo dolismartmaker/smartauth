@@ -76,7 +76,7 @@ dol_include_once('/smartauth/api/RouteController.php');
 dol_include_once('/smartauth/lib/tools.php');
 
 // Load translation files required by page
-$langs->loadLangs(array('users', 'other'));
+$langs->loadLangs(array('users', 'other', 'smartauth@smartauth'));
 
 $action = GETPOST('action', 'aZ09');
 $confirm = GETPOST('confirm');
@@ -213,6 +213,36 @@ if ($action == 'revoke' && $permtoedit) {
 				exit;
 			} else {
 				setEventMessages($langs->trans("ErrorRevokingToken"), null, 'errors');
+			}
+		} else {
+			setEventMessages($langs->trans("TokenNotFound"), null, 'errors');
+		}
+	}
+}
+
+// Handle delete action -- a REAL row delete (todo l.25), distinct from "revoke"
+// which only flips status to 9 (disable). Same ownership check as revoke.
+if ($action == 'delete_token' && $permtoedit) {
+	$token_id = GETPOST('token_id', 'int');
+
+	if ($token_id > 0) {
+		// Verify token belongs to this user (security check)
+		$sql = "SELECT fk_authid FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " WHERE rowid = " . (int)$token_id;
+		$sql .= " AND fk_authid = " . (int)$id;
+
+		$resql = $db->query($sql);
+		if ($resql && $db->num_rows($resql) > 0) {
+			$sqlDel = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sqlDel .= " WHERE rowid = " . (int)$token_id;
+
+			if ($db->query($sqlDel)) {
+				setEventMessages($langs->trans("TokenDeleted"), null, 'mesgs');
+				header("Location: " . $_SERVER['PHP_SELF'] . '?id=' . $id);
+				exit;
+			} else {
+				dol_syslog("SmartAuth : error on delete token id #" . $token_id . " : " . $db->lasterror(), LOG_ERR);
+				setEventMessages($langs->trans("ErrorDeletingToken"), null, 'errors');
 			}
 		} else {
 			setEventMessages($langs->trans("TokenNotFound"), null, 'errors');
@@ -1040,8 +1070,13 @@ if ($object->id) {
 		print '<i class="fa fa-history"></i>';
 		print '</a> ';
 
-		// Revoke button
-		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=revoke&token_id=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . $langs->trans("ConfirmRevokeToken") . '\');" title="' . $langs->trans("RevokeToken") . '">';
+		// Revoke button -- disables the token (status=9) but keeps the row.
+		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=revoke&token_id=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . dol_escape_js($langs->trans("ConfirmRevokeToken")) . '\');" title="' . dol_escape_htmltag($langs->trans("RevokeToken")) . '">';
+		print '<i class="fa fa-ban" style="color: #f59e0b;"></i>';
+		print '</a>';
+
+		// Delete button (todo l.25) -- really removes the token row.
+		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=delete_token&token_id=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . dol_escape_js($langs->trans("ConfirmDeleteToken")) . '\');" title="' . dol_escape_htmltag($langs->trans("DeleteToken")) . '">';
 		print '<i class="fa fa-trash" style="color: #ef4444;"></i>';
 		print '</a>';
 
