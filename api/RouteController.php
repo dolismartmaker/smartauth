@@ -762,7 +762,18 @@ class RouteController
 		dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 
 		$tokenService = new \SmartAuth\Api\OAuth2\TokenService($db);
-		$payload = $tokenService->validateAccessToken($jwt);
+
+		// Confused-deputy defence: a token minted for a third-party OAuth client
+		// (aud = that client_id) must not be accepted on SmartAuth's own
+		// privileged API. SMARTAUTH_API_AUDIENCE lists the client_id(s) allowed
+		// to call these 'oauth2'-protected routes. When a single audience is
+		// configured we hand it to the validator (RFC 8725 aud check); a
+		// multi-client allow-list is enforced by membership just below.
+		$apiAudienceRaw = getDolGlobalString('SMARTAUTH_API_AUDIENCE', '');
+		$allowedAudiences = array_filter(array_map('trim', explode(',', $apiAudienceRaw)));
+		$expectedAudience = (count($allowedAudiences) === 1) ? $allowedAudiences[0] : null;
+
+		$payload = $tokenService->validateAccessToken($jwt, $expectedAudience);
 
 		if ($payload === null) {
 			self::insertLogs(null, 401, 'Invalid or expired OAuth2 token', null);
@@ -775,6 +786,20 @@ class RouteController
 		$scopeString = $payload['scope'] ?? '';
 		$scopes = !empty($scopeString) ? explode(' ', $scopeString) : [];
 		$grantType = $payload['grant_type'] ?? 'authorization_code';
+
+		// Enforce the first-party audience allow-list (see above). An empty list
+		// means enforcement is disabled: log loudly so operators know the
+		// confused-deputy gate is open on this instance.
+		if (!empty($allowedAudiences)) {
+			if (!in_array($clientId, $allowedAudiences, true)) {
+				self::insertLogs(null, 401, 'OAuth2 token audience not allowed on first-party API', null);
+				dol_syslog('SmartAuth handleOAuth2Authentication: client ' . $clientId . ' not in SMARTAUTH_API_AUDIENCE allow-list - confused-deputy rejection', LOG_WARNING);
+				\json_reply('Invalid token: audience not allowed', 401);
+				return false;
+			}
+		} else {
+			dol_syslog('SmartAuth handleOAuth2Authentication: SMARTAUTH_API_AUDIENCE not set - first-party audience enforcement disabled', LOG_WARNING);
+		}
 
 		// Parse the prefixed subject (acc:/usr:). These protected API routes are
 		// user-scoped (they load a Dolibarr \User), so only `user` subjects are
