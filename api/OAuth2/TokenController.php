@@ -556,25 +556,21 @@ class TokenController
     }
 
     /**
-     * Resolve the service user for client_credentials grant
+     * Resolve the service user for client_credentials grant.
      *
-     * Priority:
-     * 1. fk_service_user on the client
-     * 2. SMARTAUTH_DEFAULT_USER global constant
+     * The M2M identity MUST be an explicit, dedicated fk_service_user on the
+     * client. We deliberately do NOT fall back to SMARTAUTH_DEFAULT_USER:
+     * that constant doubles as the audit author for external subjects and is
+     * commonly rowid 1 (admin), so using it as the M2M identity would let any
+     * client_credentials client without a configured service user mint tokens
+     * under a privileged identity (privilege conflation, todo-security.md #4).
      *
-     * @return int|null User ID or null if not configured
+     * @return int|null Service user ID, or null when none is explicitly set
      */
     private function resolveServiceUser(): ?int
     {
-        // Check client-specific service user
         if (!empty($this->client->fk_service_user)) {
             return (int) $this->client->fk_service_user;
-        }
-
-        // Check global default
-        $defaultUser = getDolGlobalInt('SMARTAUTH_DEFAULT_USER', 0);
-        if ($defaultUser > 0) {
-            return $defaultUser;
         }
 
         return null;

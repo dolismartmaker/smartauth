@@ -192,7 +192,9 @@ class AuthControllerTest extends TestCase
             $_SERVER['REMOTE_ADDR'] = $backupRemote;
         }
 
-        $this->assertEquals('203.0.113.195', $ip);
+        // Anti-spoof (todo-security.md #2): the rightmost entry is the one the
+        // trusted hop actually saw; the leftmost is client-controlled.
+        $this->assertEquals('150.172.238.178', $ip);
     }
 
     /**

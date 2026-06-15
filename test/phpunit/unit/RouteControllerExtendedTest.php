@@ -249,7 +249,7 @@ class RouteControllerExtendedTest extends TestCase
         $backupXff = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
 
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
-        $_SERVER['HTTP_X_FORWARDED_FOR'] = '  203.0.113.195  , 70.41.3.18';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.195,   70.41.3.18  ';
 
         $ip = RouteController::get_client_ip();
 
@@ -265,7 +265,8 @@ class RouteControllerExtendedTest extends TestCase
             unset($_SERVER['HTTP_X_FORWARDED_FOR']);
         }
 
-        $this->assertEquals('203.0.113.195', $ip);
+        // Whitespace around the resolved (rightmost) entry must be trimmed.
+        $this->assertEquals('70.41.3.18', $ip);
     }
 
     // =============================================
