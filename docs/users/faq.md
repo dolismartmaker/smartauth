@@ -90,3 +90,21 @@ La collecte des journaux est désactivée par défaut. Activez l'option SMARTAUT
 ### Le test de connexion OAuth échoue
 
 Vérifiez que l'URL de l'issuer est accessible depuis le serveur lui-même (pas de blocage pare-feu en boucle locale). Vérifiez également que le certificat SSL est valide si vous utilisez HTTPS.
+
+### J'obtiens "Forbidden" sur /.well-known/openid-configuration
+
+La configuration Apache par défaut sur Debian/Ubuntu contient une règle globale `<DirectoryMatch "(^|/)\.">` qui interdit l'accès à tout chemin commençant par un point. Cette règle est évaluée avant le `.htaccess` du module, qui ne peut donc pas la lever depuis l'intérieur.
+
+Ajoutez l'exception dans le vhost de votre portail SSO :
+
+```apache
+<LocationMatch "^/\.well-known/">
+    Require all granted
+</LocationMatch>
+```
+
+Puis `sudo systemctl reload apache2`. Voir la section [Portail SSO public](oauth.md#portail-sso-public) du chapitre OAuth pour la configuration vhost complète.
+
+### Le lien dans le mail de réinitialisation du mot de passe pointe au mauvais endroit
+
+Le lien généré dans l'email utilise `SMARTAUTH_APP_URL` comme base, ou `DOL_MAIN_URL_ROOT` à défaut. Définissez la constante Dolibarr `SMARTAUTH_APP_URL` avec l'URL racine de votre portail SSO (exemple : `https://auth.exemple.fr`) pour que le lien `reset-password?token=...` ouvre directement le formulaire sur le portail au lieu de l'admin Dolibarr.
