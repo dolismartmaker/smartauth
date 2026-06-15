@@ -204,7 +204,10 @@ class RouteControllerTest extends TestCase
             unset($_SERVER['HTTP_X_FORWARDED_FOR']);
         }
 
-        $this->assertEquals('203.0.113.195', $ip);
+        // The real client is the RIGHTMOST entry (the peer the trusted hop
+        // actually saw). The leftmost (203.0.113.195) is client-controlled and
+        // must never be returned (anti-spoof, see todo-security.md #2).
+        $this->assertEquals('70.41.3.18', $ip);
     }
 
     /**

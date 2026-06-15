@@ -1109,29 +1109,29 @@ class RouteController
 		// Start with REMOTE_ADDR - only truly reliable source (TCP connection IP)
 		$remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
 
-		// Check if we should trust forwarding headers
-		$trustForwardedHeaders = false;
-
-		// Check explicit trusted proxies list
+		// Parse the explicit trusted-proxy allow-list.
 		$trustedProxies = getDolGlobalString('SMARTAUTH_TRUSTED_PROXIES', '');
-		if (!empty($trustedProxies)) {
-			$trustedList = array_filter(array_map('trim', explode(',', $trustedProxies)));
-			if (in_array($remoteAddr, $trustedList)) {
-				$trustForwardedHeaders = true;
-			}
-		}
+		$trustedList = array_filter(array_map('trim', explode(',', $trustedProxies)));
+		$hasAllowList = !empty($trustedList);
 
-		// Also trust private/localhost IPs (backward compatibility for reverse proxies)
-		if (
-			!$trustForwardedHeaders && (
-				empty($remoteAddr) ||
-				preg_match('/^127\./i', $remoteAddr) ||
-				preg_match('/^10\./i', $remoteAddr) ||
-				preg_match('/^172\.(1[6-9]|2\d|3[01])\./i', $remoteAddr) ||
-				preg_match('/^192\.168\./i', $remoteAddr)
-			)
-		) {
-			$trustForwardedHeaders = true;
+		// Decide whether to trust forwarding headers from this peer.
+		$trustForwardedHeaders = false;
+		if ($hasAllowList) {
+			// An explicit allow-list is authoritative: only listed peers are
+			// trusted. Private/loopback ranges are NOT auto-trusted in this
+			// mode, otherwise an attacker reaching us from a private network
+			// (Docker, LAN) could forge the client IP.
+			$trustForwardedHeaders = in_array($remoteAddr, $trustedList, true);
+		} else {
+			// Backward-compatible fallback (no allow-list configured): trust the
+			// usual reverse-proxy ranges (loopback + RFC 1918).
+			$trustForwardedHeaders = (
+				empty($remoteAddr)
+				|| preg_match('/^127\./i', $remoteAddr)
+				|| preg_match('/^10\./i', $remoteAddr)
+				|| preg_match('/^172\.(1[6-9]|2\d|3[01])\./i', $remoteAddr)
+				|| preg_match('/^192\.168\./i', $remoteAddr)
+			);
 		}
 
 		// Only use forwarded headers if we trust the source
@@ -1140,20 +1140,26 @@ class RouteController
 				? apache_request_headers()
 				: [];
 
-			// Priority: X-Real-IP > X-Forwarded-For. Each is also checked
-			// via $_SERVER for environments where apache_request_headers()
-			// is unavailable (CLI test runners, some PHP-FPM setups).
-			if (!empty($headers['X-Real-IP'])) {
-				$remoteAddr = trim($headers['X-Real-IP']);
-			} elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
-				$remoteAddr = trim($_SERVER['HTTP_X_REAL_IP']);
-			} elseif (!empty($headers['X-Forwarded-For'])) {
-				// Take first IP from chain (original client)
-				$ips = explode(',', $headers['X-Forwarded-For']);
-				$remoteAddr = trim($ips[0]);
-			} elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-				$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-				$remoteAddr = trim($ips[0]);
+			$xRealIp = $headers['X-Real-IP'] ?? ($_SERVER['HTTP_X_REAL_IP'] ?? '');
+			$xff = $headers['X-Forwarded-For'] ?? ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+
+			if (!empty($xRealIp)) {
+				// Single value set by the trusted proxy.
+				$remoteAddr = trim($xRealIp);
+			} elseif (!empty($xff)) {
+				// The client controls the LEFT of the X-Forwarded-For chain (it
+				// can pre-inject entries); each trusted hop appends the peer it
+				// actually saw on the RIGHT. The real client is therefore the
+				// rightmost entry that is not itself a trusted proxy - never
+				// ips[0], which is attacker-controlled.
+				$chain = array_filter(array_map('trim', explode(',', $xff)));
+				for ($i = count($chain) - 1; $i >= 0; $i--) {
+					if ($hasAllowList && in_array($chain[$i], $trustedList, true)) {
+						continue; // skip known proxies, keep peeling from the right
+					}
+					$remoteAddr = $chain[$i];
+					break;
+				}
 			}
 		}
 
