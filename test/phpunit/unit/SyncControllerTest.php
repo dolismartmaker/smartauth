@@ -20,7 +20,7 @@ class SyncControllerTest extends TestCase
 
     protected function setUp(): void
     {
-        global $db, $conf, $hookmanager;
+        global $db, $conf, $hookmanager, $user;
 
         $this->mockDb = new MockDatabase();
         $db = $this->mockDb;
@@ -32,6 +32,16 @@ class SyncControllerTest extends TestCase
         // Mock hookmanager
         $hookmanager = null;
 
+        // Authenticated user with all rights granted. Permission gating
+        // (userHasSyncRight on pull/push) is covered by the integration PoC;
+        // these unit tests exercise the sync logic itself, not the gate.
+        $user = new class {
+            public function hasRight(...$args)
+            {
+                return 1;
+            }
+        };
+
         // Reset mock state
         $this->mockDb->reset();
 
@@ -40,9 +50,10 @@ class SyncControllerTest extends TestCase
 
     protected function tearDown(): void
     {
-        global $db, $conf;
+        global $db, $conf, $user;
         $db = null;
         $conf = null;
+        $user = null;
     }
 
     /**

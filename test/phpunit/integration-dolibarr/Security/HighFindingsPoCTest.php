@@ -155,6 +155,45 @@ class HighFindingsPoCTest extends DolibarrRealTestCase
             );
         });
 
+        // ---- TODO-2: a client-injected leftmost XFF entry must NOT be trusted.
+        // Through one trusted proxy the chain is "<attacker spoof>, <real client>"
+        // (the proxy appends the TCP peer). The real client is the RIGHTMOST entry
+        // that is not itself a trusted hop -- never the leftmost, which the client
+        // controls. The current implementation returns ips[0] and is spoofable.
+        $conf->global->SMARTAUTH_TRUSTED_PROXIES = '198.51.100.7';
+        $this->withServer([
+            'REMOTE_ADDR' => '198.51.100.7',
+            'HTTP_X_FORWARDED_FOR' => '1.1.1.1, 203.0.113.9, 198.51.100.7',
+        ], function () {
+            $ip = RouteController::get_client_ip();
+            $this->assertNotSame(
+                '1.1.1.1',
+                $ip,
+                'TODO-2: leftmost (client-controlled) XFF entry must not be returned'
+            );
+            $this->assertSame(
+                '203.0.113.9',
+                $ip,
+                'TODO-2: real client = rightmost XFF entry that is not a trusted proxy'
+            );
+        });
+
+        // ---- TODO-2: when an explicit allow-list exists, private/loopback
+        // REMOTE_ADDR is NOT auto-trusted unless it is listed. A private peer
+        // that is not the configured proxy must have its forwarded headers
+        // ignored. The current code auto-trusts every private range.
+        $conf->global->SMARTAUTH_TRUSTED_PROXIES = '198.51.100.7';
+        $this->withServer([
+            'REMOTE_ADDR' => '10.0.0.5', // private, but not the configured proxy
+            'HTTP_X_REAL_IP' => '6.6.6.6',
+        ], function () {
+            $this->assertSame(
+                '10.0.0.5',
+                RouteController::get_client_ip(),
+                'TODO-2: with an allow-list set, an unlisted private peer must not be trusted'
+            );
+        });
+
         // ---- Static check: facades delegate, no inline header parsing ----
         $files = [
             'api/AuthController.php' => 'get_client_ip',

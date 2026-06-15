@@ -352,16 +352,28 @@ class ClientCredentialsTest extends OAuthTestCase
     }
 
     /**
-     * Test client_credentials grant - falls back to SMARTAUTH_DEFAULT_USER
+     * TODO-4 (todo-security.md): client_credentials must NOT silently fall back
+     * to SMARTAUTH_DEFAULT_USER.
+     *
+     * SMARTAUTH_DEFAULT_USER also serves as the audit author elsewhere and is
+     * commonly rowid 1 (admin). Letting a client without an explicit
+     * fk_service_user mint tokens under that identity is a privilege conflation:
+     * the M2M grant must require an explicit, dedicated service user on the
+     * client. With only the global default set (no fk_service_user), the request
+     * must be refused.
+     *
+     * This asserts the SECURE behaviour and therefore fails until the fallback
+     * is removed (the bug today returns 200 and mints a token for the default
+     * user).
      */
-    public function testClientCredentialsFallbackToDefaultUser(): void
+    public function testClientCredentialsRejectsDefaultUserFallback(): void
     {
         global $conf;
 
         // Create client WITHOUT fk_service_user
         $client = $this->createTestClientFromFixture('client_credentials_no_user');
 
-        // Set global default user
+        // Only the global default is configured (no explicit service user).
         $conf->global->SMARTAUTH_DEFAULT_USER = $this->serviceUser->id;
 
         $response = $this->simulateTokenRequest(
@@ -370,11 +382,22 @@ class ClientCredentialsTest extends OAuthTestCase
             'test-secret-m2m-nouser-12345'
         );
 
-        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertEquals(
+            500,
+            $response->getStatusCode(),
+            'TODO-4: a client_credentials client without fk_service_user must be refused, '
+            . 'not silently bound to SMARTAUTH_DEFAULT_USER'
+        );
+        $this->assertEquals('server_error', $response->getErrorCode());
+        $this->assertStringContainsString('service user', $response->getErrorDescription());
 
-        // Verify token was created for the default user
+        // And crucially, no token must have been minted under the default user.
         $accessCount = $this->countTokensForUserClient($this->serviceUser->id, $client->id, 'access');
-        $this->assertEquals(1, $accessCount);
+        $this->assertEquals(
+            0,
+            $accessCount,
+            'TODO-4: no token may be issued under the global default user identity'
+        );
     }
 
     /**

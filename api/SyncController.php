@@ -347,6 +347,7 @@ class SyncController
      */
     public function pull($payload)
     {
+        global $user;
         dol_syslog("SmartAuth SyncController::pull");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
@@ -375,6 +376,14 @@ class SyncController
 
         $config = $this->syncableObjects[$object_type];
         $table = $config['table'];
+
+        // Same fail-closed permission gate as writes: a valid JWT is not enough,
+        // the authenticated user must hold the object's read right. Without this
+        // any token could pull the whole entity's records. userHasSyncRight logs
+        // the denial reason.
+        if (!$this->userHasSyncRight($config, 'read', $user)) {
+            return [['error' => 'Permission denied'], 403];
+        }
 
         $result = [
             'updated' => [],
