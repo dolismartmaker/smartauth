@@ -54,6 +54,107 @@ Lorsque le serveur OAuth est activé, les endpoints suivants sont disponibles :
 
 Ces URLs sont affichées directement dans l'onglet de configuration du serveur OAuth après activation.
 
+## Portail SSO public
+
+SmartAuth fournit un portail web public (`htdocs/custom/smartauth/public/`) destiné à être exposé sur un sous-domaine dédié (par exemple `https://auth.exemple.fr`). Ce portail sert :
+
+| URL | Rôle |
+|-----|------|
+| `/` | Page d'accueil de marque avec 3 cartes (Se connecter, Créer un compte, Mon compte) |
+| `/login` | Formulaire de connexion (utilisé par les flux OAuth2 et en accès direct) |
+| `/register` | Formulaire d'inscription (si activé) |
+| `/account` | Page de gestion du compte utilisateur (post-connexion) |
+| `/forgot-password` | Formulaire de demande de réinitialisation du mot de passe |
+| `/reset-password` | Formulaire de nouveau mot de passe (lien reçu par email) |
+| `/oauth/*` | Endpoints OAuth2 (authorize, token, userinfo, revoke, logout) |
+| `/.well-known/*` | Discovery OIDC + JWKS |
+
+Tous les visuels (CSS, logo, polices) sont chargés en same-origin depuis `/assets/`.
+
+### Configuration du vhost Apache
+
+Créez un vhost dédié pointant sur `htdocs/custom/smartauth/public/` comme `DocumentRoot`. Exemple minimal :
+
+```apache
+<VirtualHost *:443>
+    ServerName auth.exemple.fr
+    DocumentRoot /var/www/dolibarr/htdocs/custom/smartauth/public
+
+    SSLEngine on
+    SSLCertificateFile      /etc/letsencrypt/live/auth.exemple.fr/fullchain.pem
+    SSLCertificateKeyFile   /etc/letsencrypt/live/auth.exemple.fr/privkey.pem
+
+    <Directory /var/www/dolibarr/htdocs/custom/smartauth/public>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # RFC 8615 reserves /.well-known/ for service discovery (OIDC, ACME...).
+    # La config Apache par défaut sur Debian/Ubuntu interdit globalement
+    # les chemins commençant par un point ; cette exception est obligatoire
+    # pour que les endpoints de discovery OIDC soient accessibles.
+    <LocationMatch "^/\.well-known/">
+        Require all granted
+    </LocationMatch>
+
+    ErrorLog  ${APACHE_LOG_DIR}/auth.exemple.fr-error.log
+    CustomLog ${APACHE_LOG_DIR}/auth.exemple.fr-access.log combined
+</VirtualHost>
+```
+
+Validez la configuration et rechargez Apache :
+
+```bash
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+```
+
+> **À retenir** : `AllowOverride All` est nécessaire pour que le `.htaccess` fourni par le module (`public/.htaccess`) soit pris en compte (réécritures vers `index.php`, headers de sécurité, MIME types des assets).
+
+### Résoudre "Forbidden" sur /.well-known/
+
+Si la requête `https://auth.exemple.fr/.well-known/openid-configuration` répond **403 Forbidden**, c'est que la règle globale Apache `<DirectoryMatch "(^|/)\.">` (commune sur Debian/Ubuntu) bloque le chemin avant même que le `.htaccess` du module ne s'exécute. Le `<LocationMatch>` indiqué plus haut résout le problème en autorisant explicitement `/.well-known/`.
+
+Diagnostic sur le serveur :
+
+```bash
+# Repérer la règle qui bloque
+sudo grep -rni "well-known\|directorymatch" /etc/apache2/ | head
+
+# Confirmer dans le journal d'erreurs
+sudo tail -30 /var/log/apache2/error.log | grep -i "denied\|forbid\|well-known"
+```
+
+Test après application du fix :
+
+```bash
+curl -i https://auth.exemple.fr/.well-known/openid-configuration
+```
+
+Doit renvoyer `HTTP/1.1 200` et un corps JSON contenant `"issuer"`, `"authorization_endpoint"`, etc.
+
+### Constante SMARTAUTH_APP_URL
+
+Le lien envoyé par email pour réinitialiser un mot de passe pointe par défaut sur `DOL_MAIN_URL_ROOT` (l'URL principale de Dolibarr). Pour que ce lien arrive sur le portail SSO et non sur l'admin Dolibarr, définissez la constante `SMARTAUTH_APP_URL` :
+
+1. Allez dans **Accueil > Configuration > Divers**
+2. Ajoutez/modifiez la constante `SMARTAUTH_APP_URL` avec pour valeur l'URL racine du portail (exemple : `https://auth.exemple.fr`)
+3. Enregistrez
+
+Le mail de réinitialisation contiendra alors un lien `https://auth.exemple.fr/reset-password?token=...&email=...` qui ouvre directement le formulaire sur le portail SSO.
+
+### Activation / désactivation des parcours self-service
+
+Deux constantes Dolibarr contrôlent l'affichage des cartes "Créer un compte" et "Mon compte" sur la page d'accueil du portail :
+
+| Constante | Valeur par défaut | Effet |
+|-----------|-------------------|-------|
+| `SMARTAUTH_REGISTRATION_ENABLED` | 1 | La carte "Créer un compte" est affichée et la route `/register` est accessible |
+| `SMARTAUTH_ACCOUNT_ENABLED` | 1 | La carte "Mon compte" est affichée et la route `/account` est accessible |
+
+Définissez-les à 0 pour masquer les parcours correspondants si votre déploiement ne les autorise pas (exemple : inscriptions réservées à un workflow externe).
+
 ## Gestion des clients OAuth
 
 ### Créer un client
