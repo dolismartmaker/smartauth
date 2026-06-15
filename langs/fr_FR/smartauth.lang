@@ -18,6 +18,7 @@
 #
 SmartAuthMainMenu = SmartAuth
 SmartAuthLogsMenu = Journaux (Logs)
+SmartAuthPushLogsMenu = Notifications push
 SmartAuthTokensMenu = Jetons
 ListOfTokens = Liste des jetons actifs
 SmartauthDescription = Boite à outil pour connexion réseau des applications mobiles
@@ -313,3 +314,24 @@ SmartauthVapidRegenerate=Régénérer les clés
 SmartauthVapidRegenerateConfirm=Régénérer les clés VAPID invalidera toutes les souscriptions push existantes. Les utilisateurs devront se réabonner. Continuer ?
 SmartauthVapidKeySaved=Clés VAPID enregistrées
 SmartauthVapidKeyGenerationFailed=Échec de la génération des clés VAPID (vérifiez la configuration OpenSSL du serveur, voir les logs)
+#
+# Web Push send logs (push_logs_list.php)
+#
+SmartAuthPushLogsTitle=Notifications push envoyées
+PushLogSubjectType=Type de sujet
+PushLogSubjectUser=Utilisateur
+PushLogSubjectAccount=Compte
+PushLogSubjectMember=Adhérent
+PushLogUser=Utilisateur
+PushLogAccount=Compte
+PushLogMember=Adhérent
+PushLogType=Type
+PushLogTitle=Titre
+PushLogBody=Message
+PushLogData=Données
+PushLogHttpStatus=Statut HTTP
+PushLogSuccess=Résultat
+PushLogAccepted=Acceptée
+PushLogFailed=Échec
+PushLogError=Erreur
+PushLogSubscription=Abonnement

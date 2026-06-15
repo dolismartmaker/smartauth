@@ -103,8 +103,10 @@ class PushSender
         $failed = 0;
         foreach ($webPush->flush() as $index => $report) {
             $sub = $subscriptions[$index];
-            $row = ['subscription_id' => (int) $sub['rowid'], 'success' => $report->isSuccess()];
-            if ($report->isSuccess()) {
+            $success = $report->isSuccess();
+            $row = ['subscription_id' => (int) $sub['rowid'], 'success' => $success];
+            $reason = null;
+            if ($success) {
                 $sent++;
                 $this->updateSubscriptionSuccess((int) $sub['rowid']);
             } else {
@@ -119,6 +121,7 @@ class PushSender
                     $this->updateSubscriptionError((int) $sub['rowid'], $reason);
                 }
             }
+            $this->logSend($sub, $message, $report, $success, $reason);
             $results[] = $row;
         }
 
@@ -136,7 +139,8 @@ class PushSender
      */
     private function getTargetSubscriptions(array $target, $entity)
     {
-        $sql = "SELECT rowid, endpoint, key_p256dh, key_auth";
+        $sql = "SELECT rowid, endpoint, key_p256dh, key_auth,";
+        $sql .= " subject_type, fk_user, fk_societe_account, fk_adherent, entity";
         $sql .= " FROM ".MAIN_DB_PREFIX."smartauth_push_subscriptions";
         $sql .= " WHERE status = 1 AND entity = ".(int) $entity;
 
@@ -165,10 +169,15 @@ class PushSender
         if ($resql) {
             while ($obj = $this->db->fetch_object($resql)) {
                 $out[] = [
-                    'rowid'      => (int) $obj->rowid,
-                    'endpoint'   => $obj->endpoint,
-                    'key_p256dh' => $obj->key_p256dh,
-                    'key_auth'   => $obj->key_auth,
+                    'rowid'              => (int) $obj->rowid,
+                    'endpoint'           => $obj->endpoint,
+                    'key_p256dh'         => $obj->key_p256dh,
+                    'key_auth'           => $obj->key_auth,
+                    'subject_type'       => $obj->subject_type,
+                    'fk_user'            => (int) $obj->fk_user,
+                    'fk_societe_account' => isset($obj->fk_societe_account) ? (int) $obj->fk_societe_account : null,
+                    'fk_adherent'        => isset($obj->fk_adherent) ? (int) $obj->fk_adherent : null,
+                    'entity'             => (int) $obj->entity,
                 ];
             }
         } else {
@@ -262,5 +271,74 @@ class PushSender
         if (is_file($autoload)) {
             require_once $autoload;
         }
+    }
+
+    /**
+     * Persist one send-log row for a single recipient.
+     *
+     * Best-effort audit only: a logging failure never breaks the send (it is
+     * already logged to syslog by the DAO). No-op when SMARTAUTH_PUSH_LOG_ENABLED
+     * is off (the DAO short-circuits).
+     *
+     * @param array   $sub     Subscription row (rowid + subject identity)
+     * @param array   $message Message payload (title, body, data)
+     * @param object  $report  minishlink MessageSentReport
+     * @param bool    $success Whether the Push Service accepted the message
+     * @param ?string $reason  Failure reason (null on success)
+     * @return void
+     */
+    private function logSend(array $sub, array $message, $report, $success, $reason)
+    {
+        if (!getDolGlobalInt('SMARTAUTH_PUSH_LOG_ENABLED', 1)) {
+            return;
+        }
+
+        dol_include_once('/smartauth/class/smartauthpushlog.class.php');
+        if (!class_exists('SmartAuthPushLog')) {
+            dol_syslog('PushSender::logSend SmartAuthPushLog class not found, skip log', LOG_WARNING);
+            return;
+        }
+
+        $data = isset($message['data']) && is_array($message['data']) ? $message['data'] : [];
+        $type = isset($data['type']) ? (string) $data['type'] : null;
+
+        $log = new \SmartAuthPushLog($this->db);
+        $log->recordSend([
+            'fk_subscription'    => (int) $sub['rowid'],
+            'subject_type'       => !empty($sub['subject_type']) ? $sub['subject_type'] : 'user',
+            'fk_user'            => isset($sub['fk_user']) ? (int) $sub['fk_user'] : 0,
+            'fk_societe_account' => isset($sub['fk_societe_account']) ? $sub['fk_societe_account'] : null,
+            'fk_adherent'        => isset($sub['fk_adherent']) ? $sub['fk_adherent'] : null,
+            'entity'             => isset($sub['entity']) ? (int) $sub['entity'] : 1,
+            'notification_type'  => $type,
+            'notification_title' => isset($message['title']) ? (string) $message['title'] : null,
+            'notification_body'  => isset($message['body']) ? (string) $message['body'] : null,
+            'notification_data'  => !empty($data) ? json_encode($data) : null,
+            'http_status'        => $this->extractHttpStatus($report, $success),
+            'success'            => $success ? 1 : 0,
+            'error_message'      => $reason,
+        ]);
+    }
+
+    /**
+     * Best-effort extraction of the Push Service HTTP status from a report.
+     *
+     * minishlink does not expose the status directly; getResponse() returns a
+     * PSR-7 response when available. Falls back to 201 on success / null on
+     * failure when no response object is reachable.
+     *
+     * @param object $report  minishlink MessageSentReport
+     * @param bool   $success Whether the message was accepted
+     * @return ?int
+     */
+    private function extractHttpStatus($report, $success)
+    {
+        if (is_object($report) && method_exists($report, 'getResponse')) {
+            $response = $report->getResponse();
+            if (is_object($response) && method_exists($response, 'getStatusCode')) {
+                return (int) $response->getStatusCode();
+            }
+        }
+        return $success ? 201 : null;
     }
 }

@@ -335,3 +335,26 @@ SmartauthVapidRegenerate=Regenerate the keys
 SmartauthVapidRegenerateConfirm=Regenerating the VAPID keys will invalidate every existing push subscription. Users will have to subscribe again. Continue?
 SmartauthVapidKeySaved=VAPID keys saved
 SmartauthVapidKeyGenerationFailed=VAPID key generation failed (check the OpenSSL configuration on the server, see the logs)
+#
+# Web Push send logs (push_logs_list.php)
+#
+SmartAuthLogsMenu=Logs
+SmartAuthPushLogsMenu=Push notifications
+SmartAuthPushLogsTitle=Web Push notifications sent
+PushLogSubjectType=Subject type
+PushLogSubjectUser=User
+PushLogSubjectAccount=Account
+PushLogSubjectMember=Member
+PushLogUser=User
+PushLogAccount=Account
+PushLogMember=Member
+PushLogType=Type
+PushLogTitle=Title
+PushLogBody=Message
+PushLogData=Data
+PushLogHttpStatus=HTTP status
+PushLogSuccess=Result
+PushLogAccepted=Accepted
+PushLogFailed=Failed
+PushLogError=Error
+PushLogSubscription=Subscription
