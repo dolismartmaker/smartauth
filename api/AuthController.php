@@ -216,6 +216,11 @@ class AuthController
 		$this->_revokeToken($decoded->token_id, 'refresh_used');
 
 		// Generate new token pair
+		// Carry the rotation counter forward so the MAX_REFRESH_COUNT bound is
+		// real: the previous count comes from the (signed) refresh token, and
+		// the freshly issued pair carries count+1.
+		$next_refresh_count = (int) ($decoded->refresh_count ?? 0) + 1;
+
 		$new_tokens = $this->_generateTokenPair(
 			'user',
 			$decoded->user_id,
@@ -223,11 +228,13 @@ class AuthController
 			$login,
 			$entity,
 			$family_id,
-			$device_id
+			$device_id,
+			'',
+			$next_refresh_count
 		);
 
-		// Update token family stats
-		$this->_updateTokenFamily($family_id, $decoded->refresh_count + 1);
+		// Update token family stats with the accumulated count.
+		$this->_updateTokenFamily($family_id, $next_refresh_count);
 
 		dol_syslog("SmartAuth Token refreshed successfully for user $login");
 
@@ -1219,9 +1226,9 @@ class AuthController
 	 *
 	 * @return  array               two token (access & refresh)
 	 */
-	private function _generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id, $device_uuid = '')
+	private function _generateTokenPair($element, $element_id, $user_id, $login, $entity, $family_id, $device_id, $device_uuid = '', $refresh_count = 0)
 	{
-		dol_syslog("smartauth : _generateTokenPair element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, family_id=$family_id, device_id=$device_id, device_uuid=$device_uuid");
+		dol_syslog("smartauth : _generateTokenPair element=$element, element_id=$element_id, user_id=$user_id, login=$login, entity=$entity, family_id=$family_id, device_id=$device_id, device_uuid=$device_uuid, refresh_count=$refresh_count");
 		// Generate access token (short-lived)
 		$access_token = $this->_generateToken(
 			$element,
@@ -1233,7 +1240,8 @@ class AuthController
 			SmartTokenConfig::ACCESS_TOKEN_LIFETIME,
 			$family_id,
 			$device_id,
-			$device_uuid
+			$device_uuid,
+			$refresh_count
 		);
 
 		// Generate refresh token (long-lived)
@@ -1247,7 +1255,8 @@ class AuthController
 			SmartTokenConfig::REFRESH_TOKEN_LIFETIME,
 			$family_id,
 			$device_id,
-			$device_uuid
+			$device_uuid,
+			$refresh_count
 		);
 
 		return [
@@ -1275,7 +1284,7 @@ class AuthController
 	 *
 	 * @return string|null The generated token in format "rowid|jwt_token", or null on failure
 	 */
-	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id,  $device_uuid = null)
+	private function _generateToken($element, $element_id, $user_id, $login, $entity, $token_type, $lifetime, $family_id, $device_id,  $device_uuid = null, $refresh_count = 0)
 	{
 		global $db, $smartAuthAppID;
 
@@ -1303,7 +1312,7 @@ class AuthController
 		// Insert token into database
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_auth";
 		$sql .= " (appuid, salt, date_creation, date_eol, fk_user_creat, fk_authid, fk_device_id, ";
-		$sql .= " auth_element, token_type, family_id, ip, status, entity)";
+		$sql .= " auth_element, token_type, family_id, ip, status, entity, refresh_count)";
 		$sql .= " VALUES (";
 		$sql .= (int) $smartAuthAppID . ", ";
 		$sql .= "'" . $salt . "', ";
@@ -1317,7 +1326,8 @@ class AuthController
 		$sql .= ($family_id ? (int) $family_id : "NULL") . ", ";
 		$sql .= "'" . $db->escape($clientIp) . "', ";
 		$sql .= self::STATUS_VALID . ", ";
-		$sql .= (int) $entity . ")";
+		$sql .= (int) $entity . ", ";
+		$sql .= (int) $refresh_count . ")";
 
 		$resql = $db->query($sql);
 		if (!$resql) {
@@ -1346,7 +1356,7 @@ class AuthController
 			"token_type" => $token_type,
 			"family_id" => $family_id,
 			"device_id" => $device_id,
-			"refresh_count" => 0,
+			"refresh_count" => (int) $refresh_count,
 			"exp" => $now + $lifetime,
 		];
 
