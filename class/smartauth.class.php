@@ -1029,6 +1029,27 @@ class SmartAuth extends CommonObject
 			dol_syslog("SmartAuth::doScheduledJob push_subscriptions cleanup error: ".$this->db->lasterror(), LOG_ERR);
 		}
 
+		// Web Push send logs: bounded retention (RGPD). The log stores
+		// notification title/body, so it must not grow unbounded. Retention is
+		// configurable (default 90 days). Computed in PHP for SQLite/MySQL
+		// compatibility (no DATE_SUB()). affected_rows() takes the RESQL.
+		$pushLogRetentionDays = (int) getDolGlobalString('SMARTAUTH_PUSH_LOG_RETENTION_DAYS');
+		if ($pushLogRetentionDays <= 0) {
+			$pushLogRetentionDays = 90;
+		}
+		dol_include_once('/smartauth/class/smartauthpushlog.class.php');
+		if (class_exists('SmartAuthPushLog')) {
+			$pushLog = new SmartAuthPushLog($this->db);
+			$pushLogDeleted = $pushLog->purgeOlderThan($pushLogRetentionDays);
+			if ($pushLogDeleted >= 0) {
+				dol_syslog("SmartAuth::doScheduledJob push_logs cleanup deleted $pushLogDeleted rows");
+			} else {
+				dol_syslog("SmartAuth::doScheduledJob push_logs cleanup error", LOG_ERR);
+			}
+		} else {
+			dol_syslog("SmartAuth::doScheduledJob push_logs cleanup skipped: SmartAuthPushLog class not found", LOG_WARNING);
+		}
+
 		$this->db->commit();
 		return $error;
 	}
