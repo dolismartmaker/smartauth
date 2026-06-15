@@ -250,6 +250,39 @@ if ($action == 'delete_token' && $permtoedit) {
 	}
 }
 
+// Handle token mass actions (todo l.25): revoke (status=9) or really DELETE
+// every selected token row. Ownership enforced per row (fk_authid = id).
+if (in_array($action, array('masstokenrevoke', 'masstokendelete'), true) && $permtoedit) {
+	$tokIds = GETPOST('toselect', 'array');
+	$tokDone = 0;
+	foreach ((array) $tokIds as $tokOne) {
+		$tokOne = (int) $tokOne;
+		if ($tokOne <= 0) {
+			continue;
+		}
+		// Ownership check: the token must belong to this user fiche.
+		$sqlChk = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sqlChk .= " WHERE rowid = " . $tokOne . " AND fk_authid = " . (int) $id;
+		$resChk = $db->query($sqlChk);
+		if (!$resChk || $db->num_rows($resChk) === 0) {
+			continue;
+		}
+		if ($action === 'masstokendelete') {
+			$sqlOne = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE rowid = " . $tokOne;
+		} else {
+			$sqlOne = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth SET status = 9, salt = 'revoked_by_user' WHERE rowid = " . $tokOne;
+		}
+		if ($db->query($sqlOne)) {
+			$tokDone++;
+		} else {
+			dol_syslog("SmartAuth : token mass action '" . $action . "' failed on id #" . $tokOne . " : " . $db->lasterror(), LOG_ERR);
+		}
+	}
+	setEventMessages($langs->trans($action === 'masstokendelete' ? 'TokensMassDeleted' : 'TokensMassRevoked', $tokDone), null, 'mesgs');
+	header("Location: " . $_SERVER['PHP_SELF'] . '?id=' . ((int) $id));
+	exit;
+}
+
 // Handle rename device action
 if ($action == 'rename' && $permtoedit) {
 	$token_id = GETPOST('token_id', 'int');
@@ -408,7 +441,7 @@ if ($qrpairAction === 'qrpairgenerate' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') 
 // pattern so a refresh after submit does not re-execute the action.
 // =====================================================================
 $userDeviceAction = (string) $action;
-if (in_array($userDeviceAction, array('userdevicerevoke', 'userdevicerename'), true)
+if (in_array($userDeviceAction, array('userdevicerevoke', 'userdevicerename', 'userdevicedelete', 'userdevicemassrevoke', 'userdevicemassdelete'), true)
 	&& ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
 ) {
 	if ((int) $user->id !== (int) $id) {
@@ -422,9 +455,33 @@ if (in_array($userDeviceAction, array('userdevicerevoke', 'userdevicerename'), t
 	$udRepo = new SmartAuthUserDevice($db);
 	$udId = (int) GETPOST('user_device_id', 'int');
 
-	if ($udId > 0) {
+	// todo l.25 -- mass actions on "Mes appareils": revoke or really DELETE
+	// every selected logical device in one POST. Ownership is enforced inside
+	// revoke()/delete() (fk_user check), so a forged id silently no-ops.
+	if ($userDeviceAction === 'userdevicemassrevoke' || $userDeviceAction === 'userdevicemassdelete') {
+		$udIds = GETPOST('user_device_ids', 'array');
+		$udDone = 0;
+		foreach ((array) $udIds as $udOne) {
+			$udOne = (int) $udOne;
+			if ($udOne <= 0) {
+				continue;
+			}
+			if ($userDeviceAction === 'userdevicemassdelete') {
+				if ($udRepo->delete($udOne, (int) $user->id, $udEntity)) {
+					$udDone++;
+				}
+			} else {
+				$udRepo->revoke($udOne, (int) $user->id, $udEntity);
+				$udDone++;
+			}
+		}
+		setEventMessages($langs->trans($userDeviceAction === 'userdevicemassdelete' ? 'SmartAuthUserDeviceMassDeleted' : 'SmartAuthUserDeviceMassRevoked', $udDone), null, 'mesgs');
+	} elseif ($udId > 0) {
 		if ($userDeviceAction === 'userdevicerevoke') {
 			$udRepo->revoke($udId, (int) $user->id, $udEntity);
+		} elseif ($userDeviceAction === 'userdevicedelete') {
+			// Real removal of the logical device (todo l.25), not a revoke.
+			$udRepo->delete($udId, (int) $user->id, $udEntity);
 		} elseif ($userDeviceAction === 'userdevicerename') {
 			$udNewLabel = SmartAuthUserDevice::normaliseLabel((string) GETPOST('new_label', 'alphanohtml'));
 			if ($udNewLabel !== '') {
@@ -639,6 +696,12 @@ if ($object->id) {
 	print '<div class="div-table-responsive-no-min" style="margin-bottom:18px;">';
 	print '<table class="noborder centpercent">';
 	print '<thead><tr class="liste_titre">';
+	// todo l.25 -- selection column for the mass actions (owner only). The
+	// checkboxes live OUTSIDE the per-row rename/revoke forms (HTML5 form=
+	// attribute) so nothing nests, and target the sibling mass-action form.
+	if ($udIsOwner) {
+		print '<th class="center" style="width:24px;"><input type="checkbox" id="ud-select-all" title="' . dol_escape_htmltag($langs->trans('SelectAll')) . '"></th>';
+	}
 	print '<th>' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceLabel')) . '</th>';
 	print '<th class="center">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceSessions')) . '</th>';
 	print '<th class="center">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceLastSeen')) . '</th>';
@@ -648,7 +711,7 @@ if ($object->id) {
 	print '</tr></thead><tbody>';
 
 	if (empty($udRows)) {
-		$colspan = $udIsOwner ? 4 : 3;
+		$colspan = $udIsOwner ? 5 : 3;
 		print '<tr><td colspan="' . $colspan . '" class="opacitymedium">';
 		print dol_escape_htmltag($langs->trans('SmartAuthUserDeviceEmpty'));
 		print '</td></tr>';
@@ -661,7 +724,11 @@ if ($object->id) {
 		);
 		foreach ($udRows as $udRow) {
 			$udIconClass = $udIconMap[$udRow['icon']] ?? 'fa-mobile-alt';
+			$udRowId = (int) $udRow['rowid'];
 			print '<tr class="oddeven">';
+			if ($udIsOwner) {
+				print '<td class="center"><input type="checkbox" class="ud-check" name="user_device_ids[]" value="' . $udRowId . '" form="ud-massform"></td>';
+			}
 			print '<td>';
 			print '<i class="fas ' . $udIconClass . '" aria-hidden="true" style="margin-right:6px;"></i>';
 			print dol_escape_htmltag((string) $udRow['label']);
@@ -671,7 +738,6 @@ if ($object->id) {
 			print !empty($udRow['date_lastseen']) ? dol_print_date($db->jdate($udRow['date_lastseen']), 'dayhour') : '-';
 			print '</td>';
 			if ($udIsOwner) {
-				$udRowId = (int) $udRow['rowid'];
 				print '<td class="right">';
 				// Rename form (inline, label-only).
 				print '<form method="POST" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . ((int) $id) . '" style="display:inline-block;margin-right:8px;">';
@@ -681,13 +747,21 @@ if ($object->id) {
 				print '<input type="text" name="new_label" maxlength="100" value="' . dol_escape_htmltag((string) $udRow['label']) . '" style="width:140px;">';
 				print '<button type="submit" class="butAction" style="padding:2px 8px;font-size:12px;">' . dol_escape_htmltag($langs->trans('Rename')) . '</button>';
 				print '</form>';
-				// Revoke form (with JS confirm).
+				// Revoke form (disable, keeps the row) with JS confirm.
 				$udConfirmMsg = $langs->transnoentities('SmartAuthUserDeviceRevokeConfirm', $udRow['label']);
-				print '<form method="POST" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . ((int) $id) . '" style="display:inline-block;" onsubmit="return confirm(' . htmlspecialchars(json_encode($udConfirmMsg), ENT_QUOTES, 'UTF-8') . ');">';
+				print '<form method="POST" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . ((int) $id) . '" style="display:inline-block;margin-right:6px;" onsubmit="return confirm(' . htmlspecialchars(json_encode($udConfirmMsg), ENT_QUOTES, 'UTF-8') . ');">';
 				print '<input type="hidden" name="action" value="userdevicerevoke">';
 				print '<input type="hidden" name="token" value="' . newToken() . '">';
 				print '<input type="hidden" name="user_device_id" value="' . $udRowId . '">';
-				print '<button type="submit" class="butActionDelete" style="padding:2px 8px;font-size:12px;">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceRevokeAction')) . '</button>';
+				print '<button type="submit" class="butAction" style="padding:2px 8px;font-size:12px;">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceRevokeAction')) . '</button>';
+				print '</form>';
+				// Delete form (todo l.25): really removes the logical device.
+				$udDelConfirmMsg = $langs->transnoentities('SmartAuthUserDeviceDeleteConfirm', $udRow['label']);
+				print '<form method="POST" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . ((int) $id) . '" style="display:inline-block;" onsubmit="return confirm(' . htmlspecialchars(json_encode($udDelConfirmMsg), ENT_QUOTES, 'UTF-8') . ');">';
+				print '<input type="hidden" name="action" value="userdevicedelete">';
+				print '<input type="hidden" name="token" value="' . newToken() . '">';
+				print '<input type="hidden" name="user_device_id" value="' . $udRowId . '">';
+				print '<button type="submit" class="butActionDelete" style="padding:2px 8px;font-size:12px;">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceDeleteAction')) . '</button>';
 				print '</form>';
 				print '</td>';
 			}
@@ -696,6 +770,20 @@ if ($object->id) {
 	}
 	print '</tbody></table>';
 	print '</div>';
+
+	// todo l.25 -- mass-action bar for "Mes appareils" (owner, non-empty list).
+	// Sibling form referenced by the row checkboxes via their form= attribute,
+	// so it never nests inside the per-row rename/revoke/delete forms.
+	if ($udIsOwner && !empty($udRows)) {
+		$udMassDelConfirm = $langs->transnoentities('SmartAuthUserDeviceMassDeleteConfirm');
+		$udMassRevConfirm = $langs->transnoentities('SmartAuthUserDeviceMassRevokeConfirm');
+		print '<form id="ud-massform" method="POST" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . ((int) $id) . '" style="margin:-8px 0 18px;">';
+		print '<input type="hidden" name="token" value="' . newToken() . '">';
+		print '<button type="submit" name="action" value="userdevicemassrevoke" class="butAction" onclick="return confirm(' . htmlspecialchars(json_encode($udMassRevConfirm), ENT_QUOTES, 'UTF-8') . ');">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceMassRevoke')) . '</button> ';
+		print '<button type="submit" name="action" value="userdevicemassdelete" class="butActionDelete" onclick="return confirm(' . htmlspecialchars(json_encode($udMassDelConfirm), ENT_QUOTES, 'UTF-8') . ');">' . dol_escape_htmltag($langs->trans('SmartAuthUserDeviceMassDelete')) . '</button>';
+		print '</form>';
+		print '<script>(function(){var a=document.getElementById("ud-select-all");if(!a)return;a.addEventListener("change",function(){document.querySelectorAll(".ud-check").forEach(function(c){c.checked=a.checked;});});})();</script>';
+	}
 
 	// ------------------------------------------------------------------------------------------------------------ API KEYS
 	//note eric attention truandage, object était user et passe maintenant Auth ...
@@ -906,7 +994,9 @@ if ($object->id) {
 	print '<th class="liste_titre right">'.$langs->trans("AnotherField").'</th>';
 	$totalarray['nbfield']++;
 }*/
-	print getTitleFieldOfList('', 0, $_SERVER["PHP_SELF"], '', '', '', '', $sortfield, $sortorder, 'center') . "\n";
+	// Action column header carries the "select all" checkbox for the token
+	// mass actions (todo l.25).
+	print '<th class="center liste_titre"><input type="checkbox" id="tok-select-all" title="' . dol_escape_htmltag($langs->trans('SelectAll')) . '"></th>' . "\n";
 	// Action column
 	// if (!getDolGlobalString('MAIN_CHECKBOX_LEFT_COLUMN')) {
 	// print getTitleFieldOfList($selectedfields, 0, $_SERVER["PHP_SELF"], '', '', '', '', $sortfield, $sortorder, 'center maxwidthsearch ')."\n";
@@ -1080,6 +1170,9 @@ if ($object->id) {
 		print '<i class="fa fa-trash" style="color: #ef4444;"></i>';
 		print '</a>';
 
+		// Selection checkbox for the token mass actions (todo l.25).
+		print ' <input type="checkbox" class="tok-check" name="toselect[]" value="' . $object->id . '" style="margin-left:8px;vertical-align:middle;">';
+
 		print '</td>';
 		if (!$i) $totalarray['nbfield']++;
 
@@ -1116,6 +1209,18 @@ if ($object->id) {
 
 	print '</table>' . "\n";
 	print '</div>' . "\n";
+
+	// todo l.25 -- token mass actions bar (inside the searchFormList form, so the
+	// row checkboxes name="toselect[]" are submitted together).
+	if ($num > 0 && $permtoedit) {
+		$tokMassRevConfirm = $langs->transnoentities('ConfirmRevokeSelectedTokens');
+		$tokMassDelConfirm = $langs->transnoentities('ConfirmDeleteSelectedTokens');
+		print '<div style="margin:8px 0;">';
+		print '<button type="submit" name="action" value="masstokenrevoke" class="butAction" onclick="return confirm(' . htmlspecialchars(json_encode($tokMassRevConfirm), ENT_QUOTES, 'UTF-8') . ');">' . dol_escape_htmltag($langs->trans('RevokeSelectedTokens')) . '</button> ';
+		print '<button type="submit" name="action" value="masstokendelete" class="butActionDelete" onclick="return confirm(' . htmlspecialchars(json_encode($tokMassDelConfirm), ENT_QUOTES, 'UTF-8') . ');">' . dol_escape_htmltag($langs->trans('DeleteSelectedTokens')) . '</button>';
+		print '</div>';
+		print '<script>(function(){var a=document.getElementById("tok-select-all");if(!a)return;a.addEventListener("change",function(){document.querySelectorAll(".tok-check").forEach(function(c){c.checked=a.checked;});});})();</script>';
+	}
 
 	print '</form>' . "\n";
 

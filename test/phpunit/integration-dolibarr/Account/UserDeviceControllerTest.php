@@ -187,6 +187,45 @@ class UserDeviceControllerTest extends DolibarrRealTestCase
         $this->assertSame([], $list[0]['devices']);
     }
 
+    public function testDeleteRemovesRowDetachesDevicesAndCascades(): void
+    {
+        // todo l.25 -- repo->delete() must REALLY remove the user_device row
+        // (not just flip status like revoke), kill sessions, cancel technical
+        // devices and detach them (fk_user_device NULL) so nothing dangles.
+        $tech1 = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
+        $tech2 = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-2');
+
+        $created = $this->controller->create($this->makePayload(['label' => 'mon iPhone', 'jwt_device_id' => $tech1]));
+        $userDeviceId = (int) $created[0]['id'];
+        $this->controller->link($this->makePayload(['id' => $userDeviceId, 'jwt_device_id' => $tech2]));
+
+        $fam1 = $this->insertTokenFamily($this->adminUserId);
+        $this->insertAuthToken($this->adminUserId, $tech1, $fam1);
+
+        $ok = $this->repo->delete($userDeviceId, $this->adminUserId, 1);
+        $this->assertTrue($ok);
+
+        // The user_device row is physically gone.
+        $sql = "SELECT COUNT(*) AS nb FROM " . MAIN_DB_PREFIX . "smartauth_user_devices WHERE rowid = " . $userDeviceId;
+        $resql = $this->db->query($sql);
+        $this->assertSame(0, (int) $this->db->fetch_object($resql)->nb);
+
+        // Technical devices are cancelled (status=9) AND detached from the
+        // deleted parent (fk_user_device NULL).
+        foreach (array($tech1, $tech2) as $techId) {
+            $row = $this->fetchTechnical($techId);
+            $this->assertSame(9, (int) $row->status);
+            $this->assertTrue($row->fk_user_device === null || $row->fk_user_device === '' || (int) $row->fk_user_device === 0);
+        }
+
+        // Session token was logged out by the revocation cascade.
+        $this->assertSame(9, (int) $this->fetchAuthByFamily($fam1)->status);
+
+        // Gone from the active list too.
+        $list = $this->controller->index($this->makePayload());
+        $this->assertSame([], $list[0]['devices']);
+    }
+
     public function testCrossUserAccessIsForbidden(): void
     {
         $otherUser = $this->createTestUser(['login' => 'other_' . uniqid()]);

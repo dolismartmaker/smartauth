@@ -532,6 +532,56 @@ class SmartAuthUserDevice
     }
 
     /**
+     * Hard-delete a logical user_device (todo l.25). Distinct from revoke()
+     * which only flips status to REVOKED. First runs the same revocation
+     * cascade (kills token families/sessions, cancels the technical device
+     * rows), then detaches any remaining technical device from the
+     * about-to-vanish parent so no row keeps a dangling fk_user_device, and
+     * finally removes the user_device row itself.
+     *
+     * Ownership-checked. Returns true on a real delete, false when the row
+     * does not exist or does not belong to the user.
+     *
+     * @param int $rowid
+     * @param int $expectedFkUser
+     * @param int $entity
+     * @return bool
+     */
+    public function delete(int $rowid, int $expectedFkUser, int $entity = 1): bool
+    {
+        $row = $this->findById($rowid, $entity);
+        if ($row === null || (int) $row['fk_user'] !== (int) $expectedFkUser) {
+            return false;
+        }
+
+        // Kill sessions + cancel technical devices (idempotent; no-op if the
+        // row was already revoked).
+        $this->revoke($rowid, $expectedFkUser, $entity);
+
+        // Detach any technical device still pointing at this parent so we never
+        // leave a dangling fk_user_device once the row is gone.
+        $sql = "UPDATE " . MAIN_DB_PREFIX . self::DEVICES_TABLE;
+        $sql .= " SET fk_user_device = NULL";
+        $sql .= " WHERE fk_user_device = " . (int) $rowid;
+        $sql .= " AND fk_user_creat = " . (int) $expectedFkUser;
+        $sql .= " AND entity = " . (int) $entity;
+        $this->db->query($sql);
+
+        // Remove the logical device row.
+        $sql = "DELETE FROM " . MAIN_DB_PREFIX . self::TABLE;
+        $sql .= " WHERE rowid = " . (int) $rowid;
+        $sql .= " AND fk_user = " . (int) $expectedFkUser;
+        $sql .= " AND entity = " . (int) $entity;
+        if (!$this->db->query($sql)) {
+            dol_syslog('SmartAuthUserDevice: delete failed rowid=' . $rowid, LOG_ERR);
+            return false;
+        }
+
+        dol_syslog("SmartAuthUserDevice: deleted rowid=$rowid user=$expectedFkUser entity=$entity", LOG_INFO);
+        return true;
+    }
+
+    /**
      * Resolve the user_device id currently linked to a given technical
      * device row. Returns 0 when the technical device has no parent
      * (legacy / not yet sorted).
