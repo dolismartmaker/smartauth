@@ -109,8 +109,10 @@ class AuthControllerTest extends DolibarrRealTestCase
 
         $ip = AuthController::get_client_ip();
 
-        // Should extract first public IP
-        $this->assertEquals('203.0.113.50', $ip);
+        // Anti-spoof (todo-security.md #2): the real client is the RIGHTMOST
+        // entry (the peer the trusted hop actually saw). The leftmost is
+        // client-controlled and must never be returned.
+        $this->assertEquals('70.41.3.18', $ip);
 
         $this->clearIpCache();
     }
