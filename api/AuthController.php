@@ -475,7 +475,7 @@ class AuthController
 		$userlogin = $tmpuser->email;
 
 		$device_uuid = InputSanitizer::sanitizeUUID($_SERVER['HTTP_X_DEVICEID'] ?? '') ?? '';
-		$name = $this->getDeviceName(null, $device_uuid);
+		$name = $this->getDeviceName(null, $device_uuid, (int) $tmpuser->id);
 		$devices_choice = null;
 		dol_syslog("SmartAuth AuthController : device name is $name for uuid=$device_uuid");
 		if (empty($name)) {
@@ -1776,7 +1776,7 @@ class AuthController
 	 *
 	 * @return  int     <= 0 in error, > 0 : rowid on success
 	 */
-	public static function getDeviceName($id = null, $uuid = null)
+	public static function getDeviceName($id = null, $uuid = null, $userId = null)
 	{
 		global $db, $conf;
 
@@ -1785,6 +1785,13 @@ class AuthController
 			$sql .= " WHERE rowid='" . (int) $id . "'";
 		} elseif (null !== $uuid) {
 			$sql .= " WHERE uuid='" . $db->escape($uuid) . "'";
+			// Scope to the user when known (todo l.12/l.19): a browser is a
+			// single technical uuid, so two users on the SAME browser share it.
+			// Without this filter, user B would inherit user A's device name
+			// ("smartphone eric") at login -- a cross-user leak.
+			if (null !== $userId) {
+				$sql .= " AND fk_user_creat = " . (int) $userId;
+			}
 		} else {
 			return '';
 		}
@@ -1813,13 +1820,19 @@ class AuthController
 
 		$ret = [];
 		$sql = "SELECT label, uuid FROM " . MAIN_DB_PREFIX . "smartauth_devices";
+		// fk_user_creat is a MANDATORY scope (todo l.12/l.19): on a shared
+		// browser two users carry the same technical uuid, so the current-device
+		// branch below must stay INSIDE the user filter -- otherwise it leaks the
+		// other user's named device. The OR only relaxes status/entity for the
+		// current device, never the owner.
 		$sql .= " WHERE fk_user_creat = " . (int) $user_id;
 		$sql .= " AND label != ''";
-		$sql .= " AND status = 1";
-		$sql .= " AND entity IN (" . getEntity('user') . ")";
+		$sql .= " AND (";
+		$sql .= " (status = 1 AND entity IN (" . getEntity('user') . "))";
 		if ($current_uuid != "") {
-			$sql .= " OR ( uuid='" . $db->escape($current_uuid) . "' AND label != '')";
+			$sql .= " OR uuid = '" . $db->escape($current_uuid) . "'";
 		}
+		$sql .= " )";
 		$sql .= " GROUP BY uuid,label";
 		$resql = $db->query($sql);
 		if ($resql) {
@@ -1829,8 +1842,14 @@ class AuthController
 			}
 		}
 
-		//filtrage: si le device uuid a un nom et qu'on a qu'un seul match on return un vide pour éviter d'avoir la popup de choix/nom sur le front
-		if (count($ret) == 1 && trim($ret[0]->label) != "") {
+		// Filtrage (todo l.12/l.19): on ne masque la popup que si l'UNIQUE
+		// appareil nomme est l'appareil COURANT (deja nomme -> aucun choix a
+		// proposer). Sans la verification de l'uuid, le cas "1er login navigateur
+		// A -> nomme 'smartphone eric', re-login navigateur B sur le meme
+		// telephone (uuid different)" vidait la liste et n'affichait jamais
+		// 'smartphone eric' dans le picker. On garde donc l'appareil existant
+		// quand l'appareil courant est nouveau, pour qu'il soit proposable.
+		if (count($ret) == 1 && trim($ret[0]->label) != "" && (string) $ret[0]->uuid === (string) $current_uuid) {
 			$ret = [];
 		}
 
