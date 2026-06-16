@@ -340,7 +340,47 @@ class AuthControllerLoginTest extends DolibarrRealTestCase
 
         $this->assertEquals(200, $result[1]);
         $this->assertArrayHasKey('devices_choice', $result[0]);
-        // devices_choice could be null or array depending on filtering logic
+        // Regression (todo l.12/l.19): logging in from a NEW device (different
+        // uuid) while the user already owns exactly one named device must still
+        // propose that device in the picker. The old count==1 filter wrongly
+        // emptied the list, so "smartphone eric" never reappeared on a second
+        // browser of the same phone.
+        $this->assertIsArray($result[0]['devices_choice']);
+        $labels = array_map(
+            static function ($d) {
+                return is_object($d) ? $d->label : $d['label'];
+            },
+            $result[0]['devices_choice']
+        );
+        $this->assertContains('My Known Device', $labels);
+    }
+
+    /**
+     * Regression (todo l.12/l.19): a browser is a single technical uuid, so two
+     * users on the SAME browser share it. getDeviceName() scoped to a user must
+     * NOT leak another user's device name -- otherwise user B would silently
+     * inherit user A's "smartphone eric" at login.
+     */
+    public function testGetDeviceNameIsScopedToUser(): void
+    {
+        $user = new \User($this->db);
+        $user->fetch(0, 'admin');
+
+        $uuid = $this->generateUUID();
+        $dev = new SmartAuthDevices($this->db);
+        $dev->label = 'smartphone eric';
+        $dev->uuid = $uuid;
+        $dev->status = SmartAuthDevices::STATUS_VALIDATED;
+        $dev->entity = 1;
+        $dev->fk_user_creat = $user->id;
+        $dev->create($user);
+
+        // The owner still sees the name (scoped lookup).
+        $this->assertSame('smartphone eric', AuthController::getDeviceName(null, $uuid, (int) $user->id));
+        // A different user on the SAME browser (same uuid) gets nothing.
+        $this->assertSame('', AuthController::getDeviceName(null, $uuid, 999999));
+        // Unscoped lookup keeps the legacy behaviour (backward compatible).
+        $this->assertSame('smartphone eric', AuthController::getDeviceName(null, $uuid));
     }
 
     /**
