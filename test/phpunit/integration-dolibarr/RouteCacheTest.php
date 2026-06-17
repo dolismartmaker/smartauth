@@ -14,6 +14,7 @@
 namespace SmartAuth\Tests\IntegrationDolibarr;
 
 use SmartAuth\Api\RouteCache;
+use SmartAuth\Api\ModulePathHelper;
 
 /**
  * @covers \SmartAuth\Api\RouteCache
@@ -141,6 +142,36 @@ class RouteCacheTest extends DolibarrRealTestCase
 
         // Restore
         RouteCache::init('testmodule');
+    }
+
+    public function testIsCacheValidInvalidatedWhenRouteModuleSetChanges(): void
+    {
+        global $conf;
+
+        if (!isset($conf->modules_parts) || !is_array($conf->modules_parts)) {
+            $conf->modules_parts = [];
+        }
+        unset($conf->modules_parts['smartauth']);
+        ModulePathHelper::resetCache();
+
+        // Build a valid cache while no consumer module declares routes.
+        RouteCache::init('testmodule');
+        RouteCache::startRegistration();
+        RouteCache::register('GET', '/test', 'TestClass', 'test', false);
+        RouteCache::endRegistration();
+
+        RouteCache::init('testmodule');
+        $this->assertTrue(RouteCache::isCacheValid());
+
+        // Enabling a module that exposes SmartAuth routes must invalidate the
+        // cache through the in-memory signature, with no filesystem change.
+        $conf->modules_parts['smartauth'] = ['capmail' => ['routes' => 1]];
+        ModulePathHelper::resetCache();
+
+        $this->assertFalse(RouteCache::isCacheValid());
+
+        unset($conf->modules_parts['smartauth']);
+        ModulePathHelper::resetCache();
     }
 
     // ==================== registration mode tests ====================

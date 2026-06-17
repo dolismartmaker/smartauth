@@ -386,7 +386,7 @@ class NewLoginNotifier
         if ($host === '://') {
             $host = $issuer;
         }
-        return $host . '/custom/smartauth/user_tab.php?id=' . $userId;
+        return $host . \SmartAuth\Api\ModulePathHelper::moduleUrlPrefix('smartauth') . '/user_tab.php?id=' . $userId;
     }
 
     private function reasonText(string $reason): string

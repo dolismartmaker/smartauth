@@ -73,6 +73,7 @@ dol_include_once('/smartauth/class/smartlogs.class.php');
 dol_include_once('/smartauth/class/smartauthqrpairing.class.php');
 dol_include_once('/smartauth/class/smartauthuserdevice.class.php');
 dol_include_once('/smartauth/api/RouteController.php');
+dol_include_once('/smartauth/api/ModulePathHelper.php');
 dol_include_once('/smartauth/lib/tools.php');
 
 // Load translation files required by page
@@ -600,7 +601,7 @@ if ($object->id) {
 		} else {
 			$qrScheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 			$qrHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
-			$qrBaseUrl = $qrScheme . '://' . $qrHost . '/custom/smartauth/public';
+			$qrBaseUrl = $qrScheme . '://' . $qrHost . \SmartAuth\Api\ModulePathHelper::moduleUrlPrefix('smartauth') . '/public';
 		}
 		$qrPayload = $qrBaseUrl . '/qr-pair/' . $qrPairingId;
 

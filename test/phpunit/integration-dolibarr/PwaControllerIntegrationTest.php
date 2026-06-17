@@ -123,8 +123,9 @@ class TestablePwaController extends PwaController
             }
         }
 
-        // 2. Fallback to default icon (shipped with module via SmartBoot)
-        $defaultIconPath = DOL_DOCUMENT_ROOT . '/custom/' . $moduleName . '/pwa/images/pwa-' . $size . 'x' . $size . '.png';
+        // 2. Fallback to default icon (shipped with module via SmartBoot).
+        // Mirror the real controller: resolve across every configured root.
+        $defaultIconPath = dol_buildpath('/' . $moduleName . '/pwa/images/pwa-' . $size . 'x' . $size . '.png', 0);
         if (file_exists($defaultIconPath)) {
             $this->lastStatusCode = 200;
             $this->lastHeaders = [
