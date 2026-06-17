@@ -1,6 +1,6 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 2.0.26 -- 20260617
+## 2.0.28 -- 20260617
 
  - better route cache support and update
  - add webpush stuff
