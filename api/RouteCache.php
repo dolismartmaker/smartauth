@@ -152,6 +152,35 @@ class RouteCache
     }
 
     /**
+     * Delete every PWA route cache file (DOL_DATA_ROOT/<module>/cache/routes.php).
+     *
+     * Meant to be called from a SmartMaker route-module's init()/remove() so that
+     * enabling, disabling or upgrading such a module invalidates the cached
+     * routes of every consuming PWA at once. The caches regenerate lazily on the
+     * next API request (re-including the current api/LocalRoutes.php), so a newly
+     * added route is picked up immediately -- without a version bump or dev mode.
+     *
+     * @return int Number of cache files removed
+     */
+    public static function flushAll(): int
+    {
+        if (!defined('DOL_DATA_ROOT')) {
+            return 0;
+        }
+        $deleted = 0;
+        $files = glob(DOL_DATA_ROOT . '/*/cache/routes.php');
+        if (is_array($files)) {
+            foreach ($files as $file) {
+                if (is_file($file) && @unlink($file)) {
+                    $deleted++;
+                }
+            }
+        }
+        dol_syslog("SmartAuth RouteCache::flushAll removed " . $deleted . " route cache file(s)", LOG_INFO);
+        return $deleted;
+    }
+
+    /**
      * Get the version config key for current module
      *
      * @return string Config key like 'SMARTMAKER_VERSION'
