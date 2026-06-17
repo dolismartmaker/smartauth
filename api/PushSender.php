@@ -25,9 +25,6 @@
 
 namespace SmartAuth\Api;
 
-use Minishlink\WebPush\WebPush;
-use Minishlink\WebPush\Subscription;
-
 class PushSender
 {
     const DEFAULT_TTL = 86400;   // 24h
@@ -54,7 +51,7 @@ class PushSender
     {
         global $conf;
 
-        self::ensureWebPushLoaded();
+        self::ensureDependencies();
 
         $subscriptions = $this->getTargetSubscriptions($target, (int) $conf->entity);
         if (empty($subscriptions)) {
@@ -68,12 +65,7 @@ class PushSender
             return [['error' => 'VAPID keys not configured'], 500];
         }
 
-        $auth = ['VAPID' => [
-            'subject'    => $this->resolveVapidSubject(),
-            'publicKey'  => $vapidKeys['publicKey'],
-            'privateKey' => $vapidKeys['privateKey'],
-        ]];
-        $webPush = new WebPush($auth);
+        $subject = $this->resolveVapidSubject();
 
         $payload = json_encode([
             'title' => $message['title'],
@@ -87,41 +79,28 @@ class PushSender
         $ttl = isset($options['ttl']) ? (int) $options['ttl'] : self::DEFAULT_TTL;
         $urgency = isset($options['urgency']) ? $options['urgency'] : 'normal';
 
-        foreach ($subscriptions as $sub) {
-            $webPush->queueNotification(
-                Subscription::create([
-                    'endpoint' => $sub['endpoint'],
-                    'keys' => ['p256dh' => $sub['key_p256dh'], 'auth' => $sub['key_auth']],
-                ]),
-                $payload,
-                ['TTL' => $ttl, 'urgency' => $urgency]
-            );
-        }
-
         $results = [];
         $sent = 0;
         $failed = 0;
-        foreach ($webPush->flush() as $index => $report) {
-            $sub = $subscriptions[$index];
-            $success = $report->isSuccess();
+        foreach ($subscriptions as $sub) {
+            list($httpStatus, $reason, $expired) = $this->dispatchOne($sub, $payload, $vapidKeys, $subject, $ttl, $urgency);
+            $success = ($httpStatus >= 200 && $httpStatus < 300);
             $row = ['subscription_id' => (int) $sub['rowid'], 'success' => $success];
-            $reason = null;
             if ($success) {
                 $sent++;
                 $this->updateSubscriptionSuccess((int) $sub['rowid']);
             } else {
                 $failed++;
-                $reason = $report->getReason();
                 $row['error'] = $reason;
                 dol_syslog('PushSender::send failed sub='.((int) $sub['rowid']).' reason='.$reason, LOG_WARNING);
-                if ($report->isSubscriptionExpired()) {
+                if ($expired) {
                     $this->removeSubscription((int) $sub['rowid']);
                     $row['removed'] = true;
                 } else {
-                    $this->updateSubscriptionError((int) $sub['rowid'], $reason);
+                    $this->updateSubscriptionError((int) $sub['rowid'], (string) $reason);
                 }
             }
-            $this->logSend($sub, $message, $report, $success, $reason);
+            $this->logSend($sub, $message, $httpStatus, $success, $reason);
             $results[] = $row;
         }
 
@@ -257,19 +236,82 @@ class PushSender
     }
 
     /**
-     * Make sure the minishlink/web-push classes are autoloadable in contexts
-     * that do not boot the SmartAuth API front controller (cron, triggers).
+     * Encrypt and POST one notification to its push service. Returns the
+     * outcome as [httpStatus, reason, expired] so send() can update bookkeeping.
+     * A 404/410 means the subscription is gone (expired=true -> delete it).
+     *
+     * @param array  $sub       Subscription row (endpoint, key_p256dh, key_auth)
+     * @param string $payload   JSON payload to encrypt
+     * @param array  $vapidKeys ['publicKey'=>..., 'privateKey'=>...]
+     * @param string $subject   VAPID subject (mailto:/https)
+     * @param int    $ttl       Time-to-live seconds
+     * @param string $urgency   Urgency header value
+     * @return array{0:int,1:?string,2:bool} [httpStatus, reason, expired]
+     */
+    private function dispatchOne(array $sub, $payload, array $vapidKeys, $subject, $ttl, $urgency)
+    {
+        require_once DOL_DOCUMENT_ROOT.'/core/lib/geturl.lib.php';
+
+        try {
+            $enc = WebPushCrypto::encryptPayload($payload, $sub['key_p256dh'], $sub['key_auth']);
+            $authorization = WebPushCrypto::vapidAuthorization(
+                $sub['endpoint'],
+                $vapidKeys['publicKey'],
+                $vapidKeys['privateKey'],
+                $subject
+            );
+        } catch (\Throwable $e) {
+            dol_syslog('PushSender::dispatchOne crypto failed sub='.((int) $sub['rowid']).': '.$e->getMessage(), LOG_ERR);
+            return [0, 'crypto_error: '.$e->getMessage(), false];
+        }
+
+        $headers = array_merge($enc['headers'], [
+            'TTL: '.(int) $ttl,
+            'Urgency: '.$urgency,
+            'Authorization: '.$authorization,
+        ]);
+
+        // POSTALREADYFORMATED sends the raw binary body as-is. getURLContent
+        // honours Dolibarr's proxy/TLS config (MAIN_PROXY_*), unlike a bundled
+        // HTTP client. followlocation=0: push services never redirect.
+        $res = getURLContent($sub['endpoint'], 'POSTALREADYFORMATED', $enc['body'], 0, $headers, array('https'));
+
+        $status = isset($res['http_code']) ? (int) $res['http_code'] : 0;
+        $expired = in_array($status, [404, 410], true);
+
+        $reason = null;
+        if ($status < 200 || $status >= 300) {
+            if (!empty($res['curl_error_msg'])) {
+                $reason = 'curl: '.$res['curl_error_msg'];
+            } else {
+                $reason = 'HTTP '.$status;
+                if (!empty($res['content'])) {
+                    $reason .= ': '.substr((string) $res['content'], 0, 200);
+                }
+            }
+        }
+
+        return [$status, $reason, $expired];
+    }
+
+    /**
+     * Make sure the crypto helper and firebase/php-jwt are autoloadable in
+     * contexts that do not boot the SmartAuth API front controller (cron,
+     * triggers, admin pages).
      *
      * @return void
      */
-    private static function ensureWebPushLoaded()
+    private static function ensureDependencies()
     {
-        if (class_exists('Minishlink\\WebPush\\WebPush')) {
+        if (class_exists('SmartAuth\\Api\\WebPushCrypto') && class_exists('Firebase\\JWT\\JWT')) {
             return;
         }
         $autoload = dirname(__DIR__).'/vendor/autoload.php';
         if (is_file($autoload)) {
             require_once $autoload;
+        }
+        if (!class_exists('SmartAuth\\Api\\WebPushCrypto')) {
+            require_once __DIR__.'/WebPushCrypto.php';
         }
     }
 
@@ -280,14 +322,14 @@ class PushSender
      * already logged to syslog by the DAO). No-op when SMARTAUTH_PUSH_LOG_ENABLED
      * is off (the DAO short-circuits).
      *
-     * @param array   $sub     Subscription row (rowid + subject identity)
-     * @param array   $message Message payload (title, body, data)
-     * @param object  $report  minishlink MessageSentReport
-     * @param bool    $success Whether the Push Service accepted the message
-     * @param ?string $reason  Failure reason (null on success)
+     * @param array   $sub        Subscription row (rowid + subject identity)
+     * @param array   $message    Message payload (title, body, data)
+     * @param int     $httpStatus Push Service HTTP status (0 if no response)
+     * @param bool    $success    Whether the Push Service accepted the message
+     * @param ?string $reason     Failure reason (null on success)
      * @return void
      */
-    private function logSend(array $sub, array $message, $report, $success, $reason)
+    private function logSend(array $sub, array $message, $httpStatus, $success, $reason)
     {
         if (!getDolGlobalInt('SMARTAUTH_PUSH_LOG_ENABLED', 1)) {
             return;
@@ -314,31 +356,9 @@ class PushSender
             'notification_title' => isset($message['title']) ? (string) $message['title'] : null,
             'notification_body'  => isset($message['body']) ? (string) $message['body'] : null,
             'notification_data'  => !empty($data) ? json_encode($data) : null,
-            'http_status'        => $this->extractHttpStatus($report, $success),
+            'http_status'        => ((int) $httpStatus) > 0 ? (int) $httpStatus : null,
             'success'            => $success ? 1 : 0,
             'error_message'      => $reason,
         ]);
-    }
-
-    /**
-     * Best-effort extraction of the Push Service HTTP status from a report.
-     *
-     * minishlink does not expose the status directly; getResponse() returns a
-     * PSR-7 response when available. Falls back to 201 on success / null on
-     * failure when no response object is reachable.
-     *
-     * @param object $report  minishlink MessageSentReport
-     * @param bool   $success Whether the message was accepted
-     * @return ?int
-     */
-    private function extractHttpStatus($report, $success)
-    {
-        if (is_object($report) && method_exists($report, 'getResponse')) {
-            $response = $report->getResponse();
-            if (is_object($response) && method_exists($response, 'getStatusCode')) {
-                return (int) $response->getStatusCode();
-            }
-        }
-        return $success ? 201 : null;
     }
 }
