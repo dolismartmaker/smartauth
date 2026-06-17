@@ -1,5 +1,17 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.24 -- 20260617
+
+ - add webpush stuff
+ - better logs collect
+ - policy : checkuser rights & passwords
+ - update user doc
+ - add more defensive code on oauth
+ - better protection on spoofing tips
+ - add security checks on controllers
+ - user can delete / revoke own devices
+ - do not hardcode custom anymore for custom dolibarr setup
+
 ## 2.0.22 -- 20260603
 
  - Add webpush subsystem for notificaitons on PWA
