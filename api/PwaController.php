@@ -130,8 +130,10 @@ class PwaController
             }
         }
 
-        // 2. Fallback to default icon (shipped with module via SmartBoot)
-        $defaultIconPath = DOL_DOCUMENT_ROOT . '/custom/' . $moduleName . '/pwa/images/pwa-' . $size . 'x' . $size . '.png';
+        // 2. Fallback to default icon (shipped with module via SmartBoot).
+        // dol_buildpath resolves the module across every configured root
+        // (htdocs/custom by default, plus any $dolibarr_main_document_root_alt).
+        $defaultIconPath = dol_buildpath('/' . $moduleName . '/pwa/images/pwa-' . $size . 'x' . $size . '.png', 0);
         SmartAuthLogger::debug(__METHOD__ . ' checking defaultIconPath=' . $defaultIconPath . ' exists=' . (file_exists($defaultIconPath) ? 'yes' : 'no'));
         if (file_exists($defaultIconPath)) {
             SmartAuthLogger::debug(__METHOD__ . ' FOUND default icon, serving');

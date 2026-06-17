@@ -434,6 +434,23 @@ trait dmTrait
 			unset($input['lines']);
 		}
 
+		// RouteController::dispatch() merges the auth/runtime context into the
+		// controller payload BEFORE the request body (see the $payload array it
+		// builds: jwt_token_id, jwt_family_id, jwt_device_id, user, login,
+		// user_id, entity, buyer, plus the optional oauth_* keys). These are
+		// framework-owned and are never writable object fields, so a controller
+		// that hands its whole $arr to importMappedData() must not see them
+		// rejected. Drop them up front; genuine unknown body fields are still
+		// rejected below so client typos remain caught.
+		$reservedContextKeys = [
+			'jwt_token_id', 'jwt_family_id', 'jwt_device_id',
+			'user', 'login', 'user_id', 'entity', 'buyer',
+			'oauth_client_id', 'oauth_scopes', 'oauth_grant_type',
+		];
+		foreach ($reservedContextKeys as $reservedKey) {
+			unset($input[$reservedKey]);
+		}
+
 		$writableSet = array_flip($this->writableFields ?? []);
 		$reverseMap = [];
 		foreach ($this->listOfPublishedFields as $doliside => $appside) {

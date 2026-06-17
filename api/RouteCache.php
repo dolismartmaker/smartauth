@@ -50,6 +50,19 @@ class RouteCache
     private static $sourceFile = '';
 
     /**
+     * Whether plugin API autoloaders have already been registered this request
+     * @var bool
+     */
+    private static $pluginAutoloadRegistered = false;
+
+    /**
+     * Whether the legacy filesystem-scan fallback warning was already logged
+     * this request (avoids spamming the log on every discover call).
+     * @var bool
+     */
+    private static $legacyScanWarned = false;
+
+    /**
      * Initialize the cache for a specific module
      *
      * Must be called before any other method.
@@ -62,7 +75,66 @@ class RouteCache
     {
         self::$moduleName = strtolower($moduleName);
         self::$cachedRoutes = null;
+
+        // Register PSR-4 autoloaders for plugin API controllers BEFORE any
+        // dispatch happens. On the cache-hit fast path, LocalRoutes.php files
+        // are NOT re-included, so a cached route pointing at e.g.
+        // Capmail\Api\MailController would otherwise fail with "class not
+        // found". This makes any module exposing api/LocalRoutes.php loadable.
+        self::registerPluginAutoloaders();
+
         SmartAuthLogger::debug("RouteCache: Initialized for module " . self::$moduleName);
+    }
+
+    /**
+     * Register PSR-4 autoloaders for the API namespace of every custom module
+     * that exposes api/LocalRoutes.php.
+     *
+     * Convention: a module living in custom/<module>/ exposing
+     * custom/<module>/api/LocalRoutes.php gets its "<Module>\Api\" namespace
+     * (Ucfirst of the directory name) mapped to custom/<module>/api/. So
+     * Capmail\Api\MailController resolves to custom/capmail/api/MailController.php.
+     *
+     * Only opt-in modules (those declaring API routes) are wired, so this does
+     * not turn into a filesystem probe for unrelated "Foo\Api\Bar" class names.
+     * Runs once per request (guarded), from init(), so it covers both the
+     * cache-hit and cache-miss code paths.
+     *
+     * @return void
+     */
+    private static function registerPluginAutoloaders(): void
+    {
+        if (self::$pluginAutoloadRegistered) {
+            return;
+        }
+        self::$pluginAutoloadRegistered = true;
+
+        if (!defined('DOL_DOCUMENT_ROOT')) {
+            return;
+        }
+
+        $apiModules = [];
+        foreach (self::discoverLocalRoutesFiles() as $module => $localRoutesFile) {
+            $apiModules[ucfirst($module) . '\\Api\\'] = dirname($localRoutesFile) . '/';
+        }
+        if (empty($apiModules)) {
+            return;
+        }
+
+        spl_autoload_register(function ($class) use ($apiModules) {
+            foreach ($apiModules as $prefix => $baseDir) {
+                $len = strlen($prefix);
+                if (strncmp($class, $prefix, $len) !== 0) {
+                    continue;
+                }
+                $relative = substr($class, $len);
+                $file = $baseDir . str_replace('\\', '/', $relative) . '.php';
+                if (is_file($file)) {
+                    require_once $file;
+                }
+                return;
+            }
+        });
     }
 
     /**
@@ -134,6 +206,16 @@ class RouteCache
             return false;
         }
 
+        // Hot path: the active route-module set/version signature. Detects a
+        // consumer module being enabled, disabled or upgraded with an in-memory
+        // const comparison -- no filesystem access.
+        $cachedSignature = $cached['modules_signature'] ?? '';
+        $currentSignature = self::computeModulesSignature();
+        if ($cachedSignature !== $currentSignature) {
+            SmartAuthLogger::debug("RouteCache: Active route modules changed, cache invalidated");
+            return false;
+        }
+
         // Check if source file has been modified since cache generation
         $sourceFile = $cached['source_file'] ?? '';
         if (!empty($sourceFile) && file_exists($sourceFile)) {
@@ -143,21 +225,27 @@ class RouteCache
             }
         }
 
-        // Check if any LocalRoutes.php files have been modified
-        $cachedLocalFiles = $cached['local_routes_files'] ?? [];
-        $currentLocalFiles = self::scanLocalRoutesFiles();
+        // LocalRoutes.php mtime check. Only needed in developer mode (pick up a
+        // route edit without a version bump) or in the legacy filesystem-scan
+        // fallback (no module declares the part yet). In a migrated production
+        // install the signature above already covers every real change, so we
+        // skip the filesystem stats entirely on the hot path.
+        if (self::isDevMode() || empty(ModulePathHelper::activeRouteModules())) {
+            $cachedLocalFiles = $cached['local_routes_files'] ?? [];
+            $currentLocalFiles = self::scanLocalRoutesFiles();
 
-        // If the list of files changed, invalidate
-        if (array_keys($cachedLocalFiles) !== array_keys($currentLocalFiles)) {
-            SmartAuthLogger::debug("RouteCache: Local routes files list changed, cache invalidated");
-            return false;
-        }
-
-        // If any file was modified, invalidate
-        foreach ($currentLocalFiles as $file => $mtime) {
-            if (!isset($cachedLocalFiles[$file]) || $cachedLocalFiles[$file] < $mtime) {
-                SmartAuthLogger::debug("RouteCache: Local routes file modified: $file");
+            // If the list of files changed, invalidate
+            if (array_keys($cachedLocalFiles) !== array_keys($currentLocalFiles)) {
+                SmartAuthLogger::debug("RouteCache: Local routes files list changed, cache invalidated");
                 return false;
+            }
+
+            // If any file was modified, invalidate
+            foreach ($currentLocalFiles as $file => $mtime) {
+                if (!isset($cachedLocalFiles[$file]) || $cachedLocalFiles[$file] < $mtime) {
+                    SmartAuthLogger::debug("RouteCache: Local routes file modified: $file");
+                    return false;
+                }
             }
         }
 
@@ -165,33 +253,111 @@ class RouteCache
     }
 
     /**
-     * Scan for LocalRoutes.php files in active modules
+     * Map of active LocalRoutes.php files to their modification time.
+     *
+     * Used only for the dev-mode / legacy mtime check; the hot-path cache
+     * validation in production relies on the modules signature instead, so this
+     * is not called on every request once modules are migrated.
      *
      * @return array Map of file path => modification time
      */
     private static function scanLocalRoutesFiles(): array
     {
         $files = [];
+        foreach (self::discoverLocalRoutesFiles() as $localRoutesFile) {
+            $files[$localRoutesFile] = filemtime($localRoutesFile);
+        }
+        return $files;
+    }
 
-        // Scan custom modules directory
-        $customDir = DOL_DOCUMENT_ROOT . '/custom';
-        if (!is_dir($customDir)) {
-            return $files;
+    /**
+     * Discover the api/LocalRoutes.php files to load, keyed by module name.
+     *
+     * Primary source (declarative): modules that declared
+     * module_parts['smartauth'] and are enabled -- resolved in-memory from
+     * $conf->modules_parts['smartauth'] via ModulePathHelper, no filesystem
+     * scan. A disabled module is absent and its routes are NOT loaded:
+     * enable/disable is the single source of truth.
+     *
+     * Legacy fallback: when no module declares the part yet (install upgraded
+     * but modules not re-enabled), scan every configured module root for
+     * api/LocalRoutes.php so routing keeps working during migration. Emitted
+     * once per request as a warning so the transitional state is visible.
+     *
+     * @return array<string,string> [moduleName => absolute LocalRoutes.php path]
+     */
+    private static function discoverLocalRoutesFiles(): array
+    {
+        $result = [];
+
+        $declared = ModulePathHelper::activeRouteModules();
+        if (!empty($declared)) {
+            foreach ($declared as $module) {
+                $file = ModulePathHelper::localRoutesFile($module);
+                if ($file !== '') {
+                    $result[$module] = $file;
+                }
+            }
+            return $result;
         }
 
-        $modules = scandir($customDir);
-        foreach ($modules as $module) {
-            if ($module === '.' || $module === '..') {
+        // Legacy fallback (pre-migration installs only).
+        if (!self::$legacyScanWarned) {
+            self::$legacyScanWarned = true;
+            dol_syslog(
+                "SmartAuth RouteCache: no module declares module_parts['smartauth'], "
+                . "falling back to filesystem scan (legacy). Re-enable your SmartMaker "
+                . "modules to migrate to the declarative route registry.",
+                LOG_WARNING
+            );
+        }
+        foreach (ModulePathHelper::moduleRootDirs() as $customDir) {
+            $modules = scandir($customDir);
+            if ($modules === false) {
                 continue;
             }
-
-            $localRoutesFile = $customDir . '/' . $module . '/api/LocalRoutes.php';
-            if (file_exists($localRoutesFile)) {
-                $files[$localRoutesFile] = filemtime($localRoutesFile);
+            foreach ($modules as $module) {
+                if ($module === '.' || $module === '..') {
+                    continue;
+                }
+                $localRoutesFile = $customDir . '/' . $module . '/api/LocalRoutes.php';
+                if (is_file($localRoutesFile)) {
+                    $result[strtolower($module)] = $localRoutesFile;
+                }
             }
         }
 
-        return $files;
+        return $result;
+    }
+
+    /**
+     * Compute a signature of the active route-exposing modules and their
+     * versions. Changes when a module is enabled, disabled or upgraded -- the
+     * exact moments the cached route set becomes stale. Pure in-memory
+     * computation (const reads), so it is cheap enough to run on every request.
+     *
+     * @return string md5 of the sorted (module => version) map
+     */
+    private static function computeModulesSignature(): string
+    {
+        $sig = [];
+        foreach (ModulePathHelper::activeRouteModules() as $module) {
+            $sig[$module] = getDolGlobalString(strtoupper($module) . '_VERSION', '');
+        }
+        ksort($sig);
+        return md5(serialize($sig));
+    }
+
+    /**
+     * Whether Dolibarr runs in developer mode (MAIN_FEATURES_LEVEL >= 2). In
+     * that mode we also check LocalRoutes.php mtimes so a route edit is picked
+     * up immediately, without waiting for a module version bump.
+     *
+     * @return bool
+     */
+    private static function isDevMode(): bool
+    {
+        return function_exists('getDolGlobalInt') && getDolGlobalInt('MAIN_FEATURES_LEVEL') >= 2;
     }
 
     /**
@@ -343,6 +509,7 @@ class RouteCache
             'generated' => time(),
             'source_file' => self::$sourceFile,
             'local_routes_files' => $localRoutesFiles,
+            'modules_signature' => self::computeModulesSignature(),
             'routes' => $optimized,
         ], true) . ";\n";
 
