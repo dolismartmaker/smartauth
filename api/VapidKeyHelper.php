@@ -24,8 +24,6 @@
 
 namespace SmartAuth\Api;
 
-use Minishlink\WebPush\VAPID;
-
 class VapidKeyHelper
 {
     const PUBLIC_KEY_CONFIG = 'SMARTAUTH_VAPID_PUBLIC_KEY';
@@ -114,21 +112,46 @@ class VapidKeyHelper
      */
     public static function generateKeys()
     {
-        self::ensureWebPushLoaded();
-
-        try {
-            // minishlink/web-push provides this method. It relies on
-            // openssl_pkey_new(), which reads the host OPENSSL_CONF.
-            return VAPID::createVapidKeys();
-        } catch (\Throwable $e) {
+        // Generate the P-256 key pair ourselves (no external library): public =
+        // base64url(0x04 || X || Y), private = base64url(d), the VAPID format.
+        $res = @openssl_pkey_new([
+            'curve_name'       => 'prime256v1',
+            'private_key_type' => OPENSSL_KEYTYPE_EC,
+        ]);
+        if ($res === false) {
             // Some hosts ship a broken or templated openssl.cnf (unresolved
             // placeholders, missing sections), which makes openssl_pkey_new()
-            // fail with no fault of ours. Retry once with a minimal,
-            // self-contained OpenSSL config so EC key generation does not
-            // depend on the host file.
-            dol_syslog('VapidKeyHelper::generateKeys default OpenSSL config failed, retrying with a minimal config: '.$e->getMessage(), LOG_WARNING);
+            // fail with no fault of ours. Retry with a minimal, self-contained
+            // OpenSSL config so EC key generation does not depend on the host file.
+            dol_syslog('VapidKeyHelper::generateKeys default OpenSSL config failed, retrying with a minimal config', LOG_WARNING);
             return self::generateKeysWithFallbackOpensslConf();
         }
+        return self::extractVapidKeys($res);
+    }
+
+    /**
+     * Extract VAPID-format keys (base64url) from an OpenSSL EC key resource.
+     *
+     * @param \OpenSSLAsymmetricKey|resource $res
+     * @return array{publicKey:string, privateKey:string}
+     */
+    private static function extractVapidKeys($res)
+    {
+        $details = openssl_pkey_get_details($res);
+        if ($details === false
+            || empty($details['ec']['x']) || empty($details['ec']['y']) || empty($details['ec']['d'])) {
+            throw new \RuntimeException('Unable to read EC key details for VAPID');
+        }
+
+        // P-256 field elements are 32 bytes; left-pad defensively.
+        $x = str_pad($details['ec']['x'], 32, "\x00", STR_PAD_LEFT);
+        $y = str_pad($details['ec']['y'], 32, "\x00", STR_PAD_LEFT);
+        $d = str_pad($details['ec']['d'], 32, "\x00", STR_PAD_LEFT);
+
+        return [
+            'publicKey'  => self::base64urlEncode("\x04".$x.$y),
+            'privateKey' => self::base64urlEncode($d),
+        ];
     }
 
     /**
@@ -139,9 +162,8 @@ class VapidKeyHelper
      * Note: OpenSSL 3.x caches its config on first use, so a process-wide
      * putenv('OPENSSL_CONF=...') set late has no effect (and Dolibarr has
      * already used OpenSSL by then). The reliable lever is the per-call
-     * 'config' argument, which web-token's VAPID::createVapidKeys() does not
-     * expose -- hence we build the P-256 key here and format it as VAPID
-     * expects: public = base64url(0x04 || X || Y), private = base64url(d).
+     * 'config' argument, hence we build the P-256 key here and format it as
+     * VAPID expects: public = base64url(0x04 || X || Y), private = base64url(d).
      *
      * @return array{publicKey:string, privateKey:string}
      */
@@ -163,26 +185,14 @@ class VapidKeyHelper
             if ($res === false) {
                 throw new \RuntimeException('openssl_pkey_new failed for EC P-256 with fallback config');
             }
-            $details = openssl_pkey_get_details($res);
-            if ($details === false
-                || empty($details['ec']['x']) || empty($details['ec']['y']) || empty($details['ec']['d'])) {
-                throw new \RuntimeException('Unable to read EC key details for VAPID');
-            }
-
-            // P-256 field elements are 32 bytes; left-pad defensively.
-            $x = str_pad($details['ec']['x'], 32, "\x00", STR_PAD_LEFT);
-            $y = str_pad($details['ec']['y'], 32, "\x00", STR_PAD_LEFT);
-            $d = str_pad($details['ec']['d'], 32, "\x00", STR_PAD_LEFT);
+            $keys = self::extractVapidKeys($res);
 
             // Drain any queued OpenSSL error so it does not surface elsewhere.
             while (openssl_error_string() !== false) {
                 // no-op
             }
 
-            return [
-                'publicKey'  => self::base64urlEncode("\x04".$x.$y),
-                'privateKey' => self::base64urlEncode($d),
-            ];
+            return $keys;
         } finally {
             @unlink($tmp);
         }
@@ -266,23 +276,4 @@ class VapidKeyHelper
         return $keys;
     }
 
-    /**
-     * Make sure the minishlink/web-push classes are autoloadable.
-     *
-     * VAPID generation can run in contexts that do not boot the SmartAuth API
-     * front controller (module install, cron, admin page), where the composer
-     * autoloader may not be registered yet. Load it defensively.
-     *
-     * @return void
-     */
-    private static function ensureWebPushLoaded()
-    {
-        if (class_exists('Minishlink\\WebPush\\VAPID')) {
-            return;
-        }
-        $autoload = dirname(__DIR__).'/vendor/autoload.php';
-        if (is_file($autoload)) {
-            require_once $autoload;
-        }
-    }
 }

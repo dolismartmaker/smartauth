@@ -227,13 +227,17 @@ class PushControllerIntegrationTest extends DolibarrRealTestCase
         $this->assertSame(43, strlen($keys['privateKey']));
         $this->assertMatchesRegularExpression('/^[A-Za-z0-9_-]+$/', $keys['publicKey']);
 
-        // minishlink (the actual sender) must accept the pair.
-        $validated = \Minishlink\WebPush\VAPID::validate([
-            'subject' => 'mailto:test@example.com',
-            'publicKey' => $keys['publicKey'],
-            'privateKey' => $keys['privateKey'],
-        ]);
-        $this->assertIsArray($validated);
+        // Our own sender (WebPushCrypto) must accept and sign with the pair:
+        // this reconstructs the EC private key from the raw scalar and signs a
+        // VAPID JWT (ES256), proving the pair is usable end to end.
+        $auth = \SmartAuth\Api\WebPushCrypto::vapidAuthorization(
+            'https://fcm.googleapis.com/fcm/send/abc',
+            $keys['publicKey'],
+            $keys['privateKey'],
+            'mailto:test@example.com'
+        );
+        $this->assertStringStartsWith('vapid t=', $auth);
+        $this->assertStringContainsString(', k='.$keys['publicKey'], $auth);
     }
 
     public function testNoSendRouteExposedAndPushRoutesAreProtectedCorrectly(): void
