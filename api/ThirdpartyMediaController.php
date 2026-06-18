@@ -136,19 +136,19 @@ class ThirdpartyMediaController
 
         $id = isset($payload['id']) ? (int) $payload['id'] : 0;
         if ($id <= 0) {
-            dol_syslog("smartauth::ThirdpartyMediaController - missing or invalid id in payload", LOG_WARNING);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - missing or invalid id in payload", LOG_WARNING);
             return ['error' => 'Bad Request: invalid id', 'status' => 400];
         }
 
         $user = $payload['user'] ?? null;
         if (!is_object($user)) {
-            dol_syslog("smartauth::ThirdpartyMediaController - no authenticated user in payload (tp $id)", LOG_WARNING);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - no authenticated user in payload (tp $id)", LOG_WARNING);
             return ['error' => 'Authentication required', 'status' => 401];
         }
 
         if (!$user->hasRight('societe', 'lire')) {
             $uid = (int) ($user->id ?? 0);
-            dol_syslog("smartauth::ThirdpartyMediaController - user $uid lacks societe->lire on tp $id", LOG_WARNING);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - user $uid lacks societe->lire on tp $id", LOG_WARNING);
             return ['error' => 'Forbidden', 'status' => 403];
         }
 
@@ -161,7 +161,7 @@ class ThirdpartyMediaController
         $sql = "SELECT rowid, entity, logo FROM " . MAIN_DB_PREFIX . "societe WHERE rowid = " . (int) $id;
         $resql = $db->query($sql);
         if (!$resql || $db->num_rows($resql) === 0) {
-            dol_syslog("smartauth::ThirdpartyMediaController - thirdparty $id not found", LOG_WARNING);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - thirdparty $id not found", LOG_WARNING);
             return ['error' => 'Not Found', 'status' => 404];
         }
         $row = $db->fetch_object($resql);
@@ -174,7 +174,7 @@ class ThirdpartyMediaController
         $socEntity = (int) $row->entity;
         if ($socEntity !== 0 && $socEntity !== $reqEntity) {
             $uid = (int) ($user->id ?? 0);
-            dol_syslog("smartauth::ThirdpartyMediaController - entity mismatch tp $id (soc entity=$socEntity, req entity=$reqEntity, user $uid)", LOG_WARNING);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - entity mismatch tp $id (soc entity=$socEntity, req entity=$reqEntity, user $uid)", LOG_WARNING);
             return ['error' => 'Forbidden', 'status' => 403];
         }
 
@@ -201,7 +201,7 @@ class ThirdpartyMediaController
         $realBase = $base !== '' ? realpath($base) : false;
         $realPath = realpath($info['fullpath']);
         if ($realBase === false || $realPath === false || strpos($realPath, $realBase) !== 0) {
-            dol_syslog("smartauth::ThirdpartyMediaController - path traversal refused for tp {$soc->id}: $realPath not under $realBase", LOG_ERR);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - path traversal refused for tp {$soc->id}: $realPath not under $realBase", LOG_ERR);
             return ['error' => 'Forbidden', 'status' => 403];
         }
 
@@ -248,14 +248,14 @@ class ThirdpartyMediaController
         global $conf;
 
         if (empty($soc->logo)) {
-            dol_syslog("smartauth::ThirdpartyMediaController - tp {$soc->id} has no logo configured", LOG_DEBUG);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - tp {$soc->id} has no logo configured", LOG_DEBUG);
             return ['error' => 'No logo configured', 'status' => 404];
         }
 
         $entity = (int) $soc->entity;
         $base = $conf->societe->multidir_output[$entity] ?? null;
         if (empty($base)) {
-            dol_syslog("smartauth::ThirdpartyMediaController - multidir_output not configured for entity $entity (tp {$soc->id})", LOG_ERR);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - multidir_output not configured for entity $entity (tp {$soc->id})", LOG_ERR);
             return ['error' => 'Server configuration error', 'status' => 500];
         }
 
@@ -273,13 +273,13 @@ class ThirdpartyMediaController
         }
 
         if (!file_exists($fullpath)) {
-            dol_syslog("smartauth::ThirdpartyMediaController - logo file missing on disk: $fullpath (tp {$soc->id}, variant=$variant)", LOG_WARNING);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - logo file missing on disk: $fullpath (tp {$soc->id}, variant=$variant)", LOG_WARNING);
             return ['error' => 'Logo file missing', 'status' => 404];
         }
 
         $ext = strtolower(pathinfo($fullpath, PATHINFO_EXTENSION));
         if (!isset(self::$mimemap[$ext])) {
-            dol_syslog("smartauth::ThirdpartyMediaController - unsupported logo extension '$ext' for tp {$soc->id}", LOG_WARNING);
+            dol_syslog("[SmartAuth] ThirdpartyMediaController - unsupported logo extension '$ext' for tp {$soc->id}", LOG_WARNING);
             return ['error' => 'Unsupported logo format', 'status' => 415];
         }
 

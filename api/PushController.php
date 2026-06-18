@@ -45,7 +45,7 @@ class PushController
         $publicKey = VapidKeyHelper::readPublicKey($db);
 
         if (empty($publicKey)) {
-            dol_syslog('PushController::getVapidPublicKey VAPID keys not configured', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::getVapidPublicKey VAPID keys not configured', LOG_WARNING);
             return [['error' => 'VAPID keys not configured'], 500];
         }
 
@@ -116,14 +116,14 @@ class PushController
         $ipWindow = getDolGlobalInt('SMARTAUTH_RATELIMIT_PUSH_SUBSCRIBE_IP_WINDOW', 60);
         $rateIp = $rateLimiter->enforceLimit($clientIp, 'push_subscribe_ip', $ipMax, $ipWindow);
         if (!$rateIp['allowed']) {
-            dol_syslog('PushController::subscribe rate limit exceeded (ip)', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::subscribe rate limit exceeded (ip)', LOG_WARNING);
             return [['error' => 'Too many requests', 'retry_after' => $rateIp['retry_after']], 429];
         }
         $subjMax = getDolGlobalInt('SMARTAUTH_RATELIMIT_PUSH_SUBSCRIBE_SUBJECT_MAX', 30);
         $subjWindow = getDolGlobalInt('SMARTAUTH_RATELIMIT_PUSH_SUBSCRIBE_SUBJECT_WINDOW', 60);
         $rateSubj = $rateLimiter->enforceLimit('user:'.((int) $user->id), 'push_subscribe_subject', $subjMax, $subjWindow);
         if (!$rateSubj['allowed']) {
-            dol_syslog('PushController::subscribe rate limit exceeded (subject)', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::subscribe rate limit exceeded (subject)', LOG_WARNING);
             return [['error' => 'Too many requests', 'retry_after' => $rateSubj['retry_after']], 429];
         }
 
@@ -131,7 +131,7 @@ class PushController
         if (empty($arr['subscription']['endpoint']) ||
             empty($arr['subscription']['keys']['p256dh']) ||
             empty($arr['subscription']['keys']['auth'])) {
-            dol_syslog('PushController::subscribe invalid subscription format', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::subscribe invalid subscription format', LOG_WARNING);
             return [['error' => 'Invalid subscription format'], 400];
         }
 
@@ -141,12 +141,12 @@ class PushController
 
         // Validate endpoint: must be a valid HTTPS URL.
         if (!filter_var($endpoint, FILTER_VALIDATE_URL) || strpos($endpoint, 'https://') !== 0) {
-            dol_syslog('PushController::subscribe endpoint not a valid https URL', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::subscribe endpoint not a valid https URL', LOG_WARNING);
             return [['error' => 'Endpoint must be a valid HTTPS URL'], 400];
         }
         // Validate keys: base64url charset.
         if (!preg_match('/^[A-Za-z0-9_-]+$/', $keyP256dh) || !preg_match('/^[A-Za-z0-9_-]+$/', $keyAuth)) {
-            dol_syslog('PushController::subscribe key not base64url', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::subscribe key not base64url', LOG_WARNING);
             return [['error' => 'Invalid key format (expected base64url)'], 400];
         }
 
@@ -166,7 +166,7 @@ class PushController
         $sql .= " AND entity = ".(int) $conf->entity;
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('PushController::subscribe lookup failed: '.$db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushController::subscribe lookup failed: '.$db->lasterror(), LOG_ERR);
             return [['error' => 'Database error'], 500];
         }
 
@@ -187,7 +187,7 @@ class PushController
             $sql .= ", error_count = 0, last_error = NULL, status = 1";
             $sql .= " WHERE rowid = ".$id;
             if (!$db->query($sql)) {
-                dol_syslog('PushController::subscribe update failed: '.$db->lasterror(), LOG_ERR);
+                dol_syslog('[SmartAuth] PushController::subscribe update failed: '.$db->lasterror(), LOG_ERR);
                 return [['error' => 'Database error'], 500];
             }
             return [['id' => $id, 'message' => 'Subscription updated successfully'], 200];
@@ -215,7 +215,7 @@ class PushController
 
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('PushController::subscribe insert failed: '.$db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushController::subscribe insert failed: '.$db->lasterror(), LOG_ERR);
             return [['error' => 'Database error'], 500];
         }
 
@@ -238,7 +238,7 @@ class PushController
         $id = isset($arr['id']) ? (int) $arr['id'] : null;
 
         if (empty($endpoint) && empty($id)) {
-            dol_syslog('PushController::unsubscribe missing endpoint and id', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::unsubscribe missing endpoint and id', LOG_WARNING);
             return [['error' => 'Either endpoint or id is required'], 400];
         }
 
@@ -257,12 +257,12 @@ class PushController
 
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('PushController::unsubscribe delete failed: '.$db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushController::unsubscribe delete failed: '.$db->lasterror(), LOG_ERR);
             return [['error' => 'Database error'], 500];
         }
 
         if ((int) $db->affected_rows($resql) === 0) {
-            dol_syslog('PushController::unsubscribe subscription not found for subject', LOG_NOTICE);
+            dol_syslog('[SmartAuth] PushController::unsubscribe subscription not found for subject', LOG_NOTICE);
             return [['error' => 'Subscription not found'], 404];
         }
 
@@ -289,7 +289,7 @@ class PushController
 
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('PushController::listSubscriptions query failed: '.$db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushController::listSubscriptions query failed: '.$db->lasterror(), LOG_ERR);
             return [['error' => 'Database error'], 500];
         }
 
@@ -331,12 +331,12 @@ class PushController
         // end-user) token, oauth_scopes is empty -> refused.
         $scopes = isset($arr['oauth_scopes']) ? (array) $arr['oauth_scopes'] : [];
         if (!in_array('smartauth:push.send', $scopes, true)) {
-            dol_syslog('PushController::send denied: missing scope smartauth:push.send', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::send denied: missing scope smartauth:push.send', LOG_WARNING);
             return [['error' => 'insufficient_scope'], 403];
         }
 
         if (empty($arr['title']) || empty($arr['body'])) {
-            dol_syslog('PushController::send missing title or body', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushController::send missing title or body', LOG_WARNING);
             return [['error' => 'title and body are required'], 400];
         }
 

@@ -30,7 +30,7 @@ $smartauthVendorAutoload = __DIR__."/vendor/autoload.php";
 if (is_file($smartauthVendorAutoload)) {
     require_once $smartauthVendorAutoload;
 } elseif (function_exists('dol_syslog')) {
-    dol_syslog("SmartAuth autoload: vendor/autoload.php introuvable (" . $smartauthVendorAutoload . ") - dependances composer (JWT, web-push) indisponibles, lancer 'composer install --no-dev'. L'autoloader de classes SmartAuth reste actif.", LOG_WARNING);
+    dol_syslog("[SmartAuth] autoload: vendor/autoload.php introuvable (" . $smartauthVendorAutoload . ") - dependances composer (JWT, web-push) indisponibles, lancer 'composer install --no-dev'. L'autoloader de classes SmartAuth reste actif.", LOG_WARNING);
 } else {
     error_log("SmartAuth autoload: vendor/autoload.php introuvable (" . $smartauthVendorAutoload . "), lancer 'composer install --no-dev'.");
 }
@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
  * @return void
  */
 spl_autoload_register(function ($class) {
-	dol_syslog("SmartAuth use spl_autoload from smartAuth for $class");
+	dol_syslog("[SmartAuth] use spl_autoload from smartAuth for $class");
     $prefix = $base_dir = "";
 
     $map = [
@@ -105,7 +105,7 @@ spl_autoload_register(function ($class) {
 
     // if the file exists, require it
     if (file_exists($file)) {
-		dol_syslog("SmartAuth use spl_autoload from smartAuth::require $file");
+		dol_syslog("[SmartAuth] use spl_autoload from smartAuth::require $file");
         require $file;
     }
 });

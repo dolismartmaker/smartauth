@@ -63,7 +63,7 @@ class EmailAlternativeController
             EmailValidationToken::PURPOSE_EMAIL_CHANGE
         );
         if ($row === null) {
-            dol_syslog('SmartAuth EmailAlternativeController: token not found / expired / used', LOG_INFO);
+            dol_syslog('[SmartAuth] EmailAlternativeController: token not found / expired / used', LOG_INFO);
             $this->renderInvalid();
             return;
         }
@@ -83,7 +83,7 @@ class EmailAlternativeController
             // Cases like /lookup-by-email tokens emit an email_change token
             // without an email/client context: treat as invalid here. The
             // user must request the alternative email from /account first.
-            dol_syslog('SmartAuth EmailAlternativeController: token lacks email context', LOG_INFO);
+            dol_syslog('[SmartAuth] EmailAlternativeController: token lacks email context', LOG_INFO);
             $this->renderInvalid();
             return;
         }
@@ -91,7 +91,7 @@ class EmailAlternativeController
         // Consume the token *before* delegating, so a failure of the
         // external module cannot be replayed.
         if (!$this->tokens->markUsed((int) $row['rowid'])) {
-            dol_syslog('SmartAuth EmailAlternativeController: failed to mark token used', LOG_ERR);
+            dol_syslog('[SmartAuth] EmailAlternativeController: failed to mark token used', LOG_ERR);
             $this->renderInternalError();
             return;
         }
@@ -108,7 +108,7 @@ class EmailAlternativeController
             return;
         }
         if (!$hookResult['handled']) {
-            dol_syslog('SmartAuth EmailAlternativeController: no module handled smartmaker_email_alternative_persist', LOG_WARNING);
+            dol_syslog('[SmartAuth] EmailAlternativeController: no module handled smartmaker_email_alternative_persist', LOG_WARNING);
             $this->renderConfigurationMissing();
             return;
         }
@@ -182,7 +182,7 @@ class EmailAlternativeController
         header('Content-Type: text/html; charset=utf-8');
         $path = dirname(__DIR__, 2) . '/tpl/' . $templateName . '.tpl.php';
         if (!file_exists($path)) {
-            dol_syslog('SmartAuth EmailAlternativeController: template not found: ' . $path, LOG_ERR);
+            dol_syslog('[SmartAuth] EmailAlternativeController: template not found: ' . $path, LOG_ERR);
             http_response_code(500);
             echo 'Template not found';
             exit;

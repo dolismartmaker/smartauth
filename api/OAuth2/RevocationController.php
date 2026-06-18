@@ -112,7 +112,7 @@ class RevocationController
         $this->revokeTokenByValue($token, $tokenTypeHint);
 
         // Per RFC 7009, always return 200 OK with empty body
-        dol_syslog('SmartAuth RevocationController: Revocation request processed', LOG_INFO);
+        dol_syslog('[SmartAuth] RevocationController: Revocation request processed', LOG_INFO);
         $this->sendEmptyResponse();
     }
 
@@ -143,7 +143,7 @@ class RevocationController
         }
 
         // Token not found - this is OK per RFC 7009
-        dol_syslog('SmartAuth RevocationController: Token not found for revocation (this is OK)', LOG_DEBUG);
+        dol_syslog('[SmartAuth] RevocationController: Token not found for revocation (this is OK)', LOG_DEBUG);
         return false;
     }
 
@@ -169,21 +169,21 @@ class RevocationController
 
         // If client is authenticated, verify token belongs to this client
         if ($this->client !== null && $tokenRecord->fk_client !== $this->client->id) {
-            dol_syslog('SmartAuth RevocationController: Token does not belong to authenticated client', LOG_DEBUG);
+            dol_syslog('[SmartAuth] RevocationController: Token does not belong to authenticated client', LOG_DEBUG);
             // Per RFC 7009, we should still return 200 OK but not revoke
             return false;
         }
 
         // Already revoked? Still return success
         if ($tokenRecord->isRevoked()) {
-            dol_syslog('SmartAuth RevocationController: Refresh token already revoked', LOG_DEBUG);
+            dol_syslog('[SmartAuth] RevocationController: Refresh token already revoked', LOG_DEBUG);
             return true;
         }
 
         // Revoke with cascade (revokes all child access tokens)
         $count = $tokenRecord->revokeWithChildren();
         if ($count > 0) {
-            dol_syslog('SmartAuth RevocationController: Revoked refresh token and ' . ($count - 1) . ' child tokens', LOG_INFO);
+            dol_syslog('[SmartAuth] RevocationController: Revoked refresh token and ' . ($count - 1) . ' child tokens', LOG_INFO);
             return true;
         }
 
@@ -218,19 +218,19 @@ class RevocationController
             if ($result > 0) {
                 // If client is authenticated, verify token belongs to this client
                 if ($this->client !== null && $tokenRecord->fk_client !== $this->client->id) {
-                    dol_syslog('SmartAuth RevocationController: Access token does not belong to authenticated client', LOG_DEBUG);
+                    dol_syslog('[SmartAuth] RevocationController: Access token does not belong to authenticated client', LOG_DEBUG);
                     return false;
                 }
 
                 // Already revoked?
                 if ($tokenRecord->isRevoked()) {
-                    dol_syslog('SmartAuth RevocationController: Access token already revoked', LOG_DEBUG);
+                    dol_syslog('[SmartAuth] RevocationController: Access token already revoked', LOG_DEBUG);
                     return true;
                 }
 
                 $result = $tokenRecord->revoke();
                 if ($result > 0) {
-                    dol_syslog('SmartAuth RevocationController: Access token revoked (jti=' . $jti . ')', LOG_INFO);
+                    dol_syslog('[SmartAuth] RevocationController: Access token revoked (jti=' . $jti . ')', LOG_INFO);
                     return true;
                 }
             }
@@ -248,7 +248,7 @@ class RevocationController
             }
             if (!$tokenRecord->isRevoked()) {
                 $tokenRecord->revoke();
-                dol_syslog('SmartAuth RevocationController: Access token revoked by hash', LOG_INFO);
+                dol_syslog('[SmartAuth] RevocationController: Access token revoked by hash', LOG_INFO);
             }
             return true;
         }
@@ -281,7 +281,7 @@ class RevocationController
         $result = $client->fetch(0, null, $clientId);
 
         if ($result <= 0) {
-            dol_syslog('SmartAuth RevocationController: Client not found: ' . $clientId, LOG_DEBUG);
+            dol_syslog('[SmartAuth] RevocationController: Client not found: ' . $clientId, LOG_DEBUG);
             // Invalid client - still return null, don't error
             return null;
         }
@@ -289,7 +289,7 @@ class RevocationController
         // For confidential clients, verify secret
         if ($client->isConfidential()) {
             if (empty($clientSecret) || !$client->verifySecret($clientSecret)) {
-                dol_syslog('SmartAuth RevocationController: Invalid client secret', LOG_DEBUG);
+                dol_syslog('[SmartAuth] RevocationController: Invalid client secret', LOG_DEBUG);
                 return null;
             }
         }

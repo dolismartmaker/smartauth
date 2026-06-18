@@ -105,7 +105,7 @@ class SmartTempFile
             throw new \Exception('Failed to write temp file metadata');
         }
 
-        dol_syslog("SmartAuth SmartTempFile::store - Created temp file: $filename (token: $token, ttl: {$ttl}s, user: $userId)");
+        dol_syslog("[SmartAuth] SmartTempFile::store - Created temp file: $filename (token: $token, ttl: {$ttl}s, user: $userId)");
 
         // Probabilistic cleanup of expired files
         if (mt_rand(1, self::CLEANUP_PROBABILITY) === 1) {
@@ -162,7 +162,7 @@ class SmartTempFile
         if (!empty($metadata['user_id'])) {
             $checkUserId = $userId ?? ($user->id ?? null);
             if ($checkUserId !== null && (int) $metadata['user_id'] !== (int) $checkUserId) {
-                dol_syslog("SmartAuth SmartTempFile::get - Access denied: user $checkUserId tried to access file owned by {$metadata['user_id']}", LOG_WARNING);
+                dol_syslog("[SmartAuth] SmartTempFile::get - Access denied: user $checkUserId tried to access file owned by {$metadata['user_id']}", LOG_WARNING);
                 return null;
             }
         }
@@ -170,7 +170,7 @@ class SmartTempFile
         // Check entity
         $currentEntity = $conf->entity ?? 1;
         if (!empty($metadata['entity']) && (int) $metadata['entity'] !== (int) $currentEntity) {
-            dol_syslog("SmartAuth SmartTempFile::get - Entity mismatch: file entity {$metadata['entity']}, current $currentEntity", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartTempFile::get - Entity mismatch: file entity {$metadata['entity']}, current $currentEntity", LOG_WARNING);
             return null;
         }
 
@@ -252,7 +252,7 @@ class SmartTempFile
         }
 
         if ($cleaned > 0) {
-            dol_syslog("SmartAuth SmartTempFile::cleanup - Cleaned $cleaned expired files");
+            dol_syslog("[SmartAuth] SmartTempFile::cleanup - Cleaned $cleaned expired files");
         }
 
         return $cleaned;
@@ -288,7 +288,7 @@ class SmartTempFile
 
         if (!is_dir($storageDir)) {
             if (!dol_mkdir($storageDir)) {
-                dol_syslog("SmartAuth SmartTempFile::getStorageDir - Failed to create directory: $storageDir", LOG_ERR);
+                dol_syslog("[SmartAuth] SmartTempFile::getStorageDir - Failed to create directory: $storageDir", LOG_ERR);
                 return null;
             }
 

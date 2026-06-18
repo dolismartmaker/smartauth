@@ -188,7 +188,7 @@ class OAuthConfig
             } else {
                 $host = $allowedHosts[0];
                 dol_syslog(
-                    'SmartAuth OAuthConfig: Host header "' . $httpHost . '" not in SMARTAUTH_ISSUER_ALLOWED_HOSTS - using "' . $host . '" instead',
+                    '[SmartAuth] OAuthConfig: Host header "' . $httpHost . '" not in SMARTAUTH_ISSUER_ALLOWED_HOSTS - using "' . $host . '" instead',
                     LOG_WARNING
                 );
             }
@@ -199,7 +199,7 @@ class OAuthConfig
                 $host = $serverName;
             } elseif ($httpHost !== '') {
                 dol_syslog(
-                    'SmartAuth OAuthConfig: deriving issuer from HTTP_HOST - set SMARTAUTH_OAUTH_ISSUER or SMARTAUTH_ISSUER_ALLOWED_HOSTS to harden against Host header injection',
+                    '[SmartAuth] OAuthConfig: deriving issuer from HTTP_HOST - set SMARTAUTH_OAUTH_ISSUER or SMARTAUTH_ISSUER_ALLOWED_HOSTS to harden against Host header injection',
                     LOG_WARNING
                 );
                 $host = $httpHost;

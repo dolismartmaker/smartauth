@@ -103,7 +103,7 @@ class PasswordResetController
             getDolGlobalInt('SMARTAUTH_RATELIMIT_RESET_IP_WINDOW', 900)
         );
         if (!$rateCheckIp['allowed']) {
-            dol_syslog("SmartAuth PasswordResetController::requestReset - IP rate limit exceeded for: " . $clientIp, LOG_WARNING);
+            dol_syslog("[SmartAuth] PasswordResetController::requestReset - IP rate limit exceeded for: " . $clientIp, LOG_WARNING);
             return [
                 [
                     'statusCode' => 429,
@@ -122,7 +122,7 @@ class PasswordResetController
         );
 
         if (!$rateCheck['allowed']) {
-            dol_syslog("SmartAuth PasswordResetController::requestReset - Rate limit exceeded for: " . $email, LOG_WARNING);
+            dol_syslog("[SmartAuth] PasswordResetController::requestReset - Rate limit exceeded for: " . $email, LOG_WARNING);
             return [
                 [
                     'statusCode' => 429,
@@ -170,7 +170,7 @@ class PasswordResetController
                 $this->sendResetEmail($email, $plain, $this->subjectDisplayName($subject));
                 SmartAuthLogger::debug("PasswordResetController::requestReset - Reset email sent for subject " . $subject->toSub());
             } else {
-                dol_syslog('SmartAuth PasswordResetController::requestReset - failed to store reset token for ' . $subject->toSub(), LOG_ERR);
+                dol_syslog('[SmartAuth] PasswordResetController::requestReset - failed to store reset token for ' . $subject->toSub(), LOG_ERR);
             }
         } else {
             // Log but don't reveal if email exists
@@ -425,7 +425,7 @@ class PasswordResetController
         if ($result) {
             SmartAuthLogger::debug("PasswordResetController::sendResetEmail - Email sent successfully to: " . $recipientEmail);
         } else {
-            dol_syslog("SmartAuth PasswordResetController::sendResetEmail - Failed to send email to: " . $recipientEmail . " - Error: " . $mail->error, LOG_ERR);
+            dol_syslog("[SmartAuth] PasswordResetController::sendResetEmail - Failed to send email to: " . $recipientEmail . " - Error: " . $mail->error, LOG_ERR);
         }
 
         return $result;
@@ -484,13 +484,13 @@ class PasswordResetController
             // Distinguish an expired token (410) from an invalid/used one (400)
             // for a clearer message on the reset page.
             if ($this->tokenIsExpired($tokenHash, (int) $conf->entity)) {
-                dol_syslog("SmartAuth PasswordResetController::confirmReset - Token expired", LOG_WARNING);
+                dol_syslog("[SmartAuth] PasswordResetController::confirmReset - Token expired", LOG_WARNING);
                 return [
                     ['error' => 'Reset token has expired. Please request a new one.'],
                     410
                 ];
             }
-            dol_syslog("SmartAuth PasswordResetController::confirmReset - Invalid or consumed token", LOG_WARNING);
+            dol_syslog("[SmartAuth] PasswordResetController::confirmReset - Invalid or consumed token", LOG_WARNING);
             return [
                 ['error' => 'Invalid reset token'],
                 400
@@ -576,12 +576,12 @@ class PasswordResetController
         if ($subject->isUser()) {
             $userObj = new User($db);
             if ($userObj->fetch($subject->getId()) <= 0) {
-                dol_syslog('SmartAuth PasswordResetController::writeSubjectPassword - user not found ' . $subject->getId(), LOG_ERR);
+                dol_syslog('[SmartAuth] PasswordResetController::writeSubjectPassword - user not found ' . $subject->getId(), LOG_ERR);
                 return false;
             }
             $result = $userObj->setPassword($userObj, $newPassword);
             if ($result < 0) {
-                dol_syslog('SmartAuth PasswordResetController::writeSubjectPassword - setPassword failed: ' . $userObj->error, LOG_ERR);
+                dol_syslog('[SmartAuth] PasswordResetController::writeSubjectPassword - setPassword failed: ' . $userObj->error, LOG_ERR);
                 return false;
             }
             return true;
@@ -594,7 +594,7 @@ class PasswordResetController
         $sql .= " WHERE rowid = " . ((int) $subject->getId());
 
         if (!$db->query($sql)) {
-            dol_syslog('SmartAuth PasswordResetController::writeSubjectPassword - update ' . $table . ' failed: ' . $db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PasswordResetController::writeSubjectPassword - update ' . $table . ' failed: ' . $db->lasterror(), LOG_ERR);
             return false;
         }
         return true;
@@ -630,7 +630,7 @@ class PasswordResetController
             . " AND auth_element = '" . $db->escape($authElement) . "'"
             . " AND status = 1";
         if (!$db->query($sql)) {
-            dol_syslog('SmartAuth PasswordResetController::revokeAllSubjectTokens - failed to revoke JWT tokens: ' . $db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PasswordResetController::revokeAllSubjectTokens - failed to revoke JWT tokens: ' . $db->lasterror(), LOG_ERR);
         }
 
         // OAuth2 tokens (llx_smartauth_oauth_tokens), subject-aware.
@@ -695,7 +695,7 @@ class PasswordResetController
         }
 
         if (!$passwordOk) {
-            dol_syslog("SmartAuth PasswordResetController::changePassword - Invalid current password for user ID: " . $user->id, LOG_WARNING);
+            dol_syslog("[SmartAuth] PasswordResetController::changePassword - Invalid current password for user ID: " . $user->id, LOG_WARNING);
             return [
                 ['error' => 'Current password is incorrect'],
                 403
@@ -706,7 +706,7 @@ class PasswordResetController
         $result = $userObj->setPassword($userObj, $newPassword);
 
         if ($result < 0) {
-            dol_syslog("SmartAuth PasswordResetController::changePassword - Failed to set password: " . $userObj->error, LOG_ERR);
+            dol_syslog("[SmartAuth] PasswordResetController::changePassword - Failed to set password: " . $userObj->error, LOG_ERR);
             return [
                 ['error' => 'Failed to update password'],
                 500

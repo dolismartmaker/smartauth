@@ -204,7 +204,7 @@ final class SubjectAuthenticator
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SubjectAuthenticator::authenticateAccount query failed: ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] SubjectAuthenticator::authenticateAccount query failed: ' . $this->db->lasterror(), LOG_ERR);
             return null;
         }
 
@@ -247,7 +247,7 @@ final class SubjectAuthenticator
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SubjectAuthenticator::authenticateAdherent query failed: ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] SubjectAuthenticator::authenticateAdherent query failed: ' . $this->db->lasterror(), LOG_ERR);
             return null;
         }
 
@@ -309,7 +309,7 @@ final class SubjectAuthenticator
                 return null;
             }
             dol_syslog(
-                'SubjectAuthenticator: legacy MD5 password matched for user_id=' . (int) $user->id
+                '[SmartAuth] SubjectAuthenticator: legacy MD5 password matched for user_id=' . (int) $user->id
                 . ' - upgrade Dolibarr password storage (MAIN_SECURITY_USE_PASSWORD_HASH=1)',
                 LOG_WARNING
             );

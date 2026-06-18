@@ -92,16 +92,16 @@ class VapidKeyHelper
             $keys = self::generateKeys();
         } catch (\Throwable $e) {
             // Do not abort module install: log and leave keys unconfigured.
-            dol_syslog('VapidKeyHelper::ensureKeys key generation failed: '.$e->getMessage(), LOG_ERR);
+            dol_syslog('[SmartAuth] VapidKeyHelper::ensureKeys key generation failed: '.$e->getMessage(), LOG_ERR);
             return ['publicKey' => '', 'privateKey' => ''];
         }
 
         if (!self::storeKeys($db, $keys)) {
-            dol_syslog('VapidKeyHelper::ensureKeys failed to store generated VAPID keys', LOG_ERR);
+            dol_syslog('[SmartAuth] VapidKeyHelper::ensureKeys failed to store generated VAPID keys', LOG_ERR);
             return ['publicKey' => '', 'privateKey' => ''];
         }
 
-        dol_syslog('VapidKeyHelper::ensureKeys generated new VAPID key pair (entity '.self::KEY_ENTITY.')', LOG_NOTICE);
+        dol_syslog('[SmartAuth] VapidKeyHelper::ensureKeys generated new VAPID key pair (entity '.self::KEY_ENTITY.')', LOG_NOTICE);
         return $keys;
     }
 
@@ -123,7 +123,7 @@ class VapidKeyHelper
             // placeholders, missing sections), which makes openssl_pkey_new()
             // fail with no fault of ours. Retry with a minimal, self-contained
             // OpenSSL config so EC key generation does not depend on the host file.
-            dol_syslog('VapidKeyHelper::generateKeys default OpenSSL config failed, retrying with a minimal config', LOG_WARNING);
+            dol_syslog('[SmartAuth] VapidKeyHelper::generateKeys default OpenSSL config failed, retrying with a minimal config', LOG_WARNING);
             return self::generateKeysWithFallbackOpensslConf();
         }
         return self::extractVapidKeys($res);
@@ -258,7 +258,7 @@ class VapidKeyHelper
         $keys = self::generateKeys();
 
         if (!self::storeKeys($db, $keys)) {
-            dol_syslog('VapidKeyHelper::regenerateKeys failed to store new VAPID keys', LOG_ERR);
+            dol_syslog('[SmartAuth] VapidKeyHelper::regenerateKeys failed to store new VAPID keys', LOG_ERR);
             return ['publicKey' => '', 'privateKey' => ''];
         }
 
@@ -269,10 +269,10 @@ class VapidKeyHelper
         $sql .= " SET status = 9";
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('VapidKeyHelper::regenerateKeys failed to expire subscriptions: '.$db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] VapidKeyHelper::regenerateKeys failed to expire subscriptions: '.$db->lasterror(), LOG_ERR);
         }
 
-        dol_syslog('VapidKeyHelper::regenerateKeys rotated VAPID key pair', LOG_WARNING);
+        dol_syslog('[SmartAuth] VapidKeyHelper::regenerateKeys rotated VAPID key pair', LOG_WARNING);
         return $keys;
     }
 

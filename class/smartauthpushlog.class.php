@@ -185,7 +185,7 @@ class SmartAuthPushLog extends CommonObject
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			dol_syslog("SmartAuthPushLog::recordSend insert failed: ".$this->db->lasterror(), LOG_ERR);
+			dol_syslog("[SmartAuth] SmartAuthPushLog::recordSend insert failed: ".$this->db->lasterror(), LOG_ERR);
 			return -1;
 		}
 
@@ -235,7 +235,7 @@ class SmartAuthPushLog extends CommonObject
 	 */
 	public function fetchAll($sortorder = '', $sortfield = '', $limit = 0, $offset = 0, array $filter = array(), $filtermode = 'AND')
 	{
-		dol_syslog("SmartAuth ".__METHOD__, LOG_DEBUG);
+		dol_syslog("[SmartAuth] ".__METHOD__, LOG_DEBUG);
 
 		$records = array();
 
@@ -293,7 +293,7 @@ class SmartAuthPushLog extends CommonObject
 			return $records;
 		} else {
 			$this->errors[] = 'Error '.$this->db->lasterror();
-			dol_syslog("SmartAuth ".__METHOD__.' '.join(',', $this->errors), LOG_ERR);
+			dol_syslog("[SmartAuth] ".__METHOD__.' '.join(',', $this->errors), LOG_ERR);
 
 			return -1;
 		}
@@ -355,7 +355,7 @@ class SmartAuthPushLog extends CommonObject
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			dol_syslog("SmartAuthPushLog::purgeOlderThan failed: ".$this->db->lasterror(), LOG_ERR);
+			dol_syslog("[SmartAuth] SmartAuthPushLog::purgeOlderThan failed: ".$this->db->lasterror(), LOG_ERR);
 			return -1;
 		}
 

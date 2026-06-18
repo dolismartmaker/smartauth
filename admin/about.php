@@ -96,11 +96,11 @@ if ($action == 'send_feedback') {
 		if ($mail->sendfile()) {
 			setEventMessage($langs->trans('SmartauthFeedbackSent'), 'mesgs');
 		} else {
-			dol_syslog("SmartAuth about.php: failed to send feedback email to ".$to, LOG_ERR);
+			dol_syslog("[SmartAuth] about.php: failed to send feedback email to ".$to, LOG_ERR);
 			setEventMessage($langs->trans('SmartauthFeedbackSendError'), 'errors');
 		}
 	} else {
-		dol_syslog("SmartAuth about.php: feedback submitted without rating", LOG_WARNING);
+		dol_syslog("[SmartAuth] about.php: feedback submitted without rating", LOG_WARNING);
 	}
 
 	$action = '';

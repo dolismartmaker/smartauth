@@ -97,7 +97,7 @@ class LogoutController
 
         // Clear the session
         $this->sessionManager->clearSession();
-        dol_syslog('SmartAuth LogoutController: Session cleared', LOG_INFO);
+        dol_syslog('[SmartAuth] LogoutController: Session cleared', LOG_INFO);
 
         // Revoke user tokens if we know who to log out
         if ($logoutUserId !== null) {
@@ -112,11 +112,11 @@ class LogoutController
                     $redirectUrl .= (strpos($redirectUrl, '?') !== false ? '&' : '?');
                     $redirectUrl .= 'state=' . urlencode($state);
                 }
-                dol_syslog('SmartAuth LogoutController: Redirecting to ' . $redirectUrl, LOG_INFO);
+                dol_syslog('[SmartAuth] LogoutController: Redirecting to ' . $redirectUrl, LOG_INFO);
                 header('Location: ' . $redirectUrl);
                 exit;
             } else {
-                dol_syslog('SmartAuth LogoutController: Invalid post_logout_redirect_uri', LOG_WARNING);
+                dol_syslog('[SmartAuth] LogoutController: Invalid post_logout_redirect_uri', LOG_WARNING);
                 // Invalid redirect URI - show logout page instead of redirecting
             }
         }
@@ -152,7 +152,7 @@ class LogoutController
         $headerJson = JwtKeyHelper::base64UrlDecode($headerEncoded);
         $header = json_decode($headerJson, true);
         if (!is_array($header) || ($header['alg'] ?? '') !== 'RS256') {
-            dol_syslog('SmartAuth LogoutController: id_token_hint has unsupported alg', LOG_WARNING);
+            dol_syslog('[SmartAuth] LogoutController: id_token_hint has unsupported alg', LOG_WARNING);
             return $result;
         }
 
@@ -160,14 +160,14 @@ class LogoutController
         $signature = JwtKeyHelper::base64UrlDecode($signatureEncoded);
         $publicKey = JwtKeyHelper::getRsaPublicKey();
         if (empty($publicKey)) {
-            dol_syslog('SmartAuth LogoutController: no RSA public key configured', LOG_ERR);
+            dol_syslog('[SmartAuth] LogoutController: no RSA public key configured', LOG_ERR);
             return $result;
         }
 
         $dataToVerify = $headerEncoded . '.' . $payloadEncoded;
         $verified = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA256);
         if ($verified !== 1) {
-            dol_syslog('SmartAuth LogoutController: id_token_hint signature is invalid', LOG_WARNING);
+            dol_syslog('[SmartAuth] LogoutController: id_token_hint signature is invalid', LOG_WARNING);
             return $result;
         }
 
@@ -179,7 +179,7 @@ class LogoutController
         // Verify issuer matches our server (now trustworthy since signed)
         $issuer = $payload['iss'] ?? '';
         if ($issuer !== OAuthConfig::getIssuer()) {
-            dol_syslog('SmartAuth LogoutController: id_token_hint has wrong issuer', LOG_WARNING);
+            dol_syslog('[SmartAuth] LogoutController: id_token_hint has wrong issuer', LOG_WARNING);
             return $result;
         }
 
@@ -193,7 +193,7 @@ class LogoutController
                     $result['userId'] = $hintSubject->getId();
                 }
             } catch (\InvalidArgumentException $e) {
-                dol_syslog('SmartAuth LogoutController: id_token_hint has malformed sub', LOG_WARNING);
+                dol_syslog('[SmartAuth] LogoutController: id_token_hint has malformed sub', LOG_WARNING);
             }
         }
 
@@ -232,7 +232,7 @@ class LogoutController
         $host = $parsedUri['host'];
         $isLocalhost = in_array($host, ['localhost', '127.0.0.1', '::1'], true);
         if ($parsedUri['scheme'] !== 'https' && !$isLocalhost) {
-            dol_syslog('SmartAuth LogoutController: post_logout_redirect_uri must be HTTPS', LOG_DEBUG);
+            dol_syslog('[SmartAuth] LogoutController: post_logout_redirect_uri must be HTTPS', LOG_DEBUG);
             return false;
         }
 
@@ -346,7 +346,7 @@ class LogoutController
     {
         $count = \SmartAuthOAuthToken::revokeAllForUser($this->db, $userId);
         if ($count > 0) {
-            dol_syslog('SmartAuth LogoutController: Revoked ' . $count . ' tokens for user ' . $userId, LOG_INFO);
+            dol_syslog('[SmartAuth] LogoutController: Revoked ' . $count . ' tokens for user ' . $userId, LOG_INFO);
         }
     }
 

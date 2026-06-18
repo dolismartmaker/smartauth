@@ -299,11 +299,11 @@ if ($action == 'updateMask') {
 			return;
 		} else {
 			setEventMessages($module->error, null, 'errors');
-			dol_syslog("SmartAuth ".$module->error, LOG_ERR);
+			dol_syslog("[SmartAuth] ".$module->error, LOG_ERR);
 		}
 	} else {
 		setEventMessages($langs->trans("ErrorModuleNotFound"), null, 'errors');
-		dol_syslog("SmartAuth ".$langs->trans("ErrorModuleNotFound"), LOG_ERR);
+		dol_syslog("[SmartAuth] ".$langs->trans("ErrorModuleNotFound"), LOG_ERR);
 	}
 } elseif ($action == 'setmod') {
 	// TODO Check if numbering module chosen can be activated by calling method canBeActivated
@@ -367,7 +367,7 @@ if ($action == 'updateMask') {
 			setEventMessages($langs->trans("SmartauthVapidKeyGenerationFailed"), null, 'errors');
 		}
 	} catch (\Throwable $e) {
-		dol_syslog("SmartAuth setup VAPID key generation failed: ".$e->getMessage(), LOG_ERR);
+		dol_syslog("[SmartAuth] setup VAPID key generation failed: ".$e->getMessage(), LOG_ERR);
 		setEventMessages($langs->trans("SmartauthVapidKeyGenerationFailed"), null, 'errors');
 	}
 }

@@ -245,7 +245,7 @@ class SyncController
      */
     public function register($payload)
     {
-        dol_syslog("SmartAuth SyncController::register");
+        dol_syslog("[SmartAuth] SyncController::register");
 
         // Validate required fields
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
@@ -294,7 +294,7 @@ class SyncController
             $sql .= "1)";
 
             if (!$this->db->query($sql)) {
-                dol_syslog("SmartAuth SyncController::register - Insert failed: " . $this->db->lasterror(), LOG_ERR);
+                dol_syslog("[SmartAuth] SyncController::register - Insert failed: " . $this->db->lasterror(), LOG_ERR);
                 return [['error' => 'Failed to register client'], 500];
             }
 
@@ -348,7 +348,7 @@ class SyncController
     public function pull($payload)
     {
         global $user;
-        dol_syslog("SmartAuth SyncController::pull");
+        dol_syslog("[SmartAuth] SyncController::pull");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
         if (empty($client_uuid)) {
@@ -462,7 +462,7 @@ class SyncController
     public function push($payload)
     {
         global $user;
-        dol_syslog("SmartAuth SyncController::push");
+        dol_syslog("[SmartAuth] SyncController::push");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
         if (empty($client_uuid)) {
@@ -574,7 +574,7 @@ class SyncController
                         ];
                 }
             } catch (\Exception $e) {
-                dol_syslog("SmartAuth SyncController::push - Exception: " . $e->getMessage(), LOG_ERR);
+                dol_syslog("[SmartAuth] SyncController::push - Exception: " . $e->getMessage(), LOG_ERR);
                 $result['errors'][] = [
                     'id' => $id ?: $temp_id,
                     'error' => $e->getMessage(),
@@ -617,7 +617,7 @@ class SyncController
      */
     public function status($payload)
     {
-        dol_syslog("SmartAuth SyncController::status");
+        dol_syslog("[SmartAuth] SyncController::status");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
         if (empty($client_uuid)) {
@@ -667,7 +667,7 @@ class SyncController
      */
     public function conflicts($payload)
     {
-        dol_syslog("SmartAuth SyncController::conflicts");
+        dol_syslog("[SmartAuth] SyncController::conflicts");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
         if (empty($client_uuid)) {
@@ -726,7 +726,7 @@ class SyncController
     public function resolveConflict($payload)
     {
         global $user;
-        dol_syslog("SmartAuth SyncController::resolveConflict");
+        dol_syslog("[SmartAuth] SyncController::resolveConflict");
 
         $conflict_id = (int) ($payload['id'] ?? 0);
         if ($conflict_id <= 0) {
@@ -840,7 +840,7 @@ class SyncController
     private function getClientByUUID($uuid, int $userId = 0)
     {
         if ($userId <= 0) {
-            dol_syslog('SmartAuth SyncController::getClientByUUID called without userId - rejecting (M-11)', LOG_WARNING);
+            dol_syslog('[SmartAuth] SyncController::getClientByUUID called without userId - rejecting (M-11)', LOG_WARNING);
             return null;
         }
 
@@ -975,7 +975,7 @@ class SyncController
         $mapperClass = $this->resolveMapperClass($object_type);
         if ($mapperClass === null || !class_exists($mapperClass) || $rowid <= 0) {
             dol_syslog(
-                "SmartAuth SyncController::mapObjectThroughMapper: no dm* "
+                "[SmartAuth] SyncController::mapObjectThroughMapper: no dm* "
                 . "mapper for object_type='" . $object_type . "', falling "
                 . "back to raw (array) cast. Invariant I-1 not enforced "
                 . "for this type.",
@@ -988,7 +988,7 @@ class SyncController
         $doliFile = $config['file'] ?? '';
         if (empty($doliClass) || empty($doliFile)) {
             dol_syslog(
-                "SmartAuth SyncController::mapObjectThroughMapper: missing "
+                "[SmartAuth] SyncController::mapObjectThroughMapper: missing "
                 . "'class' or 'file' in syncableObjects['" . $object_type
                 . "'], falling back to raw cast.",
                 LOG_WARNING
@@ -1001,7 +1001,7 @@ class SyncController
         }
         if (!class_exists($doliClass)) {
             dol_syslog(
-                "SmartAuth SyncController::mapObjectThroughMapper: Dolibarr "
+                "[SmartAuth] SyncController::mapObjectThroughMapper: Dolibarr "
                 . "class " . $doliClass . " could not be loaded (file="
                 . $doliFile . "), falling back to raw cast.",
                 LOG_WARNING
@@ -1013,7 +1013,7 @@ class SyncController
         $fetchResult = $fresh->fetch($rowid);
         if ($fetchResult <= 0) {
             dol_syslog(
-                "SmartAuth SyncController::mapObjectThroughMapper: fetch "
+                "[SmartAuth] SyncController::mapObjectThroughMapper: fetch "
                 . "failed for " . $doliClass . " id=" . $rowid . " ("
                 . ($fresh->error ?? 'no error message') . "), falling back "
                 . "to raw cast.",
@@ -1278,7 +1278,7 @@ class SyncController
         }
         if (!empty($rejected)) {
             dol_syslog(
-                'SmartAuth SyncController::applyDataViaMapper: rejected '
+                '[SmartAuth] SyncController::applyDataViaMapper: rejected '
                 . 'mass-assignment keys for ' . ($config['class'] ?? '?')
                 . ': ' . implode(',', $rejected),
                 LOG_WARNING
@@ -1306,7 +1306,7 @@ class SyncController
         }
         if (!empty($fkErrors)) {
             dol_syslog(
-                'SmartAuth SyncController::applyDataViaMapper: foreign '
+                '[SmartAuth] SyncController::applyDataViaMapper: foreign '
                 . 'key validation failed for ' . get_class($mapper) . ': '
                 . implode(',', $fkErrors),
                 LOG_WARNING
@@ -1374,10 +1374,10 @@ class SyncController
         }
 
         if (!empty($rejected)) {
-            dol_syslog('SmartAuth SyncController::applyDataLegacy: rejected mass-assignment keys for ' . ($config['class'] ?? '?') . ': ' . implode(',', $rejected), LOG_WARNING);
+            dol_syslog('[SmartAuth] SyncController::applyDataLegacy: rejected mass-assignment keys for ' . ($config['class'] ?? '?') . ': ' . implode(',', $rejected), LOG_WARNING);
         }
         if (!is_array($allowedFields)) {
-            dol_syslog('SmartAuth SyncController::applyDataLegacy: no allowed_fields whitelist for ' . ($config['class'] ?? '?') . ' - denylist-only mode', LOG_WARNING);
+            dol_syslog('[SmartAuth] SyncController::applyDataLegacy: no allowed_fields whitelist for ' . ($config['class'] ?? '?') . ' - denylist-only mode', LOG_WARNING);
         }
 
         return $rejected;
@@ -1414,7 +1414,7 @@ class SyncController
         $resql = $this->db->query($sql);
         if (!$resql) {
             dol_syslog(
-                'SmartAuth SyncController::validateForeignKeyExists: SQL '
+                '[SmartAuth] SyncController::validateForeignKeyExists: SQL '
                 . 'error checking ' . $field . ' -> ' . $table
                 . '.rowid=' . $id . ': ' . $this->db->lasterror(),
                 LOG_WARNING
@@ -1445,7 +1445,7 @@ class SyncController
         $type = $config['object_type'] ?? '?';
         if (empty($config['rights'][$action]) || !is_array($config['rights'][$action])) {
             dol_syslog(
-                'SmartAuth SyncController: no ' . $action . ' right mapping for '
+                '[SmartAuth] SyncController: no ' . $action . ' right mapping for '
                 . 'object_type ' . $type . ' - refusing write (fail-closed)',
                 LOG_WARNING
             );
@@ -1456,7 +1456,7 @@ class SyncController
         $granted = (bool) call_user_func_array([$user, 'hasRight'], $args);
         if (!$granted) {
             dol_syslog(
-                'SmartAuth SyncController: user ' . ((int) $user->id)
+                '[SmartAuth] SyncController: user ' . ((int) $user->id)
                 . ' lacks right ' . implode('->', $args) . ' for ' . $action
                 . ' on ' . $type . ' - denied',
                 LOG_WARNING
@@ -1534,7 +1534,7 @@ class SyncController
             && !$this->isEntityAllowed($server_obj->entity, $config['element'])) {
             $this->db->rollback();
             dol_syslog(
-                'SmartAuth SyncController::processUpdate: cross-entity write '
+                '[SmartAuth] SyncController::processUpdate: cross-entity write '
                 . 'refused for ' . ($config['object_type'] ?? '?') . ' rowid=' . (int) $id
                 . ' (row entity ' . (int) $server_obj->entity . ')',
                 LOG_WARNING
@@ -1670,7 +1670,7 @@ class SyncController
         if (isset($object->entity)
             && !$this->isEntityAllowed($object->entity, $config['element'])) {
             dol_syslog(
-                'SmartAuth SyncController::processDelete: cross-entity delete '
+                '[SmartAuth] SyncController::processDelete: cross-entity delete '
                 . 'refused for ' . ($config['object_type'] ?? '?') . ' rowid=' . (int) $id
                 . ' (row entity ' . (int) $object->entity . ')',
                 LOG_WARNING

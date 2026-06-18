@@ -39,7 +39,7 @@ class SmartFileController
      */
     public function download($payload = null)
     {
-        dol_syslog("smartauth::SmartFileController::download");
+        dol_syslog("[SmartAuth] SmartFileController::download");
 
         // Load and validate file
         $fileInfo = $this->_loadAndValidateFile($payload);
@@ -52,17 +52,17 @@ class SmartFileController
         // Limit file size for base64 encoding (50MB max)
         $maxsize = 50 * 1024 * 1024;
         if ($fileInfo['filesize'] > $maxsize) {
-            dol_syslog("smartauth::SmartFileController::download - File too large: {$fileInfo['filesize']} bytes", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartFileController::download - File too large: {$fileInfo['filesize']} bytes", LOG_WARNING);
             return [['error' => 'File too large for base64 download, use binary mode'], 413];
         }
 
         $content = file_get_contents($fileInfo['fullpath_osencoded']);
         if ($content === false) {
-            dol_syslog("smartauth::SmartFileController::download - Failed to read file: {$fileInfo['fullpath']}", LOG_ERR);
+            dol_syslog("[SmartAuth] SmartFileController::download - Failed to read file: {$fileInfo['fullpath']}", LOG_ERR);
             return [['error' => 'Failed to read file'], 500];
         }
 
-        dol_syslog("smartauth::SmartFileController::download - Success: {$fileInfo['filename']} ({$fileInfo['filesize']} bytes) for user {$fileInfo['user_id']}");
+        dol_syslog("[SmartAuth] SmartFileController::download - Success: {$fileInfo['filename']} ({$fileInfo['filesize']} bytes) for user {$fileInfo['user_id']}");
 
         return [[
             'filename' => $fileInfo['filename'],
@@ -86,7 +86,7 @@ class SmartFileController
     {
         global $db;
 
-        dol_syslog("smartauth::SmartFileController::downloadBinary");
+        dol_syslog("[SmartAuth] SmartFileController::downloadBinary");
 
         // Load and validate file
         $fileInfo = $this->_loadAndValidateFile($payload);
@@ -96,7 +96,7 @@ class SmartFileController
             return [$fileInfo, $fileInfo['status']];
         }
 
-        dol_syslog("smartauth::SmartFileController::downloadBinary - Streaming: {$fileInfo['filename']} ({$fileInfo['filesize']} bytes) for user {$fileInfo['user_id']}");
+        dol_syslog("[SmartAuth] SmartFileController::downloadBinary - Streaming: {$fileInfo['filename']} ({$fileInfo['filesize']} bytes) for user {$fileInfo['user_id']}");
 
         // Close database connection before streaming
         if (is_object($db)) {
@@ -135,21 +135,21 @@ class SmartFileController
         // Validate hash parameter
         $hash = $payload['hash'] ?? '';
         if (empty($hash)) {
-            dol_syslog("smartauth::SmartFileController - Missing hash parameter", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartFileController - Missing hash parameter", LOG_WARNING);
             return ['error' => 'Missing file hash', 'status' => 400];
         }
 
         // Sanitize hash (alphanumeric only)
         $hash = preg_replace('/[^a-zA-Z0-9]/', '', $hash);
         if (strlen($hash) < 8) {
-            dol_syslog("smartauth::SmartFileController - Invalid hash format", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartFileController - Invalid hash format", LOG_WARNING);
             return ['error' => 'Invalid file hash', 'status' => 400];
         }
 
         // Get authenticated user
         $user = $payload['user'] ?? null;
         if (empty($user) || !is_object($user)) {
-            dol_syslog("smartauth::SmartFileController - No authenticated user", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartFileController - No authenticated user", LOG_WARNING);
             return ['error' => 'Authentication required', 'status' => 401];
         }
 
@@ -159,14 +159,14 @@ class SmartFileController
         $result = $ecmfile->fetch(0, '', '', '', $hash);
 
         if ($result <= 0) {
-            dol_syslog("smartauth::SmartFileController - File not found for hash: $hash", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartFileController - File not found for hash: $hash", LOG_WARNING);
             return ['error' => 'File not found', 'status' => 404];
         }
 
         // Entity check
         $entity = (int) ($payload['entity'] ?? $conf->entity);
         if ($ecmfile->entity != $entity && $ecmfile->entity != 0) {
-            dol_syslog("smartauth::SmartFileController - Entity mismatch: file={$ecmfile->entity}, user=$entity", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartFileController - Entity mismatch: file={$ecmfile->entity}, user=$entity", LOG_WARNING);
             return ['error' => 'Access denied', 'status' => 403];
         }
 
@@ -183,7 +183,7 @@ class SmartFileController
         $original_file = (($tmp[1] ?? '') ? $tmp[1] . '/' : '') . $ecmfile->filename;
 
         if (empty($modulepart)) {
-            dol_syslog("smartauth::SmartFileController - Cannot determine modulepart from filepath: $filepath", LOG_ERR);
+            dol_syslog("[SmartAuth] SmartFileController - Cannot determine modulepart from filepath: $filepath", LOG_ERR);
             return ['error' => 'Invalid file path', 'status' => 500];
         }
 
@@ -193,13 +193,13 @@ class SmartFileController
         $fullpath = $check_access['original_file'];
 
         if (!$accessallowed) {
-            dol_syslog("smartauth::SmartFileController - Access denied for user {$user->id} on modulepart=$modulepart, file=$original_file", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartFileController - Access denied for user {$user->id} on modulepart=$modulepart, file=$original_file", LOG_WARNING);
             return ['error' => 'Access denied', 'status' => 403];
         }
 
         // Path traversal protection
         if (preg_match('/\.\./', $fullpath) || preg_match('/[<>|]/', $fullpath)) {
-            dol_syslog("smartauth::SmartFileController - Path traversal attempt detected: $fullpath", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartFileController - Path traversal attempt detected: $fullpath", LOG_WARNING);
             return ['error' => 'Invalid file path', 'status' => 400];
         }
 
@@ -219,11 +219,11 @@ class SmartFileController
             }
 
             if ($fallbackPath && file_exists(dol_osencode($fallbackPath))) {
-                dol_syslog("smartauth::SmartFileController - Using fallback path for external module: $fallbackPath");
+                dol_syslog("[SmartAuth] SmartFileController - Using fallback path for external module: $fallbackPath");
                 $fullpath = $fallbackPath;
                 $fullpath_osencoded = dol_osencode($fullpath);
             } else {
-                dol_syslog("smartauth::SmartFileController - File does not exist on disk: $fullpath" . ($fallbackPath ? " (fallback tried: $fallbackPath)" : ""), LOG_WARNING);
+                dol_syslog("[SmartAuth] SmartFileController - File does not exist on disk: $fullpath" . ($fallbackPath ? " (fallback tried: $fallbackPath)" : ""), LOG_WARNING);
             return ['error' => 'File not found on disk', 'status' => 404];
             }
         }

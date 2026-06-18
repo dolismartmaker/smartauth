@@ -188,7 +188,7 @@ class AuthorizationController
         if ($codeChallenge !== null) {
             $method = $codeChallengeMethod ?? '';
             if (!PKCEHelper::isValidMethod($method)) {
-                dol_syslog('SmartAuth AuthorizationController: PKCE method must be S256, got: ' . ($method ?: '(missing)'), LOG_WARNING);
+                dol_syslog('[SmartAuth] AuthorizationController: PKCE method must be S256, got: ' . ($method ?: '(missing)'), LOG_WARNING);
                 $this->redirectWithError($redirectUri, 'invalid_request', 'Methode code_challenge non supportee (S256 requis).', $state);
                 return;
             }
@@ -360,12 +360,12 @@ class AuthorizationController
         $result = $client->fetch(0, null, $clientId);
 
         if ($result <= 0) {
-            dol_syslog('SmartAuth AuthorizationController: Client not found: ' . $clientId, LOG_WARNING);
+            dol_syslog('[SmartAuth] AuthorizationController: Client not found: ' . $clientId, LOG_WARNING);
             return null;
         }
 
         if (!$client->isEnabled()) {
-            dol_syslog('SmartAuth AuthorizationController: Client disabled: ' . $clientId, LOG_WARNING);
+            dol_syslog('[SmartAuth] AuthorizationController: Client disabled: ' . $clientId, LOG_WARNING);
             return null;
         }
 
@@ -402,14 +402,14 @@ class AuthorizationController
 
         if ($scheme === 'http') {
             if (!$isLoopbackHost || !$allowLoopback) {
-                dol_syslog('SmartAuth AuthorizationController: Non-HTTPS redirect URI rejected: ' . $uri, LOG_WARNING);
+                dol_syslog('[SmartAuth] AuthorizationController: Non-HTTPS redirect URI rejected: ' . $uri, LOG_WARNING);
                 return false;
             }
         } elseif ($scheme !== 'https' && strpos($scheme, '.') === false && strpos($scheme, '-') === false && strlen($scheme) > 1) {
             // Reject scheme-less / suspicious schemes like 'javascript', 'data', 'file', 'gopher'.
             $blocked = ['javascript', 'data', 'file', 'gopher', 'ftp'];
             if (in_array($scheme, $blocked, true)) {
-                dol_syslog('SmartAuth AuthorizationController: Blocked scheme in redirect URI: ' . $uri, LOG_WARNING);
+                dol_syslog('[SmartAuth] AuthorizationController: Blocked scheme in redirect URI: ' . $uri, LOG_WARNING);
                 return false;
             }
             // Other custom schemes (myapp://...) are allowed - the next
@@ -451,7 +451,7 @@ class AuthorizationController
         $allowedScopes = $client->getAllowedScopesArray();
         if (!ScopeManager::areAllScopesAllowed($validScopes, $allowedScopes)) {
             $disallowed = ScopeManager::getDisallowedScopes($validScopes, $allowedScopes);
-            dol_syslog('SmartAuth AuthorizationController: Disallowed scopes: ' . implode(', ', $disallowed), LOG_WARNING);
+            dol_syslog('[SmartAuth] AuthorizationController: Disallowed scopes: ' . implode(', ', $disallowed), LOG_WARNING);
             return null;
         }
 
@@ -472,7 +472,7 @@ class AuthorizationController
         if ($client->requiresPkce()) {
             // PKCE is required - challenge must be provided
             if (empty($challenge)) {
-                dol_syslog('SmartAuth AuthorizationController: PKCE required but not provided', LOG_WARNING);
+                dol_syslog('[SmartAuth] AuthorizationController: PKCE required but not provided', LOG_WARNING);
                 return false;
             }
         }
@@ -539,7 +539,7 @@ class AuthorizationController
     private function saveConsent(TokenSubject $subject, int $clientId, array $scopes): void
     {
         if (!$subject->isUser()) {
-            dol_syslog('SmartAuth AuthorizationController: consent not persisted for account subject ' . $subject->toSub(), LOG_DEBUG);
+            dol_syslog('[SmartAuth] AuthorizationController: consent not persisted for account subject ' . $subject->toSub(), LOG_DEBUG);
             return;
         }
 
@@ -550,7 +550,7 @@ class AuthorizationController
         $result = $consent->findOrCreate($clientId, $subject->getId(), $scopes, $user);
 
         if ($result < 0) {
-            dol_syslog('SmartAuth AuthorizationController: Failed to save consent: ' . implode(', ', $consent->errors), LOG_ERR);
+            dol_syslog('[SmartAuth] AuthorizationController: Failed to save consent: ' . implode(', ', $consent->errors), LOG_ERR);
         }
     }
 
@@ -721,12 +721,12 @@ class AuthorizationController
 
         $result = $oauthCode->create($author);
         if ($result < 0) {
-            dol_syslog('SmartAuth AuthorizationController: Failed to create code: ' . implode(', ', $oauthCode->errors), LOG_ERR);
+            dol_syslog('[SmartAuth] AuthorizationController: Failed to create code: ' . implode(', ', $oauthCode->errors), LOG_ERR);
             $this->redirectWithError($redirectUri, 'server_error', 'Erreur lors de la generation du code.', $state);
             return;
         }
 
-        dol_syslog('SmartAuth AuthorizationController: Code generated for subject ' . $this->subject->toSub() . ' client ' . $this->client->client_id, LOG_INFO);
+        dol_syslog('[SmartAuth] AuthorizationController: Code generated for subject ' . $this->subject->toSub() . ' client ' . $this->client->client_id, LOG_INFO);
 
         // Build redirect URL
         $params = ['code' => $plainCode];
@@ -764,7 +764,7 @@ class AuthorizationController
         $separator = strpos($redirectUri, '?') !== false ? '&' : '?';
         $redirectUrl = $redirectUri . $separator . http_build_query($params);
 
-        dol_syslog('SmartAuth AuthorizationController: Redirecting with error ' . $error . ': ' . $description, LOG_INFO);
+        dol_syslog('[SmartAuth] AuthorizationController: Redirecting with error ' . $error . ': ' . $description, LOG_INFO);
 
         header('Location: ' . $redirectUrl);
         exit;
@@ -882,7 +882,7 @@ class AuthorizationController
         $templatePath = dirname(__DIR__, 2) . '/tpl/' . $templateName . '.tpl.php';
 
         if (!file_exists($templatePath)) {
-            dol_syslog('SmartAuth AuthorizationController: Template not found: ' . $templatePath, LOG_ERR);
+            dol_syslog('[SmartAuth] AuthorizationController: Template not found: ' . $templatePath, LOG_ERR);
             http_response_code(500);
             echo 'Template not found';
             exit;

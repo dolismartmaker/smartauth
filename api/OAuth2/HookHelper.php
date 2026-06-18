@@ -93,7 +93,7 @@ class HookHelper
 
         if ($reshook < 0) {
             $result['internal_error'] = true;
-            dol_syslog('SmartAuth HookHelper: Hook ' . $hookName . ' returned internal error (' . $reshook . ')', LOG_ERR);
+            dol_syslog('[SmartAuth] HookHelper: Hook ' . $hookName . ' returned internal error (' . $reshook . ')', LOG_ERR);
             return $result;
         }
 
@@ -107,7 +107,7 @@ class HookHelper
             $result['error_description'] = isset($resArray['error_description'])
                 ? (string) $resArray['error_description']
                 : '';
-            dol_syslog('SmartAuth HookHelper: Hook ' . $hookName . ' blocked with error=' . $result['error'], LOG_INFO);
+            dol_syslog('[SmartAuth] HookHelper: Hook ' . $hookName . ' blocked with error=' . $result['error'], LOG_INFO);
             return $result;
         }
 
@@ -117,7 +117,7 @@ class HookHelper
                 $result['extra_claims'] = self::sanitizeExtraClaims($resArray['extra_claims'], $hookName);
             } else {
                 dol_syslog(
-                    'SmartAuth HookHelper: ' . $hookName . ' returned non-array extra_claims, ignored',
+                    '[SmartAuth] HookHelper: ' . $hookName . ' returned non-array extra_claims, ignored',
                     LOG_WARNING
                 );
             }
@@ -150,14 +150,14 @@ class HookHelper
         foreach ($extraClaims as $key => $value) {
             if (!is_string($key) || $key === '') {
                 dol_syslog(
-                    'SmartAuth HookHelper: ' . $hookName . ' extra_claims has non-string key, dropped',
+                    '[SmartAuth] HookHelper: ' . $hookName . ' extra_claims has non-string key, dropped',
                     LOG_WARNING
                 );
                 continue;
             }
             if (in_array($key, self::RESERVED_TOKEN_CLAIMS, true)) {
                 dol_syslog(
-                    'SmartAuth HookHelper: ' . $hookName . ' attempted to inject reserved claim "'
+                    '[SmartAuth] HookHelper: ' . $hookName . ' attempted to inject reserved claim "'
                     . $key . '" via extra_claims - dropped',
                     LOG_WARNING
                 );
@@ -165,7 +165,7 @@ class HookHelper
             }
             if (!self::isValidClaimValue($value)) {
                 dol_syslog(
-                    'SmartAuth HookHelper: ' . $hookName . ' extra_claims "' . $key
+                    '[SmartAuth] HookHelper: ' . $hookName . ' extra_claims "' . $key
                     . '" has invalid value type - dropped',
                     LOG_WARNING
                 );
@@ -238,12 +238,12 @@ class HookHelper
         $reshook = $hookmanager->executeHooks($hookName, $parameters, $modified, $action);
 
         if ($reshook < 0) {
-            dol_syslog('SmartAuth HookHelper: Hook ' . $hookName . ' returned internal error (' . $reshook . '), keeping standard claims', LOG_WARNING);
+            dol_syslog('[SmartAuth] HookHelper: Hook ' . $hookName . ' returned internal error (' . $reshook . '), keeping standard claims', LOG_WARNING);
             return $claims;
         }
 
         if (!is_array($modified)) {
-            dol_syslog('SmartAuth HookHelper: Hook ' . $hookName . ' returned non-array claims, keeping standard claims', LOG_WARNING);
+            dol_syslog('[SmartAuth] HookHelper: Hook ' . $hookName . ' returned non-array claims, keeping standard claims', LOG_WARNING);
             return $claims;
         }
 
@@ -254,7 +254,7 @@ class HookHelper
             if (array_key_exists($reserved, $claims)) {
                 if (!array_key_exists($reserved, $modified) || $modified[$reserved] !== $claims[$reserved]) {
                     if (array_key_exists($reserved, $modified) && $modified[$reserved] !== $claims[$reserved]) {
-                        dol_syslog('SmartAuth HookHelper: Hook attempted to overwrite reserved claim "' . $reserved . '" - ignored', LOG_WARNING);
+                        dol_syslog('[SmartAuth] HookHelper: Hook attempted to overwrite reserved claim "' . $reserved . '" - ignored', LOG_WARNING);
                     }
                     $modified[$reserved] = $claims[$reserved];
                 }
@@ -262,7 +262,7 @@ class HookHelper
                 // Hook tried to inject a reserved claim that wasn't in the
                 // original payload - drop it.
                 if (array_key_exists($reserved, $modified)) {
-                    dol_syslog('SmartAuth HookHelper: Hook attempted to inject reserved claim "' . $reserved . '" - dropped', LOG_WARNING);
+                    dol_syslog('[SmartAuth] HookHelper: Hook attempted to inject reserved claim "' . $reserved . '" - dropped', LOG_WARNING);
                     unset($modified[$reserved]);
                 }
             }
@@ -302,7 +302,7 @@ class HookHelper
 
         $reshook = $hookmanager->executeHooks($hookName, $parameters, $sections, $action);
         if ($reshook < 0) {
-            dol_syslog('SmartAuth HookHelper: Hook ' . $hookName . ' returned internal error (' . $reshook . ')', LOG_WARNING);
+            dol_syslog('[SmartAuth] HookHelper: Hook ' . $hookName . ' returned internal error (' . $reshook . ')', LOG_WARNING);
             return [];
         }
 
@@ -379,7 +379,7 @@ class HookHelper
 
         if ($reshook < 0) {
             $result['internal_error'] = true;
-            dol_syslog('SmartAuth HookHelper: ' . $hookName . ' returned internal error (' . $reshook . ')', LOG_ERR);
+            dol_syslog('[SmartAuth] HookHelper: ' . $hookName . ' returned internal error (' . $reshook . ')', LOG_ERR);
             return $result;
         }
 

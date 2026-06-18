@@ -44,17 +44,17 @@ function check_user_password_smartauthoauth($usertotest, $passwordtotest, $entit
 {
     global $db, $conf, $langs;
 
-    dol_syslog("SmartAuth functions_smartauthoauth::check_user_password_smartauthoauth start", LOG_DEBUG);
+    dol_syslog("[SmartAuth] functions_smartauthoauth::check_user_password_smartauthoauth start", LOG_DEBUG);
 
     // Bypass mode for initial setup or maintenance
     if (getDolGlobalInt('SMARTAUTH_OAUTH_BYPASS', 0)) {
-        dol_syslog("SmartAuth OAuth bypassed by SMARTAUTH_OAUTH_BYPASS configuration", LOG_INFO);
+        dol_syslog("[SmartAuth] OAuth bypassed by SMARTAUTH_OAUTH_BYPASS configuration", LOG_INFO);
         return false; // Pass to next handler (e.g., dolibarr)
     }
 
     // Check if SmartAuth OAuth is configured and available
     if (!smartauth_is_available($conf)) {
-        dol_syslog("SmartAuth OAuth not available or not configured, falling back to next handler", LOG_INFO);
+        dol_syslog("[SmartAuth] OAuth not available or not configured, falling back to next handler", LOG_INFO);
         return false; // Pass to next handler
     }
 
@@ -67,7 +67,7 @@ function check_user_password_smartauthoauth($usertotest, $passwordtotest, $entit
     if (!empty($_GET['error'])) {
         $error = $_GET['error'] ?? '';
         $errorDesc = $_GET['error_description'] ?? '';
-        dol_syslog("SmartAuth OAuth error callback: " . $error . " - " . $errorDesc, LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth error callback: " . $error . " - " . $errorDesc, LOG_WARNING);
         // Clear session state
         unset($_SESSION['smartauth_state'], $_SESSION['smartauth_code_verifier'], $_SESSION['smartauth_redirect_after_login']);
         return false;
@@ -115,7 +115,7 @@ function smartauth_redirect_to_authorize($conf)
     $issuer = getDolGlobalString('SMARTAUTH_OAUTH_ISSUER', '');
     $authorizeUrl = rtrim($issuer, '/') . '/oauth/authorize?' . http_build_query($params);
 
-    dol_syslog("SmartAuth OAuth: Redirecting to authorization endpoint", LOG_DEBUG);
+    dol_syslog("[SmartAuth] OAuth: Redirecting to authorization endpoint", LOG_DEBUG);
 
     header('Location: ' . $authorizeUrl);
     exit;
@@ -133,14 +133,14 @@ function smartauth_handle_callback($db, $conf, $entity)
 {
     global $langs;
 
-    dol_syslog("SmartAuth OAuth: Processing callback", LOG_DEBUG);
+    dol_syslog("[SmartAuth] OAuth: Processing callback", LOG_DEBUG);
 
     // Validate state to prevent CSRF
     $receivedState = $_GET['state'] ?? '';
     $storedState = $_SESSION['smartauth_state'] ?? '';
 
     if (empty($storedState) || !hash_equals($storedState, $receivedState)) {
-        dol_syslog("SmartAuth OAuth: State mismatch - possible CSRF attack", LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth: State mismatch - possible CSRF attack", LOG_WARNING);
         smartauth_clear_session();
         return false;
     }
@@ -148,7 +148,7 @@ function smartauth_handle_callback($db, $conf, $entity)
     // Get stored code verifier for PKCE
     $codeVerifier = $_SESSION['smartauth_code_verifier'] ?? '';
     if (empty($codeVerifier)) {
-        dol_syslog("SmartAuth OAuth: Missing code verifier", LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth: Missing code verifier", LOG_WARNING);
         smartauth_clear_session();
         return false;
     }
@@ -158,7 +158,7 @@ function smartauth_handle_callback($db, $conf, $entity)
     $tokenResponse = smartauth_exchange_code($code, $codeVerifier, $conf);
 
     if (!$tokenResponse || empty($tokenResponse['access_token'])) {
-        dol_syslog("SmartAuth OAuth: Token exchange failed", LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth: Token exchange failed", LOG_WARNING);
         smartauth_clear_session();
         return false;
     }
@@ -167,7 +167,7 @@ function smartauth_handle_callback($db, $conf, $entity)
     $userinfo = smartauth_get_userinfo($tokenResponse['access_token'], $conf);
 
     if (!$userinfo || empty($userinfo['sub'])) {
-        dol_syslog("SmartAuth OAuth: Failed to get userinfo", LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth: Failed to get userinfo", LOG_WARNING);
         smartauth_clear_session();
         return false;
     }
@@ -180,12 +180,12 @@ function smartauth_handle_callback($db, $conf, $entity)
     try {
         $oauthSubject = \SmartAuth\Api\OAuth2\TokenSubject::fromSub((string) $userinfo['sub']);
     } catch (\InvalidArgumentException $e) {
-        dol_syslog("SmartAuth OAuth: malformed sub in userinfo (" . $userinfo['sub'] . ")", LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth: malformed sub in userinfo (" . $userinfo['sub'] . ")", LOG_WARNING);
         smartauth_clear_session();
         return false;
     }
     if (!$oauthSubject->isUser()) {
-        dol_syslog("SmartAuth OAuth: portal account cannot sign in to the Dolibarr backend (sub=" . $userinfo['sub'] . ")", LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth: portal account cannot sign in to the Dolibarr backend (sub=" . $userinfo['sub'] . ")", LOG_WARNING);
         smartauth_clear_session();
         return false;
     }
@@ -195,14 +195,14 @@ function smartauth_handle_callback($db, $conf, $entity)
     $result = $user->fetch($oauthSubject->getId());
 
     if ($result <= 0) {
-        dol_syslog("SmartAuth OAuth: User not found with ID " . $userinfo['sub'], LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth: User not found with ID " . $userinfo['sub'], LOG_WARNING);
         smartauth_clear_session();
         return false;
     }
 
     // Check if user is active
     if ($user->statut != 1) {
-        dol_syslog("SmartAuth OAuth: User " . $userinfo['sub'] . " is not active", LOG_WARNING);
+        dol_syslog("[SmartAuth] OAuth: User " . $userinfo['sub'] . " is not active", LOG_WARNING);
         smartauth_clear_session();
         return false;
     }
@@ -210,7 +210,7 @@ function smartauth_handle_callback($db, $conf, $entity)
     // Check entity access if multi-entity is enabled
     if (isModEnabled('multicompany')) {
         if ($entity > 0 && !in_array($entity, $user->getListOfEntities())) {
-            dol_syslog("SmartAuth OAuth: User " . $userinfo['sub'] . " has no access to entity " . $entity, LOG_WARNING);
+            dol_syslog("[SmartAuth] OAuth: User " . $userinfo['sub'] . " has no access to entity " . $entity, LOG_WARNING);
             smartauth_clear_session();
             return false;
         }
@@ -228,7 +228,7 @@ function smartauth_handle_callback($db, $conf, $entity)
     // Clear temporary OAuth session data
     unset($_SESSION['smartauth_state'], $_SESSION['smartauth_code_verifier']);
 
-    dol_syslog("SmartAuth OAuth: User " . $user->login . " (ID: " . $user->id . ") authenticated successfully", LOG_INFO);
+    dol_syslog("[SmartAuth] OAuth: User " . $user->login . " (ID: " . $user->id . ") authenticated successfully", LOG_INFO);
 
     return $user;
 }
@@ -281,23 +281,23 @@ function smartauth_exchange_code($code, $codeVerifier, $conf)
     curl_close($ch);
 
     if ($curlError) {
-        dol_syslog("SmartAuth OAuth: cURL error during token exchange: " . $curlError, LOG_ERR);
+        dol_syslog("[SmartAuth] OAuth: cURL error during token exchange: " . $curlError, LOG_ERR);
         return null;
     }
 
     if ($httpCode !== 200) {
-        dol_syslog("SmartAuth OAuth: Token endpoint returned HTTP " . $httpCode, LOG_ERR);
+        dol_syslog("[SmartAuth] OAuth: Token endpoint returned HTTP " . $httpCode, LOG_ERR);
         return null;
     }
 
     $tokenData = json_decode($response, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        dol_syslog("SmartAuth OAuth: Invalid JSON response from token endpoint", LOG_ERR);
+        dol_syslog("[SmartAuth] OAuth: Invalid JSON response from token endpoint", LOG_ERR);
         return null;
     }
 
     if (!empty($tokenData['error'])) {
-        dol_syslog("SmartAuth OAuth: Token error: " . ($tokenData['error_description'] ?? $tokenData['error']), LOG_ERR);
+        dol_syslog("[SmartAuth] OAuth: Token error: " . ($tokenData['error_description'] ?? $tokenData['error']), LOG_ERR);
         return null;
     }
 
@@ -335,18 +335,18 @@ function smartauth_get_userinfo($accessToken, $conf)
     curl_close($ch);
 
     if ($curlError) {
-        dol_syslog("SmartAuth OAuth: cURL error during userinfo request: " . $curlError, LOG_ERR);
+        dol_syslog("[SmartAuth] OAuth: cURL error during userinfo request: " . $curlError, LOG_ERR);
         return null;
     }
 
     if ($httpCode !== 200) {
-        dol_syslog("SmartAuth OAuth: Userinfo endpoint returned HTTP " . $httpCode, LOG_ERR);
+        dol_syslog("[SmartAuth] OAuth: Userinfo endpoint returned HTTP " . $httpCode, LOG_ERR);
         return null;
     }
 
     $userinfo = json_decode($response, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        dol_syslog("SmartAuth OAuth: Invalid JSON response from userinfo endpoint", LOG_ERR);
+        dol_syslog("[SmartAuth] OAuth: Invalid JSON response from userinfo endpoint", LOG_ERR);
         return null;
     }
 
@@ -366,7 +366,7 @@ function smartauth_is_available($conf)
 
     // Check basic configuration
     if (empty($issuer) || empty($clientId)) {
-        dol_syslog("SmartAuth OAuth: Missing configuration (issuer or client_id)", LOG_DEBUG);
+        dol_syslog("[SmartAuth] OAuth: Missing configuration (issuer or client_id)", LOG_DEBUG);
         return false;
     }
 
@@ -390,14 +390,14 @@ function smartauth_is_available($conf)
     curl_close($ch);
 
     if ($curlError || $httpCode !== 200) {
-        dol_syslog("SmartAuth OAuth: Server not reachable at " . $discoveryUrl . " (HTTP: " . $httpCode . ", Error: " . $curlError . ")", LOG_DEBUG);
+        dol_syslog("[SmartAuth] OAuth: Server not reachable at " . $discoveryUrl . " (HTTP: " . $httpCode . ", Error: " . $curlError . ")", LOG_DEBUG);
         return false;
     }
 
     // Verify response is valid JSON
     $config = json_decode($response, true);
     if (json_last_error() !== JSON_ERROR_NONE || empty($config['issuer'])) {
-        dol_syslog("SmartAuth OAuth: Invalid discovery response", LOG_DEBUG);
+        dol_syslog("[SmartAuth] OAuth: Invalid discovery response", LOG_DEBUG);
         return false;
     }
 

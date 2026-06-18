@@ -360,7 +360,7 @@ if (!$handled && $requestPath === '/login') {
 if (!$handled
     && \SmartAuth\Api\Account\RegistrationGate::isRegistrationPath($requestPath)
     && !\SmartAuth\Api\Account\RegistrationGate::isEnabled()) {
-    dol_syslog('smartauth: registration route ' . $requestPath . ' blocked, SMARTAUTH_REGISTRATION_ENABLED=0', LOG_NOTICE);
+    dol_syslog('[SmartAuth] registration route ' . $requestPath . ' blocked, SMARTAUTH_REGISTRATION_ENABLED=0', LOG_NOTICE);
     sendJsonError('not_found', 'Self-registration is disabled', 404);
 }
 
@@ -441,10 +441,10 @@ if (!$handled && $requestPath === '/logout') {
                 if ($isHttp && in_array(strtolower($parsed['host']), array_map('strtolower', $whitelist), true)) {
                     $redirectUrl = $requestedRedirect;
                 } else {
-                    dol_syslog('SmartAuth logout: rejected redirect to non-whitelisted host: ' . $parsed['host'], LOG_WARNING);
+                    dol_syslog('[SmartAuth] logout: rejected redirect to non-whitelisted host: ' . $parsed['host'], LOG_WARNING);
                 }
             } else {
-                dol_syslog('SmartAuth logout: rejected malformed or relative-with-host redirect: ' . substr($requestedRedirect, 0, 200), LOG_WARNING);
+                dol_syslog('[SmartAuth] logout: rejected malformed or relative-with-host redirect: ' . substr($requestedRedirect, 0, 200), LOG_WARNING);
             }
         }
     }

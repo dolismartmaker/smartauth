@@ -188,7 +188,7 @@ class SmartUpload
             throw new \RuntimeException('Failed to write upload metadata');
         }
 
-        dol_syslog("SmartAuth SmartUpload::store - Staged upload $uploadId for user $userId: $safeName ($size bytes, $detectedMime)");
+        dol_syslog("[SmartAuth] SmartUpload::store - Staged upload $uploadId for user $userId: $safeName ($size bytes, $detectedMime)");
 
         // Probabilistic cleanup of expired entries.
         if (mt_rand(1, self::CLEANUP_PROBABILITY) === 1) {
@@ -238,14 +238,14 @@ class SmartUpload
         // Owner check: critical, the per-user directory layout already
         // makes cross-user reads impossible but defense-in-depth is cheap.
         if ((int) ($metadata['user_id'] ?? -1) !== (int) $userId) {
-            dol_syslog("SmartAuth SmartUpload::get - Owner mismatch for $uploadId", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartUpload::get - Owner mismatch for $uploadId", LOG_WARNING);
             return null;
         }
 
         // Entity check.
         $currentEntity = $conf->entity ?? 1;
         if ((int) ($metadata['entity'] ?? 0) !== (int) $currentEntity) {
-            dol_syslog("SmartAuth SmartUpload::get - Entity mismatch for $uploadId", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartUpload::get - Entity mismatch for $uploadId", LOG_WARNING);
             return null;
         }
 
@@ -329,7 +329,7 @@ class SmartUpload
         }
 
         if ($cleaned > 0) {
-            dol_syslog("SmartAuth SmartUpload::cleanup - Removed $cleaned expired uploads");
+            dol_syslog("[SmartAuth] SmartUpload::cleanup - Removed $cleaned expired uploads");
         }
         return $cleaned;
     }
@@ -503,7 +503,7 @@ class SmartUpload
             }
         }
         if ($changed) {
-            dol_syslog('SmartAuth SmartUpload: neutralised executable extension in: ' . substr($name, 0, 200), LOG_WARNING);
+            dol_syslog('[SmartAuth] SmartUpload: neutralised executable extension in: ' . substr($name, 0, 200), LOG_WARNING);
         }
         return $base . (count($parts) > 0 ? '.' . implode('.', $parts) : '');
     }
@@ -561,7 +561,7 @@ class SmartUpload
                 $created = @mkdir($dir, 0700, true);
             }
             if (!$created && !is_dir($dir)) {
-                dol_syslog("SmartAuth SmartUpload::getBaseStagingDir - Failed to create $dir", LOG_ERR);
+                dol_syslog("[SmartAuth] SmartUpload::getBaseStagingDir - Failed to create $dir", LOG_ERR);
                 return null;
             }
             $htaccess = $dir . '/.htaccess';

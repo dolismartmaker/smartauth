@@ -81,7 +81,7 @@ class PushNotificationService
     public function notifySubject($subjectType, $subjectId, $title, $body, $data = [], $options = [])
     {
         if (empty($subjectId)) {
-            dol_syslog('PushNotificationService::notifySubject called without a subjectId, skip', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushNotificationService::notifySubject called without a subjectId, skip', LOG_WARNING);
             return ['sent' => 0, 'failed' => 0];
         }
 
@@ -90,7 +90,7 @@ class PushNotificationService
         // so this works even when the smartauth API front controller is not booted.
         dol_include_once('/smartauth/api/PushSender.php');
         if (!class_exists('\\SmartAuth\\Api\\PushSender')) {
-            dol_syslog('PushNotificationService::notifySubject PushSender class not found, smartauth incomplete, skip', LOG_ERR);
+            dol_syslog('[SmartAuth] PushNotificationService::notifySubject PushSender class not found, smartauth incomplete, skip', LOG_ERR);
             return ['sent' => 0, 'failed' => 0];
         }
 
@@ -111,7 +111,7 @@ class PushNotificationService
         );
 
         if ($httpCode >= 500) {
-            dol_syslog('PushNotificationService::notifySubject send failed httpCode='.((int) $httpCode).' '.json_encode($result), LOG_ERR);
+            dol_syslog('[SmartAuth] PushNotificationService::notifySubject send failed httpCode='.((int) $httpCode).' '.json_encode($result), LOG_ERR);
         }
 
         return [
@@ -175,12 +175,12 @@ class PushNotificationService
                 $userIds[] = (int) $obj->rowid;
             }
         } else {
-            dol_syslog('PushNotificationService::notifyUsersWithRight query failed: '.$this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushNotificationService::notifyUsersWithRight query failed: '.$this->db->lasterror(), LOG_ERR);
             return ['sent' => 0, 'failed' => 0];
         }
 
         if (empty($userIds)) {
-            dol_syslog('PushNotificationService::notifyUsersWithRight no user holds '.$module.'/'.$right, LOG_NOTICE);
+            dol_syslog('[SmartAuth] PushNotificationService::notifyUsersWithRight no user holds '.$module.'/'.$right, LOG_NOTICE);
             return ['sent' => 0, 'failed' => 0];
         }
 

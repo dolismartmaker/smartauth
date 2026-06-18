@@ -121,7 +121,7 @@ class TokenController
                 getDolGlobalInt('SMARTAUTH_OAUTH_TOKEN_RATELIMIT_WINDOW', 300)
             );
             if (empty($rl['allowed'])) {
-                dol_syslog('SmartAuth TokenController: /oauth/token rate-limit hit for ' . \SmartAuth\Api\RateLimiter::maskIdentifier($rateKey), LOG_WARNING);
+                dol_syslog('[SmartAuth] TokenController: /oauth/token rate-limit hit for ' . \SmartAuth\Api\RateLimiter::maskIdentifier($rateKey), LOG_WARNING);
                 $this->sendError('temporarily_unavailable', 'Too many requests', 429);
                 return;
             }
@@ -221,21 +221,21 @@ class TokenController
         $result = $authCode->fetchByCode($code);
 
         if ($result <= 0) {
-            dol_syslog('SmartAuth TokenController: Authorization code not found', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: Authorization code not found', LOG_WARNING);
             $this->sendError('invalid_grant', 'Invalid or expired authorization code', 400);
             return;
         }
 
         // Verify code belongs to this client
         if ($authCode->fk_client !== $this->client->id) {
-            dol_syslog('SmartAuth TokenController: Code client mismatch', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: Code client mismatch', LOG_WARNING);
             $this->sendError('invalid_grant', 'Authorization code was not issued to this client', 400);
             return;
         }
 
         // Check code is not expired
         if ($authCode->isExpired()) {
-            dol_syslog('SmartAuth TokenController: Authorization code expired', LOG_INFO);
+            dol_syslog('[SmartAuth] TokenController: Authorization code expired', LOG_INFO);
             $this->sendError('invalid_grant', 'Authorization code has expired', 400);
             return;
         }
@@ -244,7 +244,7 @@ class TokenController
         // common sequential-replay case; the authoritative single-use gate is
         // the atomic markAsUsed() below, which also catches concurrent races.
         if ($authCode->isUsed()) {
-            dol_syslog('SmartAuth TokenController: Authorization code already used', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: Authorization code already used', LOG_WARNING);
             $this->revokeReusedCodeTokens($authCode);
             $this->sendError('invalid_grant', 'Authorization code has already been used', 400);
             return;
@@ -252,7 +252,7 @@ class TokenController
 
         // Verify redirect_uri matches exactly
         if ($authCode->redirect_uri !== $redirectUri) {
-            dol_syslog('SmartAuth TokenController: Redirect URI mismatch', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: Redirect URI mismatch', LOG_WARNING);
             // Burn the code - any failed exchange consumes it (M-13)
             $authCode->markAsUsed();
             $this->sendError('invalid_grant', 'Redirect URI does not match', 400);
@@ -269,7 +269,7 @@ class TokenController
         //.
         if (!empty($authCode->code_challenge)) {
             if (empty($codeVerifier)) {
-                dol_syslog('SmartAuth TokenController: Missing code_verifier', LOG_WARNING);
+                dol_syslog('[SmartAuth] TokenController: Missing code_verifier', LOG_WARNING);
                 $authCode->markAsUsed();
                 $this->sendError('invalid_grant', 'Missing required parameter: code_verifier', 400);
                 return;
@@ -277,14 +277,14 @@ class TokenController
 
             $storedMethod = $authCode->code_challenge_method ?? '';
             if (!PKCEHelper::isValidMethod($storedMethod)) {
-                dol_syslog('SmartAuth TokenController: stored PKCE method is not S256: ' . ($storedMethod ?: '(missing)'), LOG_WARNING);
+                dol_syslog('[SmartAuth] TokenController: stored PKCE method is not S256: ' . ($storedMethod ?: '(missing)'), LOG_WARNING);
                 $authCode->markAsUsed();
                 $this->sendError('invalid_grant', 'Unsupported code_challenge_method on the authorization code', 400);
                 return;
             }
 
             if (!PKCEHelper::validate($codeVerifier, $authCode->code_challenge, $storedMethod)) {
-                dol_syslog('SmartAuth TokenController: PKCE verification failed', LOG_WARNING);
+                dol_syslog('[SmartAuth] TokenController: PKCE verification failed', LOG_WARNING);
                 $authCode->markAsUsed();
                 $this->sendError('invalid_grant', 'Code verifier does not match', 400);
                 return;
@@ -315,7 +315,7 @@ class TokenController
         // concurrent request already claimed it: treat as reuse (RFC 6749
         // 4.1.2), revoke the issued tokens and refuse rather than double-spend.
         if ($authCode->markAsUsed() <= 0) {
-            dol_syslog('SmartAuth TokenController: Authorization code consumed concurrently - double-spend prevented', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: Authorization code consumed concurrently - double-spend prevented', LOG_WARNING);
             $this->revokeReusedCodeTokens($authCode);
             $this->sendError('invalid_grant', 'Authorization code has already been used', 400);
             return;
@@ -353,7 +353,7 @@ class TokenController
 
         // Verify token belongs to this client
         if ($tokenRecord->fk_client !== $this->client->id) {
-            dol_syslog('SmartAuth TokenController: Refresh token client mismatch', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: Refresh token client mismatch', LOG_WARNING);
             $this->sendError('invalid_grant', 'Refresh token was not issued to this client', 400);
             return;
         }
@@ -442,7 +442,7 @@ class TokenController
             );
         }
 
-        dol_syslog('SmartAuth TokenController: Tokens refreshed for subject ' . $subject->toSub(), LOG_INFO);
+        dol_syslog('[SmartAuth] TokenController: Tokens refreshed for subject ' . $subject->toSub(), LOG_INFO);
 
         $this->sendJsonResponse($response);
     }
@@ -497,12 +497,12 @@ class TokenController
         $serviceUser = new \User($this->db);
         $fetchResult = $serviceUser->fetch($serviceUserId);
         if ($fetchResult <= 0 || empty($serviceUser->id)) {
-            dol_syslog('SmartAuth TokenController: client_credentials service user not found (id=' . $serviceUserId . ')', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: client_credentials service user not found (id=' . $serviceUserId . ')', LOG_WARNING);
             $this->sendError('server_error', 'Service user not available', 500);
             return;
         }
         if ((int) $serviceUser->statut !== 1) {
-            dol_syslog('SmartAuth TokenController: client_credentials service user disabled (id=' . $serviceUserId . ', statut=' . $serviceUser->statut . ')', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: client_credentials service user disabled (id=' . $serviceUserId . ', statut=' . $serviceUser->statut . ')', LOG_WARNING);
             $this->sendError('server_error', 'Service user disabled', 500);
             return;
         }
@@ -550,7 +550,7 @@ class TokenController
             'scope' => implode(' ', $scopes),
         ];
 
-        dol_syslog('SmartAuth TokenController: Client credentials token issued for client ' . $this->client->client_id . ' (service user ' . $serviceUserId . ')', LOG_INFO);
+        dol_syslog('[SmartAuth] TokenController: Client credentials token issued for client ' . $this->client->client_id . ' (service user ' . $serviceUserId . ')', LOG_INFO);
 
         $this->sendJsonResponse($response);
     }
@@ -594,7 +594,7 @@ class TokenController
         $clientSecret = $credentials['client_secret'];
 
         if (empty($clientId)) {
-            dol_syslog('SmartAuth TokenController: Missing client_id', LOG_DEBUG);
+            dol_syslog('[SmartAuth] TokenController: Missing client_id', LOG_DEBUG);
             return null;
         }
 
@@ -603,19 +603,19 @@ class TokenController
         $result = $client->fetch(0, null, $clientId);
 
         if ($result <= 0) {
-            dol_syslog('SmartAuth TokenController: Client not found: ' . $clientId, LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenController: Client not found: ' . $clientId, LOG_WARNING);
             return null;
         }
 
         // Verify secret for confidential clients
         if ($client->isConfidential()) {
             if (empty($clientSecret)) {
-                dol_syslog('SmartAuth TokenController: Missing client_secret for confidential client', LOG_WARNING);
+                dol_syslog('[SmartAuth] TokenController: Missing client_secret for confidential client', LOG_WARNING);
                 return null;
             }
 
             if (!$client->verifySecret($clientSecret)) {
-                dol_syslog('SmartAuth TokenController: Invalid client_secret', LOG_WARNING);
+                dol_syslog('[SmartAuth] TokenController: Invalid client_secret', LOG_WARNING);
                 return null;
             }
         }
@@ -760,7 +760,7 @@ class TokenController
             $response['id_token'] = $tokens['id_token'];
         }
 
-        dol_syslog('SmartAuth TokenController: Tokens generated successfully', LOG_INFO);
+        dol_syslog('[SmartAuth] TokenController: Tokens generated successfully', LOG_INFO);
 
         $this->sendJsonResponse($response);
     }

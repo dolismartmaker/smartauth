@@ -93,18 +93,18 @@ class AnnotationsHelper
         $userId = (int) $userId;
 
         if ($ecmFileId <= 0 || $userId <= 0) {
-            dol_syslog("SmartAuth AnnotationsHelper::set - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::set - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
             return false;
         }
 
         $ecm = self::loadEcmFile($db, $ecmFileId);
         if ($ecm === null) {
-            dol_syslog("SmartAuth AnnotationsHelper::set - ecmfile $ecmFileId not found", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::set - ecmfile $ecmFileId not found", LOG_WARNING);
             return false;
         }
 
         if ((int) $ecm->fk_user_c !== $userId) {
-            dol_syslog("SmartAuth AnnotationsHelper::set - owner mismatch on ecmfile $ecmFileId (fk_user_c={$ecm->fk_user_c}, userId=$userId)", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::set - owner mismatch on ecmfile $ecmFileId (fk_user_c={$ecm->fk_user_c}, userId=$userId)", LOG_WARNING);
             return false;
         }
 
@@ -113,19 +113,19 @@ class AnnotationsHelper
         if (count($clean) > self::MAX_ANNOTATIONS_PER_FILE) {
             $kept = self::MAX_ANNOTATIONS_PER_FILE;
             $dropped = count($clean) - $kept;
-            dol_syslog("SmartAuth AnnotationsHelper::set - truncating $dropped entries past cap ($kept) on ecmfile $ecmFileId", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::set - truncating $dropped entries past cap ($kept) on ecmfile $ecmFileId", LOG_WARNING);
             $clean = array_slice($clean, 0, $kept);
         }
 
         try {
             $json = json_encode($clean, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         } catch (\JsonException $e) {
-            dol_syslog("SmartAuth AnnotationsHelper::set - json_encode failed on ecmfile $ecmFileId: " . $e->getMessage(), LOG_ERR);
+            dol_syslog("[SmartAuth] AnnotationsHelper::set - json_encode failed on ecmfile $ecmFileId: " . $e->getMessage(), LOG_ERR);
             return false;
         }
 
         if (strlen($json) > self::MAX_PAYLOAD_BYTES) {
-            dol_syslog("SmartAuth AnnotationsHelper::set - serialized payload " . strlen($json) . "B exceeds cap " . self::MAX_PAYLOAD_BYTES . "B on ecmfile $ecmFileId", LOG_ERR);
+            dol_syslog("[SmartAuth] AnnotationsHelper::set - serialized payload " . strlen($json) . "B exceeds cap " . self::MAX_PAYLOAD_BYTES . "B on ecmfile $ecmFileId", LOG_ERR);
             return false;
         }
 
@@ -138,7 +138,7 @@ class AnnotationsHelper
             if ($err === '' && !empty($ecm->error)) {
                 $err = $ecm->error;
             }
-            dol_syslog("SmartAuth AnnotationsHelper::set - updateExtraField returned $res on ecmfile $ecmFileId: $err", LOG_ERR);
+            dol_syslog("[SmartAuth] AnnotationsHelper::set - updateExtraField returned $res on ecmfile $ecmFileId: $err", LOG_ERR);
             return false;
         }
 
@@ -165,18 +165,18 @@ class AnnotationsHelper
         $userId = (int) $userId;
 
         if ($ecmFileId <= 0 || $userId <= 0) {
-            dol_syslog("SmartAuth AnnotationsHelper::get - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::get - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
             return [];
         }
 
         $ecm = self::loadEcmFile($db, $ecmFileId);
         if ($ecm === null) {
-            dol_syslog("SmartAuth AnnotationsHelper::get - ecmfile $ecmFileId not found", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::get - ecmfile $ecmFileId not found", LOG_WARNING);
             return [];
         }
 
         if ((int) $ecm->fk_user_c !== $userId) {
-            dol_syslog("SmartAuth AnnotationsHelper::get - owner mismatch on ecmfile $ecmFileId (fk_user_c={$ecm->fk_user_c}, userId=$userId)", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::get - owner mismatch on ecmfile $ecmFileId (fk_user_c={$ecm->fk_user_c}, userId=$userId)", LOG_WARNING);
             return [];
         }
 
@@ -196,19 +196,19 @@ class AnnotationsHelper
             if (is_array($raw)) {
                 return self::sanitize($raw);
             }
-            dol_syslog("SmartAuth AnnotationsHelper::get - unexpected non-string non-array extrafield on ecmfile $ecmFileId (" . gettype($raw) . ")", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::get - unexpected non-string non-array extrafield on ecmfile $ecmFileId (" . gettype($raw) . ")", LOG_WARNING);
             return [];
         }
 
         try {
             $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
-            dol_syslog("SmartAuth AnnotationsHelper::get - corrupted JSON in extrafield on ecmfile $ecmFileId: " . $e->getMessage(), LOG_ERR);
+            dol_syslog("[SmartAuth] AnnotationsHelper::get - corrupted JSON in extrafield on ecmfile $ecmFileId: " . $e->getMessage(), LOG_ERR);
             return [];
         }
 
         if (!is_array($decoded)) {
-            dol_syslog("SmartAuth AnnotationsHelper::get - decoded extrafield is not an array on ecmfile $ecmFileId (" . gettype($decoded) . ")", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::get - decoded extrafield is not an array on ecmfile $ecmFileId (" . gettype($decoded) . ")", LOG_WARNING);
             return [];
         }
 
@@ -233,34 +233,34 @@ class AnnotationsHelper
 
         foreach ($raw as $idx => $ann) {
             if (!is_array($ann)) {
-                dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx is not an array (" . gettype($ann) . "), skipping", LOG_WARNING);
+                dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx is not an array (" . gettype($ann) . "), skipping", LOG_WARNING);
                 continue;
             }
 
             $id = $ann['id'] ?? null;
             if (!is_string($id) && !is_int($id)) {
-                dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx missing or non-scalar id, skipping", LOG_WARNING);
+                dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx missing or non-scalar id, skipping", LOG_WARNING);
                 continue;
             }
             $idStr = (string) $id;
             if (!preg_match(self::ID_REGEX, $idStr)) {
-                dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx has invalid id '$idStr', skipping", LOG_WARNING);
+                dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx has invalid id '$idStr', skipping", LOG_WARNING);
                 continue;
             }
 
             $type = $ann['type'] ?? null;
             if (!is_string($type) || !preg_match(self::TYPE_REGEX, $type)) {
                 $disp = is_scalar($type) ? (string) $type : gettype($type);
-                dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx (id=$idStr) has invalid type '$disp', skipping", LOG_WARNING);
+                dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx (id=$idStr) has invalid type '$disp', skipping", LOG_WARNING);
                 continue;
             }
 
             if (!array_key_exists('x', $ann) || !array_key_exists('y', $ann)) {
-                dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx (id=$idStr) missing x or y, skipping", LOG_WARNING);
+                dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx (id=$idStr) missing x or y, skipping", LOG_WARNING);
                 continue;
             }
             if (!is_numeric($ann['x']) || !is_numeric($ann['y'])) {
-                dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx (id=$idStr) non-numeric coords, skipping", LOG_WARNING);
+                dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx (id=$idStr) non-numeric coords, skipping", LOG_WARNING);
                 continue;
             }
             $xRaw = (float) $ann['x'];
@@ -268,23 +268,23 @@ class AnnotationsHelper
             $x = max(0.0, min(100.0, $xRaw));
             $y = max(0.0, min(100.0, $yRaw));
             if ($x !== $xRaw || $y !== $yRaw) {
-                dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx (id=$idStr) coords clamped from ($xRaw,$yRaw) to ($x,$y)", LOG_WARNING);
+                dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx (id=$idStr) coords clamped from ($xRaw,$yRaw) to ($x,$y)", LOG_WARNING);
             }
 
             $payload = [];
             if (array_key_exists('payload', $ann)) {
                 if (!is_array($ann['payload'])) {
-                    dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx (id=$idStr) payload is not an array (" . gettype($ann['payload']) . "), skipping", LOG_WARNING);
+                    dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx (id=$idStr) payload is not an array (" . gettype($ann['payload']) . "), skipping", LOG_WARNING);
                     continue;
                 }
                 if (self::arrayDepth($ann['payload']) > self::MAX_PAYLOAD_DEPTH) {
-                    dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx (id=$idStr) payload depth exceeds " . self::MAX_PAYLOAD_DEPTH . ", skipping", LOG_WARNING);
+                    dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx (id=$idStr) payload depth exceeds " . self::MAX_PAYLOAD_DEPTH . ", skipping", LOG_WARNING);
                     continue;
                 }
                 try {
                     json_encode($ann['payload'], JSON_THROW_ON_ERROR);
                 } catch (\JsonException $e) {
-                    dol_syslog("SmartAuth AnnotationsHelper::sanitize - entry #$idx (id=$idStr) payload not JSON-encodable: " . $e->getMessage() . ", skipping", LOG_WARNING);
+                    dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - entry #$idx (id=$idStr) payload not JSON-encodable: " . $e->getMessage() . ", skipping", LOG_WARNING);
                     continue;
                 }
                 $payload = $ann['payload'];
@@ -305,7 +305,7 @@ class AnnotationsHelper
         }
 
         if ($duplicates > 0) {
-            dol_syslog("SmartAuth AnnotationsHelper::sanitize - $duplicates duplicate id(s), kept last occurrence each", LOG_WARNING);
+            dol_syslog("[SmartAuth] AnnotationsHelper::sanitize - $duplicates duplicate id(s), kept last occurrence each", LOG_WARNING);
         }
 
         return array_values($byId);
@@ -349,7 +349,7 @@ class AnnotationsHelper
             }
         }
         if (!class_exists('EcmFiles')) {
-            dol_syslog("SmartAuth AnnotationsHelper - EcmFiles class not available", LOG_ERR);
+            dol_syslog("[SmartAuth] AnnotationsHelper - EcmFiles class not available", LOG_ERR);
             return null;
         }
 

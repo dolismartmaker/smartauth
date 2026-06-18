@@ -198,7 +198,7 @@ class SmartAuthUserDevice
         $sql .= ")";
 
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuthUserDevice: create failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: create failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
             return -1;
         }
         return (int) $this->db->last_insert_id(MAIN_DB_PREFIX . self::TABLE);
@@ -216,7 +216,7 @@ class SmartAuthUserDevice
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUserDevice: findById failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: findById failed', LOG_ERR);
             return null;
         }
         $obj = $this->db->fetch_object($resql);
@@ -246,7 +246,7 @@ class SmartAuthUserDevice
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUserDevice: findByLabel failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: findByLabel failed', LOG_ERR);
             return null;
         }
         $obj = $this->db->fetch_object($resql);
@@ -281,7 +281,7 @@ class SmartAuthUserDevice
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUserDevice: listForUser failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: listForUser failed', LOG_ERR);
             return [];
         }
         $rows = [];
@@ -319,7 +319,7 @@ class SmartAuthUserDevice
         $sql .= " WHERE rowid = " . (int) $rowid;
         $sql .= " AND fk_user = " . (int) $expectedFkUser;
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuthUserDevice: rename failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: rename failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
             return false;
         }
         return true;
@@ -337,7 +337,7 @@ class SmartAuthUserDevice
         $sql .= " AND fk_user = " . (int) $expectedFkUser;
         $sql .= " AND entity = " . (int) $entity;
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuthUserDevice: setIcon failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: setIcon failed', LOG_ERR);
             return false;
         }
         return true;
@@ -365,7 +365,7 @@ class SmartAuthUserDevice
         $sql .= " AND fk_user = " . (int) $expectedFkUser;
         $sql .= " AND entity = " . (int) $entity;
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuthUserDevice: setViewportMode failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: setViewportMode failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
             return false;
         }
         return true;
@@ -410,7 +410,7 @@ class SmartAuthUserDevice
         $sql .= " WHERE rowid = " . (int) $technicalDeviceId;
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUserDevice: linkTechnicalDevice select failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: linkTechnicalDevice select failed', LOG_ERR);
             return false;
         }
         $obj = $this->db->fetch_object($resql);
@@ -425,7 +425,7 @@ class SmartAuthUserDevice
         $sql .= " label = '" . $this->db->escape($row['label']) . "'";
         $sql .= " WHERE rowid = " . (int) $technicalDeviceId;
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuthUserDevice: linkTechnicalDevice update failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: linkTechnicalDevice update failed', LOG_ERR);
             return false;
         }
         $this->touchLastseen($userDeviceId);
@@ -468,7 +468,7 @@ class SmartAuthUserDevice
                 $deviceIds[] = (int) $obj->rowid;
             }
         } else {
-            dol_syslog('SmartAuthUserDevice: revoke select technical devices failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: revoke select technical devices failed', LOG_ERR);
         }
 
         // 2. Collect all token families active on those devices and revoke
@@ -527,7 +527,7 @@ class SmartAuthUserDevice
         $sql .= " AND fk_user = " . (int) $expectedFkUser;
         $this->db->query($sql);
 
-        dol_syslog("SmartAuthUserDevice: revoked rowid=$rowid user=$expectedFkUser entity=$entity sessions=$sessionsRevoked", LOG_INFO);
+        dol_syslog("[SmartAuth] SmartAuthUserDevice: revoked rowid=$rowid user=$expectedFkUser entity=$entity sessions=$sessionsRevoked", LOG_INFO);
         return $sessionsRevoked;
     }
 
@@ -573,11 +573,11 @@ class SmartAuthUserDevice
         $sql .= " AND fk_user = " . (int) $expectedFkUser;
         $sql .= " AND entity = " . (int) $entity;
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuthUserDevice: delete failed rowid=' . $rowid, LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUserDevice: delete failed rowid=' . $rowid, LOG_ERR);
             return false;
         }
 
-        dol_syslog("SmartAuthUserDevice: deleted rowid=$rowid user=$expectedFkUser entity=$entity", LOG_INFO);
+        dol_syslog("[SmartAuth] SmartAuthUserDevice: deleted rowid=$rowid user=$expectedFkUser entity=$entity", LOG_INFO);
         return true;
     }
 

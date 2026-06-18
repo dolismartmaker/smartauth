@@ -93,7 +93,7 @@ class SmartAuthQrPairing
         $sql .= " " . ((int) $entity) . ")";
 
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuthQrPairing: createPending failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthQrPairing: createPending failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
             return -1;
         }
         return (int) $this->db->last_insert_id(MAIN_DB_PREFIX . self::TABLE);
@@ -122,7 +122,7 @@ class SmartAuthQrPairing
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthQrPairing: findActiveForUser failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthQrPairing: findActiveForUser failed', LOG_ERR);
             return null;
         }
         $obj = $this->db->fetch_object($resql);
@@ -164,7 +164,7 @@ class SmartAuthQrPairing
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthQrPairing: findByPairingId failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthQrPairing: findByPairingId failed', LOG_ERR);
             return null;
         }
         $obj = $this->db->fetch_object($resql);
@@ -221,7 +221,7 @@ class SmartAuthQrPairing
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthQrPairing: markClaimed failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthQrPairing: markClaimed failed', LOG_ERR);
             return false;
         }
         return ((int) $this->db->affected_rows($resql)) === 1;
@@ -246,7 +246,7 @@ class SmartAuthQrPairing
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthQrPairing: markConfirmed failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthQrPairing: markConfirmed failed', LOG_ERR);
             return false;
         }
         return ((int) $this->db->affected_rows($resql)) === 1;
@@ -271,7 +271,7 @@ class SmartAuthQrPairing
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthQrPairing: markConsumed failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthQrPairing: markConsumed failed', LOG_ERR);
             return false;
         }
         return ((int) $this->db->affected_rows($resql)) === 1;
@@ -292,7 +292,7 @@ class SmartAuthQrPairing
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthQrPairing: markCancelled failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthQrPairing: markCancelled failed', LOG_ERR);
             return false;
         }
         return ((int) $this->db->affected_rows($resql)) >= 1;
@@ -342,7 +342,7 @@ class SmartAuthQrPairing
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthQrPairing: deleteOld failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthQrPairing: deleteOld failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
             return -1;
         }
         return (int) $this->db->affected_rows($resql);

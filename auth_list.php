@@ -270,7 +270,7 @@ if (empty($reshook)) {
 			if ($resToDisable > 0) {
 				$objToDisable->setDisabled($user);
 			} else {
-				dol_syslog("SmartAuth : error on disable token id #" . $keytodisable, LOG_ERR);
+				dol_syslog("[SmartAuth] error on disable token id #" . $keytodisable, LOG_ERR);
 			}
 		}
 	}

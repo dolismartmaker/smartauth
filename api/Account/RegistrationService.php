@@ -105,17 +105,17 @@ class RegistrationService
         $email = strtolower(trim($email));
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            dol_syslog('SmartAuth RegistrationService: invalid email format', LOG_INFO);
+            dol_syslog('[SmartAuth] RegistrationService: invalid email format', LOG_INFO);
             return ['error' => self::ERR_INVALID_EMAIL];
         }
 
         if (!self::isPasswordStrongEnough($password)) {
-            dol_syslog('SmartAuth RegistrationService: password rejected by policy', LOG_INFO);
+            dol_syslog('[SmartAuth] RegistrationService: password rejected by policy', LOG_INFO);
             return ['error' => self::ERR_WEAK_PASSWORD];
         }
 
         if ($this->emailAlreadyKnown($email)) {
-            dol_syslog('SmartAuth RegistrationService: email already known: ' . $email, LOG_INFO);
+            dol_syslog('[SmartAuth] RegistrationService: email already known: ' . $email, LOG_INFO);
             return ['error' => self::ERR_EMAIL_TAKEN];
         }
 
@@ -174,7 +174,7 @@ class RegistrationService
 
         $this->db->commit();
 
-        dol_syslog('SmartAuth RegistrationService: registration started for account_id=' . $accountId, LOG_INFO);
+        dol_syslog('[SmartAuth] RegistrationService: registration started for account_id=' . $accountId, LOG_INFO);
 
         return [
             'account_id' => $accountId,
@@ -204,7 +204,7 @@ class RegistrationService
             EmailValidationToken::PURPOSE_REGISTER
         );
         if ($row === null) {
-            dol_syslog('SmartAuth RegistrationService: confirmRegistration - token not found / expired / used', LOG_INFO);
+            dol_syslog('[SmartAuth] RegistrationService: confirmRegistration - token not found / expired / used', LOG_INFO);
             return ['error' => self::ERR_TOKEN_INVALID];
         }
 
@@ -224,13 +224,13 @@ class RegistrationService
             }
             $sql = "UPDATE " . MAIN_DB_PREFIX . "societe_account SET status = 1 WHERE rowid = " . ((int) $accountId);
             if (!$this->db->query($sql)) {
-                dol_syslog('SmartAuth RegistrationService: failed to activate account ' . $accountId, LOG_ERR);
+                dol_syslog('[SmartAuth] RegistrationService: failed to activate account ' . $accountId, LOG_ERR);
                 $this->db->rollback();
                 return ['error' => self::ERR_INTERNAL];
             }
             $this->db->commit();
 
-            dol_syslog('SmartAuth RegistrationService: registration confirmed for account_id=' . $accountId, LOG_INFO);
+            dol_syslog('[SmartAuth] RegistrationService: registration confirmed for account_id=' . $accountId, LOG_INFO);
 
             return [
                 'account_id' => $accountId,
@@ -251,7 +251,7 @@ class RegistrationService
 
         $user = new \User($this->db);
         if ($user->fetch($userId) <= 0) {
-            dol_syslog('SmartAuth RegistrationService: confirmRegistration - user ' . $userId . ' not found', LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: confirmRegistration - user ' . $userId . ' not found', LOG_ERR);
             return ['error' => self::ERR_USER_NOT_FOUND];
         }
 
@@ -272,7 +272,7 @@ class RegistrationService
             // directly so the activation is materialised in the database.
             $sql = "UPDATE " . MAIN_DB_PREFIX . "user SET statut = 1 WHERE rowid = " . ((int) $userId);
             if (!$this->db->query($sql)) {
-                dol_syslog('SmartAuth RegistrationService: failed to activate user ' . $userId, LOG_ERR);
+                dol_syslog('[SmartAuth] RegistrationService: failed to activate user ' . $userId, LOG_ERR);
                 $this->db->rollback();
                 return ['error' => self::ERR_INTERNAL];
             }
@@ -281,7 +281,7 @@ class RegistrationService
 
         $this->db->commit();
 
-        dol_syslog('SmartAuth RegistrationService: registration confirmed for user_id=' . $userId, LOG_INFO);
+        dol_syslog('[SmartAuth] RegistrationService: registration confirmed for user_id=' . $userId, LOG_INFO);
 
         return [
             'user_id' => $userId,
@@ -335,7 +335,7 @@ class RegistrationService
         $cooldown = OAuthConfig::getRegisterResendCooldown();
         $lastDatec = $this->tokens->lastActiveDatec($userId, EmailValidationToken::PURPOSE_REGISTER);
         if ($lastDatec !== null && (dol_now() - $lastDatec) < $cooldown) {
-            dol_syslog('SmartAuth RegistrationService: resend skipped, cooldown active for user_id=' . $userId, LOG_DEBUG);
+            dol_syslog('[SmartAuth] RegistrationService: resend skipped, cooldown active for user_id=' . $userId, LOG_DEBUG);
             return true;
         }
 
@@ -356,7 +356,7 @@ class RegistrationService
 
         $this->sendValidationEmail($email, $plain, null, null);
 
-        dol_syslog('SmartAuth RegistrationService: resend confirmation issued for user_id=' . $userId, LOG_INFO);
+        dol_syslog('[SmartAuth] RegistrationService: resend confirmation issued for user_id=' . $userId, LOG_INFO);
         return true;
     }
 
@@ -409,7 +409,7 @@ class RegistrationService
             $alternativeUrl
         );
 
-        dol_syslog('SmartAuth RegistrationService: lookupByEmail issued for user_id=' . $userId, LOG_INFO);
+        dol_syslog('[SmartAuth] RegistrationService: lookupByEmail issued for user_id=' . $userId, LOG_INFO);
         return true;
     }
 
@@ -540,12 +540,12 @@ class RegistrationService
         // attribute name). Read both as a defensive fallback.
         $thirdpartyId = (int) ($user->socid ?? $user->fk_soc ?? 0);
         if ($thirdpartyId <= 0) {
-            dol_syslog('SmartAuth RegistrationService: deleteSelfServiceAccount refused - not an external user', LOG_INFO);
+            dol_syslog('[SmartAuth] RegistrationService: deleteSelfServiceAccount refused - not an external user', LOG_INFO);
             return self::ERR_ACCOUNT_NOT_DELETABLE;
         }
 
         if (!$this->isThirdpartyDeletableProspect($thirdpartyId)) {
-            dol_syslog('SmartAuth RegistrationService: deleteSelfServiceAccount refused - thirdparty has contracts or is a client', LOG_INFO);
+            dol_syslog('[SmartAuth] RegistrationService: deleteSelfServiceAccount refused - thirdparty has contracts or is a client', LOG_INFO);
             return self::ERR_ACCOUNT_NOT_DELETABLE;
         }
 
@@ -562,7 +562,7 @@ class RegistrationService
         $sql .= " WHERE fk_user = " . ((int) $fkUser);
         $sql .= " AND revoked_at IS NULL";
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuth RegistrationService: failed to revoke tokens for user ' . $fkUser, LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: failed to revoke tokens for user ' . $fkUser, LOG_ERR);
             $this->db->rollback();
             return self::ERR_INTERNAL;
         }
@@ -571,7 +571,7 @@ class RegistrationService
         $sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_oauth_consents";
         $sql .= " WHERE fk_user = " . ((int) $fkUser);
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuth RegistrationService: failed to delete consents for user ' . $fkUser, LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: failed to delete consents for user ' . $fkUser, LOG_ERR);
             $this->db->rollback();
             return self::ERR_INTERNAL;
         }
@@ -580,7 +580,7 @@ class RegistrationService
         $sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_email_validation";
         $sql .= " WHERE fk_user = " . ((int) $fkUser);
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuth RegistrationService: failed to delete email_validation for user ' . $fkUser, LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: failed to delete email_validation for user ' . $fkUser, LOG_ERR);
             $this->db->rollback();
             return self::ERR_INTERNAL;
         }
@@ -598,7 +598,7 @@ class RegistrationService
         $sql .= " lastname = 'Deleted'";
         $sql .= " WHERE rowid = " . ((int) $fkUser);
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuth RegistrationService: failed to anonymise user ' . $fkUser, LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: failed to anonymise user ' . $fkUser, LOG_ERR);
             $this->db->rollback();
             return self::ERR_INTERNAL;
         }
@@ -610,7 +610,7 @@ class RegistrationService
 
         $this->db->commit();
 
-        dol_syslog('SmartAuth RegistrationService: self-service deletion completed for user_id=' . $fkUser, LOG_INFO);
+        dol_syslog('[SmartAuth] RegistrationService: self-service deletion completed for user_id=' . $fkUser, LOG_INFO);
         return $fkUser;
     }
 
@@ -741,7 +741,7 @@ class RegistrationService
 
         $admin = $this->getSystemUser();
         if ($admin === null) {
-            dol_syslog('SmartAuth RegistrationService: no system user available for prospect creation', LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: no system user available for prospect creation', LOG_ERR);
             return -1;
         }
 
@@ -760,7 +760,7 @@ class RegistrationService
 
         $result = $societe->create($admin);
         if ($result <= 0) {
-            dol_syslog('SmartAuth RegistrationService: thirdparty create failed: ' . implode(',', (array) ($societe->errors ?? [])) . ' / ' . ($societe->error ?? ''), LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: thirdparty create failed: ' . implode(',', (array) ($societe->errors ?? [])) . ' / ' . ($societe->error ?? ''), LOG_ERR);
             return -1;
         }
         return (int) $societe->id;
@@ -795,7 +795,7 @@ class RegistrationService
 
         $result = $contact->create($admin);
         if ($result <= 0) {
-            dol_syslog('SmartAuth RegistrationService: contact create failed: ' . ($contact->error ?? ''), LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: contact create failed: ' . ($contact->error ?? ''), LOG_ERR);
             return -1;
         }
         return (int) $contact->id;
@@ -845,7 +845,7 @@ class RegistrationService
         $sql .= " '" . $now . "')";
 
         if (!$this->db->query($sql)) {
-            dol_syslog('SmartAuth RegistrationService: societe_account insert failed: ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: societe_account insert failed: ' . $this->db->lasterror(), LOG_ERR);
             return -1;
         }
 
@@ -919,7 +919,7 @@ class RegistrationService
         $user = new \User($this->db);
         $result = $user->fetch($userId);
         if ($result <= 0) {
-            dol_syslog('SmartAuth RegistrationService: system user (id=' . $userId . ') not found', LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: system user (id=' . $userId . ') not found', LOG_ERR);
             return null;
         }
         return $user;
@@ -1001,13 +1001,13 @@ class RegistrationService
         );
 
         if (!empty($mail->error)) {
-            dol_syslog('SmartAuth RegistrationService: CMailFile init failed: ' . $mail->error, LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: CMailFile init failed: ' . $mail->error, LOG_ERR);
             return false;
         }
 
         $sent = $mail->sendfile();
         if (!$sent) {
-            dol_syslog('SmartAuth RegistrationService: email sendfile failed: ' . ($mail->error ?? 'unknown error'), LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: email sendfile failed: ' . ($mail->error ?? 'unknown error'), LOG_ERR);
             return false;
         }
         return true;
@@ -1053,7 +1053,7 @@ class RegistrationService
     private function renderTemplate(string $path, array $vars): string
     {
         if (!file_exists($path)) {
-            dol_syslog('SmartAuth RegistrationService: missing email template: ' . $path, LOG_ERR);
+            dol_syslog('[SmartAuth] RegistrationService: missing email template: ' . $path, LOG_ERR);
             return '';
         }
         ob_start();

@@ -316,7 +316,7 @@ final class TokenSubject
             $sql .= ' WHERE rowid = ' . $this->id;
             $resql = $db->query($sql);
             if (!$resql) {
-                dol_syslog('TokenSubject::isActive (member) query failed: ' . $db->lasterror(), LOG_ERR);
+                dol_syslog('[SmartAuth] TokenSubject::isActive (member) query failed: ' . $db->lasterror(), LOG_ERR);
                 return false;
             }
             $obj = $db->fetch_object($resql);
@@ -329,7 +329,7 @@ final class TokenSubject
         $sql .= ' WHERE rowid = ' . $this->id;
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('TokenSubject::isActive query failed: ' . $db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenSubject::isActive query failed: ' . $db->lasterror(), LOG_ERR);
             return false;
         }
         $obj = $db->fetch_object($resql);
@@ -421,7 +421,7 @@ final class TokenSubject
         $sql .= ' WHERE rowid = ' . $this->id;
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('TokenSubject::buildAccountClaims query failed: ' . $db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenSubject::buildAccountClaims query failed: ' . $db->lasterror(), LOG_ERR);
             return $claims;
         }
         $obj = $db->fetch_object($resql);
@@ -466,7 +466,7 @@ final class TokenSubject
         $sql .= ' WHERE rowid = ' . $this->id;
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('TokenSubject::buildMemberClaims query failed: ' . $db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenSubject::buildMemberClaims query failed: ' . $db->lasterror(), LOG_ERR);
             return $claims;
         }
         $obj = $db->fetch_object($resql);
@@ -512,7 +512,7 @@ final class TokenSubject
         $sql = 'SELECT nom FROM ' . MAIN_DB_PREFIX . 'societe WHERE rowid = ' . (int) $fkSoc;
         $resql = $db->query($sql);
         if (!$resql) {
-            dol_syslog('TokenSubject::fetchSocieteName query failed: ' . $db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenSubject::fetchSocieteName query failed: ' . $db->lasterror(), LOG_ERR);
             return '';
         }
         $obj = $db->fetch_object($resql);

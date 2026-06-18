@@ -432,7 +432,7 @@ class SmartAuthOAuthCode extends CommonObject
         // method) is rejected as part of the CR-3 fix in TODO-SECURITY-01:
         // plain offers no protection against code interception attacks.
         if ($this->code_challenge_method !== 'S256') {
-            dol_syslog('SmartAuthOAuthCode::verifyPkce - unsupported method: ' . ($this->code_challenge_method ?? '(null)'), LOG_WARNING);
+            dol_syslog('[SmartAuth] SmartAuthOAuthCode::verifyPkce - unsupported method: ' . ($this->code_challenge_method ?? '(null)'), LOG_WARNING);
             return false;
         }
 

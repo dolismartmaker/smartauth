@@ -256,7 +256,7 @@ class SmartAuth extends CommonObject
 	 */
 	public function fetchAll($sortorder = '', $sortfield = '', $limit = 0, $offset = 0, array $filter = array(), $filtermode = 'AND')
 	{
-		dol_syslog("SmartAuth ".__METHOD__, LOG_DEBUG);
+		dol_syslog("[SmartAuth] ".__METHOD__, LOG_DEBUG);
 
 		$records = array();
 
@@ -315,7 +315,7 @@ class SmartAuth extends CommonObject
 			return $records;
 		} else {
 			$this->errors[] = 'Error ' . $this->db->lasterror();
-			dol_syslog("SmartAuth ".__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
+			dol_syslog("[SmartAuth] ".__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
 
 			return -1;
 		}
@@ -382,7 +382,7 @@ class SmartAuth extends CommonObject
 
 		// Protection
 		if ($this->status == self::STATUS_VALIDATED) {
-			dol_syslog("SmartAuth ".get_class($this) . "::validate action abandonned: already validated", LOG_WARNING);
+			dol_syslog("[SmartAuth] ".get_class($this) . "::validate action abandonned: already validated", LOG_WARNING);
 			return 0;
 		}
 
@@ -390,7 +390,7 @@ class SmartAuth extends CommonObject
 		 || (getDolGlobalInt('MAIN_USE_ADVANCED_PERMS') && !empty($user->rights->smartauth->auth->auth_advance->validate))))
 		 {
 		 $this->error='NotEnoughPermissions';
-		 dol_syslog("SmartAuth ".get_class($this)."::valid ".$this->error, LOG_ERR);
+		 dol_syslog("[SmartAuth] ".get_class($this)."::valid ".$this->error, LOG_ERR);
 		 return -1;
 		 }*/
 
@@ -419,7 +419,7 @@ class SmartAuth extends CommonObject
 			}
 			$sql .= " WHERE rowid = " . ((int) $this->id);
 
-			dol_syslog("SmartAuth ".get_class($this) . "::validate()", LOG_DEBUG);
+			dol_syslog("[SmartAuth] ".get_class($this) . "::validate()", LOG_DEBUG);
 			$resql = $this->db->query($sql);
 			if (!$resql) {
 				dol_print_error($this->db);
@@ -464,10 +464,10 @@ class SmartAuth extends CommonObject
 				$dirsource = $conf->smartauth->dir_output . '/auth/' . $oldref;
 				$dirdest = $conf->smartauth->dir_output . '/auth/' . $newref;
 				if (!$error && file_exists($dirsource)) {
-					dol_syslog("SmartAuth ".get_class($this) . "::validate() rename dir " . $dirsource . " into " . $dirdest);
+					dol_syslog("[SmartAuth] ".get_class($this) . "::validate() rename dir " . $dirsource . " into " . $dirdest);
 
 					if (@rename($dirsource, $dirdest)) {
-						dol_syslog("SmartAuth Rename ok");
+						dol_syslog("[SmartAuth] Rename ok");
 						// Rename docs starting with $oldref with $newref
 						$listoffiles = dol_dir_list($conf->smartauth->dir_output . '/auth/' . $newref, 'files', 1, '^' . preg_quote($oldref, '/'));
 						foreach ($listoffiles as $fileentry) {
@@ -919,7 +919,7 @@ class SmartAuth extends CommonObject
 		$this->output = '';
 		$this->error = '';
 
-		dol_syslog("SmartAuth ".__METHOD__, LOG_DEBUG);
+		dol_syslog("[SmartAuth] ".__METHOD__, LOG_DEBUG);
 
 		$now = dol_now();
 
@@ -931,9 +931,9 @@ class SmartAuth extends CommonObject
 			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth SET status='" . self::STATUS_CANCELED . "', token='outdated' WHERE date_eol < '" . $this->db->idate($now) . "'";
 			$resql = $this->db->query($sql);
 			if ($resql) {
-				dol_syslog("SmartAuth::doScheduledJob Update status success");
+				dol_syslog("[SmartAuth] doScheduledJob Update status success");
 			} else {
-				dol_syslog("SmartAuth::doScheduledJob Update status error", LOG_ERR);
+				dol_syslog("[SmartAuth] doScheduledJob Update status error", LOG_ERR);
 			}
 		}
 
@@ -944,9 +944,9 @@ class SmartAuth extends CommonObject
 				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_logs WHERE tms < '" . $this->db->idate(time() - ($max * 24 * 3600)) . "'";
 				$resql = $this->db->query($sql);
 				if ($resql) {
-					dol_syslog("SmartAuth::doScheduledJob Update status success");
+					dol_syslog("[SmartAuth] doScheduledJob Update status success");
 				} else {
-					dol_syslog("SmartAuth::doScheduledJob Update status error", LOG_ERR);
+					dol_syslog("[SmartAuth] doScheduledJob Update status error", LOG_ERR);
 				}
 			}
 		}
@@ -969,25 +969,25 @@ class SmartAuth extends CommonObject
 		$qrRepo = new \SmartAuthQrPairing($this->db);
 		$qrDeleted = $qrRepo->deleteOld($qrRetentionDays * 24 * 3600);
 		if ($qrDeleted >= 0) {
-			dol_syslog("SmartAuth::doScheduledJob qr_pairings cleanup deleted $qrDeleted rows");
+			dol_syslog("[SmartAuth] doScheduledJob qr_pairings cleanup deleted $qrDeleted rows");
 		}
 
 		// OAuth2 authorization codes: short-lived (5-10min TTL). Drop any
 		// row past its expires_at, plus any used row older than 1h.
 		$codesExpired = \SmartAuthOAuthCode::deleteExpired($this->db);
 		if ($codesExpired >= 0) {
-			dol_syslog("SmartAuth::doScheduledJob oauth_codes deleteExpired removed $codesExpired rows");
+			dol_syslog("[SmartAuth] doScheduledJob oauth_codes deleteExpired removed $codesExpired rows");
 		}
 		$codesUsed = \SmartAuthOAuthCode::deleteUsed($this->db);
 		if ($codesUsed >= 0) {
-			dol_syslog("SmartAuth::doScheduledJob oauth_codes deleteUsed removed $codesUsed rows");
+			dol_syslog("[SmartAuth] doScheduledJob oauth_codes deleteUsed removed $codesUsed rows");
 		}
 
 		// OAuth2 access/refresh tokens: drop revoked or expired rows that
 		// are older than 7 days (matches the helper's default cutoff).
 		$tokensExpired = \SmartAuthOAuthToken::deleteExpired($this->db);
 		if ($tokensExpired >= 0) {
-			dol_syslog("SmartAuth::doScheduledJob oauth_tokens deleteExpired removed $tokensExpired rows");
+			dol_syslog("[SmartAuth] doScheduledJob oauth_tokens deleteExpired removed $tokensExpired rows");
 		}
 
 		// Upload idempotency cache: completed rows live for 24h (covers
@@ -998,11 +998,11 @@ class SmartAuth extends CommonObject
 		$idemRepo = new \SmartAuthUploadIdempotency($this->db);
 		$idemDeleted = $idemRepo->deleteOld(86400);
 		if ($idemDeleted >= 0) {
-			dol_syslog("SmartAuth::doScheduledJob upload_idempotency deleteOld removed $idemDeleted rows");
+			dol_syslog("[SmartAuth] doScheduledJob upload_idempotency deleteOld removed $idemDeleted rows");
 		}
 		$idemStale = $idemRepo->deleteStaleProcessing(600);
 		if ($idemStale >= 0) {
-			dol_syslog("SmartAuth::doScheduledJob upload_idempotency deleteStaleProcessing removed $idemStale rows");
+			dol_syslog("[SmartAuth] doScheduledJob upload_idempotency deleteStaleProcessing removed $idemStale rows");
 		}
 
 		// Web Push subscriptions: purge rows the push service marked dead.
@@ -1024,9 +1024,9 @@ class SmartAuth extends CommonObject
 		$resql = $this->db->query($sql);
 		if ($resql) {
 			$pushDeleted = (int) $this->db->affected_rows($resql);
-			dol_syslog("SmartAuth::doScheduledJob push_subscriptions cleanup deleted $pushDeleted rows");
+			dol_syslog("[SmartAuth] doScheduledJob push_subscriptions cleanup deleted $pushDeleted rows");
 		} else {
-			dol_syslog("SmartAuth::doScheduledJob push_subscriptions cleanup error: ".$this->db->lasterror(), LOG_ERR);
+			dol_syslog("[SmartAuth] doScheduledJob push_subscriptions cleanup error: ".$this->db->lasterror(), LOG_ERR);
 		}
 
 		// Web Push send logs: bounded retention (RGPD). The log stores
@@ -1042,12 +1042,12 @@ class SmartAuth extends CommonObject
 			$pushLog = new SmartAuthPushLog($this->db);
 			$pushLogDeleted = $pushLog->purgeOlderThan($pushLogRetentionDays);
 			if ($pushLogDeleted >= 0) {
-				dol_syslog("SmartAuth::doScheduledJob push_logs cleanup deleted $pushLogDeleted rows");
+				dol_syslog("[SmartAuth] doScheduledJob push_logs cleanup deleted $pushLogDeleted rows");
 			} else {
-				dol_syslog("SmartAuth::doScheduledJob push_logs cleanup error", LOG_ERR);
+				dol_syslog("[SmartAuth] doScheduledJob push_logs cleanup error", LOG_ERR);
 			}
 		} else {
-			dol_syslog("SmartAuth::doScheduledJob push_logs cleanup skipped: SmartAuthPushLog class not found", LOG_WARNING);
+			dol_syslog("[SmartAuth] doScheduledJob push_logs cleanup skipped: SmartAuthPushLog class not found", LOG_WARNING);
 		}
 
 		$this->db->commit();

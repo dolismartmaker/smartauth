@@ -119,7 +119,7 @@ class NewLoginNotifier
 
             return $ok ? self::REASON_SENT : self::REASON_SEND_FAILED;
         } catch (\Throwable $e) {
-            dol_syslog('SmartAuth NewLoginNotifier failed: ' . $e->getMessage(), LOG_ERR);
+            dol_syslog('[SmartAuth] NewLoginNotifier failed: ' . $e->getMessage(), LOG_ERR);
             return self::REASON_SEND_FAILED;
         }
     }
@@ -329,7 +329,7 @@ class NewLoginNotifier
     private function renderTemplate(string $path, array $vars): string
     {
         if (!file_exists($path)) {
-            dol_syslog('SmartAuth NewLoginNotifier: missing template ' . $path, LOG_ERR);
+            dol_syslog('[SmartAuth] NewLoginNotifier: missing template ' . $path, LOG_ERR);
             return '';
         }
         ob_start();
@@ -366,11 +366,11 @@ class NewLoginNotifier
             'mail'
         );
         if (!empty($mail->error)) {
-            dol_syslog('SmartAuth NewLoginNotifier: CMailFile init failed: ' . $mail->error, LOG_ERR);
+            dol_syslog('[SmartAuth] NewLoginNotifier: CMailFile init failed: ' . $mail->error, LOG_ERR);
             return false;
         }
         if (!$mail->sendfile()) {
-            dol_syslog('SmartAuth NewLoginNotifier: send failed: ' . ($mail->error ?? ''), LOG_ERR);
+            dol_syslog('[SmartAuth] NewLoginNotifier: send failed: ' . ($mail->error ?? ''), LOG_ERR);
             return false;
         }
         return true;

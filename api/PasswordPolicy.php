@@ -85,13 +85,13 @@ class PasswordPolicy
         $file = DOL_DOCUMENT_ROOT . '/core/modules/security/generate/' . $className . '.class.php';
 
         if (!is_file($file)) {
-            dol_syslog('SmartAuth PasswordPolicy: password generator file not found (' . $file . '), using baseline', LOG_WARNING);
+            dol_syslog('[SmartAuth] PasswordPolicy: password generator file not found (' . $file . '), using baseline', LOG_WARNING);
             return null;
         }
 
         require_once $file;
         if (!class_exists($className)) {
-            dol_syslog('SmartAuth PasswordPolicy: password generator class not found (' . $className . '), using baseline', LOG_WARNING);
+            dol_syslog('[SmartAuth] PasswordPolicy: password generator class not found (' . $className . '), using baseline', LOG_WARNING);
             return null;
         }
 
