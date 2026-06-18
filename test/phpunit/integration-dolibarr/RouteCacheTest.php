@@ -174,6 +174,36 @@ class RouteCacheTest extends DolibarrRealTestCase
         ModulePathHelper::resetCache();
     }
 
+    public function testCoreSmartauthRoutesAlwaysDiscoveredInDeclarativeMode(): void
+    {
+        global $conf;
+
+        // Declarative path active: a consumer module declares the part, but
+        // SmartAuth itself does not. SmartAuth's own api/LocalRoutes.php (which
+        // carries /login, /logout, /refresh, ...) MUST still be discovered --
+        // otherwise enabling a consumer module drops the core auth routes and
+        // /login returns 403 (the smartinterventions outage).
+        if (!isset($conf->modules_parts) || !is_array($conf->modules_parts)) {
+            $conf->modules_parts = [];
+        }
+        $conf->modules_parts['smartauth'] = ['capmail' => ['routes' => 1]];
+        ModulePathHelper::resetCache();
+
+        // SmartAuth's own LocalRoutes must be resolvable in this env.
+        $this->assertNotSame('', ModulePathHelper::localRoutesFile('smartauth'),
+            'SmartAuth api/LocalRoutes.php must be resolvable for this test to be meaningful');
+
+        $ref = new \ReflectionMethod(RouteCache::class, 'discoverLocalRoutesFiles');
+        $ref->setAccessible(true);
+        $files = $ref->invoke(null);
+
+        $this->assertArrayHasKey('smartauth', $files,
+            'Core SmartAuth LocalRoutes.php must always be discovered even when not declared');
+
+        unset($conf->modules_parts['smartauth']);
+        ModulePathHelper::resetCache();
+    }
+
     // ==================== registration mode tests ====================
 
     public function testStartRegistrationEntersRegistrationMode(): void
