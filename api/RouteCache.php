@@ -83,7 +83,58 @@ class RouteCache
         // found". This makes any module exposing api/LocalRoutes.php loadable.
         self::registerPluginAutoloaders();
 
+        self::checkCurrentModuleDeclaration();
+
         SmartAuthLogger::debug("RouteCache: Initialized for module " . self::$moduleName);
+    }
+
+    /**
+     * Request-time guard: if the module currently being served exposes its own
+     * api/LocalRoutes.php, is enabled, but is NOT in the declarative registry
+     * (because another module declared module_parts['smartauth'], activating the
+     * declarative path and excluding this one), log an ERROR naming the module.
+     *
+     * This is the fast-diagnosis signal for "I'm serving smartinterventions but
+     * its routes 404/403 because its declaration is missing": the log says
+     * exactly which module and how to fix it. No-op when the legacy fallback is
+     * active (nobody declared -> the scan still loads everyone).
+     *
+     * @return void
+     */
+    private static function checkCurrentModuleDeclaration(): void
+    {
+        global $conf;
+
+        $module = self::$moduleName;
+        if ($module === '') {
+            return;
+        }
+
+        // Declarative path inactive (legacy fallback loads every module) -> fine.
+        $declared = ModulePathHelper::activeRouteModules();
+        if (empty($declared)) {
+            return;
+        }
+        if (in_array($module, $declared, true)) {
+            return; // this module is properly declared
+        }
+
+        // Only a problem if this module actually exposes routes and is enabled.
+        if (ModulePathHelper::localRoutesFile($module) === '') {
+            return;
+        }
+        if (empty($conf->global->{'MAIN_MODULE_' . strtoupper($module)})) {
+            return;
+        }
+
+        dol_syslog(
+            "[SmartAuth] RouteCache: serving module '" . $module . "' but its api/LocalRoutes.php is NOT loaded:"
+            . " the declarative route registry is active (declared modules=[" . implode(',', $declared) . "])"
+            . " and '" . $module . "' does not declare module_parts['smartauth']."
+            . " Its API routes will return 403/404. Fix: add 'smartauth' => array('routes' => 1) to "
+            . $module . "'s module descriptor and re-enable the module (see ~/docs/MODULE.md section 7a).",
+            LOG_ERR
+        );
     }
 
     /**
@@ -145,7 +196,7 @@ class RouteCache
     public static function getCacheFilePath(): string
     {
         if (empty(self::$moduleName)) {
-            dol_syslog("SmartAuth RouteCache: Module not initialized, call init() first", LOG_ERR);
+            dol_syslog("[SmartAuth] RouteCache: Module not initialized, call init() first", LOG_ERR);
             return '';
         }
         return DOL_DATA_ROOT . '/' . self::$moduleName . '/cache/routes.php';
@@ -176,7 +227,7 @@ class RouteCache
                 }
             }
         }
-        dol_syslog("SmartAuth RouteCache::flushAll removed " . $deleted . " route cache file(s)", LOG_INFO);
+        dol_syslog("[SmartAuth] RouteCache::flushAll removed " . $deleted . " route cache file(s)", LOG_INFO);
         return $deleted;
     }
 
@@ -211,7 +262,7 @@ class RouteCache
     public static function isCacheValid(): bool
     {
         if (empty(self::$moduleName)) {
-            dol_syslog("SmartAuth RouteCache: Module not initialized", LOG_ERR);
+            dol_syslog("[SmartAuth] RouteCache: Module not initialized", LOG_ERR);
             return false;
         }
 
@@ -259,7 +310,7 @@ class RouteCache
         // fallback (no module declares the part yet). In a migrated production
         // install the signature above already covers every real change, so we
         // skip the filesystem stats entirely on the hot path.
-        if (self::isDevMode() || empty(ModulePathHelper::activeRouteModules())) {
+        if (self::isDevMode()) {
             $cachedLocalFiles = $cached['local_routes_files'] ?? [];
             $currentLocalFiles = self::scanLocalRoutesFiles();
 
@@ -310,8 +361,13 @@ class RouteCache
      *
      * Legacy fallback: when no module declares the part yet (install upgraded
      * but modules not re-enabled), scan every configured module root for
-     * api/LocalRoutes.php so routing keeps working during migration. Emitted
-     * once per request as a warning so the transitional state is visible.
+     * api/LocalRoutes.php so routing keeps working during migration.
+     *
+     * IMPORTANT: every module exposing api/LocalRoutes.php MUST declare
+     * module_parts['smartauth'] => array('routes' => 1) in its descriptor (and be
+     * re-enabled so the constant is written). Otherwise, as soon as ANY other
+     * module declares it, this module is excluded from the declarative set and
+     * its routes silently disappear. See ~/docs/MODULE.md section 7a.
      *
      * @return array<string,string> [moduleName => absolute LocalRoutes.php path]
      */
@@ -321,12 +377,34 @@ class RouteCache
 
         $declared = ModulePathHelper::activeRouteModules();
         if (!empty($declared)) {
+            $missing = [];
             foreach ($declared as $module) {
                 $file = ModulePathHelper::localRoutesFile($module);
                 if ($file !== '') {
                     $result[$module] = $file;
+                } else {
+                    $missing[] = $module;
                 }
             }
+
+            // SmartAuth's OWN api/LocalRoutes.php carries the core auth routes
+            // (login, logout, refresh, device, file, sync). It MUST always load,
+            // even though SmartAuth does not declare module_parts['smartauth'] for
+            // itself: it is the IdP, not a plugin. Without this, enabling any
+            // declared consumer module activates the declarative path and silently
+            // drops the core auth routes -> /login falls through to 403
+            // ("Access denied (end)"). This was the smartinterventions outage.
+            if (!isset($result['smartauth'])) {
+                $own = ModulePathHelper::localRoutesFile('smartauth');
+                if ($own !== '') {
+                    $result['smartauth'] = $own;
+                }
+            }
+
+            dol_syslog("[SmartAuth] RouteCache::discoverLocalRoutesFiles declarative:"
+                . " declared=[" . implode(',', $declared) . "]"
+                . " included=[" . implode(',', array_keys($result)) . "]"
+                . ($missing ? " declared-but-no-file=[" . implode(',', $missing) . "]" : ""));
             return $result;
         }
 
@@ -334,7 +412,7 @@ class RouteCache
         if (!self::$legacyScanWarned) {
             self::$legacyScanWarned = true;
             dol_syslog(
-                "SmartAuth RouteCache: no module declares module_parts['smartauth'], "
+                "[SmartAuth] RouteCache: no module declares module_parts['smartauth'], "
                 . "falling back to filesystem scan (legacy). Re-enable your SmartMaker "
                 . "modules to migrate to the declarative route registry.",
                 LOG_WARNING
@@ -355,6 +433,8 @@ class RouteCache
                 }
             }
         }
+        dol_syslog("[SmartAuth] RouteCache::discoverLocalRoutesFiles legacy scan included=["
+            . implode(',', array_keys($result)) . "]");
 
         return $result;
     }
@@ -408,7 +488,7 @@ class RouteCache
                 return $cached;
             }
         } catch (\Exception $e) {
-            dol_syslog("SmartAuth RouteCache: Error loading cache: " . $e->getMessage(), LOG_WARNING);
+            dol_syslog("[SmartAuth] RouteCache: Error loading cache: " . $e->getMessage(), LOG_WARNING);
         }
 
         return null;
@@ -487,6 +567,8 @@ class RouteCache
      */
     private static function includeLocalRoutes(): void
     {
+        self::warnUndeclaredRouteModules();
+
         $files = self::scanLocalRoutesFiles();
 
         foreach ($files as $file => $mtime) {
@@ -494,7 +576,54 @@ class RouteCache
                 SmartAuthLogger::debug("RouteCache: Including local routes from $file");
                 include_once $file;
             } catch (\Exception $e) {
-                dol_syslog("SmartAuth RouteCache: Error including $file: " . $e->getMessage(), LOG_ERR);
+                dol_syslog("[SmartAuth] RouteCache: Error including $file: " . $e->getMessage(), LOG_ERR);
+            }
+        }
+    }
+
+    /**
+     * Warn (loudly) about modules that expose api/LocalRoutes.php and are ENABLED
+     * but do NOT declare module_parts['smartauth']. With the declarative registry,
+     * as soon as one module declares the part, any enabled-but-undeclared module
+     * is excluded and its API routes silently disappear (the exact failure that
+     * broke smartinterventions login). This makes the misconfiguration obvious in
+     * the logs. Runs only at cache (re)build time, never on the hot path.
+     *
+     * @return void
+     */
+    private static function warnUndeclaredRouteModules(): void
+    {
+        global $conf;
+
+        $declared = array_flip(ModulePathHelper::activeRouteModules());
+
+        foreach (ModulePathHelper::moduleRootDirs() as $customDir) {
+            $modules = scandir($customDir);
+            if ($modules === false) {
+                continue;
+            }
+            foreach ($modules as $module) {
+                if ($module === '.' || $module === '..') {
+                    continue;
+                }
+                if (!is_file($customDir . '/' . $module . '/api/LocalRoutes.php')) {
+                    continue;
+                }
+                $mod = strtolower($module);
+                if (isset($declared[$mod])) {
+                    continue; // properly declared
+                }
+                // Disabled module -> intentionally off, not a misconfiguration.
+                if (empty($conf->global->{'MAIN_MODULE_' . strtoupper($module)})) {
+                    continue;
+                }
+                dol_syslog(
+                    "[SmartAuth] RouteCache: module '" . $mod . "' is ENABLED and exposes api/LocalRoutes.php"
+                    . " but does NOT declare module_parts['smartauth'] => array('routes' => 1) in its descriptor."
+                    . " Its API routes are NOT loaded. Add the declaration and re-enable the module"
+                    . " (see ~/docs/MODULE.md section 7a).",
+                    LOG_WARNING
+                );
             }
         }
     }
@@ -510,12 +639,12 @@ class RouteCache
         $cacheFile = self::getCacheFilePath();
         $cacheDir = dirname($cacheFile);
 
-        dol_syslog("SmartAuth RouteCache: save to dir=$cacheDir filename=$cacheFile", LOG_ERR);
+        dol_syslog("[SmartAuth] RouteCache: save to dir=$cacheDir filename=$cacheFile", LOG_ERR);
 
         // Create cache directory if needed
         if (!is_dir($cacheDir)) {
             if (!mkdir($cacheDir, 0755, true)) {
-                dol_syslog("SmartAuth RouteCache: Failed to create cache directory: $cacheDir", LOG_ERR);
+                dol_syslog("[SmartAuth] RouteCache: Failed to create cache directory: $cacheDir", LOG_ERR);
                 return false;
             }
         }
@@ -545,7 +674,7 @@ class RouteCache
         $result = file_put_contents($cacheFile, $content, LOCK_EX);
 
         if ($result === false) {
-            dol_syslog("SmartAuth RouteCache: Failed to write cache file: $cacheFile", LOG_ERR);
+            dol_syslog("[SmartAuth] RouteCache: Failed to write cache file: $cacheFile", LOG_ERR);
             return false;
         }
 
@@ -554,7 +683,7 @@ class RouteCache
             opcache_invalidate($cacheFile, true);
         }
 
-        dol_syslog("SmartAuth RouteCache: Cache saved with " . count($routes) . " routes", LOG_INFO);
+        dol_syslog("[SmartAuth] RouteCache: Cache saved with " . count($routes) . " routes", LOG_INFO);
         return true;
     }
 
@@ -740,7 +869,7 @@ class RouteCache
         if (file_exists($cacheFile)) {
             $result = unlink($cacheFile);
             if ($result) {
-                dol_syslog("SmartAuth RouteCache: Cache cleared", LOG_INFO);
+                dol_syslog("[SmartAuth] RouteCache: Cache cleared", LOG_INFO);
                 self::$cachedRoutes = null;
             }
             return $result;

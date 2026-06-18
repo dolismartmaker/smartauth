@@ -280,10 +280,11 @@ class MapperRoundTripLotBTest extends DolibarrRealTestCase
         $this->assertApiKeyEquals($payload, 'id', $id);
         $this->assertApiKeyEquals($payload, 'label', 'Round-trip product');
         $this->assertApiKeyEquals($payload, 'description', 'A tangible product');
-        // type=0 (product) is intentionally absent from the export: dmTrait
-        // skips fields where !empty($value) is false, and 0 is "empty" by
-        // PHP rules. The service variant below covers the type=1 path.
-        $this->assertObjectNotHasProperty('type', $payload);
+        // type=0 is exported as the front-side string alias 'product':
+        // dmTrait exports any non-null value (0 included) and
+        // dmProduct::fieldFilterValueType maps the Dolibarr int to its
+        // readable alias. The service variant below covers the type=1 path.
+        $this->assertApiKeyEquals($payload, 'type', dmProduct::TYPE_PRODUCT);
         $this->assertApiKeyEquals($payload, 'vat_rate', 20.0);
         // Product::fetch reads SQL columns tosell/tobuy INTO
         // $this->status / $this->status_buy. The mapper now uses the
@@ -312,10 +313,10 @@ class MapperRoundTripLotBTest extends DolibarrRealTestCase
 
         $this->assertApiKeyEquals($payload, 'id', $id);
         $this->assertApiKeyEquals($payload, 'label', 'Round-trip service');
-        // type=1 must survive the export. The mapper exposes it under the
-        // 'type' api key, the front-end uses it to switch between product
-        // and service UIs.
-        $this->assertApiKeyEquals($payload, 'type', 1);
+        // type=1 is exported under the 'type' api key as the front-side string
+        // alias 'service' (dmProduct::fieldFilterValueType maps the Dolibarr
+        // int). The front-end uses it to switch between product and service UIs.
+        $this->assertApiKeyEquals($payload, 'type', dmProduct::TYPE_SERVICE);
     }
 
     public function testDmProductImportRejectsStock(): void

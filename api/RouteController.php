@@ -81,7 +81,8 @@ class RouteController
 			return false;
 		}
 
-		dol_syslog("SmartAuth Debug smartauth  Route matched (cached): method=$method, action=$action, target=" . $route['action']);
+		dol_syslog("[SmartAuth] Route matched (cached): method=$method, action=$action, target=" . $route['action']
+			. ", protected=" . var_export($route['protected'], true) . ", class=" . $route['class'] . "::" . $route['function']);
 
 		// Parse request data
 		$data = self::parseRequestData($method, $route['action']);
@@ -260,11 +261,11 @@ class RouteController
 
 		// Match action against target pattern
 		if (!self::matchAction($action, $targetAction)) {
-			// dol_syslog("SmartAuth Debug smartauth  Route does not match: $action != $targetAction");
+			// dol_syslog("[SmartAuth] Route does not match: $action != $targetAction");
 			return;
 		}
 
-		dol_syslog("SmartAuth Debug smartauth  Route matched: method=$method, action=$action, target=$targetAction");
+		dol_syslog("[SmartAuth] Route matched: method=$method, action=$action, target=$targetAction");
 
 		// Parse request data
 		$data = self::parseRequestData($method, $targetAction);
@@ -356,17 +357,17 @@ class RouteController
 			// raw body (even truncated to 500 chars) would persist passwords
 			// and tokens to the syslog when SMARTAUTH_DEBUG is enabled
 			//.
-			dol_syslog("SmartAuth Debug smartauth parseRequestData: method=$method, raw_length=" . strlen((string) $raw) . ", target=" . (string) $targetAction);
+			dol_syslog("[SmartAuth] parseRequestData: method=$method, raw_length=" . strlen((string) $raw) . ", target=" . (string) $targetAction);
 			if ($raw !== false && $raw !== '') {
 				$decoded = json_decode($raw, true);
 				if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
 					$data = $decoded;
-					dol_syslog("SmartAuth Debug smartauth parseRequestData: decoded data keys=" . implode(',', array_keys($data)));
+					dol_syslog("[SmartAuth] parseRequestData: decoded data keys=" . implode(',', array_keys($data)));
 				} else {
-					dol_syslog("SmartAuth Debug smartauth  JSON decode error: " . json_last_error_msg(), LOG_WARNING);
+					dol_syslog("[SmartAuth] JSON decode error: " . json_last_error_msg(), LOG_WARNING);
 				}
 			} else {
-				dol_syslog("SmartAuth Debug smartauth parseRequestData: raw is empty or false");
+				dol_syslog("[SmartAuth] parseRequestData: raw is empty or false");
 			}
 		} elseif ($method === 'GET') {
 			// Filter and sanitize GET parameters
@@ -490,11 +491,11 @@ class RouteController
 			// No specific schema: apply default sanitization to all fields
 			return InputSanitizer::sanitizeAll($data);
 		} catch (\InvalidArgumentException $e) {
-			dol_syslog("SmartAuth Debug smartauth sanitizeRequestData validation error: " . $e->getMessage(), LOG_WARNING);
+			dol_syslog("[SmartAuth] sanitizeRequestData validation error: " . $e->getMessage(), LOG_WARNING);
 			// Return empty array on validation error - controller will handle missing required fields
 			return [];
 		} catch (Exception $e) {
-			dol_syslog("SmartAuth Debug smartauth sanitizeRequestData error: " . $e->getMessage(), LOG_ERR);
+			dol_syslog("[SmartAuth] sanitizeRequestData error: " . $e->getMessage(), LOG_ERR);
 			// Fallback to default sanitization on unexpected errors
 			return InputSanitizer::sanitizeAll($data);
 		}
@@ -654,14 +655,24 @@ class RouteController
 		$token_id = null;
 		$buyer = new \Societe($db);
 
+		$hasAuthHeader = !empty($_SERVER['HTTP_AUTHORIZATION']);
+		SmartAuthLogger::debug("SmartAuth handleAuthentication: protected=" . var_export($protected, true)
+			. ", method=" . ($_SERVER['REQUEST_METHOD'] ?? '?')
+			. ", uri=" . ($_SERVER['REQUEST_URI'] ?? '?')
+			. ", hasAuthHeader=" . ($hasAuthHeader ? 'yes' : 'no'));
+
 		if ($protected === false || $protected === 0) {
+			SmartAuthLogger::debug("SmartAuth handleAuthentication: public route, no auth required");
 			return [$user, $entity, $token_id, $buyer, null, null, null];
 		}
 
 		// OAuth2 Bearer token authentication
 		if ($protected === 'oauth2') {
+			SmartAuthLogger::debug("SmartAuth handleAuthentication: OAuth2 Bearer path");
 			return self::handleOAuth2Authentication($db, $conf, $mysoc);
 		}
+
+		SmartAuthLogger::debug("SmartAuth handleAuthentication: JWT (SmartAuth) path");
 
 		$ac = new AuthController();
 
@@ -669,7 +680,7 @@ class RouteController
 		try {
 			$decoded = $ac->Check();
 		} catch (Exception $e) {
-			dol_syslog("SmartAuth Debug smartauth  Auth check failed: " . $e->getMessage(), LOG_WARNING);
+			dol_syslog("[SmartAuth] Auth check failed: " . $e->getMessage(), LOG_WARNING);
 			self::insertLogs(null, 401, 'Authentication failed', null);
 			\json_reply('Authentication required', 401);
 			return false;
@@ -682,7 +693,15 @@ class RouteController
 		$family_id = $decoded->family_id ?? null;
 		$device_id = $decoded->device_id ?? null;
 
+		SmartAuthLogger::debug("SmartAuth handleAuthentication: token decoded -> login=" . var_export($login, true)
+			. ", entity=" . var_export($entity, true)
+			. ", token_id=" . var_export($token_id, true)
+			. ", family_id=" . var_export($family_id, true)
+			. ", device_id=" . var_export($device_id, true)
+			. ", sub=" . var_export($decoded->sub ?? null, true));
+
 		if (!$login) {
+			dol_syslog("[SmartAuth] handleAuthentication: token rejected: decoded payload has no login (token_id=" . var_export($token_id, true) . ", entity=" . var_export($entity, true) . ")", LOG_WARNING);
 			self::insertLogs($token_id, 401, 'Invalid token', $entity);
 			\json_reply('Invalid token', 401);
 			return false;
@@ -692,12 +711,12 @@ class RouteController
 		$user = new User($db);
 		$res = $user->fetch(0, $login, 0, 0, $entity);
 		if ($res <= 0) {
-			dol_syslog("SmartAuth Debug smartauth  User not found: login=$login, entity=$entity");
+			dol_syslog("[SmartAuth] User not found: login=$login, entity=$entity");
 			self::insertLogs($token_id, 401, 'User not found', $entity);
 			\json_reply('Authentication failed', 401);
 			return false;
 		} else {
-			dol_syslog("SmartAuth Debug smartauth  User found: login=$login, entity=$entity, id=" . $user->id);
+			SmartAuthLogger::debug("SmartAuth User found: login=$login, entity=$entity, id=" . $user->id);
 		}
 
 		// Set user entity
@@ -716,14 +735,26 @@ class RouteController
 		if (!empty($user->socid)) {
 			$res = $buyer->fetch($user->socid);
 			if (!$res) {
-				dol_syslog("SmartAuth Debug smartauth  Failed to load buyer socid=" . $user->socid, LOG_ERR);
-				self::insertLogs($token_id, 403, 'Buyer load error', $entity);
+				// $res === 0 -> third-party not found (likely deleted or in another
+				// entity); $res < 0 -> SQL/load error. Log enough to tell them apart.
+				dol_syslog("[SmartAuth] handleAuthentication: buyer load FAILED -> 403."
+					. " socid=" . $user->socid
+					. ", fetch_res=" . var_export($res, true)
+					. " (" . ($res === 0 ? 'not found / wrong entity' : 'load error') . ")"
+					. ", user_id=" . $user->id
+					. ", login=" . $login
+					. ", entity=" . var_export($entity, true)
+					. ", conf_entity=" . (isset($conf->entity) ? $conf->entity : '?')
+					. ", buyer_error=" . ($buyer->error ?: 'none')
+					. ", token_id=" . var_export($token_id, true), LOG_ERR);
+				self::insertLogs($token_id, 403, 'Buyer load error (socid=' . $user->socid . ', res=' . $res . ')', $entity);
 				\json_reply('Access denied', 403);
 				return false;
 			}
+			SmartAuthLogger::debug("SmartAuth handleAuthentication: buyer loaded socid=" . $user->socid . " name=" . $buyer->name);
 		}
 
-		dol_syslog("SmartAuth Debug smartauth handleAuthentication return entity=$entity, token_id=$token_id");
+		SmartAuthLogger::debug("SmartAuth handleAuthentication return entity=$entity, token_id=$token_id");
 		return [$user, $entity, $token_id, $buyer, $family_id, $device_id, null];
 	}
 	/**
@@ -793,12 +824,12 @@ class RouteController
 		if (!empty($allowedAudiences)) {
 			if (!in_array($clientId, $allowedAudiences, true)) {
 				self::insertLogs(null, 401, 'OAuth2 token audience not allowed on first-party API', null);
-				dol_syslog('SmartAuth handleOAuth2Authentication: client ' . $clientId . ' not in SMARTAUTH_API_AUDIENCE allow-list - confused-deputy rejection', LOG_WARNING);
+				dol_syslog('[SmartAuth] handleOAuth2Authentication: client ' . $clientId . ' not in SMARTAUTH_API_AUDIENCE allow-list - confused-deputy rejection', LOG_WARNING);
 				\json_reply('Invalid token: audience not allowed', 401);
 				return false;
 			}
 		} else {
-			dol_syslog('SmartAuth handleOAuth2Authentication: SMARTAUTH_API_AUDIENCE not set - first-party audience enforcement disabled', LOG_WARNING);
+			dol_syslog('[SmartAuth] handleOAuth2Authentication: SMARTAUTH_API_AUDIENCE not set - first-party audience enforcement disabled', LOG_WARNING);
 		}
 
 		// Parse the prefixed subject (acc:/usr:). These protected API routes are
@@ -858,7 +889,7 @@ class RouteController
 		if (!empty($user->socid)) {
 			$res = $buyer->fetch($user->socid);
 			if (!$res) {
-				dol_syslog("SmartAuth Debug smartauth OAuth2: Failed to load buyer socid=" . $user->socid, LOG_ERR);
+				dol_syslog("[SmartAuth] OAuth2: Failed to load buyer socid=" . $user->socid, LOG_ERR);
 			}
 		}
 
@@ -870,7 +901,7 @@ class RouteController
 
 		$jti = $payload['jti'] ?? null;
 
-		dol_syslog("SmartAuth Debug smartauth handleOAuth2Authentication: client=$clientId, user=" . $user->id . ", grant=$grantType");
+		dol_syslog("[SmartAuth] handleOAuth2Authentication: client=$clientId, user=" . $user->id . ", grant=$grantType");
 
 		return [$user, $entity, $jti, $buyer, null, null, $oauthContext];
 	}
@@ -901,11 +932,11 @@ class RouteController
 	 */
 	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id, $device_id, $oauthContext = null)
 	{
-		dol_syslog("SmartAuth Debug smartauth executeAction: $targetClass, redirectFunction=$redirectFunction, token_id=$token_id, family_id=$family_id, device_id=$device_id");
+		dol_syslog("[SmartAuth] executeAction: $targetClass, redirectFunction=$redirectFunction, token_id=$token_id, family_id=$family_id, device_id=$device_id");
 
 		// Validate class exists
 		if (!class_exists($targetClass)) {
-			dol_syslog("SmartAuth Debug smartauth  Class ($targetClass) not found", LOG_ERR);
+			dol_syslog("[SmartAuth] Class ($targetClass) not found", LOG_ERR);
 			self::insertLogs($token_id, 500, 'Internal error - Class not found', $entity);
 			\json_reply('Internal server error - Class not found', 500);
 			return;
@@ -915,7 +946,7 @@ class RouteController
 
 		// Validate method exists
 		if (!method_exists($class, $redirectFunction)) {
-			dol_syslog("SmartAuth Debug smartauth  Method not found: $targetClass::$redirectFunction", LOG_ERR);
+			dol_syslog("[SmartAuth] Method not found: $targetClass::$redirectFunction", LOG_ERR);
 			self::insertLogs($token_id, 500, 'Internal error', $entity);
 			\json_reply('Internal server error - Method not found', 500);
 			return;
@@ -953,13 +984,16 @@ class RouteController
 
 			// Validate response format
 			if (!is_array($result) || count($result) !== 2) {
-				dol_syslog("SmartAuth Debug smartauth  Invalid response format from $targetClass::$redirectFunction", LOG_ERR);
+				dol_syslog("[SmartAuth] Invalid response format from $targetClass::$redirectFunction", LOG_ERR);
 				self::insertLogs($token_id, 500, 'Internal error', $entity);
 				\json_reply('Internal server error - Invalid response format', 500);
 				return;
 			}
 
 			list($message, $code) = $result;
+
+			dol_syslog("[SmartAuth] executeAction: $targetClass::$redirectFunction returned HTTP " . $code
+				. " (token_id=" . var_export($token_id, true) . ")");
 
 			self::insertLogs($token_id, $code, $message, $entity);
 			\json_reply($message, $code);
@@ -974,7 +1008,7 @@ class RouteController
 			$exWhere = $e->getFile() . ':' . $e->getLine();
 			$exMsg = $e->getMessage();
 			$exTrace = substr($e->getTraceAsString(), 0, 1500);
-			dol_syslog("SmartAuth Exception in $targetClass::$redirectFunction [$exClass @ $exWhere]: $exMsg | trace: $exTrace", LOG_ERR);
+			dol_syslog("[SmartAuth] Exception in $targetClass::$redirectFunction [$exClass @ $exWhere]: $exMsg | trace: $exTrace", LOG_ERR);
 			self::insertLogs($token_id, 500, "Exception ($exClass @ $exWhere): $exMsg", $entity);
 			\json_reply('Internal server error - Exception', 500);
 		}
@@ -1007,7 +1041,7 @@ class RouteController
 
 		// Check if logging is enabled
 		if (getDolGlobalString('SMARTAUTH_COLLECT_LOGS') == '') {
-			dol_syslog("SmartAuth Debug smartauth  do not collect logs");
+			dol_syslog("[SmartAuth] do not collect logs");
 			return;
 		}
 
@@ -1076,12 +1110,12 @@ class RouteController
 		try {
 			$resql = $db->query($sql);
 			if (!$resql) {
-				dol_syslog("SmartAuth Debug smartauth  Failed to insert log: " . $db->lasterror(), LOG_WARNING);
+				dol_syslog("[SmartAuth] Failed to insert log: " . $db->lasterror(), LOG_WARNING);
 			}
 		} catch (\Throwable $e) {
 			// Widen to Throwable so a DB driver Error (e.g. SQLite locked) on the
 			// log insert path never bubbles up and turns a normal 4xx into a 500.
-			dol_syslog("SmartAuth Debug smartauth  Log insertion error (" . get_class($e) . "): " . $e->getMessage(), LOG_WARNING);
+			dol_syslog("[SmartAuth] Log insertion error (" . get_class($e) . "): " . $e->getMessage(), LOG_WARNING);
 		}
 	}
 
@@ -1154,10 +1188,21 @@ class RouteController
 				// ips[0], which is attacker-controlled.
 				$chain = array_filter(array_map('trim', explode(',', $xff)));
 				for ($i = count($chain) - 1; $i >= 0; $i--) {
-					if ($hasAllowList && in_array($chain[$i], $trustedList, true)) {
-						continue; // skip known proxies, keep peeling from the right
+					$candidate = $chain[$i];
+					if ($hasAllowList) {
+						if (in_array($candidate, $trustedList, true)) {
+							continue; // skip known proxies, keep peeling from the right
+						}
+					} elseif (self::_isPrivateOrLoopbackIp($candidate)) {
+						// No allow-list: internal hops (loopback / RFC 1918) are
+						// proxies, not the real client - keep peeling toward the
+						// rightmost public IP (the peer the outermost internal hop
+						// actually saw). Without this, the nearest proxy IP would
+						// be returned and all clients behind it would collapse to
+						// a single IP for rate limiting.
+						continue;
 					}
-					$remoteAddr = $chain[$i];
+					$remoteAddr = $candidate;
 					break;
 				}
 			}
@@ -1169,6 +1214,25 @@ class RouteController
 		}
 
 		return $remoteAddr;
+	}
+
+	/**
+	 * True if the IP is loopback or in an RFC 1918 private range.
+	 *
+	 * Used to peel internal proxy hops off the X-Forwarded-For chain when no
+	 * explicit trusted-proxy allow-list (SMARTAUTH_TRUSTED_PROXIES) is set.
+	 *
+	 * @param string $ip IP address to test
+	 * @return bool True for loopback / private ranges
+	 */
+	private static function _isPrivateOrLoopbackIp($ip)
+	{
+		return (bool) (
+			preg_match('/^127\./', $ip)
+			|| preg_match('/^10\./', $ip)
+			|| preg_match('/^172\.(1[6-9]|2\d|3[01])\./', $ip)
+			|| preg_match('/^192\.168\./', $ip)
+		);
 	}
 
 	/**
@@ -1304,7 +1368,7 @@ class RouteController
 			return '';
 		}
 		if ($configured === '*') {
-			dol_syslog('SmartAuth CORS: SMARTAUTH_CORS_ORIGIN=* allows any site to read API responses (H-6) - prefer an explicit allow-list', LOG_WARNING);
+			dol_syslog('[SmartAuth] CORS: SMARTAUTH_CORS_ORIGIN=* allows any site to read API responses (H-6) - prefer an explicit allow-list', LOG_WARNING);
 			return '*';
 		}
 		if ($requestOrigin === '') {
@@ -1317,7 +1381,7 @@ class RouteController
 				return $requestOrigin;
 			}
 		}
-		dol_syslog('SmartAuth CORS: rejected origin "' . substr($requestOrigin, 0, 200) . '"', LOG_WARNING);
+		dol_syslog('[SmartAuth] CORS: rejected origin "' . substr($requestOrigin, 0, 200) . '"', LOG_WARNING);
 		return '';
 	}
 
@@ -1379,7 +1443,7 @@ class RouteController
 			$lastWarning = getDolGlobalInt('SMARTAUTH_CORS_WARNING_TIME', 0);
 			if ((time() - $lastWarning) > 86400) {
 				dol_syslog(
-					"SmartAuth SECURITY WARNING: Cross-origin request detected from '$origin' but no CORS headers found. " .
+					"[SmartAuth] SECURITY WARNING: Cross-origin request detected from '$origin' but no CORS headers found. " .
 					"Ensure CORS is configured at server level (Apache/Nginx) for security.",
 					LOG_WARNING
 				);
