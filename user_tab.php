@@ -72,6 +72,7 @@ dol_include_once('/smartauth/class/smartauth.class.php');
 dol_include_once('/smartauth/class/smartlogs.class.php');
 dol_include_once('/smartauth/class/smartauthqrpairing.class.php');
 dol_include_once('/smartauth/class/smartauthuserdevice.class.php');
+dol_include_once('/smartauth/class/smartauthusertokenadmin.class.php');
 dol_include_once('/smartauth/api/RouteController.php');
 dol_include_once('/smartauth/api/ModulePathHelper.php');
 dol_include_once('/smartauth/lib/tools.php');
@@ -190,94 +191,55 @@ if (empty($reshook)) {
 	include DOL_DOCUMENT_ROOT . '/core/actions_linkedfiles.inc.php';
 }
 
-// Handle revoke action
+// Handle revoke action. Token ops are delegated to SmartAuthUserTokenAdmin so
+// they stay testable in isolation; the page only maps the result to a message.
 if ($action == 'revoke' && $permtoedit) {
 	$token_id = GETPOST('token_id', 'int');
 
 	if ($token_id > 0) {
-		// Verify token belongs to current user (security check)
-		$sql = "SELECT fk_authid FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " WHERE rowid = " . (int)$token_id;
-		$sql .= " AND fk_authid = " . (int)$id;
-
-		$resql = $db->query($sql);
-		if ($resql && $db->num_rows($resql) > 0) {
-			// Token belongs to user, revoke it
-			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-			$sql .= " SET status = 9, salt = 'revoked_by_user'";
-			$sql .= " WHERE rowid = " . (int)$token_id;
-
-			$result = $db->query($sql);
-			if ($result) {
-				setEventMessages($langs->trans("TokenRevoked"), null, 'mesgs');
-				header("Location: " . $_SERVER['PHP_SELF'] . '?id=' . $id);
-				exit;
-			} else {
-				setEventMessages($langs->trans("ErrorRevokingToken"), null, 'errors');
-			}
+		$tokenAdmin = new SmartAuthUserTokenAdmin($db);
+		$res = $tokenAdmin->revoke((int) $token_id, (int) $id);
+		if ($res === SmartAuthUserTokenAdmin::RES_OK) {
+			setEventMessages($langs->trans("TokenRevoked"), null, 'mesgs');
+			header("Location: " . $_SERVER['PHP_SELF'] . '?id=' . $id);
+			exit;
+		} elseif ($res === SmartAuthUserTokenAdmin::RES_DB_ERROR) {
+			setEventMessages($langs->trans("ErrorRevokingToken"), null, 'errors');
 		} else {
 			setEventMessages($langs->trans("TokenNotFound"), null, 'errors');
 		}
 	}
 }
 
-// Handle delete action -- a REAL row delete (todo l.25), distinct from "revoke"
-// which only flips status to 9 (disable). Same ownership check as revoke.
+// Handle delete action -- a REAL row delete, distinct from "revoke" which only
+// flips status to STATUS_REVOKED (disable). Same ownership check as revoke.
 if ($action == 'delete_token' && $permtoedit) {
 	$token_id = GETPOST('token_id', 'int');
 
 	if ($token_id > 0) {
-		// Verify token belongs to this user (security check)
-		$sql = "SELECT fk_authid FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " WHERE rowid = " . (int)$token_id;
-		$sql .= " AND fk_authid = " . (int)$id;
-
-		$resql = $db->query($sql);
-		if ($resql && $db->num_rows($resql) > 0) {
-			$sqlDel = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-			$sqlDel .= " WHERE rowid = " . (int)$token_id;
-
-			if ($db->query($sqlDel)) {
-				setEventMessages($langs->trans("TokenDeleted"), null, 'mesgs');
-				header("Location: " . $_SERVER['PHP_SELF'] . '?id=' . $id);
-				exit;
-			} else {
-				dol_syslog("[SmartAuth] error on delete token id #" . $token_id . " : " . $db->lasterror(), LOG_ERR);
-				setEventMessages($langs->trans("ErrorDeletingToken"), null, 'errors');
-			}
+		$tokenAdmin = new SmartAuthUserTokenAdmin($db);
+		$res = $tokenAdmin->delete((int) $token_id, (int) $id);
+		if ($res === SmartAuthUserTokenAdmin::RES_OK) {
+			setEventMessages($langs->trans("TokenDeleted"), null, 'mesgs');
+			header("Location: " . $_SERVER['PHP_SELF'] . '?id=' . $id);
+			exit;
+		} elseif ($res === SmartAuthUserTokenAdmin::RES_DB_ERROR) {
+			setEventMessages($langs->trans("ErrorDeletingToken"), null, 'errors');
 		} else {
 			setEventMessages($langs->trans("TokenNotFound"), null, 'errors');
 		}
 	}
 }
 
-// Handle token mass actions (todo l.25): revoke (status=9) or really DELETE
-// every selected token row. Ownership enforced per row (fk_authid = id).
+// Handle token mass actions: revoke (status=STATUS_REVOKED) or really DELETE
+// every selected token row. Ownership is enforced per row inside the helper.
 if (in_array($action, array('masstokenrevoke', 'masstokendelete'), true) && $permtoedit) {
+	$tokenAdmin = new SmartAuthUserTokenAdmin($db);
 	$tokIds = GETPOST('toselect', 'array');
-	$tokDone = 0;
-	foreach ((array) $tokIds as $tokOne) {
-		$tokOne = (int) $tokOne;
-		if ($tokOne <= 0) {
-			continue;
-		}
-		// Ownership check: the token must belong to this user fiche.
-		$sqlChk = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sqlChk .= " WHERE rowid = " . $tokOne . " AND fk_authid = " . (int) $id;
-		$resChk = $db->query($sqlChk);
-		if (!$resChk || $db->num_rows($resChk) === 0) {
-			continue;
-		}
-		if ($action === 'masstokendelete') {
-			$sqlOne = "DELETE FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE rowid = " . $tokOne;
-		} else {
-			$sqlOne = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth SET status = 9, salt = 'revoked_by_user' WHERE rowid = " . $tokOne;
-		}
-		if ($db->query($sqlOne)) {
-			$tokDone++;
-		} else {
-			dol_syslog("[SmartAuth] token mass action '" . $action . "' failed on id #" . $tokOne . " : " . $db->lasterror(), LOG_ERR);
-		}
+	if ($action === 'masstokendelete') {
+		$tokDone = $tokenAdmin->massDelete((array) $tokIds, (int) $id);
+	} else {
+		$tokDone = $tokenAdmin->massRevoke((array) $tokIds, (int) $id);
 	}
 	setEventMessages($langs->trans($action === 'masstokendelete' ? 'TokensMassDeleted' : 'TokensMassRevoked', $tokDone), null, 'mesgs');
 	header("Location: " . $_SERVER['PHP_SELF'] . '?id=' . ((int) $id));

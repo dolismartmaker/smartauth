@@ -890,7 +890,29 @@ trait dmTrait
 						$obj = $this->_db->fetch_object($resql);
 						$this->_db->free($resql);
 						if (is_object($obj)) {
-							return $obj->{$labelFieldName};
+							// Build the label from one or several columns (the
+							// descriptor syntax allows "field1|field2"), and
+							// translate each part like Dolibarr's showOutputField
+							// does: dictionary tables (c_*) often store a lang key
+							// in their label column rather than plain text.
+							// $langs->trans() returns its input unchanged when no
+							// translation exists, so free-text labels (e.g. a
+							// company name from a non-dictionary sellist) are left
+							// intact.
+							$labelParts = array();
+							foreach ($fields_label as $field_toshow) {
+								$field_toshow = trim($field_toshow);
+								if ($field_toshow !== '' && isset($obj->{$field_toshow})) {
+									$labelParts[] = $langs->trans($obj->{$field_toshow});
+								}
+							}
+							if (!empty($labelParts)) {
+								return implode(' ', $labelParts);
+							}
+							// Descriptor referenced a column not returned by the
+							// query: fall back to the legacy single-property read,
+							// then to the raw id.
+							return $obj->{$labelFieldName} ?? $objectid;
 						}
 						// No row matched (orphan id referenced by the extrafield): fall back to the raw value
 						dol_syslog('[SmartAuth] exportExtrafieldData: no row for name=' . $name . ', objectid=' . $objectid . ' in table ' . $tableName . ', returning raw value', \LOG_WARNING);
