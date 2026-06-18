@@ -2065,6 +2065,8 @@ class DmTraitTest extends DolibarrRealTestCase
      * when iterating extrafields whose param shape is not yet fully
      * normalized (placeholder is in _mappingExtrafieldsAttributes but
      * never loaded by Dolibarr's ExtraFields::fetch_name_optionals_label).
+     *
+     * @group SMA-003
      */
     public function testExportExtrafieldDataWithSellist(): void
     {
@@ -2101,6 +2103,8 @@ class DmTraitTest extends DolibarrRealTestCase
      * For type=select (and radio), param['options'] maps value => label
      * directly, there is no source table. exportExtrafieldData() must return
      * the matching label, not the raw stored value.
+     *
+     * @group SMA-001
      */
     public function testExportExtrafieldDataWithStaticSelect(): void
     {
@@ -2134,6 +2138,8 @@ class DmTraitTest extends DolibarrRealTestCase
      * For type=checkbox the value is a comma-separated list of keys into
      * param['options']. exportExtrafieldData() must return the list of
      * resolved labels (array), not the raw csv string.
+     *
+     * @group SMA-002
      */
     public function testExportExtrafieldDataWithStaticCheckbox(): void
     {
@@ -2167,6 +2173,8 @@ class DmTraitTest extends DolibarrRealTestCase
      * For type=chkbxlst the value is a comma-separated list of ids resolved
      * against a source table (here c_country). Each element is resolved
      * through the sellist descriptor and returned as an array of labels.
+     *
+     * @group SMA-002
      */
     public function testExportExtrafieldDataWithChkbxlst(): void
     {
@@ -2197,10 +2205,59 @@ class DmTraitTest extends DolibarrRealTestCase
     }
 
     /**
+     * Test exportExtrafieldData with a composite sellist label (field1|field2).
+     *
+     * The descriptor syntax allows several label columns separated by '|'.
+     * exportExtrafieldData() must concatenate the resolved (and translated)
+     * columns, not return null on a non-existent "field1|field2" property.
+     *
+     * @group SMA-003
+     */
+    public function testExportExtrafieldDataWithCompositeSellistLabel(): void
+    {
+        global $langs;
+
+        $mapper = new class($this->db) extends TestDmTraitClass {
+            protected $parentTableElementToUseForExtraFields = 'societe';
+        };
+
+        $insert = function (string $descriptor) {
+            $param = serialize(['options' => [$descriptor => null]]);
+            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "extrafields (name, entity, elementtype, label, type, param, pos, list)";
+            $sql .= " VALUES ('test', 1, 'societe', 'Test sellist', 'sellist', '" . $this->db->escape($param) . "', 100, '1')";
+            $res = $this->db->query($sql);
+            $this->assertNotFalse($res, 'Failed to insert extrafield row: ' . $this->db->lasterror());
+        };
+
+        try {
+            // Single label on the iso code column -> deterministic value.
+            $insert('c_country:code:rowid::');
+            $codeLabel = $mapper->exposeExportExtrafieldData('options_test', 1);
+            $this->assertIsString($codeLabel);
+            $this->assertNotEmpty($codeLabel);
+
+            // Composite label "label|code": result must contain the code part,
+            // proving both columns were read and concatenated (the legacy code
+            // would have looked up a property literally named "label|code" and
+            // returned null).
+            $insert('c_country:label|code:rowid::');
+            $composite = $mapper->exposeExportExtrafieldData('options_test', 1);
+            $this->assertIsString($composite);
+            $this->assertStringContainsString(' ', $composite);
+            $this->assertStringContainsString($codeLabel, $composite);
+        } finally {
+            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        }
+    }
+
+    /**
      * Test exportExtrafieldData coerces scalar types (boolean / double).
      *
      * boolean / int / double / price extrafields carry no param['options']
      * and must be returned as JSON-friendly typed values, not raw db strings.
+     *
+     * @group SMA-004
      */
     public function testExportExtrafieldDataCoercesScalarTypes(): void
     {

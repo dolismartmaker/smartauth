@@ -73,7 +73,11 @@ class dmHelper
 		'copytoclipboard' 	=> 'hasCopyButton',
 		'required' 			=> 'required',
 		'noteditable' 		=> 'readOnly',
-		'visible' 			=> 'visible',
+		// Dolibarr stores an extrafield's visibility in the "list" column
+		// (ExtraFields::fetch_name_optionals_label populates attributes[elem]['list'],
+		// never ['visible']). Map it through _customFilterAttributeList so a field
+		// flagged "Not visible" (list=0) is delivered hidden to the app.
+		'list' 				=> 'visible',
 		'size' 				=> 'max',
 		'pos' 				=> 'position',
 		'options' 			=> 'options',
@@ -375,6 +379,20 @@ class dmHelper
 	}
 
 	/**
+	 * Extrafields carry their visibility in the Dolibarr "list" column (not
+	 * "visible", which only exists on object property descriptors). The
+	 * extrafields mapping routes "list" here; reuse the exact same dolibarr
+	 * visibility-code conversion as object attributes.
+	 *
+	 * @param   mixed  $val  the raw "list" column value (0..5 or negative)
+	 * @return  array        ['visible' => [...contexts]]
+	 */
+	public function _customFilterAttributeList($val)
+	{
+		return $this->_customFilterAttributeVisible($val);
+	}
+
+	/**
 	 * Intentional extension point for the 'contacts' attribute. Returns an
 	 * empty array on purpose: the default mapping ($ret[$key] = $val) is
 	 * suppressed because raw Dolibarr contact lists must NOT leak into the
@@ -579,7 +597,7 @@ class dmHelper
 				// back to the "visible in every context" default when NO visible
 				// attribute is declared at all, so a field explicitly set to
 				// "not visible" stays hidden on the app instead of being forced on.
-				$rawVisible = $extrafields->attributes[$objectElement]['visible'][str_replace('options_', '', $dolikey)] ?? null;
+				$rawVisible = $extrafields->attributes[$objectElement]['list'][str_replace('options_', '', $dolikey)] ?? null;
 				if ($rawVisible === null || $rawVisible === '') {
 					$ret['visible'] = ["create", "update", "read"];
 				}
