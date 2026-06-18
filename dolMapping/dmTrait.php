@@ -911,8 +911,13 @@ trait dmTrait
 			}
 		}
 
-		//default return orignal value :-(
-		return $objectid;
+		// Scalar extrafields (boolean, int, double, price, date) carry no
+		// param['options'] and fall through here. Coerce them to a
+		// JSON-friendly value using the same type convention as the input
+		// side (_castInputValue): boolean -> 0/1, int -> int, double/price ->
+		// float, date -> timestamp. varchar / text / unresolved sellist keys
+		// stay strings (pass-through).
+		return $this->_castInputValue($objectid, array('type' => $type));
 	}
 
 

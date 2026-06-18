@@ -2197,6 +2197,41 @@ class DmTraitTest extends DolibarrRealTestCase
     }
 
     /**
+     * Test exportExtrafieldData coerces scalar types (boolean / double).
+     *
+     * boolean / int / double / price extrafields carry no param['options']
+     * and must be returned as JSON-friendly typed values, not raw db strings.
+     */
+    public function testExportExtrafieldDataCoercesScalarTypes(): void
+    {
+        $mapper = new class($this->db) extends TestDmTraitClass {
+            protected $parentTableElementToUseForExtraFields = 'societe';
+        };
+
+        $insert = function (string $type) {
+            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "extrafields (name, entity, elementtype, label, type, param, pos, list)";
+            $sql .= " VALUES ('test', 1, 'societe', 'Test scalar', '" . $type . "', '', 100, '1')";
+            $res = $this->db->query($sql);
+            $this->assertNotFalse($res, 'Failed to insert extrafield row: ' . $this->db->lasterror());
+        };
+
+        try {
+            $insert('boolean');
+            $this->assertSame(1, $mapper->exposeExportExtrafieldData('options_test', '1'));
+            $this->assertSame(0, $mapper->exposeExportExtrafieldData('options_test', '0'));
+
+            $insert('double');
+            $this->assertSame(12.5, $mapper->exposeExportExtrafieldData('options_test', '12.50000000'));
+
+            $insert('int');
+            $this->assertSame(42, $mapper->exposeExportExtrafieldData('options_test', '42'));
+        } finally {
+            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        }
+    }
+
+    /**
      * Test exportExtrafieldData with empty parentElementToUseForExtraFields
      */
     public function testExportExtrafieldDataWithEmptyParentElement(): void
