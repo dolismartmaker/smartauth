@@ -714,20 +714,58 @@ trait dmTrait
 			return;
 		}
 
-		$sql = "SELECT param FROM " . $this->_db->prefix() . "extrafields WHERE  elementtype='" . $parentElementToUseForExtraFields . "' AND name='" . str_replace("options_", "", $name) . "'";
+		$sql = "SELECT param, type FROM " . $this->_db->prefix() . "extrafields WHERE  elementtype='" . $parentElementToUseForExtraFields . "' AND name='" . str_replace("options_", "", $name) . "'";
 		$resql = $this->_db->query($sql);
 		if ($resql) {
 			$obj = $this->_db->fetch_object($resql);
 			if (!$obj) {
-				dol_syslog("[SmartAuth] exportExtrafieldData: no extrafield definition for name=$name elementtype=$parentElementToUseForExtraFields", LOG_DEBUG);
-				return;
+				// No extrafield definition: the field was migrated off
+				// llx_extrafields onto a native/companion column but is still
+				// surfaced via array_options['options_<name>'] for backward
+				// compatibility (the consumer keeps the historical key). The
+				// value is already resolved by the caller's hydration, so pass it
+				// through as-is instead of dropping it to null -- returning void
+				// here silently blanked such fields in the API payload (e.g.
+				// date_intervention once the smartinterventions_date_inter
+				// extrafield was removed in favour of the si_date_inter column).
+				dol_syslog("[SmartAuth] exportExtrafieldData: no extrafield definition for name=$name elementtype=$parentElementToUseForExtraFields, passing value through", LOG_DEBUG);
+				return $objectid;
 			}
 			$param = jsonOrUnserialize($obj->param);
+			$type = isset($obj->type) ? $obj->type : '';
 			//a:1:{s:7:"options";a:1:{s:44:"c_smartinterventions_status:label:code::code";N;}}
 			// dol_syslog("[SmartAuth] Ask exportExtrafieldData for $name, param is " . json_encode($param));
 
-			//TODO implement all dolibarr possibilites :-)
-			if (isset($param['options'])) {
+			if (isset($param['options']) && is_array($param['options'])) {
+				// Multi-value extrafields (checkbox / chkbxlst) store the value
+				// as a comma-separated list of ids. Resolve each element (one id
+				// at a time -- a single id has no comma so it falls through to
+				// the static / dynamic single-value resolution below) and return
+				// the list of labels instead of the raw csv.
+				if (in_array($type, array('checkbox', 'chkbxlst'), true)
+					&& strpos((string) $objectid, ',') !== false) {
+					$out = array();
+					foreach (explode(',', (string) $objectid) as $singleId) {
+						$singleId = trim($singleId);
+						if ($singleId === '') {
+							continue;
+						}
+						$out[] = $this->exportExtrafieldData($name, $singleId);
+					}
+					return $out;
+				}
+
+				// Static value lists (select / radio, and each element of a
+				// checkbox): param['options'] maps value => label directly, there
+				// is no source table to query.
+				if (in_array($type, array('select', 'radio', 'checkbox'), true)) {
+					if (array_key_exists($objectid, $param['options'])) {
+						$label = $param['options'][$objectid];
+						return ($label === null || $label === '') ? $objectid : $langs->trans($label);
+					}
+					return $objectid;
+				}
+
 				$param_list = array_keys($param['options']);
 				$InfoFieldList = explode(":", $param_list[0]);
 

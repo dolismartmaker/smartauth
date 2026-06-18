@@ -2096,6 +2096,107 @@ class DmTraitTest extends DolibarrRealTestCase
     }
 
     /**
+     * Test exportExtrafieldData with a static select list.
+     *
+     * For type=select (and radio), param['options'] maps value => label
+     * directly, there is no source table. exportExtrafieldData() must return
+     * the matching label, not the raw stored value.
+     */
+    public function testExportExtrafieldDataWithStaticSelect(): void
+    {
+        $mapper = new class($this->db) extends TestDmTraitClass {
+            protected $parentTableElementToUseForExtraFields = 'societe';
+        };
+
+        $param = serialize(['options' => ['low' => 'Low priority', 'high' => 'High priority']]);
+
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "extrafields (name, entity, elementtype, label, type, param, pos, list)";
+        $sql .= " VALUES ('test', 1, 'societe', 'Test select', 'select', '" . $this->db->escape($param) . "', 100, '1')";
+        $res = $this->db->query($sql);
+        $this->assertNotFalse($res, 'Failed to insert extrafield row: ' . $this->db->lasterror());
+
+        try {
+            $result = $mapper->exposeExportExtrafieldData('options_test', 'high');
+            $this->assertSame('High priority', $result);
+
+            // Unknown value falls back to the raw value.
+            $unknown = $mapper->exposeExportExtrafieldData('options_test', 'does_not_exist');
+            $this->assertSame('does_not_exist', $unknown);
+        } finally {
+            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        }
+    }
+
+    /**
+     * Test exportExtrafieldData with a static multi-value checkbox.
+     *
+     * For type=checkbox the value is a comma-separated list of keys into
+     * param['options']. exportExtrafieldData() must return the list of
+     * resolved labels (array), not the raw csv string.
+     */
+    public function testExportExtrafieldDataWithStaticCheckbox(): void
+    {
+        $mapper = new class($this->db) extends TestDmTraitClass {
+            protected $parentTableElementToUseForExtraFields = 'societe';
+        };
+
+        $param = serialize(['options' => ['a' => 'Apple', 'b' => 'Banana', 'c' => 'Cherry']]);
+
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "extrafields (name, entity, elementtype, label, type, param, pos, list)";
+        $sql .= " VALUES ('test', 1, 'societe', 'Test checkbox', 'checkbox', '" . $this->db->escape($param) . "', 100, '1')";
+        $res = $this->db->query($sql);
+        $this->assertNotFalse($res, 'Failed to insert extrafield row: ' . $this->db->lasterror());
+
+        try {
+            $result = $mapper->exposeExportExtrafieldData('options_test', 'a,c');
+            $this->assertSame(['Apple', 'Cherry'], $result);
+
+            // Single selection (no comma) returns the scalar label.
+            $single = $mapper->exposeExportExtrafieldData('options_test', 'b');
+            $this->assertSame('Banana', $single);
+        } finally {
+            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        }
+    }
+
+    /**
+     * Test exportExtrafieldData with a dynamic multi-value chkbxlst.
+     *
+     * For type=chkbxlst the value is a comma-separated list of ids resolved
+     * against a source table (here c_country). Each element is resolved
+     * through the sellist descriptor and returned as an array of labels.
+     */
+    public function testExportExtrafieldDataWithChkbxlst(): void
+    {
+        $mapper = new class($this->db) extends TestDmTraitClass {
+            protected $parentTableElementToUseForExtraFields = 'societe';
+        };
+
+        $param = serialize(['options' => ['c_country:label:rowid::' => null]]);
+
+        $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "extrafields (name, entity, elementtype, label, type, param, pos, list)";
+        $sql .= " VALUES ('test', 1, 'societe', 'Test chkbxlst', 'chkbxlst', '" . $this->db->escape($param) . "', 100, '1')";
+        $res = $this->db->query($sql);
+        $this->assertNotFalse($res, 'Failed to insert extrafield row: ' . $this->db->lasterror());
+
+        try {
+            // Resolve labels for c_country.rowid in (1,2).
+            $result = $mapper->exposeExportExtrafieldData('options_test', '1,2');
+            $this->assertIsArray($result);
+            $this->assertCount(2, $result);
+            $this->assertIsString($result[0]);
+            $this->assertNotEmpty($result[0]);
+            $this->assertIsString($result[1]);
+            $this->assertNotEmpty($result[1]);
+        } finally {
+            $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE name='test' AND elementtype='societe'");
+        }
+    }
+
+    /**
      * Test exportExtrafieldData with empty parentElementToUseForExtraFields
      */
     public function testExportExtrafieldDataWithEmptyParentElement(): void
