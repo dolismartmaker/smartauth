@@ -77,9 +77,9 @@ class JwtKeyHelper
             $result = self::storeKey($db, $configKey, $key);
 
             if ($result) {
-                dol_syslog("SmartAuth JwtKeyHelper: Auto-generated JWT key for $moduleName", LOG_INFO);
+                dol_syslog("[SmartAuth] JwtKeyHelper: Auto-generated JWT key for $moduleName", LOG_INFO);
             } else {
-                dol_syslog("SmartAuth JwtKeyHelper: Failed to store JWT key for $moduleName", LOG_ERR);
+                dol_syslog("[SmartAuth] JwtKeyHelper: Failed to store JWT key for $moduleName", LOG_ERR);
                 // Still return the generated key - it will work for this request
                 // but will be regenerated on next request if storage failed
             }
@@ -180,7 +180,7 @@ class JwtKeyHelper
         $newKey = self::generateKey();
 
         if (self::storeKey($db, $configKey, $newKey)) {
-            dol_syslog("SmartAuth JwtKeyHelper: Rotated JWT key for $moduleName", LOG_WARNING);
+            dol_syslog("[SmartAuth] JwtKeyHelper: Rotated JWT key for $moduleName", LOG_WARNING);
 
             // Also update the global conf cache
             global $conf;
@@ -302,7 +302,7 @@ class JwtKeyHelper
 
         if (!is_dir($dir)) {
             if (!@mkdir($dir, 0700, true) && !is_dir($dir)) {
-                dol_syslog('SmartAuth JwtKeyHelper: cannot create RSA key dir ' . $dir, LOG_ERR);
+                dol_syslog('[SmartAuth] JwtKeyHelper: cannot create RSA key dir ' . $dir, LOG_ERR);
                 return false;
             }
             @chmod($dir, 0700);
@@ -313,7 +313,7 @@ class JwtKeyHelper
         $kidPath = $dir . '/kid';
 
         if (@file_put_contents($privPath, $privateKey, LOCK_EX) === false) {
-            dol_syslog('SmartAuth JwtKeyHelper: failed to write private.pem', LOG_ERR);
+            dol_syslog('[SmartAuth] JwtKeyHelper: failed to write private.pem', LOG_ERR);
             return false;
         }
         @chmod($privPath, 0600);
@@ -356,7 +356,7 @@ class JwtKeyHelper
         $kid = $constKid !== '' ? $constKid : 'smartauth-' . substr(hash('sha256', $constPub), 0, 8);
 
         if (!self::writeKeyFiles($constPriv, $constPub, $kid)) {
-            dol_syslog('SmartAuth JwtKeyHelper: legacy const migration: filesystem write failed - keeping llx_const fallback', LOG_WARNING);
+            dol_syslog('[SmartAuth] JwtKeyHelper: legacy const migration: filesystem write failed - keeping llx_const fallback', LOG_WARNING);
             return;
         }
 
@@ -374,7 +374,7 @@ class JwtKeyHelper
             unset($conf->global->{self::RSA_KEY_ID_CONFIG});
         }
 
-        dol_syslog('SmartAuth JwtKeyHelper: migrated legacy RSA key from llx_const to filesystem (H-13)', LOG_INFO);
+        dol_syslog('[SmartAuth] JwtKeyHelper: migrated legacy RSA key from llx_const to filesystem (H-13)', LOG_INFO);
     }
 
     /**
@@ -511,21 +511,21 @@ class JwtKeyHelper
 
         $keyResource = openssl_pkey_new($config);
         if ($keyResource === false) {
-            dol_syslog('SmartAuth JwtKeyHelper: Failed to generate RSA key pair: ' . openssl_error_string(), LOG_ERR);
+            dol_syslog('[SmartAuth] JwtKeyHelper: Failed to generate RSA key pair: ' . openssl_error_string(), LOG_ERR);
             return false;
         }
 
         // Extract private key
         $privateKeyPem = '';
         if (!openssl_pkey_export($keyResource, $privateKeyPem)) {
-            dol_syslog('SmartAuth JwtKeyHelper: Failed to export RSA private key: ' . openssl_error_string(), LOG_ERR);
+            dol_syslog('[SmartAuth] JwtKeyHelper: Failed to export RSA private key: ' . openssl_error_string(), LOG_ERR);
             return false;
         }
 
         // Extract public key
         $keyDetails = openssl_pkey_get_details($keyResource);
         if ($keyDetails === false) {
-            dol_syslog('SmartAuth JwtKeyHelper: Failed to get RSA key details: ' . openssl_error_string(), LOG_ERR);
+            dol_syslog('[SmartAuth] JwtKeyHelper: Failed to get RSA key details: ' . openssl_error_string(), LOG_ERR);
             return false;
         }
         $publicKeyPem = $keyDetails['key'];
@@ -543,12 +543,12 @@ class JwtKeyHelper
                 $conf->global->{self::RSA_PUBLIC_KEY_CONFIG} = $publicKeyPem;
                 $conf->global->{self::RSA_KEY_ID_CONFIG} = $kid;
             }
-            dol_syslog('SmartAuth JwtKeyHelper: Generated new RSA key pair with kid=' . $kid . ' (filesystem)', LOG_INFO);
+            dol_syslog('[SmartAuth] JwtKeyHelper: Generated new RSA key pair with kid=' . $kid . ' (filesystem)', LOG_INFO);
             return true;
         }
 
         // Filesystem unavailable - degrade to llx_const with a warning.
-        dol_syslog('SmartAuth JwtKeyHelper: filesystem write failed, falling back to llx_const storage (H-13 hardening unavailable)', LOG_WARNING);
+        dol_syslog('[SmartAuth] JwtKeyHelper: filesystem write failed, falling back to llx_const storage (H-13 hardening unavailable)', LOG_WARNING);
 
         $success = true;
         if (function_exists('dolibarr_set_const')) {
@@ -567,9 +567,9 @@ class JwtKeyHelper
                 $conf->global->{self::RSA_PUBLIC_KEY_CONFIG} = $publicKeyPem;
                 $conf->global->{self::RSA_KEY_ID_CONFIG} = $kid;
             }
-            dol_syslog('SmartAuth JwtKeyHelper: Generated new RSA key pair with kid=' . $kid . ' (llx_const fallback)', LOG_INFO);
+            dol_syslog('[SmartAuth] JwtKeyHelper: Generated new RSA key pair with kid=' . $kid . ' (llx_const fallback)', LOG_INFO);
         } else {
-            dol_syslog('SmartAuth JwtKeyHelper: Failed to store RSA key pair', LOG_ERR);
+            dol_syslog('[SmartAuth] JwtKeyHelper: Failed to store RSA key pair', LOG_ERR);
         }
 
         return $success;
@@ -727,9 +727,9 @@ class JwtKeyHelper
             if (is_dir($archiveDir)) {
                 @file_put_contents($archiveDir . '/public.pem', $oldPub, LOCK_EX);
                 @chmod($archiveDir . '/public.pem', 0644);
-                dol_syslog('SmartAuth JwtKeyHelper: archived RSA public key for kid=' . $oldKid, LOG_INFO);
+                dol_syslog('[SmartAuth] JwtKeyHelper: archived RSA public key for kid=' . $oldKid, LOG_INFO);
             } else {
-                dol_syslog('SmartAuth JwtKeyHelper: failed to create archive dir for kid=' . $oldKid, LOG_WARNING);
+                dol_syslog('[SmartAuth] JwtKeyHelper: failed to create archive dir for kid=' . $oldKid, LOG_WARNING);
             }
         }
 
@@ -765,7 +765,7 @@ class JwtKeyHelper
         $result = self::generateRsaKeyPair();
 
         if ($result) {
-            dol_syslog('SmartAuth JwtKeyHelper: RSA key pair rotated successfully', LOG_WARNING);
+            dol_syslog('[SmartAuth] JwtKeyHelper: RSA key pair rotated successfully', LOG_WARNING);
         }
 
         return $result;

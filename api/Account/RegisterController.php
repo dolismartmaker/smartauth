@@ -93,7 +93,7 @@ class RegisterController
 
         $result = $this->service->confirmRegistration($token);
         if (!empty($result['error'])) {
-            dol_syslog('SmartAuth RegisterController: confirmRegistration failed code=' . $result['error'], LOG_INFO);
+            dol_syslog('[SmartAuth] RegisterController: confirmRegistration failed code=' . $result['error'], LOG_INFO);
             $this->renderInvalidConfirmation();
             return;
         }
@@ -424,7 +424,7 @@ class RegisterController
         $client = new \SmartAuthOAuthClient($this->db);
         $result = $client->fetch(0, null, $clientId);
         if ($result <= 0) {
-            dol_syslog('SmartAuth RegisterController: unknown client_id provided for branding: ' . $clientId, LOG_INFO);
+            dol_syslog('[SmartAuth] RegisterController: unknown client_id provided for branding: ' . $clientId, LOG_INFO);
             return null;
         }
         if (!$client->isEnabled()) {
@@ -448,11 +448,11 @@ class RegisterController
         }
         if ($client === null) {
             // We can only honor continue when bound to a known client.
-            dol_syslog('SmartAuth RegisterController: continue URL ignored, no client context', LOG_INFO);
+            dol_syslog('[SmartAuth] RegisterController: continue URL ignored, no client context', LOG_INFO);
             return null;
         }
         if (!$client->isRedirectUriAllowed($url)) {
-            dol_syslog('SmartAuth RegisterController: continue URL not whitelisted for client ' . $client->client_id, LOG_WARNING);
+            dol_syslog('[SmartAuth] RegisterController: continue URL not whitelisted for client ' . $client->client_id, LOG_WARNING);
             return null;
         }
         return $url;
@@ -552,7 +552,7 @@ class RegisterController
         header('Content-Type: text/html; charset=utf-8');
         $path = dirname(__DIR__, 2) . '/tpl/' . $templateName . '.tpl.php';
         if (!file_exists($path)) {
-            dol_syslog('SmartAuth RegisterController: template not found: ' . $path, LOG_ERR);
+            dol_syslog('[SmartAuth] RegisterController: template not found: ' . $path, LOG_ERR);
             http_response_code(500);
             echo 'Template not found';
             exit;

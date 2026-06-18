@@ -193,7 +193,7 @@ class LoginController
 
         // Validate CSRF token
         if (!$this->validateCsrfToken($csrfToken)) {
-            dol_syslog('SmartAuth LoginController: CSRF validation failed', LOG_WARNING);
+            dol_syslog('[SmartAuth] LoginController: CSRF validation failed', LOG_WARNING);
             $this->redirectWithError($errorRedirectBase, 'csrf_invalid');
             return;
         }
@@ -216,7 +216,7 @@ class LoginController
         );
 
         if (!$ipCheck['allowed']) {
-            dol_syslog('SmartAuth LoginController: Rate limited IP ' . $clientIp, LOG_WARNING);
+            dol_syslog('[SmartAuth] LoginController: Rate limited IP ' . $clientIp, LOG_WARNING);
             $this->redirectWithError($errorRedirectBase, 'rate_limited');
             return;
         }
@@ -230,7 +230,7 @@ class LoginController
         );
 
         if (!$userCheck['allowed']) {
-            dol_syslog('SmartAuth LoginController: Rate limited user ' . $username, LOG_WARNING);
+            dol_syslog('[SmartAuth] LoginController: Rate limited user ' . $username, LOG_WARNING);
             $this->redirectWithError($errorRedirectBase, 'rate_limited');
             return;
         }
@@ -244,7 +244,7 @@ class LoginController
         $this->rateLimiter->recordAttempt('user:' . strtolower($username), self::RATE_LIMIT_ACTION, $success);
 
         if (!$success) {
-            dol_syslog('SmartAuth LoginController: Authentication failed for ' . $username, LOG_INFO);
+            dol_syslog('[SmartAuth] LoginController: Authentication failed for ' . $username, LOG_INFO);
             $this->redirectWithError($errorRedirectBase, 'invalid_credentials');
             return;
         }
@@ -258,7 +258,7 @@ class LoginController
         // Reported as a generic invalid_credentials to avoid leaking that the
         // credentials were valid but the subject type was wrong.
         if ($subject->isUser() && !getDolGlobalInt('SMARTAUTH_SSO_ALLOW_INTERNAL_USER', 0)) {
-            dol_syslog('SmartAuth LoginController: internal user subject refused at SSO door for ' . $username, LOG_WARNING);
+            dol_syslog('[SmartAuth] LoginController: internal user subject refused at SSO door for ' . $username, LOG_WARNING);
             $this->redirectWithError($errorRedirectBase, 'invalid_credentials');
             return;
         }
@@ -270,7 +270,7 @@ class LoginController
         // Create session
         $this->sessionManager->createSession($subject);
 
-        dol_syslog('SmartAuth LoginController: Login successful for subject ' . $subject->toSub(), LOG_INFO);
+        dol_syslog('[SmartAuth] LoginController: Login successful for subject ' . $subject->toSub(), LOG_INFO);
 
         // Redirect to continue URL or root
         if (!empty($continueUrl)) {
@@ -382,7 +382,7 @@ class LoginController
 
         // Check if host matches
         if ($parsed['host'] !== $allowedHost) {
-            dol_syslog('SmartAuth LoginController: Rejected continue URL with foreign host: ' . $parsed['host'], LOG_WARNING);
+            dol_syslog('[SmartAuth] LoginController: Rejected continue URL with foreign host: ' . $parsed['host'], LOG_WARNING);
             return '';
         }
 
@@ -467,7 +467,7 @@ class LoginController
         $templatePath = dirname(__DIR__, 2) . '/tpl/' . $templateName . '.tpl.php';
 
         if (!file_exists($templatePath)) {
-            dol_syslog('SmartAuth LoginController: Template not found: ' . $templatePath, LOG_ERR);
+            dol_syslog('[SmartAuth] LoginController: Template not found: ' . $templatePath, LOG_ERR);
             http_response_code(500);
             echo 'Template not found';
             exit;

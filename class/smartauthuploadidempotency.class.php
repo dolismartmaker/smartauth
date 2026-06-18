@@ -75,7 +75,7 @@ class SmartAuthUploadIdempotency
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUploadIdempotency: findExisting failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUploadIdempotency: findExisting failed', LOG_ERR);
             return null;
         }
         $obj = $this->db->fetch_object($resql);
@@ -133,7 +133,7 @@ class SmartAuthUploadIdempotency
         if (!$resql) {
             // Likely a UNIQUE constraint violation from a concurrent retry
             // that slipped past the pre-check above.
-            dol_syslog('SmartAuthUploadIdempotency: createProcessing failed (likely duplicate token): ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_DEBUG);
+            dol_syslog('[SmartAuth] SmartAuthUploadIdempotency: createProcessing failed (likely duplicate token): ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_DEBUG);
             return false;
         }
         return true;
@@ -147,7 +147,7 @@ class SmartAuthUploadIdempotency
         $now = dol_now();
         $body = json_encode($response, JSON_UNESCAPED_UNICODE);
         if ($body === false) {
-            dol_syslog('SmartAuthUploadIdempotency: markCompleted json_encode failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUploadIdempotency: markCompleted json_encode failed', LOG_ERR);
             $body = '{}';
         }
 
@@ -164,7 +164,7 @@ class SmartAuthUploadIdempotency
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUploadIdempotency: markCompleted failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUploadIdempotency: markCompleted failed', LOG_ERR);
             return false;
         }
         return ((int) $this->db->affected_rows($resql)) === 1;
@@ -183,7 +183,7 @@ class SmartAuthUploadIdempotency
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUploadIdempotency: deleteRow failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUploadIdempotency: deleteRow failed', LOG_ERR);
             return false;
         }
         return true;
@@ -207,7 +207,7 @@ class SmartAuthUploadIdempotency
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUploadIdempotency: deleteOld failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUploadIdempotency: deleteOld failed', LOG_ERR);
             return -1;
         }
         return (int) $this->db->affected_rows($resql);
@@ -233,7 +233,7 @@ class SmartAuthUploadIdempotency
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuthUploadIdempotency: deleteStaleProcessing failed', LOG_ERR);
+            dol_syslog('[SmartAuth] SmartAuthUploadIdempotency: deleteStaleProcessing failed', LOG_ERR);
             return -1;
         }
         return (int) $this->db->affected_rows($resql);

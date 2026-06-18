@@ -155,7 +155,7 @@ class ObjectDocumentController
     {
         global $conf;
 
-        dol_syslog("smartauth::ObjectDocumentController::index");
+        dol_syslog("[SmartAuth] ObjectDocumentController::index");
 
         // Validate parameters
         $validation = $this->validateObjectParams($payload);
@@ -172,7 +172,7 @@ class ObjectDocumentController
         // Get document directory
         $docDir = $this->getObjectDocumentDir($config, $object, $conf);
         if (!$docDir || !is_dir($docDir)) {
-            dol_syslog("smartauth::ObjectDocumentController::index - No document directory: $docDir");
+            dol_syslog("[SmartAuth] ObjectDocumentController::index - No document directory: $docDir");
             return [['documents' => [], 'server_time' => date('c')], 200];
         }
 
@@ -227,7 +227,7 @@ class ObjectDocumentController
             ];
         }
 
-        dol_syslog("smartauth::ObjectDocumentController::index - Found " . count($documents) . " documents for $type/$objectId");
+        dol_syslog("[SmartAuth] ObjectDocumentController::index - Found " . count($documents) . " documents for $type/$objectId");
 
         return [[
             'documents' => $documents,
@@ -263,7 +263,7 @@ class ObjectDocumentController
      */
     public function download($payload)
     {
-        dol_syslog("smartauth::ObjectDocumentController::download");
+        dol_syslog("[SmartAuth] ObjectDocumentController::download");
 
         // Resolve file path (share hash or legacy path)
         $resolved = $this->resolveDocumentPath($payload, 'download');
@@ -285,17 +285,17 @@ class ObjectDocumentController
         // Limit file size for base64 encoding (50MB max)
         $maxsize = 50 * 1024 * 1024;
         if ($filesize > $maxsize) {
-            dol_syslog("smartauth::ObjectDocumentController::download - File too large: $filesize bytes", LOG_WARNING);
+            dol_syslog("[SmartAuth] ObjectDocumentController::download - File too large: $filesize bytes", LOG_WARNING);
             return [['error' => 'File too large for base64 download, use binary mode'], 413];
         }
 
         $content = file_get_contents($fullPathEncoded);
         if ($content === false) {
-            dol_syslog("smartauth::ObjectDocumentController::download - Failed to read file", LOG_ERR);
+            dol_syslog("[SmartAuth] ObjectDocumentController::download - Failed to read file", LOG_ERR);
             return [['error' => 'Failed to read file'], 500];
         }
 
-        dol_syslog("smartauth::ObjectDocumentController::download - Success: $filename ($filesize bytes)");
+        dol_syslog("[SmartAuth] ObjectDocumentController::download - Success: $filename ($filesize bytes)");
 
         return [[
             'filename' => $filename,
@@ -321,7 +321,7 @@ class ObjectDocumentController
     {
         global $db;
 
-        dol_syslog("smartauth::ObjectDocumentController::downloadBinary");
+        dol_syslog("[SmartAuth] ObjectDocumentController::downloadBinary");
 
         // Resolve file path (share hash or legacy path)
         $resolved = $this->resolveDocumentPath($payload, 'downloadBinary');
@@ -335,7 +335,7 @@ class ObjectDocumentController
         $mimeType = dol_mimetype($filename);
         $filesize = filesize($fullPathEncoded);
 
-        dol_syslog("smartauth::ObjectDocumentController::downloadBinary - Streaming: $filename ($filesize bytes)");
+        dol_syslog("[SmartAuth] ObjectDocumentController::downloadBinary - Streaming: $filename ($filesize bytes)");
 
         // Close database connection before streaming
         if (is_object($db)) {
@@ -379,14 +379,14 @@ class ObjectDocumentController
             // alone would grant read access to any document (CR-5 fix).
             $user = $payload['user'] ?? null;
             if (empty($user) || !is_object($user)) {
-                dol_syslog("smartauth::ObjectDocumentController::$caller - Authentication required for share hash mode", LOG_WARNING);
+                dol_syslog("[SmartAuth] ObjectDocumentController::$caller - Authentication required for share hash mode", LOG_WARNING);
                 return ['error' => 'Authentication required', 'status' => 401];
             }
             $entity = (int) ($payload['entity'] ?? $conf->entity);
 
             $resolved = $this->resolveShareHash($shareHash, $user, $entity);
             if ($resolved === null) {
-                dol_syslog("smartauth::ObjectDocumentController::$caller - Share hash not found or access denied: $shareHash", LOG_WARNING);
+                dol_syslog("[SmartAuth] ObjectDocumentController::$caller - Share hash not found or access denied: $shareHash", LOG_WARNING);
                 return ['error' => 'Document not found', 'status' => 404];
             }
 
@@ -394,7 +394,7 @@ class ObjectDocumentController
             $fullPathEncoded = dol_osencode($fullPath);
 
             if (!file_exists($fullPathEncoded)) {
-                dol_syslog("smartauth::ObjectDocumentController::$caller - File from ecm not found on disk: $fullPath", LOG_WARNING);
+                dol_syslog("[SmartAuth] ObjectDocumentController::$caller - File from ecm not found on disk: $fullPath", LOG_WARNING);
                 return ['error' => 'File not found', 'status' => 404];
             }
 
@@ -439,7 +439,7 @@ class ObjectDocumentController
             || preg_match('#^[\\\\/]#', $relativePath)
             || preg_match('#^[a-zA-Z]:#', $relativePath)
         ) {
-            dol_syslog("smartauth::ObjectDocumentController::$caller - Path traversal attempt: " . substr($relativePath, 0, 200), LOG_WARNING);
+            dol_syslog("[SmartAuth] ObjectDocumentController::$caller - Path traversal attempt: " . substr($relativePath, 0, 200), LOG_WARNING);
             return ['error' => 'Invalid path', 'status' => 400];
         }
 
@@ -448,7 +448,7 @@ class ObjectDocumentController
         $fullPathEncoded = dol_osencode($fullPath);
 
         if (!file_exists($fullPathEncoded)) {
-            dol_syslog("smartauth::ObjectDocumentController::$caller - File not found: $fullPath", LOG_WARNING);
+            dol_syslog("[SmartAuth] ObjectDocumentController::$caller - File not found: $fullPath", LOG_WARNING);
             return ['error' => 'File not found', 'status' => 404];
         }
 
@@ -458,7 +458,7 @@ class ObjectDocumentController
         $docDirReal = realpath($docDir);
         $fullReal = realpath($fullPathEncoded);
         if ($docDirReal === false || $fullReal === false || strpos($fullReal . '/', $docDirReal . '/') !== 0) {
-            dol_syslog("smartauth::ObjectDocumentController::$caller - Path escapes docDir: " . $fullPath, LOG_WARNING);
+            dol_syslog("[SmartAuth] ObjectDocumentController::$caller - Path escapes docDir: " . $fullPath, LOG_WARNING);
             return ['error' => 'Invalid path', 'status' => 400];
         }
 
@@ -508,7 +508,7 @@ class ObjectDocumentController
 
         // Check user has read permission
         if (!$user->hasRight($config['module'], 'read') && !$user->hasRight($config['module'], 'lire')) {
-            dol_syslog("smartauth::ObjectDocumentController - Access denied for user {$user->id} on module {$config['module']}", LOG_WARNING);
+            dol_syslog("[SmartAuth] ObjectDocumentController - Access denied for user {$user->id} on module {$config['module']}", LOG_WARNING);
             return ['error' => 'Access denied', 'status' => 403];
         }
 
@@ -761,13 +761,13 @@ class ObjectDocumentController
 
         $createResult = $ecmFile->create($user);
         if ($createResult > 0) {
-            dol_syslog("smartauth::ObjectDocumentController::ensureEcmEntry - Created ecm_files entry id=" . $createResult . " for " . $ecmKey);
+            dol_syslog("[SmartAuth] ObjectDocumentController::ensureEcmEntry - Created ecm_files entry id=" . $createResult . " for " . $ecmKey);
             $entry = [
                 'ecm_id' => (int) $createResult,
                 'share' => $ecmFile->share,
             ];
         } else {
-            dol_syslog("smartauth::ObjectDocumentController::ensureEcmEntry - Failed to create ecm_files for " . $ecmKey . ": " . implode(', ', $ecmFile->errors), LOG_WARNING);
+            dol_syslog("[SmartAuth] ObjectDocumentController::ensureEcmEntry - Failed to create ecm_files for " . $ecmKey . ": " . implode(', ', $ecmFile->errors), LOG_WARNING);
             $entry = [
                 'ecm_id' => 0,
                 'share' => '',
@@ -810,7 +810,7 @@ class ObjectDocumentController
         // Entity check (Dolibarr core EcmFiles::fetch does not filter on
         // entity for share-hash lookups, so we must do it ourselves).
         if ((int) $ecmFile->entity !== $entity && (int) $ecmFile->entity !== 0) {
-            dol_syslog('smartauth::ObjectDocumentController::resolveShareHash - cross-entity access denied (file=' . $ecmFile->entity . ', user=' . $entity . ')', LOG_WARNING);
+            dol_syslog('[SmartAuth] ObjectDocumentController::resolveShareHash - cross-entity access denied (file=' . $ecmFile->entity . ', user=' . $entity . ')', LOG_WARNING);
             return null;
         }
 
@@ -915,13 +915,13 @@ class ObjectDocumentController
         $original_file = (($tmp[1] ?? '') ? $tmp[1] . '/' : '') . $filename;
 
         if (empty($modulepart)) {
-            dol_syslog('smartauth::ObjectDocumentController::shareHashAccessAllowed - modulepart not derivable from filepath: ' . $filepath, LOG_WARNING);
+            dol_syslog('[SmartAuth] ObjectDocumentController::shareHashAccessAllowed - modulepart not derivable from filepath: ' . $filepath, LOG_WARNING);
             return false;
         }
 
         $check = dol_check_secure_access_document($modulepart, $original_file, (int) $entity, $user, '', 'read');
         if (empty($check['accessallowed'])) {
-            dol_syslog('smartauth::ObjectDocumentController::shareHashAccessAllowed - access denied for user ' . (int) $user->id . ' on modulepart=' . $modulepart, LOG_WARNING);
+            dol_syslog('[SmartAuth] ObjectDocumentController::shareHashAccessAllowed - access denied for user ' . (int) $user->id . ' on modulepart=' . $modulepart, LOG_WARNING);
             return false;
         }
 
@@ -979,7 +979,7 @@ class ObjectDocumentController
     {
         global $db, $conf;
 
-        dol_syslog("smartauth::ObjectDocumentController::batchIndex");
+        dol_syslog("[SmartAuth] ObjectDocumentController::batchIndex");
 
         // Authentication
         $user = $payload['user'] ?? null;
@@ -1002,7 +1002,7 @@ class ObjectDocumentController
 
         // Check permissions
         if (!$user->hasRight($config['module'], 'read') && !$user->hasRight($config['module'], 'lire')) {
-            dol_syslog("smartauth::ObjectDocumentController::batchIndex - Access denied for user {$user->id} on module {$config['module']}", LOG_WARNING);
+            dol_syslog("[SmartAuth] ObjectDocumentController::batchIndex - Access denied for user {$user->id} on module {$config['module']}", LOG_WARNING);
             return [['error' => 'Access denied'], 403];
         }
 
@@ -1087,7 +1087,7 @@ class ObjectDocumentController
         $docCount = count($documents);
         $objCount = count($accessibleIds);
         $unavailCount = count($unavailableIds);
-        dol_syslog("smartauth::ObjectDocumentController::batchIndex - Found $docCount documents for $objCount $type objects, $unavailCount unavailable");
+        dol_syslog("[SmartAuth] ObjectDocumentController::batchIndex - Found $docCount documents for $objCount $type objects, $unavailCount unavailable");
 
         return [[
             'documents' => $documents,
@@ -1120,7 +1120,7 @@ class ObjectDocumentController
     {
         global $db, $conf;
 
-        dol_syslog("smartauth::ObjectDocumentController::bundle");
+        dol_syslog("[SmartAuth] ObjectDocumentController::bundle");
 
         // Authentication
         $user = $payload['user'] ?? null;
@@ -1215,7 +1215,7 @@ class ObjectDocumentController
         // with mode 0700 and place the bundle inside it.
         $tmpDir = sys_get_temp_dir() . '/smartauth_bundle_' . bin2hex(random_bytes(16));
         if (!@mkdir($tmpDir, 0700, true) && !is_dir($tmpDir)) {
-            dol_syslog('smartauth::ObjectDocumentController::bundle - failed to create temp dir', LOG_ERR);
+            dol_syslog('[SmartAuth] ObjectDocumentController::bundle - failed to create temp dir', LOG_ERR);
             return [['error' => 'Failed to create temp directory'], 500];
         }
         @chmod($tmpDir, 0700);
@@ -1263,7 +1263,7 @@ class ObjectDocumentController
             $docCount = count($included);
             $overCount = count($oversized);
             $remCount = count($remaining);
-            dol_syslog("smartauth::ObjectDocumentController::bundle - ZIP: {$docCount} files, {$overCount} oversized, {$remCount} remaining, {$zipSize} bytes");
+            dol_syslog("[SmartAuth] ObjectDocumentController::bundle - ZIP: {$docCount} files, {$overCount} oversized, {$remCount} remaining, {$zipSize} bytes");
 
             if (is_object($db)) {
                 $db->close();
@@ -1281,7 +1281,7 @@ class ObjectDocumentController
             // Always remove the staging directory even if anything throws,
             // otherwise long-running servers leak temp files.
             $cleanup();
-            dol_syslog('smartauth::ObjectDocumentController::bundle - exception: ' . $e->getMessage(), LOG_ERR);
+            dol_syslog('[SmartAuth] ObjectDocumentController::bundle - exception: ' . $e->getMessage(), LOG_ERR);
             return [['error' => 'Failed to build bundle'], 500];
         }
     }
@@ -1569,7 +1569,7 @@ class ObjectDocumentController
         $required = ['class', 'file', 'module', 'modulepart', 'subdir_method'];
         foreach ($required as $key) {
             if (empty($config[$key])) {
-                dol_syslog("SmartAuth ObjectDocumentController::registerObjectType - Missing required key: $key for type: $type", LOG_WARNING);
+                dol_syslog("[SmartAuth] ObjectDocumentController::registerObjectType - Missing required key: $key for type: $type", LOG_WARNING);
                 return false;
             }
         }

@@ -158,7 +158,7 @@ class QrPairController
             return $this->recordAndReturn($rateLimiter, $clientIp, self::RATE_ACTION_CLAIM, [['error' => 'pairing_not_claimable', 'status' => $fresh['status'] ?? 'unknown'], 409]);
         }
 
-        dol_syslog('SmartAuth QrPairController::claim - pairing ' . $pairingId . ' claimed by ip=' . (string) $claimIp, LOG_INFO);
+        dol_syslog('[SmartAuth] QrPairController::claim - pairing ' . $pairingId . ' claimed by ip=' . (string) $claimIp, LOG_INFO);
 
         return $this->recordAndReturn(
             $rateLimiter,
@@ -230,7 +230,7 @@ class QrPairController
             return $this->recordAndReturn($rateLimiter, $clientIp, self::RATE_ACTION_POLL, [['error' => 'pairing_not_claimed'], 409]);
         }
         if (!hash_equals($expectedHash, SmartAuthQrPairing::hashClaimToken($providedToken))) {
-            dol_syslog('SmartAuth QrPairController::poll - claim_token mismatch for pairing ' . $pairingId, LOG_WARNING);
+            dol_syslog('[SmartAuth] QrPairController::poll - claim_token mismatch for pairing ' . $pairingId, LOG_WARNING);
             return $this->recordAndReturn($rateLimiter, $clientIp, self::RATE_ACTION_POLL, [['error' => 'invalid_claim_token'], 403]);
         }
 
@@ -327,11 +327,11 @@ class QrPairController
         try {
             $tokens = $auth->generateTokenForAuthenticatedUser($user, $entity, $deviceLabel, $deviceUuid);
         } catch (\Throwable $e) {
-            dol_syslog('SmartAuth QrPairController::poll - token issuance failed: ' . $e->getMessage(), LOG_ERR);
+            dol_syslog('[SmartAuth] QrPairController::poll - token issuance failed: ' . $e->getMessage(), LOG_ERR);
             return [['error' => 'token_issuance_failed'], 500];
         }
 
-        dol_syslog('SmartAuth QrPairController::poll - issued tokens for user_id=' . $userId . ' pairing=' . $row['pairing_id'], LOG_INFO);
+        dol_syslog('[SmartAuth] QrPairController::poll - issued tokens for user_id=' . $userId . ' pairing=' . $row['pairing_id'], LOG_INFO);
 
         // Surface the same identity fields as /login so the mobile's
         // onSuccess handler (which often hydrates a Redux store keyed by

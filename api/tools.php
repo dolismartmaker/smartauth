@@ -35,6 +35,18 @@ class JsonReplyEmittedError extends \Error
 
 function json_reply($message, $code)
 {
+	// Trace every reply with its HTTP status AND the exact caller (file:line +
+	// method) so any error response (401/403/...) is attributable in the logs
+	// without guessing. Cheap: only a 2-frame backtrace.
+	$bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
+	$origin = isset($bt[0]['file']) ? basename($bt[0]['file']) . ':' . ($bt[0]['line'] ?? '?') : 'unknown';
+	$caller = isset($bt[1]['function'])
+		? (($bt[1]['class'] ?? '') . ($bt[1]['type'] ?? '') . $bt[1]['function'] . '()')
+		: 'global';
+	$msgFlat = is_string($message) ? $message : json_encode($message);
+	dol_syslog("[SmartAuth] json_reply: HTTP $code from $caller at $origin -- message=" . $msgFlat,
+		((int) $code >= 400 ? LOG_WARNING : LOG_DEBUG));
+
 	// remove any string that could create an invalid JSON
 	// such as PHP Notice, Warning, logs...
 	ob_start();

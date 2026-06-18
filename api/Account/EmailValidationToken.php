@@ -114,7 +114,7 @@ class EmailValidationToken
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth EmailValidationToken: insert failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
+            dol_syslog('[SmartAuth] EmailValidationToken: insert failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
             return -1;
         }
 
@@ -141,7 +141,7 @@ class EmailValidationToken
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth EmailValidationToken: lookup failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
+            dol_syslog('[SmartAuth] EmailValidationToken: lookup failed: ' . (method_exists($this->db, 'lasterror') ? $this->db->lasterror() : ''), LOG_ERR);
             return null;
         }
 
@@ -180,7 +180,7 @@ class EmailValidationToken
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth EmailValidationToken: markUsed failed for rowid ' . $rowid, LOG_ERR);
+            dol_syslog('[SmartAuth] EmailValidationToken: markUsed failed for rowid ' . $rowid, LOG_ERR);
             return false;
         }
         return true;
@@ -204,7 +204,7 @@ class EmailValidationToken
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth EmailValidationToken: invalidate failed', LOG_ERR);
+            dol_syslog('[SmartAuth] EmailValidationToken: invalidate failed', LOG_ERR);
             return -1;
         }
         return (int) $this->db->affected_rows($resql);

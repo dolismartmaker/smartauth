@@ -330,7 +330,7 @@ class SmartAuthOAuthClient extends CommonObject
      */
     public function fetchAll($sortorder = '', $sortfield = '', $limit = 0, $offset = 0, array $filter = array(), $filtermode = 'AND')
     {
-        dol_syslog("SmartAuth ".__METHOD__, LOG_DEBUG);
+        dol_syslog("[SmartAuth] ".__METHOD__, LOG_DEBUG);
 
         $records = array();
 
@@ -384,7 +384,7 @@ class SmartAuthOAuthClient extends CommonObject
             return $records;
         } else {
             $this->errors[] = 'Error ' . $this->db->lasterror();
-            dol_syslog("SmartAuth ".__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
+            dol_syslog("[SmartAuth] ".__METHOD__ . ' ' . join(',', $this->errors), LOG_ERR);
 
             return -1;
         }
@@ -473,7 +473,7 @@ class SmartAuthOAuthClient extends CommonObject
     public function verifySecret($secret)
     {
         if (empty($this->client_secret)) {
-            dol_syslog('SmartAuthOAuthClient::verifySecret called with empty stored hash for client_id=' . ($this->client_id ?? '?') . ' - rejecting', LOG_WARNING);
+            dol_syslog('[SmartAuth] SmartAuthOAuthClient::verifySecret called with empty stored hash for client_id=' . ($this->client_id ?? '?') . ' - rejecting', LOG_WARNING);
             return false;
         }
         return password_verify($secret, $this->client_secret);

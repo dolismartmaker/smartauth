@@ -101,7 +101,7 @@ trait ResponseTrait
      */
     protected function sendError(string $error, string $description, int $status = 400, ?string $wwwAuthenticate = null): void
     {
-        dol_syslog('SmartAuth OAuth2: Error ' . $error . ': ' . $description, LOG_INFO);
+        dol_syslog('[SmartAuth] OAuth2: Error ' . $error . ': ' . $description, LOG_INFO);
 
         $response = [
             'error' => $error,

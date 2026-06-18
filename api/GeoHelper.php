@@ -61,7 +61,7 @@ class GeoHelper
         $userId = (int) $userId;
 
         if ($ecmFileId <= 0 || $userId <= 0) {
-            dol_syslog("SmartAuth GeoHelper::set - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::set - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
             return false;
         }
 
@@ -104,7 +104,7 @@ class GeoHelper
         $res = $db->query($sql);
         if (!$res) {
             $err = method_exists($db, 'lasterror') ? $db->lasterror() : '';
-            dol_syslog("SmartAuth GeoHelper::set - UPDATE failed on ecmfile $ecmFileId: $err", LOG_ERR);
+            dol_syslog("[SmartAuth] GeoHelper::set - UPDATE failed on ecmfile $ecmFileId: $err", LOG_ERR);
             return false;
         }
 
@@ -131,7 +131,7 @@ class GeoHelper
         $userId = (int) $userId;
 
         if ($ecmFileId <= 0 || $userId <= 0) {
-            dol_syslog("SmartAuth GeoHelper::get - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::get - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
             return null;
         }
 
@@ -152,7 +152,7 @@ class GeoHelper
         $res = $db->query($sql);
         if (!$res) {
             $err = method_exists($db, 'lasterror') ? $db->lasterror() : '';
-            dol_syslog("SmartAuth GeoHelper::get - SELECT failed on ecmfile $ecmFileId: $err", LOG_ERR);
+            dol_syslog("[SmartAuth] GeoHelper::get - SELECT failed on ecmfile $ecmFileId: $err", LOG_ERR);
             return null;
         }
 
@@ -188,7 +188,7 @@ class GeoHelper
         $userId = (int) $userId;
 
         if ($ecmFileId <= 0 || $userId <= 0) {
-            dol_syslog("SmartAuth GeoHelper::clear - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::clear - invalid ids ecmFileId=$ecmFileId userId=$userId", LOG_WARNING);
             return false;
         }
 
@@ -203,7 +203,7 @@ class GeoHelper
         $res = $db->query($sql);
         if (!$res) {
             $err = method_exists($db, 'lasterror') ? $db->lasterror() : '';
-            dol_syslog("SmartAuth GeoHelper::clear - UPDATE failed on ecmfile $ecmFileId: $err", LOG_ERR);
+            dol_syslog("[SmartAuth] GeoHelper::clear - UPDATE failed on ecmfile $ecmFileId: $err", LOG_ERR);
             return false;
         }
 
@@ -231,26 +231,26 @@ class GeoHelper
     public static function validate(array $raw)
     {
         if (!array_key_exists('lat', $raw) || !array_key_exists('lon', $raw)) {
-            dol_syslog("SmartAuth GeoHelper::validate - missing lat or lon", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::validate - missing lat or lon", LOG_WARNING);
             return null;
         }
         if (!is_numeric($raw['lat']) || !is_numeric($raw['lon'])) {
-            dol_syslog("SmartAuth GeoHelper::validate - lat or lon is not numeric", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::validate - lat or lon is not numeric", LOG_WARNING);
             return null;
         }
         $lat = (float) $raw['lat'];
         $lon = (float) $raw['lon'];
 
         if (!is_finite($lat) || !is_finite($lon)) {
-            dol_syslog("SmartAuth GeoHelper::validate - non-finite lat or lon (lat=$lat lon=$lon)", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::validate - non-finite lat or lon (lat=$lat lon=$lon)", LOG_WARNING);
             return null;
         }
         if ($lat < -90.0 || $lat > 90.0) {
-            dol_syslog("SmartAuth GeoHelper::validate - lat $lat out of [-90, 90]", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::validate - lat $lat out of [-90, 90]", LOG_WARNING);
             return null;
         }
         if ($lon < -180.0 || $lon > 180.0) {
-            dol_syslog("SmartAuth GeoHelper::validate - lon $lon out of [-180, 180]", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::validate - lon $lon out of [-180, 180]", LOG_WARNING);
             return null;
         }
 
@@ -258,7 +258,7 @@ class GeoHelper
         if (array_key_exists('resultcode', $raw) && $raw['resultcode'] !== null && $raw['resultcode'] !== '') {
             if (!is_string($raw['resultcode']) || !preg_match(self::RESULTCODE_REGEX, $raw['resultcode'])) {
                 $disp = is_scalar($raw['resultcode']) ? (string) $raw['resultcode'] : gettype($raw['resultcode']);
-                dol_syslog("SmartAuth GeoHelper::validate - invalid resultcode '$disp'", LOG_WARNING);
+                dol_syslog("[SmartAuth] GeoHelper::validate - invalid resultcode '$disp'", LOG_WARNING);
                 return null;
             }
             $rc = $raw['resultcode'];
@@ -289,16 +289,16 @@ class GeoHelper
         $res = $db->query($sql);
         if (!$res) {
             $err = method_exists($db, 'lasterror') ? $db->lasterror() : '';
-            dol_syslog("SmartAuth GeoHelper::$op - owner check SELECT failed on ecmfile $ecmFileId: $err", LOG_ERR);
+            dol_syslog("[SmartAuth] GeoHelper::$op - owner check SELECT failed on ecmfile $ecmFileId: $err", LOG_ERR);
             return false;
         }
         $obj = $db->fetch_object($res);
         if (!$obj) {
-            dol_syslog("SmartAuth GeoHelper::$op - ecmfile $ecmFileId not found", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::$op - ecmfile $ecmFileId not found", LOG_WARNING);
             return false;
         }
         if ((int) $obj->fk_user_c !== (int) $userId) {
-            dol_syslog("SmartAuth GeoHelper::$op - owner mismatch on ecmfile $ecmFileId (fk_user_c={$obj->fk_user_c}, userId=$userId)", LOG_WARNING);
+            dol_syslog("[SmartAuth] GeoHelper::$op - owner mismatch on ecmfile $ecmFileId (fk_user_c={$obj->fk_user_c}, userId=$userId)", LOG_WARNING);
             return false;
         }
         return true;

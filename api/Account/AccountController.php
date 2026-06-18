@@ -386,7 +386,7 @@ class AccountController
     private function renderTemplateToString(string $path, array $vars): string
     {
         if (!file_exists($path)) {
-            dol_syslog('SmartAuth AccountController: missing template ' . $path, LOG_ERR);
+            dol_syslog('[SmartAuth] AccountController: missing template ' . $path, LOG_ERR);
             return '';
         }
         ob_start();
@@ -434,11 +434,11 @@ class AccountController
             'mail'
         );
         if (!empty($mail->error)) {
-            dol_syslog('SmartAuth AccountController: CMailFile init failed: ' . $mail->error, LOG_ERR);
+            dol_syslog('[SmartAuth] AccountController: CMailFile init failed: ' . $mail->error, LOG_ERR);
             return false;
         }
         if (!$mail->sendfile()) {
-            dol_syslog('SmartAuth AccountController: email send failed: ' . ($mail->error ?? ''), LOG_ERR);
+            dol_syslog('[SmartAuth] AccountController: email send failed: ' . ($mail->error ?? ''), LOG_ERR);
             return false;
         }
         return true;
@@ -614,7 +614,7 @@ class AccountController
         header('Content-Type: text/html; charset=utf-8');
         $path = dirname(__DIR__, 2) . '/tpl/' . $templateName . '.tpl.php';
         if (!file_exists($path)) {
-            dol_syslog('SmartAuth AccountController: template not found: ' . $path, LOG_ERR);
+            dol_syslog('[SmartAuth] AccountController: template not found: ' . $path, LOG_ERR);
             http_response_code(500);
             echo 'Template not found';
             exit;

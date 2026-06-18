@@ -115,13 +115,13 @@ class TokenService
         // breaks downstream proxies and browsers.
         $payloadJson = json_encode($payload);
         if ($payloadJson === false) {
-            dol_syslog('SmartAuth TokenService: createAccessToken json_encode failed: ' . json_last_error_msg(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: createAccessToken json_encode failed: ' . json_last_error_msg(), LOG_ERR);
             throw new \RuntimeException('Failed to encode JWT payload');
         }
         $payloadSize = strlen($payloadJson);
         if ($payloadSize > self::MAX_JWT_PAYLOAD_BYTES) {
             dol_syslog(
-                'SmartAuth TokenService: createAccessToken payload too large (' . $payloadSize
+                '[SmartAuth] TokenService: createAccessToken payload too large (' . $payloadSize
                 . ' bytes > ' . self::MAX_JWT_PAYLOAD_BYTES . ' bytes max) for user=' . $userId
                 . ' client=' . $clientId,
                 LOG_ERR
@@ -168,27 +168,27 @@ class TokenService
 
         // Check expiration (mandatory: every access token must have exp)
         if (!isset($payload['exp']) || (int) $payload['exp'] < $now) {
-            dol_syslog('SmartAuth TokenService: Access token expired', LOG_DEBUG);
+            dol_syslog('[SmartAuth] TokenService: Access token expired', LOG_DEBUG);
             return null;
         }
 
         // Check not-before (optional). If present and still in the future
         // beyond skew, reject.
         if (isset($payload['nbf']) && (int) $payload['nbf'] > $now + $skew) {
-            dol_syslog('SmartAuth TokenService: Access token not yet valid (nbf)', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: Access token not yet valid (nbf)', LOG_WARNING);
             return null;
         }
 
         // Check issued-at (optional). A token with iat in the future beyond
         // skew is suspicious - reject.
         if (isset($payload['iat']) && (int) $payload['iat'] > $now + $skew) {
-            dol_syslog('SmartAuth TokenService: Access token issued in the future (iat)', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: Access token issued in the future (iat)', LOG_WARNING);
             return null;
         }
 
         // Check issuer
         if (!isset($payload['iss']) || $payload['iss'] !== OAuthConfig::getIssuer()) {
-            dol_syslog('SmartAuth TokenService: Invalid issuer', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: Invalid issuer', LOG_WARNING);
             return null;
         }
 
@@ -198,7 +198,7 @@ class TokenService
         // tolerated during the rollout window (they expire within the access
         // token TTL).
         if (isset($payload['tok']) && $payload['tok'] !== 'access') {
-            dol_syslog('SmartAuth TokenService: token type mismatch (tok=' . $payload['tok'] . ', expected access)', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: token type mismatch (tok=' . $payload['tok'] . ', expected access)', LOG_WARNING);
             return null;
         }
 
@@ -207,7 +207,7 @@ class TokenService
         // expects audience B (RFC 8725 §3.10, RFC 7519 §4.1.3).
         if ($expectedAudience !== null) {
             if (!isset($payload['aud'])) {
-                dol_syslog('SmartAuth TokenService: aud claim missing', LOG_WARNING);
+                dol_syslog('[SmartAuth] TokenService: aud claim missing', LOG_WARNING);
                 return null;
             }
             $audClaim = $payload['aud'];
@@ -215,7 +215,7 @@ class TokenService
                 ? in_array($expectedAudience, $audClaim, true)
                 : ($audClaim === $expectedAudience);
             if (!$audMatches) {
-                dol_syslog('SmartAuth TokenService: aud mismatch (expected=' . $expectedAudience . ')', LOG_WARNING);
+                dol_syslog('[SmartAuth] TokenService: aud mismatch (expected=' . $expectedAudience . ')', LOG_WARNING);
                 return null;
             }
         }
@@ -225,7 +225,7 @@ class TokenService
             $token = new \SmartAuthOAuthToken($this->db);
             $result = $token->fetchByJti($payload['jti']);
             if ($result > 0 && $token->isRevoked()) {
-                dol_syslog('SmartAuth TokenService: Access token revoked (jti=' . $payload['jti'] . ')', LOG_INFO);
+                dol_syslog('[SmartAuth] TokenService: Access token revoked (jti=' . $payload['jti'] . ')', LOG_INFO);
                 return null;
             }
         }
@@ -273,11 +273,11 @@ class TokenService
 
         $result = $tokenRecord->create($user);
         if ($result < 0) {
-            dol_syslog('SmartAuth TokenService: Failed to create refresh token: ' . implode(', ', $tokenRecord->errors), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: Failed to create refresh token: ' . implode(', ', $tokenRecord->errors), LOG_ERR);
             throw new \RuntimeException('Failed to create refresh token');
         }
 
-        dol_syslog('SmartAuth TokenService: Refresh token created for user ' . $userId, LOG_INFO);
+        dol_syslog('[SmartAuth] TokenService: Refresh token created for user ' . $userId, LOG_INFO);
 
         return [
             'token' => $plainToken,
@@ -304,13 +304,13 @@ class TokenService
         $result = $tokenRecord->fetchByToken($token);
 
         if ($result <= 0) {
-            dol_syslog('SmartAuth TokenService: Refresh token not found', LOG_DEBUG);
+            dol_syslog('[SmartAuth] TokenService: Refresh token not found', LOG_DEBUG);
             return null;
         }
 
         // Must be a refresh token
         if (!$tokenRecord->isRefreshToken()) {
-            dol_syslog('SmartAuth TokenService: Token is not a refresh token', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: Token is not a refresh token', LOG_WARNING);
             return null;
         }
 
@@ -318,7 +318,7 @@ class TokenService
         // Per RFC 9700, revoke the entire family.
         if ($tokenRecord->isRevoked()) {
             dol_syslog(
-                'SmartAuth TokenService: refresh token replay detected (id=' . (int) $tokenRecord->id
+                '[SmartAuth] TokenService: refresh token replay detected (id=' . (int) $tokenRecord->id
                 . ', user=' . (int) $tokenRecord->fk_user . ') - revoking family',
                 LOG_WARNING
             );
@@ -328,7 +328,7 @@ class TokenService
 
         // Check validity (not expired)
         if (!$tokenRecord->isValid()) {
-            dol_syslog('SmartAuth TokenService: Refresh token is invalid (expired)', LOG_INFO);
+            dol_syslog('[SmartAuth] TokenService: Refresh token is invalid (expired)', LOG_INFO);
             return null;
         }
 
@@ -388,7 +388,7 @@ class TokenService
                 // Lost the race - another caller already rotated this token.
                 // Treat as a replay and revoke the family before returning.
                 dol_syslog(
-                    'SmartAuth TokenService: rotateRefreshToken concurrent reuse detected (id=' . (int) $oldToken->id . ')',
+                    '[SmartAuth] TokenService: rotateRefreshToken concurrent reuse detected (id=' . (int) $oldToken->id . ')',
                     LOG_WARNING
                 );
                 $this->db->rollback();
@@ -419,7 +419,7 @@ class TokenService
 
             $this->db->commit();
             $inTx = false;
-            dol_syslog('SmartAuth TokenService: Refresh token rotated (old_id=' . (int) $oldToken->id . ')', LOG_INFO);
+            dol_syslog('[SmartAuth] TokenService: Refresh token rotated (old_id=' . (int) $oldToken->id . ')', LOG_INFO);
             return $newToken;
         } catch (\Throwable $e) {
             if ($inTx) {
@@ -568,7 +568,7 @@ class TokenService
 
         $result = $tokenRecord->create($user);
         if ($result < 0) {
-            dol_syslog('SmartAuth TokenService: Failed to store access token: ' . implode(', ', $tokenRecord->errors), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: Failed to store access token: ' . implode(', ', $tokenRecord->errors), LOG_ERR);
             throw new \RuntimeException('Failed to store access token');
         }
 
@@ -591,7 +591,7 @@ class TokenService
             $result = $tokenRecord->fetchByToken($token);
             if ($result > 0) {
                 $tokenRecord->revokeWithChildren();
-                dol_syslog('SmartAuth TokenService: Refresh token revoked (id=' . $tokenRecord->id . ')', LOG_INFO);
+                dol_syslog('[SmartAuth] TokenService: Refresh token revoked (id=' . $tokenRecord->id . ')', LOG_INFO);
                 return true;
             }
         }
@@ -601,13 +601,13 @@ class TokenService
             $result = $tokenRecord->fetchByJti($token);
             if ($result > 0) {
                 $tokenRecord->revoke();
-                dol_syslog('SmartAuth TokenService: Access token revoked (jti=' . $token . ')', LOG_INFO);
+                dol_syslog('[SmartAuth] TokenService: Access token revoked (jti=' . $token . ')', LOG_INFO);
                 return true;
             }
         }
 
         // Token not found - per RFC 7009, this is not an error
-        dol_syslog('SmartAuth TokenService: Token not found for revocation', LOG_DEBUG);
+        dol_syslog('[SmartAuth] TokenService: Token not found for revocation', LOG_DEBUG);
         return false;
     }
 
@@ -627,10 +627,10 @@ class TokenService
     {
         $count = \SmartAuthOAuthToken::revokeAllForUserAndClient($this->db, $fk_user, $fk_client_pk);
         if ($count < 0) {
-            dol_syslog('SmartAuth TokenService: revokeAllForUserAndClient failed for user ' . $fk_user . ' client ' . $fk_client_pk, LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: revokeAllForUserAndClient failed for user ' . $fk_user . ' client ' . $fk_client_pk, LOG_ERR);
             return -1;
         }
-        dol_syslog('SmartAuth TokenService: Revoked ' . $count . ' tokens for user ' . $fk_user . ' client ' . $fk_client_pk, LOG_INFO);
+        dol_syslog('[SmartAuth] TokenService: Revoked ' . $count . ' tokens for user ' . $fk_user . ' client ' . $fk_client_pk, LOG_INFO);
         return $count;
     }
 
@@ -648,10 +648,10 @@ class TokenService
     {
         $count = \SmartAuthOAuthToken::revokeAllForUser($this->db, $fk_user);
         if ($count < 0) {
-            dol_syslog('SmartAuth TokenService: revokeAllForUser failed for user ' . $fk_user, LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: revokeAllForUser failed for user ' . $fk_user, LOG_ERR);
             return -1;
         }
-        dol_syslog('SmartAuth TokenService: Revoked ' . $count . ' tokens for user ' . $fk_user, LOG_INFO);
+        dol_syslog('[SmartAuth] TokenService: Revoked ' . $count . ' tokens for user ' . $fk_user, LOG_INFO);
         return $count;
     }
 
@@ -682,7 +682,7 @@ class TokenService
     {
         $jti = trim($jti);
         if ($jti === '' || $expiresAt <= 0) {
-            dol_syslog('SmartAuth TokenService: addRevokedJti rejected empty jti or non-positive expiresAt', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: addRevokedJti rejected empty jti or non-positive expiresAt', LOG_WARNING);
             return -1;
         }
 
@@ -695,7 +695,7 @@ class TokenService
             . " AND entity IN (" . getEntity('smartauthrevokedjti') . ")";
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth TokenService: addRevokedJti SELECT failed: ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: addRevokedJti SELECT failed: ' . $this->db->lasterror(), LOG_ERR);
             return -1;
         }
         $exists = ($this->db->num_rows($resql) > 0);
@@ -720,10 +720,10 @@ class TokenService
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth TokenService: addRevokedJti INSERT failed for jti=' . $jti . ': ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: addRevokedJti INSERT failed for jti=' . $jti . ': ' . $this->db->lasterror(), LOG_ERR);
             return -1;
         }
-        dol_syslog('SmartAuth TokenService: jti revoked (jti=' . $jti . ', reason=' . $reason . ')', LOG_INFO);
+        dol_syslog('[SmartAuth] TokenService: jti revoked (jti=' . $jti . ', reason=' . $reason . ')', LOG_INFO);
         return 1;
     }
 
@@ -760,7 +760,7 @@ class TokenService
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth TokenService: listRevokedJtiActiveForUserAndClient SQL failed: ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: listRevokedJtiActiveForUserAndClient SQL failed: ' . $this->db->lasterror(), LOG_ERR);
             return $results;
         }
         while ($obj = $this->db->fetch_object($resql)) {
@@ -798,7 +798,7 @@ class TokenService
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth TokenService: listRevokedJtiActiveForUser SQL failed: ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: listRevokedJtiActiveForUser SQL failed: ' . $this->db->lasterror(), LOG_ERR);
             return $results;
         }
         while ($obj = $this->db->fetch_object($resql)) {
@@ -840,7 +840,7 @@ class TokenService
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth TokenService: listRevokedJtiSince SQL failed: ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: listRevokedJtiSince SQL failed: ' . $this->db->lasterror(), LOG_ERR);
             return $results;
         }
         while ($obj = $this->db->fetch_object($resql)) {
@@ -869,12 +869,12 @@ class TokenService
 
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog('SmartAuth TokenService: purgeExpiredRevokedJti SQL failed: ' . $this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] TokenService: purgeExpiredRevokedJti SQL failed: ' . $this->db->lasterror(), LOG_ERR);
             return -1;
         }
         $affected = (int) $this->db->affected_rows($resql);
         if ($affected > 0) {
-            dol_syslog('SmartAuth TokenService: purged ' . $affected . ' expired revoked_jti rows', LOG_INFO);
+            dol_syslog('[SmartAuth] TokenService: purged ' . $affected . ' expired revoked_jti rows', LOG_INFO);
         }
         return $affected;
     }
@@ -921,7 +921,7 @@ class TokenService
     {
         $parts = explode('.', $jwt);
         if (count($parts) !== 3) {
-            dol_syslog('SmartAuth TokenService: Invalid JWT format', LOG_DEBUG);
+            dol_syslog('[SmartAuth] TokenService: Invalid JWT format', LOG_DEBUG);
             return null;
         }
 
@@ -930,13 +930,13 @@ class TokenService
         // Decode header
         $header = json_decode(JwtKeyHelper::base64UrlDecode($headerEncoded), true);
         if ($header === null || !isset($header['alg'])) {
-            dol_syslog('SmartAuth TokenService: Invalid JWT header', LOG_DEBUG);
+            dol_syslog('[SmartAuth] TokenService: Invalid JWT header', LOG_DEBUG);
             return null;
         }
 
         // Only RS256 supported
         if ($header['alg'] !== 'RS256') {
-            dol_syslog('SmartAuth TokenService: Unsupported JWT algorithm: ' . $header['alg'], LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: Unsupported JWT algorithm: ' . $header['alg'], LOG_WARNING);
             return null;
         }
 
@@ -945,7 +945,7 @@ class TokenService
         // but never accept any other media type, to prevent confusion with
         // other JOSE-shaped artefacts.
         if (isset($header['typ']) && $header['typ'] !== 'JWT' && $header['typ'] !== 'jwt') {
-            dol_syslog('SmartAuth TokenService: Unexpected JWT typ: ' . $header['typ'], LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: Unexpected JWT typ: ' . $header['typ'], LOG_WARNING);
             return null;
         }
 
@@ -964,14 +964,14 @@ class TokenService
 
         $valid = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA256);
         if ($valid !== 1) {
-            dol_syslog('SmartAuth TokenService: JWT signature verification failed', LOG_WARNING);
+            dol_syslog('[SmartAuth] TokenService: JWT signature verification failed', LOG_WARNING);
             return null;
         }
 
         // Decode payload
         $payload = json_decode(JwtKeyHelper::base64UrlDecode($payloadEncoded), true);
         if ($payload === null) {
-            dol_syslog('SmartAuth TokenService: Invalid JWT payload', LOG_DEBUG);
+            dol_syslog('[SmartAuth] TokenService: Invalid JWT payload', LOG_DEBUG);
             return null;
         }
 

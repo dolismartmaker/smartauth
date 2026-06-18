@@ -242,7 +242,7 @@ if ($action == 'delete_token' && $permtoedit) {
 				header("Location: " . $_SERVER['PHP_SELF'] . '?id=' . $id);
 				exit;
 			} else {
-				dol_syslog("SmartAuth : error on delete token id #" . $token_id . " : " . $db->lasterror(), LOG_ERR);
+				dol_syslog("[SmartAuth] error on delete token id #" . $token_id . " : " . $db->lasterror(), LOG_ERR);
 				setEventMessages($langs->trans("ErrorDeletingToken"), null, 'errors');
 			}
 		} else {
@@ -276,7 +276,7 @@ if (in_array($action, array('masstokenrevoke', 'masstokendelete'), true) && $per
 		if ($db->query($sqlOne)) {
 			$tokDone++;
 		} else {
-			dol_syslog("SmartAuth : token mass action '" . $action . "' failed on id #" . $tokOne . " : " . $db->lasterror(), LOG_ERR);
+			dol_syslog("[SmartAuth] token mass action '" . $action . "' failed on id #" . $tokOne . " : " . $db->lasterror(), LOG_ERR);
 		}
 	}
 	setEventMessages($langs->trans($action === 'masstokendelete' ? 'TokensMassDeleted' : 'TokensMassRevoked', $tokDone), null, 'mesgs');
@@ -348,7 +348,7 @@ if (in_array($qrpairAction, array('qrpairstatus', 'qrpairconfirm', 'qrpaircancel
 	if ((int) $qrRow['fk_user'] !== (int) $user->id) {
 		// The pairing exists but belongs to someone else: never leak this
 		// across users. Refuse with a generic 403.
-		dol_syslog('SmartAuth user_tab.php: cross-user qrpair access by user_id=' . $user->id . ' on pairing fk_user=' . $qrRow['fk_user'], LOG_WARNING);
+		dol_syslog('[SmartAuth] user_tab.php: cross-user qrpair access by user_id=' . $user->id . ' on pairing fk_user=' . $qrRow['fk_user'], LOG_WARNING);
 		http_response_code(403);
 		echo json_encode(array('error' => 'forbidden'));
 		exit;

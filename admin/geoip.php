@@ -111,13 +111,13 @@ if ($action == "download") {
     }
 
     if (file_exists($dest)) {
-        dol_syslog("smartauth / geoip enable file $dest as geoip source... !");
+        dol_syslog("[SmartAuth] / geoip enable file $dest as geoip source... !");
         dolibarr_set_const($db, 'GEOIP_VERSION', '1');
         dolibarr_set_const($db, 'MAIN_MODULE_GEOIPMAXMIND', '1');
         dolibarr_set_const($db, 'GEOIPMAXMIND_COUNTRY_DATAFILE', $dest);
         $out .= "<p>Configuration is done, GeoIP is enabled !</p>";
     } else {
-        dol_syslog("smartauth / geoip error file $dest does not exists !");
+        dol_syslog("[SmartAuth] / geoip error file $dest does not exists !");
     }
 } else {
     if (file_exists($dest)) {

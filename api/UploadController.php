@@ -49,14 +49,14 @@ class UploadController
      */
     public function store($payload = null)
     {
-        dol_syslog("SmartAuth UploadController::store");
+        dol_syslog("[SmartAuth] UploadController::store");
 
         $user = $payload['user'] ?? null;
         $userId = is_object($user) ? (int) $user->id : 0;
         $entity = isset($payload['entity']) ? (int) $payload['entity'] : null;
 
         if ($userId <= 0) {
-            dol_syslog("SmartAuth UploadController::store - Missing authenticated user", LOG_WARNING);
+            dol_syslog("[SmartAuth] UploadController::store - Missing authenticated user", LOG_WARNING);
             return [['error' => 'Authentication required'], 401];
         }
 
@@ -82,7 +82,7 @@ class UploadController
             } else {
                 // Malformed key: log and ignore (legacy path), per spec
                 // section 14.2 -- a 400 here would surprise old clients.
-                dol_syslog("SmartAuth UploadController::store - Ignoring malformed Idempotency-Key", LOG_NOTICE);
+                dol_syslog("[SmartAuth] UploadController::store - Ignoring malformed Idempotency-Key", LOG_NOTICE);
             }
         }
 
@@ -137,7 +137,7 @@ class UploadController
 
         $existed = SmartUpload::get($uploadId, $userId);
         SmartUpload::delete($uploadId, $userId);
-        dol_syslog("SmartAuth UploadController::destroy - Removed upload $uploadId for user $userId (existed=" . ($existed ? '1' : '0') . ")");
+        dol_syslog("[SmartAuth] UploadController::destroy - Removed upload $uploadId for user $userId (existed=" . ($existed ? '1' : '0') . ")");
 
         return [['deleted' => true], 200];
     }
@@ -166,7 +166,7 @@ class UploadController
                 // Pathological: INSERT failed and row still absent.
                 // Log and fall through to legacy path so the user is not
                 // permanently blocked.
-                dol_syslog("SmartAuth UploadController: idempotency INSERT race left no row, falling through", LOG_WARNING);
+                dol_syslog("[SmartAuth] UploadController: idempotency INSERT race left no row, falling through", LOG_WARNING);
                 return null;
             }
         }
@@ -177,7 +177,7 @@ class UploadController
                 $body = ['upload_id' => $existing['upload_id']];
             }
             $status = (int) ($existing['http_status'] ?: 200);
-            dol_syslog("SmartAuth UploadController: replaying completed idempotent response for key=" . substr($key, 0, 8) . "...");
+            dol_syslog("[SmartAuth] UploadController: replaying completed idempotent response for key=" . substr($key, 0, 8) . "...");
             return [$body, $status];
         }
 
@@ -230,7 +230,7 @@ class UploadController
     {
         $files = $this->collectFiles();
         if (empty($files)) {
-            dol_syslog("SmartAuth UploadController::processFiles - No file in request", LOG_WARNING);
+            dol_syslog("[SmartAuth] UploadController::processFiles - No file in request", LOG_WARNING);
             return [['error' => 'No file uploaded'], 400];
         }
 
@@ -240,7 +240,7 @@ class UploadController
         foreach ($files as $index => $file) {
             $err = SmartUpload::validate($file);
             if ($err !== null) {
-                dol_syslog("SmartAuth UploadController::processFiles - Rejected file $index: $err", LOG_WARNING);
+                dol_syslog("[SmartAuth] UploadController::processFiles - Rejected file $index: $err", LOG_WARNING);
                 $errors[] = [
                     'index' => $index,
                     'filename' => $file['name'] ?? null,
@@ -252,7 +252,7 @@ class UploadController
             try {
                 $info = SmartUpload::store($file, $userId, $entity);
             } catch (\Throwable $e) {
-                dol_syslog("SmartAuth UploadController::processFiles - Storage failure: " . $e->getMessage(), LOG_ERR);
+                dol_syslog("[SmartAuth] UploadController::processFiles - Storage failure: " . $e->getMessage(), LOG_ERR);
                 $errors[] = [
                     'index' => $index,
                     'filename' => $file['name'] ?? null,

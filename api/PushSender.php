@@ -55,13 +55,13 @@ class PushSender
 
         $subscriptions = $this->getTargetSubscriptions($target, (int) $conf->entity);
         if (empty($subscriptions)) {
-            dol_syslog('PushSender::send no active subscription for target '.json_encode($target), LOG_NOTICE);
+            dol_syslog('[SmartAuth] PushSender::send no active subscription for target '.json_encode($target), LOG_NOTICE);
             return [['sent' => 0, 'failed' => 0, 'results' => [], 'error' => 'No active subscriptions found'], 404];
         }
 
         $vapidKeys = VapidKeyHelper::readKeys($this->db);
         if (empty($vapidKeys['publicKey']) || empty($vapidKeys['privateKey'])) {
-            dol_syslog('PushSender::send VAPID keys not configured', LOG_ERR);
+            dol_syslog('[SmartAuth] PushSender::send VAPID keys not configured', LOG_ERR);
             return [['error' => 'VAPID keys not configured'], 500];
         }
 
@@ -92,7 +92,7 @@ class PushSender
             } else {
                 $failed++;
                 $row['error'] = $reason;
-                dol_syslog('PushSender::send failed sub='.((int) $sub['rowid']).' reason='.$reason, LOG_WARNING);
+                dol_syslog('[SmartAuth] PushSender::send failed sub='.((int) $sub['rowid']).' reason='.$reason, LOG_WARNING);
                 if ($expired) {
                     $this->removeSubscription((int) $sub['rowid']);
                     $row['removed'] = true;
@@ -139,7 +139,7 @@ class PushSender
             }
         } else {
             // No valid target -> never broadcast implicitly.
-            dol_syslog('PushSender::getTargetSubscriptions called without a valid target', LOG_NOTICE);
+            dol_syslog('[SmartAuth] PushSender::getTargetSubscriptions called without a valid target', LOG_NOTICE);
             return [];
         }
 
@@ -160,7 +160,7 @@ class PushSender
                 ];
             }
         } else {
-            dol_syslog('PushSender::getTargetSubscriptions query failed: '.$this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushSender::getTargetSubscriptions query failed: '.$this->db->lasterror(), LOG_ERR);
         }
         return $out;
     }
@@ -196,7 +196,7 @@ class PushSender
         $sql .= " SET date_last_used = '".$this->db->idate(dol_now())."', success_count = success_count + 1, error_count = 0";
         $sql .= " WHERE rowid = ".(int) $id;
         if (!$this->db->query($sql)) {
-            dol_syslog('PushSender::updateSubscriptionSuccess failed sub='.((int) $id).': '.$this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushSender::updateSubscriptionSuccess failed sub='.((int) $id).': '.$this->db->lasterror(), LOG_ERR);
         }
     }
 
@@ -212,14 +212,14 @@ class PushSender
         $sql .= ", last_error = '".$this->db->escape(substr((string) $error, 0, 255))."'";
         $sql .= " WHERE rowid = ".(int) $id;
         if (!$this->db->query($sql)) {
-            dol_syslog('PushSender::updateSubscriptionError failed sub='.((int) $id).': '.$this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushSender::updateSubscriptionError failed sub='.((int) $id).': '.$this->db->lasterror(), LOG_ERR);
         }
 
         // Disable after MAX_ERROR_COUNT consecutive failures.
         $sql = "UPDATE ".MAIN_DB_PREFIX."smartauth_push_subscriptions SET status = 9";
         $sql .= " WHERE rowid = ".(int) $id." AND error_count >= ".self::MAX_ERROR_COUNT;
         if (!$this->db->query($sql)) {
-            dol_syslog('PushSender::updateSubscriptionError disable failed sub='.((int) $id).': '.$this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushSender::updateSubscriptionError disable failed sub='.((int) $id).': '.$this->db->lasterror(), LOG_ERR);
         }
     }
 
@@ -231,7 +231,7 @@ class PushSender
     {
         $sql = "DELETE FROM ".MAIN_DB_PREFIX."smartauth_push_subscriptions WHERE rowid = ".(int) $id;
         if (!$this->db->query($sql)) {
-            dol_syslog('PushSender::removeSubscription failed sub='.((int) $id).': '.$this->db->lasterror(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushSender::removeSubscription failed sub='.((int) $id).': '.$this->db->lasterror(), LOG_ERR);
         }
     }
 
@@ -261,7 +261,7 @@ class PushSender
                 $subject
             );
         } catch (\Throwable $e) {
-            dol_syslog('PushSender::dispatchOne crypto failed sub='.((int) $sub['rowid']).': '.$e->getMessage(), LOG_ERR);
+            dol_syslog('[SmartAuth] PushSender::dispatchOne crypto failed sub='.((int) $sub['rowid']).': '.$e->getMessage(), LOG_ERR);
             return [0, 'crypto_error: '.$e->getMessage(), false];
         }
 
@@ -337,7 +337,7 @@ class PushSender
 
         dol_include_once('/smartauth/class/smartauthpushlog.class.php');
         if (!class_exists('SmartAuthPushLog')) {
-            dol_syslog('PushSender::logSend SmartAuthPushLog class not found, skip log', LOG_WARNING);
+            dol_syslog('[SmartAuth] PushSender::logSend SmartAuthPushLog class not found, skip log', LOG_WARNING);
             return;
         }
 

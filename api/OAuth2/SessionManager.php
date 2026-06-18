@@ -118,7 +118,7 @@ class SessionManager
             // Check expiration
             $exp = $payload['exp'] ?? 0;
             if ($exp < time()) {
-                dol_syslog('SmartAuth SessionManager: Session expired', LOG_DEBUG);
+                dol_syslog('[SmartAuth] SessionManager: Session expired', LOG_DEBUG);
                 $this->clearSession();
                 return null;
             }
@@ -129,7 +129,7 @@ class SessionManager
             // accepted here. Strict on purpose - legacy cookies without the
             // claim are invalidated and the user simply re-authenticates.
             if (($payload['tok'] ?? null) !== 'session') {
-                dol_syslog('SmartAuth SessionManager: cookie is not a session token (tok=' . ($payload['tok'] ?? 'none') . '), forcing re-login', LOG_WARNING);
+                dol_syslog('[SmartAuth] SessionManager: cookie is not a session token (tok=' . ($payload['tok'] ?? 'none') . '), forcing re-login', LOG_WARNING);
                 $this->clearSession();
                 return null;
             }
@@ -139,13 +139,13 @@ class SessionManager
             try {
                 $subject = TokenSubject::fromSub($sub);
             } catch (\InvalidArgumentException $e) {
-                dol_syslog('SmartAuth SessionManager: invalid/legacy sub claim (' . $sub . '), forcing re-login', LOG_DEBUG);
+                dol_syslog('[SmartAuth] SessionManager: invalid/legacy sub claim (' . $sub . '), forcing re-login', LOG_DEBUG);
                 $this->clearSession();
                 return null;
             }
 
             if (!$subject->isActive($this->db)) {
-                dol_syslog('SmartAuth SessionManager: subject ' . $sub . ' not found or inactive', LOG_DEBUG);
+                dol_syslog('[SmartAuth] SessionManager: subject ' . $sub . ' not found or inactive', LOG_DEBUG);
                 $this->clearSession();
                 return null;
             }
@@ -155,7 +155,7 @@ class SessionManager
 
             return $subject;
         } catch (\Exception $e) {
-            dol_syslog('SmartAuth SessionManager: Session validation error: ' . $e->getMessage(), LOG_WARNING);
+            dol_syslog('[SmartAuth] SessionManager: Session validation error: ' . $e->getMessage(), LOG_WARNING);
             $this->clearSession();
             return null;
         }
@@ -214,7 +214,7 @@ class SessionManager
         // Cache the payload
         $this->cachedPayload = $payload;
 
-        dol_syslog('SmartAuth SessionManager: Session created for subject ' . $subject->toSub(), LOG_INFO);
+        dol_syslog('[SmartAuth] SessionManager: Session created for subject ' . $subject->toSub(), LOG_INFO);
     }
 
     /**
@@ -338,7 +338,7 @@ class SessionManager
     {
         $parts = explode('.', $jwt);
         if (count($parts) !== 3) {
-            dol_syslog('SmartAuth SessionManager: Invalid JWT format', LOG_DEBUG);
+            dol_syslog('[SmartAuth] SessionManager: Invalid JWT format', LOG_DEBUG);
             return null;
         }
 
@@ -348,7 +348,7 @@ class SessionManager
         $headerJson = JwtKeyHelper::base64UrlDecode($headerEncoded);
         $header = json_decode($headerJson, true);
         if (!$header || ($header['alg'] ?? '') !== 'RS256') {
-            dol_syslog('SmartAuth SessionManager: Invalid JWT algorithm', LOG_DEBUG);
+            dol_syslog('[SmartAuth] SessionManager: Invalid JWT algorithm', LOG_DEBUG);
             return null;
         }
 
@@ -359,7 +359,7 @@ class SessionManager
 
         $verified = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA256);
         if ($verified !== 1) {
-            dol_syslog('SmartAuth SessionManager: JWT signature verification failed', LOG_DEBUG);
+            dol_syslog('[SmartAuth] SessionManager: JWT signature verification failed', LOG_DEBUG);
             return null;
         }
 
@@ -367,7 +367,7 @@ class SessionManager
         $payloadJson = JwtKeyHelper::base64UrlDecode($payloadEncoded);
         $payload = json_decode($payloadJson, true);
         if (!$payload) {
-            dol_syslog('SmartAuth SessionManager: Invalid JWT payload', LOG_DEBUG);
+            dol_syslog('[SmartAuth] SessionManager: Invalid JWT payload', LOG_DEBUG);
             return null;
         }
 

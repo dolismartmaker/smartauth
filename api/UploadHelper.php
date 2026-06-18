@@ -47,7 +47,7 @@ class UploadHelper
     {
         $info = SmartUpload::get($uploadId, (int) $userId);
         if ($info === null) {
-            dol_syslog("SmartAuth UploadHelper::consumeUpload - Upload not found or expired: $uploadId (user $userId)", LOG_WARNING);
+            dol_syslog("[SmartAuth] UploadHelper::consumeUpload - Upload not found or expired: $uploadId (user $userId)", LOG_WARNING);
             return null;
         }
 
@@ -60,7 +60,7 @@ class UploadHelper
                 $created = @mkdir($destDir, 0755, true);
             }
             if (!$created && !is_dir($destDir)) {
-                dol_syslog("SmartAuth UploadHelper::consumeUpload - Failed to create $destDir", LOG_ERR);
+                dol_syslog("[SmartAuth] UploadHelper::consumeUpload - Failed to create $destDir", LOG_ERR);
                 return null;
             }
         }
@@ -68,7 +68,7 @@ class UploadHelper
         if (!@rename($info['filepath'], $destPath)) {
             // rename() fails across filesystems; fall back to copy + unlink.
             if (!@copy($info['filepath'], $destPath)) {
-                dol_syslog("SmartAuth UploadHelper::consumeUpload - Failed to copy {$info['filepath']} -> $destPath", LOG_ERR);
+                dol_syslog("[SmartAuth] UploadHelper::consumeUpload - Failed to copy {$info['filepath']} -> $destPath", LOG_ERR);
                 return null;
             }
             @unlink($info['filepath']);

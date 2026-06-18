@@ -63,7 +63,7 @@ class DiscoveryController
             $jwks = JwtKeyHelper::getJwks();
             $this->sendJsonResponse($jwks, 200);
         } catch (\Exception $e) {
-            dol_syslog('SmartAuth DiscoveryController: JWKS error: ' . $e->getMessage(), LOG_ERR);
+            dol_syslog('[SmartAuth] DiscoveryController: JWKS error: ' . $e->getMessage(), LOG_ERR);
             $this->sendJsonResponse([
                 'error' => 'server_error',
                 'error_description' => 'Failed to retrieve JWKS'

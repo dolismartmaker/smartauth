@@ -81,11 +81,11 @@ class AccountService
 
         $result = $user->update($admin);
         if ($result <= 0) {
-            dol_syslog('SmartAuth AccountService: identity update failed for user ' . $fkUser . ': ' . ($user->error ?? ''), LOG_ERR);
+            dol_syslog('[SmartAuth] AccountService: identity update failed for user ' . $fkUser . ': ' . ($user->error ?? ''), LOG_ERR);
             return self::ERR_INTERNAL;
         }
 
-        dol_syslog('SmartAuth AccountService: identity updated for user ' . $fkUser, LOG_INFO);
+        dol_syslog('[SmartAuth] AccountService: identity updated for user ' . $fkUser, LOG_INFO);
         return $fkUser;
     }
 
@@ -114,7 +114,7 @@ class AccountService
         }
 
         if (!$this->verifyCurrentPassword($user, $currentPassword)) {
-            dol_syslog('SmartAuth AccountService: current password verification failed for user ' . $fkUser, LOG_INFO);
+            dol_syslog('[SmartAuth] AccountService: current password verification failed for user ' . $fkUser, LOG_INFO);
             return self::ERR_CURRENT_PASSWORD_WRONG;
         }
 
@@ -125,11 +125,11 @@ class AccountService
 
         $result = $user->setPassword($admin, $newPassword, 0, 0, 1, 0);
         if ($result < 0) {
-            dol_syslog('SmartAuth AccountService: setPassword failed for user ' . $fkUser . ': ' . ($user->error ?? ''), LOG_ERR);
+            dol_syslog('[SmartAuth] AccountService: setPassword failed for user ' . $fkUser . ': ' . ($user->error ?? ''), LOG_ERR);
             return self::ERR_INTERNAL;
         }
 
-        dol_syslog('SmartAuth AccountService: password changed for user ' . $fkUser, LOG_INFO);
+        dol_syslog('[SmartAuth] AccountService: password changed for user ' . $fkUser, LOG_INFO);
         return $fkUser;
     }
 
@@ -244,7 +244,7 @@ class AccountService
         if (!$this->db->query($sql)) {
             return self::ERR_INTERNAL;
         }
-        dol_syslog('SmartAuth AccountService: session ' . $tokenRowId . ' revoked for user ' . $fkUser, LOG_INFO);
+        dol_syslog('[SmartAuth] AccountService: session ' . $tokenRowId . ' revoked for user ' . $fkUser, LOG_INFO);
         return 1;
     }
 
@@ -300,7 +300,7 @@ class AccountService
         $userId = getDolGlobalInt('SMARTAUTH_DEFAULT_USER', 1);
         $user = new \User($this->db);
         if ($user->fetch($userId) <= 0) {
-            dol_syslog('SmartAuth AccountService: system user (id=' . $userId . ') not found', LOG_ERR);
+            dol_syslog('[SmartAuth] AccountService: system user (id=' . $userId . ') not found', LOG_ERR);
             return null;
         }
         return $user;

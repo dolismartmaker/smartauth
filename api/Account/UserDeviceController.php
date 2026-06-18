@@ -124,7 +124,7 @@ class UserDeviceController
         // icon default. Empty / missing -> let create() derive it.
         if ($viewportModeRaw !== null && $viewportModeRaw !== '') {
             if (SmartAuthUserDevice::normaliseViewportMode($viewportModeRaw) === null) {
-                dol_syslog("SmartAuth UserDeviceController::create rejected invalid viewport_mode='$viewportModeRaw' user=$userId", LOG_WARNING);
+                dol_syslog("[SmartAuth] UserDeviceController::create rejected invalid viewport_mode='$viewportModeRaw' user=$userId", LOG_WARNING);
                 return [['error' => 'invalid_viewport_mode'], 400];
             }
         }
@@ -150,7 +150,7 @@ class UserDeviceController
         $row = $repo->findById($rowid, $entity);
         $viewportMode = $row['viewport_mode'] ?? null;
 
-        dol_syslog("SmartAuth UserDeviceController::create rowid=$rowid user=$userId label='$label' viewport_mode='" . ($viewportMode ?? '') . "' linked=" . ($linked ? '1' : '0'), LOG_INFO);
+        dol_syslog("[SmartAuth] UserDeviceController::create rowid=$rowid user=$userId label='$label' viewport_mode='" . ($viewportMode ?? '') . "' linked=" . ($linked ? '1' : '0'), LOG_INFO);
 
         return [
             [
@@ -198,7 +198,7 @@ class UserDeviceController
             return [['error' => 'link_failed'], 500];
         }
 
-        dol_syslog("SmartAuth UserDeviceController::link user_device=$userDeviceId tech_device=$jwtDeviceId user=$userId", LOG_INFO);
+        dol_syslog("[SmartAuth] UserDeviceController::link user_device=$userDeviceId tech_device=$jwtDeviceId user=$userId", LOG_INFO);
 
         return [
             [
@@ -253,7 +253,7 @@ class UserDeviceController
         // name immediately).
         $this->propagateLabelToTechnicalDevices($userDeviceId, $userId, $entity, $newLabel);
 
-        dol_syslog("SmartAuth UserDeviceController::rename user_device=$userDeviceId user=$userId new_label='$newLabel'", LOG_INFO);
+        dol_syslog("[SmartAuth] UserDeviceController::rename user_device=$userDeviceId user=$userId new_label='$newLabel'", LOG_INFO);
 
         return [
             [
@@ -291,7 +291,7 @@ class UserDeviceController
         $repo = $this->resolveRepo();
         $row = $repo->findById($userDeviceId, $entity);
         if ($row === null || (int) $row['fk_user'] !== $userId) {
-            dol_syslog("SmartAuth UserDeviceController::setViewportMode not_found user_device=$userDeviceId user=$userId", LOG_WARNING);
+            dol_syslog("[SmartAuth] UserDeviceController::setViewportMode not_found user_device=$userDeviceId user=$userId", LOG_WARNING);
             return [['error' => 'not_found'], 404];
         }
 
@@ -300,7 +300,7 @@ class UserDeviceController
         // back to NULL (handled by the repo via normaliseViewportMode).
         if ($modeRaw !== null && $modeRaw !== '') {
             if (SmartAuthUserDevice::normaliseViewportMode($modeRaw) === null) {
-                dol_syslog("SmartAuth UserDeviceController::setViewportMode rejected invalid mode='" . (string) $modeRaw . "' user_device=$userDeviceId user=$userId", LOG_WARNING);
+                dol_syslog("[SmartAuth] UserDeviceController::setViewportMode rejected invalid mode='" . (string) $modeRaw . "' user_device=$userDeviceId user=$userId", LOG_WARNING);
                 return [['error' => 'invalid_viewport_mode'], 400];
             }
         }
@@ -314,7 +314,7 @@ class UserDeviceController
         $row = $repo->findById($userDeviceId, $entity);
         $stored = $row['viewport_mode'] ?? null;
 
-        dol_syslog("SmartAuth UserDeviceController::setViewportMode user_device=$userDeviceId user=$userId mode='" . ($stored ?? '') . "'", LOG_INFO);
+        dol_syslog("[SmartAuth] UserDeviceController::setViewportMode user_device=$userDeviceId user=$userId mode='" . ($stored ?? '') . "'", LOG_INFO);
 
         return [
             [
@@ -355,7 +355,7 @@ class UserDeviceController
 
         $sessionsRevoked = $repo->revoke($userDeviceId, $userId, $entity);
 
-        dol_syslog("SmartAuth UserDeviceController::revoke user_device=$userDeviceId user=$userId sessions=$sessionsRevoked", LOG_INFO);
+        dol_syslog("[SmartAuth] UserDeviceController::revoke user_device=$userDeviceId user=$userId sessions=$sessionsRevoked", LOG_INFO);
 
         return [
             [
@@ -380,7 +380,7 @@ class UserDeviceController
         $sql .= " AND fk_user_creat = " . (int) $userId;
         $sql .= " AND entity = " . (int) $entity;
         if (!$db->query($sql)) {
-            dol_syslog('SmartAuth UserDeviceController::propagateLabelToTechnicalDevices update failed', LOG_ERR);
+            dol_syslog('[SmartAuth] UserDeviceController::propagateLabelToTechnicalDevices update failed', LOG_ERR);
         }
     }
 

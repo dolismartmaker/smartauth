@@ -122,7 +122,7 @@ class dmThirdparty extends dmBase
 	{
 		$this->boot();
 
-		// dol_syslog("SmartAuth cacheDesc after is " . json_encode($this->_cacheDesc));
+		// dol_syslog("[SmartAuth] cacheDesc after is " . json_encode($this->_cacheDesc));
 	}
 
 
@@ -178,7 +178,7 @@ class dmThirdparty extends dmBase
 		}
 
 		dol_syslog(
-			"SmartAuth dmThirdparty::fieldFilterValueLogoDataUrl -- deprecated "
+			"[SmartAuth] dmThirdparty::fieldFilterValueLogoDataUrl -- deprecated "
 			. "field still used by a consumer for thirdparty " . (int) $societe->id
 			. ". Migrate to GET media/thirdparty/{id}/logo binary route. "
 			. "Will be removed in smartauth 2.2.0.",

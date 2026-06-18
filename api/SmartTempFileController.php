@@ -30,7 +30,7 @@ class SmartTempFileController
      */
     public function download($payload = null)
     {
-        dol_syslog("smartauth::SmartTempFileController::download");
+        dol_syslog("[SmartAuth] SmartTempFileController::download");
 
         // Get user ID for access control
         $user = $payload['user'] ?? null;
@@ -45,25 +45,25 @@ class SmartTempFileController
         // Fetch file info
         $fileInfo = SmartTempFile::get($token, $userId);
         if (!$fileInfo) {
-            dol_syslog("smartauth::SmartTempFileController::download - File not found or expired: $token", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartTempFileController::download - File not found or expired: $token", LOG_WARNING);
             return [['error' => 'File not found or expired'], 404];
         }
 
         // Limit file size for base64 encoding (50MB max)
         $maxsize = 50 * 1024 * 1024;
         if ($fileInfo['filesize'] > $maxsize) {
-            dol_syslog("smartauth::SmartTempFileController::download - File too large: {$fileInfo['filesize']} bytes", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartTempFileController::download - File too large: {$fileInfo['filesize']} bytes", LOG_WARNING);
             return [['error' => 'File too large for base64 download, use binary mode'], 413];
         }
 
         // Read content
         $content = file_get_contents($fileInfo['filepath']);
         if ($content === false) {
-            dol_syslog("smartauth::SmartTempFileController::download - Failed to read file", LOG_ERR);
+            dol_syslog("[SmartAuth] SmartTempFileController::download - Failed to read file", LOG_ERR);
             return [['error' => 'Failed to read file'], 500];
         }
 
-        dol_syslog("smartauth::SmartTempFileController::download - Success: {$fileInfo['filename']} ({$fileInfo['filesize']} bytes)");
+        dol_syslog("[SmartAuth] SmartTempFileController::download - Success: {$fileInfo['filename']} ({$fileInfo['filesize']} bytes)");
 
         return [[
             'filename' => $fileInfo['filename'],
@@ -87,7 +87,7 @@ class SmartTempFileController
     {
         global $db;
 
-        dol_syslog("smartauth::SmartTempFileController::downloadBinary");
+        dol_syslog("[SmartAuth] SmartTempFileController::downloadBinary");
 
         // Get user ID for access control
         $user = $payload['user'] ?? null;
@@ -102,11 +102,11 @@ class SmartTempFileController
         // Fetch file info
         $fileInfo = SmartTempFile::get($token, $userId);
         if (!$fileInfo) {
-            dol_syslog("smartauth::SmartTempFileController::downloadBinary - File not found or expired: $token", LOG_WARNING);
+            dol_syslog("[SmartAuth] SmartTempFileController::downloadBinary - File not found or expired: $token", LOG_WARNING);
             return [['error' => 'File not found or expired'], 404];
         }
 
-        dol_syslog("smartauth::SmartTempFileController::downloadBinary - Streaming: {$fileInfo['filename']} ({$fileInfo['filesize']} bytes)");
+        dol_syslog("[SmartAuth] SmartTempFileController::downloadBinary - Streaming: {$fileInfo['filename']} ({$fileInfo['filesize']} bytes)");
 
         // Close database connection before streaming
         if (is_object($db)) {
@@ -134,7 +134,7 @@ class SmartTempFileController
      */
     public function delete($payload = null)
     {
-        dol_syslog("smartauth::SmartTempFileController::delete");
+        dol_syslog("[SmartAuth] SmartTempFileController::delete");
 
         // Get user ID for access control
         $user = $payload['user'] ?? null;
@@ -154,7 +154,7 @@ class SmartTempFileController
 
         // Delete
         if (SmartTempFile::delete($token)) {
-            dol_syslog("smartauth::SmartTempFileController::delete - Deleted: $token");
+            dol_syslog("[SmartAuth] SmartTempFileController::delete - Deleted: $token");
             return [['message' => 'File deleted'], 200];
         }
 
