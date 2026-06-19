@@ -272,6 +272,70 @@ class UserDeviceControllerTest extends DolibarrRealTestCase
         $this->assertSame(410, $resp[1]);
     }
 
+    /**
+     * SI-125 -- the device name is re-proposed at the NEXT login (another
+     * browser on the same phone). The suggestion shown to the picker is the
+     * list of the user's own logical devices: a fresh technical row (new
+     * browser UUID, no parent yet) sees the previously-named device offered
+     * for re-linking.
+     */
+    public function testDeviceNameIsReproposedToTheSameUserAtNextLogin(): void
+    {
+        // First login on phone, first browser: the user names "mon iPhone".
+        $tech1 = $this->insertTechnicalDevice($this->adminUserId, 'uuid-browser-1');
+        $created = $this->controller->create($this->makePayload(['label' => 'mon iPhone', 'jwt_device_id' => $tech1]));
+        $userDeviceId = (int) $created[0]['id'];
+
+        // Next login, ANOTHER browser of the same phone: a new technical row
+        // with no parent. The suggestion offered is the user's existing
+        // logical devices -> "mon iPhone" must be re-proposed.
+        $this->insertTechnicalDevice($this->adminUserId, 'uuid-browser-2');
+
+        $suggestions = $this->repo->listForUser($this->adminUserId, 1);
+        $labels = array_map(static function ($r) {
+            return $r['label'];
+        }, $suggestions);
+        $this->assertContains('mon iPhone', $labels, 'The previous device name must be re-proposed to the same user');
+
+        // Same thing seen through the login-facing endpoint (the picker source).
+        $list = $this->controller->index($this->makePayload());
+        $listedIds = array_map(static function ($d) {
+            return (int) $d['id'];
+        }, $list[0]['devices']);
+        $this->assertContains($userDeviceId, $listedIds);
+    }
+
+    /**
+     * SI-125 -- isolation: a DIFFERENT user logging in on the same browser /
+     * phone must NOT inherit the first user's device name. The suggestion is
+     * filtered by fk_user, so the second user gets a blank "new device"
+     * screen (empty list), and the first user's label is never read for them.
+     */
+    public function testDeviceNameIsNotInheritedByAnotherUser(): void
+    {
+        // User A names a device on this phone.
+        $tech1 = $this->insertTechnicalDevice($this->adminUserId, 'uuid-browser-1');
+        $this->controller->create($this->makePayload(['label' => 'mon iPhone', 'jwt_device_id' => $tech1]));
+
+        // User B logs in (same browser/phone). The correlation is per-user:
+        // B owns no logical device, so no suggestion is inherited.
+        $otherUser = $this->createTestUser(['login' => 'si125_other_' . uniqid()]);
+        $otherUserId = (int) $otherUser->id;
+
+        $suggestions = $this->repo->listForUser($otherUserId, 1);
+        $this->assertSame([], $suggestions, 'A second user must get a blank "new device" screen');
+
+        // Through the picker-facing endpoint as well.
+        $list = $this->controller->index([
+            'user' => $otherUser,
+            'user_id' => $otherUserId,
+            'entity' => 1,
+            'jwt_device_id' => 0,
+        ]);
+        $this->assertSame(200, $list[1]);
+        $this->assertSame([], $list[0]['devices'], 'No device label of another user must leak into the suggestion');
+    }
+
     public function testCreateDerivesViewportModeFromIconPhone(): void
     {
         $tech = $this->insertTechnicalDevice($this->adminUserId, 'uuid-pwa-1');
