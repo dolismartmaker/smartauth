@@ -1,5 +1,13 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.30 -- 20260619
+
+ - unify logs with common prefix
+ - fix route and route cache for modules who commes with front react plugins
+ - add more extrafields support on auto mapping system
+ - add missing extrafields "list" properties (visible)
+ - add "my" devices on relogin on front app
+
 ## 2.0.28 -- 20260617
 
  - better route cache support and update
