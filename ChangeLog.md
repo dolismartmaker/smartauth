@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.32 -- 20260629
+
+ - better idempotency for synced data
+ - add cache for fk_keys (dolmapping)
+
 ## 2.0.30 -- 20260619
 
  - unify logs with common prefix
