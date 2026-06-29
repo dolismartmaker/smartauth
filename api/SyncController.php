@@ -461,7 +461,7 @@ class SyncController
      */
     public function push($payload)
     {
-        global $user;
+        global $user, $conf;
         dol_syslog("[SmartAuth] SyncController::push");
 
         $client_uuid = InputSanitizer::sanitizeUUID($payload['client_uuid'] ?? '');
@@ -513,8 +513,28 @@ class SyncController
                             ];
                             break;
                         }
+                        // Idempotency: a replayed create (the original 2xx was
+                        // lost on the wire) returns the original server_id
+                        // instead of duplicating the object. Keyed on
+                        // (client_uuid, temp_id, object_type); needs a temp_id.
+                        $idem = null;
+                        if (!empty($temp_id)) {
+                            dol_include_once('/smartauth/class/smartauthsyncidempotency.class.php');
+                            $idem = new \SmartAuthSyncIdempotency($this->db);
+                            $replayId = $idem->findServerId($client_uuid, (string) $temp_id, $object_type, (int) $conf->entity);
+                            if ($replayId !== null) {
+                                dol_syslog("[SmartAuth] SyncController::push - idempotent create replay temp_id=" . $temp_id . " -> " . $replayId);
+                                $result['success'][] = $replayId;
+                                $result['id_mapping'][$temp_id] = $replayId;
+                                break;
+                            }
+                        }
+
                         $createResult = $this->processCreate($config, $data, $user);
                         if ($createResult['success']) {
+                            if ($idem !== null) {
+                                $idem->record($client_uuid, (string) $temp_id, $object_type, (int) $createResult['id'], (int) $user->id, (int) $conf->entity);
+                            }
                             $result['success'][] = $createResult['id'];
                             if ($temp_id) {
                                 $result['id_mapping'][$temp_id] = $createResult['id'];

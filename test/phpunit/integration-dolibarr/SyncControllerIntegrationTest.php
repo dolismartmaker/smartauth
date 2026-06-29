@@ -43,6 +43,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
             'smartauth_sync_events',
             'smartauth_sync_conflicts',
             'smartauth_sync_tombstones',
+            'smartauth_sync_idempotency',
             'smartauth_sync_clients'
         ];
 
@@ -171,6 +172,50 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
             'client_uuid' => $this->testClientUUID
         ]);
         $this->assertEquals(1, $count);
+    }
+
+    // =========================================================================
+    // Push endpoint tests
+    // =========================================================================
+
+    /**
+     * A replayed 'create' (the client retried after a lost 2xx) must return
+     * the original server_id and must NOT create a duplicate object.
+     */
+    public function testPushCreateIsIdempotentOnReplay(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $tempId = 'tmp-' . uniqid();
+        $name = 'Idempotent Co ' . uniqid();
+        $payload = [
+            'user_id' => $this->testUser->id, 'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes' => [
+                ['action' => 'create', 'temp_id' => $tempId, 'data' => ['name' => $name]],
+            ],
+        ];
+
+        // First push creates the object and maps temp_id -> server_id
+        $r1 = $this->controller->push($payload);
+        $this->assertEquals(200, $r1[1]);
+        $serverId = $r1[0]['id_mapping'][$tempId] ?? null;
+        $this->assertNotNull($serverId, 'First push must map temp_id to a server id');
+
+        // Replay the exact same change (lost-response retry)
+        $r2 = $this->controller->push($payload);
+        $this->assertEquals(200, $r2[1]);
+        $this->assertEmpty($r2[0]['errors'] ?? [], 'Replay must not error');
+        $this->assertEquals(
+            $serverId,
+            $r2[0]['id_mapping'][$tempId] ?? null,
+            'Replay must return the original server id'
+        );
+
+        // No duplicate object: exactly one thirdparty with this unique name
+        $count = $this->getTableCount('societe', ['nom' => $name]);
+        $this->assertEquals(1, $count, 'Replay must not create a duplicate thirdparty');
     }
 
     // =========================================================================

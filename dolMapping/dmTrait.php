@@ -45,6 +45,14 @@ trait dmTrait
 	private static $fkRecursionDepth = 0;
 
 	/**
+	 * Per-process cache of objects fetched for FK-label resolution, keyed by
+	 * "Class:id". Dedupes the lookup across the rows of a list (many documents
+	 * share the same thirdparty) so $listOfForeignKeyLabels stays cheap.
+	 * @var array<string,object|null>
+	 */
+	private static $fkLabelCache = [];
+
+	/**
 	 * Mapping from Dolibarr element to category type(s)
 	 * Some elements can have multiple category types (e.g. societe can be customer and/or supplier)
 	 */
@@ -622,6 +630,13 @@ trait dmTrait
 			}
 		}
 
+		// Opt-in: resolve declared foreign keys to LABEL companion fields
+		// (e.g. fk_soc -> socname / socEmail) without nesting the full related
+		// object. Strict consumers keep getting the scalar id AND gain a name
+		// string. No-op unless the mapper declares $listOfForeignKeyLabels, so
+		// existing mappers are unaffected.
+		$this->_resolveForeignKeyLabels($obj, $mapped);
+
 		// Derived fields: computed from the object but not backed by a Dolibarr
 		// column. fieldFilterValueXxx() is invoked unconditionally (no source
 		// value check). Opt-in: only mappers that declare $listOfDerivedFields
@@ -984,6 +999,88 @@ trait dmTrait
 						self::$fkRecursionDepth--;
 					}
 				}
+			}
+		}
+	}
+
+	/**
+	 * Opt-in foreign-key -> label resolution.
+	 *
+	 * A mapper declares $listOfForeignKeyLabels to surface one or more scalar
+	 * label fields derived from a FK, e.g.:
+	 *
+	 *   protected $listOfForeignKeyLabels = [
+	 *       'fk_soc' => [
+	 *           'class'  => 'Societe',
+	 *           'path'   => 'societe/class/societe.class.php',
+	 *           'labels' => ['socname' => 'name', 'socEmail' => 'email'],
+	 *       ],
+	 *   ];
+	 *
+	 * Unlike exportData() (which nests the whole mapped related object and is
+	 * unreachable for non-null values anyway), this keeps the original scalar
+	 * id untouched and only ADDS the requested label properties as companion
+	 * fields on $mapped -- so strict consumers do not break. The related object
+	 * is fetched once per (class,id) via a per-process cache, so a list of N
+	 * rows sharing the same thirdparty costs a single fetch.
+	 *
+	 * The property is intentionally NOT declared on the trait: declaring it
+	 * with an initial value here would fatally conflict with a using class that
+	 * declares its own non-empty initializer. empty() reads it safely whether
+	 * or not the mapper defines it.
+	 *
+	 * @param object    $obj    The fetched Dolibarr object being exported.
+	 * @param \stdClass $mapped The mapped output to enrich (mutated in place).
+	 * @return void
+	 */
+	protected function _resolveForeignKeyLabels($obj, $mapped)
+	{
+		if (empty($this->listOfForeignKeyLabels) || !is_array($this->listOfForeignKeyLabels)) {
+			return;
+		}
+		foreach ($this->listOfForeignKeyLabels as $doliside => $spec) {
+			if (!is_array($spec) || empty($spec['class']) || empty($spec['labels']) || !is_array($spec['labels'])) {
+				continue;
+			}
+			// fk_soc carries the dual socid/fk_soc convention; other FKs read
+			// straight from the published doliside property.
+			if ($doliside === 'fk_soc') {
+				$fkId = !empty($obj->socid) ? $obj->socid : ($obj->fk_soc ?? null);
+			} else {
+				$fkId = $obj->$doliside ?? null;
+			}
+			$labels = $spec['labels'];
+
+			if (empty($fkId)) {
+				// Emit empty companions so the output shape stays stable.
+				foreach ($labels as $appsideKey => $prop) {
+					$mapped->$appsideKey = '';
+				}
+				continue;
+			}
+
+			$class = $spec['class'];
+			$cacheKey = $class . ':' . (int) $fkId;
+			if (!array_key_exists($cacheKey, self::$fkLabelCache)) {
+				$resolved = null;
+				if (!empty($spec['path'])) {
+					dol_include_once($spec['path']);
+				}
+				if (class_exists($class)) {
+					$tmp = new $class($this->_db);
+					if ($tmp->fetch((int) $fkId) > 0) {
+						$resolved = $tmp;
+					} else {
+						dol_syslog('[SmartAuth] _resolveForeignKeyLabels fetch failed for ' . $cacheKey, LOG_WARNING);
+					}
+				} else {
+					dol_syslog('[SmartAuth] _resolveForeignKeyLabels class not found: ' . $class, LOG_WARNING);
+				}
+				self::$fkLabelCache[$cacheKey] = $resolved;
+			}
+			$resolved = self::$fkLabelCache[$cacheKey];
+			foreach ($labels as $appsideKey => $prop) {
+				$mapped->$appsideKey = ($resolved !== null && isset($resolved->$prop)) ? $resolved->$prop : '';
 			}
 		}
 	}
