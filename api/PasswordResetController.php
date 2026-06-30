@@ -543,20 +543,26 @@ class PasswordResetController
     {
         global $db;
 
-        $sql = "SELECT expires_at FROM " . MAIN_DB_PREFIX . "smartauth_email_validation";
+        // Mirror findActive()'s comparison: both sides use idate(dol_now()) so
+        // the expiry boundary is evaluated with the same server-TZ string.
+        // Re-parsing the stored value with strtotime() assumed PHP's default TZ
+        // and could disagree with idate()/dol_now(), making an expired token
+        // look valid (410 -> 400) on hosts whose TZ config differs from the dev
+        // box.
+        $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_email_validation";
         $sql .= " WHERE token_hash = '" . $db->escape($tokenHash) . "'";
         $sql .= " AND purpose = '" . $db->escape(EmailValidationToken::PURPOSE_PASSWORD_RESET) . "'";
         $sql .= " AND used_at IS NULL";
+        $sql .= " AND expires_at <= '" . $db->idate(dol_now()) . "'";
         $sql .= " AND entity = " . ((int) $entity);
         $sql .= " LIMIT 1";
 
         $resql = $db->query($sql);
-        if (!$resql || $db->num_rows($resql) === 0) {
+        if (!$resql) {
+            dol_syslog('[SmartAuth] PasswordResetController::tokenIsExpired - query failed: ' . $db->lasterror(), LOG_ERR);
             return false;
         }
-        $obj = $db->fetch_object($resql);
-        $db->free($resql);
-        return is_object($obj) && strtotime($obj->expires_at) <= dol_now();
+        return $db->num_rows($resql) > 0;
     }
 
     /**
