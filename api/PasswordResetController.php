@@ -543,17 +543,18 @@ class PasswordResetController
     {
         global $db;
 
-        // Mirror findActive()'s comparison: both sides use idate(dol_now()) so
-        // the expiry boundary is evaluated with the same server-TZ string.
-        // Re-parsing the stored value with strtotime() assumed PHP's default TZ
-        // and could disagree with idate()/dol_now(), making an expired token
-        // look valid (410 -> 400) on hosts whose TZ config differs from the dev
-        // box.
+        // Only reached after findActive() returned null. findActive() rejects a
+        // row for exactly one of: consumed (used_at set), wrong entity,
+        // hash/purpose mismatch, or expiry. An unconsumed row that still matches
+        // (hash, purpose, entity) here therefore differs from "active" only by
+        // its expiry -> it is expired. Testing row existence instead of
+        // re-comparing the date avoids any TZ/affinity/format drift between this
+        // query and findActive() (the CI SQLite baseline evaluated the date
+        // comparison differently from the dev box).
         $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_email_validation";
         $sql .= " WHERE token_hash = '" . $db->escape($tokenHash) . "'";
         $sql .= " AND purpose = '" . $db->escape(EmailValidationToken::PURPOSE_PASSWORD_RESET) . "'";
         $sql .= " AND used_at IS NULL";
-        $sql .= " AND expires_at <= '" . $db->idate(dol_now()) . "'";
         $sql .= " AND entity = " . ((int) $entity);
         $sql .= " LIMIT 1";
 
