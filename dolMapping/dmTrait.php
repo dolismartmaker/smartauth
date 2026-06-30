@@ -820,10 +820,24 @@ trait dmTrait
 				}
 
 				$tableName 			= $InfoFieldList[0];
-				$labelFieldName 	= $InfoFieldList[1];
+				$labelFieldName 	= $InfoFieldList[1] ?? '';
 				$keyFieldName 		= $InfoFieldList[2] ?? null;
 				$keyFieldParent 	= $InfoFieldList[3] ?? null;
 				$whereFieldOrExtra 	= $InfoFieldList[4] ?? null;
+
+				// Guard against a misconfigured sellist extrafield whose option
+				// key is empty or malformed (e.g. '' or ':'): InfoFieldList then
+				// collapses to an empty $tableName / $labelFieldName and the code
+				// below would build an invalid "SELECT rowid,  FROM llx_ WHERE
+				// rowid='...'" query, raising a SQL syntax error on every export.
+				// The value is free text in that case, so log once and pass it
+				// through unchanged instead of running the broken query. The
+				// 'categorie' branch keeps a non-empty $tableName so it is not
+				// affected by this guard.
+				if ($tableName === '' || $labelFieldName === '') {
+					dol_syslog("[SmartAuth] exportExtrafieldData: malformed sellist param for name=$name (option key='" . $param_list[0] . "'), returning raw value", LOG_WARNING);
+					return $this->_castInputValue($objectid, array('type' => $type));
+				}
 
 				$keyList = (empty($keyFieldName) ? 'rowid' : $keyFieldName . ' as rowid');
 
