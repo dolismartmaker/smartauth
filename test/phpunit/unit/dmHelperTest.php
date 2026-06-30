@@ -742,10 +742,13 @@ class dmHelperTest extends TestCase
             $element => []
         ];
 
-        // Initialize all expected attributes with empty defaults
+        // Initialize all expected attributes with empty defaults.
+        // Dolibarr stores an extrafield's visibility in the "list" column
+        // (ExtraFields::fetch_name_optionals_label populates attributes[elem]['list']),
+        // so the mock must carry it there, not under "visible".
         $allAttributes = [
             'type', 'label', 'placeholder', 'help', 'picto', 'default',
-            'copytoclipboard', 'required', 'noteditable', 'visible', 'size', 'pos', 'options'
+            'copytoclipboard', 'required', 'noteditable', 'list', 'visible', 'size', 'pos', 'options'
         ];
 
         foreach ($allAttributes as $attr) {
@@ -827,8 +830,9 @@ class dmHelperTest extends TestCase
 
     /**
      * Regression (todo l.31): a smartphoto_ field explicitly set to "not visible"
-     * (Dolibarr visible code 0) must stay hidden on the app. The special-type
-     * branch used to force visible to all contexts, ignoring the admin setting.
+     * (Dolibarr "list" code 0, the column where extrafields carry their
+     * visibility) must stay hidden on the app. The special-type branch used to
+     * force visible to all contexts, ignoring the admin setting.
      */
     public function testExtrafieldsFilterSmartphotoRespectsHiddenVisibility(): void
     {
@@ -838,7 +842,7 @@ class dmHelperTest extends TestCase
         $extrafields = $this->createExtrafieldsMock('societe', 'smartphoto_image', [
             'type' => 'varchar',
             'label' => 'Photo',
-            'visible' => 0
+            'list' => 0
         ]);
 
         $result = $this->helper->extrafieldsFilter('societe', 'smartphoto_image', 'frontkey', $extrafields);
