@@ -998,4 +998,339 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
             );
         }
     }
+
+    // =========================================================================
+    // Pull business filter (pull_where) and pagination tests
+    // =========================================================================
+
+    /**
+     * Ref prefix identifying products created by these tests, cleaned in
+     * tearDown so reruns and sibling tests never see leftover rows.
+     */
+    private const PULL_TEST_REF_PREFIX = 'SYNCPULL-';
+
+    /**
+     * All pull filter/pagination test rows carry a tms in 2030+ and every
+     * pull scopes with this last_sync_at, so rows created by other tests
+     * (tms = now) can never pollute the assertions.
+     */
+    private const PULL_TEST_LAST_SYNC = '2029-12-31 23:59:59';
+
+    /**
+     * Insert a raw product row with full control over tosell/tms/entity.
+     */
+    private function createSyncTestProduct(int $tosell, string $tms, int $entity = 1): int
+    {
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "product";
+        $sql .= " (ref, label, entity, tosell, tobuy, fk_product_type, datec, tms)";
+        $sql .= " VALUES (";
+        $sql .= "'" . $this->db->escape(self::PULL_TEST_REF_PREFIX . uniqid()) . "', ";
+        $sql .= "'Sync pull test product', ";
+        $sql .= (int) $entity . ", ";
+        $sql .= (int) $tosell . ", 0, 0, ";
+        $sql .= "'" . $this->db->idate(time()) . "', ";
+        $sql .= "'" . $this->db->escape($tms) . "')";
+
+        if (!$this->db->query($sql)) {
+            throw new \RuntimeException('Failed to insert test product: ' . $this->db->lasterror());
+        }
+        return (int) $this->db->last_insert_id(MAIN_DB_PREFIX . 'product');
+    }
+
+    private function cleanSyncTestProducts(): void
+    {
+        $this->db->query(
+            "DELETE FROM " . MAIN_DB_PREFIX . "product"
+            . " WHERE ref LIKE '" . $this->db->escape(self::PULL_TEST_REF_PREFIX) . "%'"
+        );
+    }
+
+    /**
+     * Inject a pull_where clause on an object type, as a module hook would
+     * declare it. Reflection keeps the test independent from a hook fixture.
+     */
+    private function injectPullWhere(string $objectType, string $clause): void
+    {
+        $prop = new \ReflectionProperty(SyncController::class, 'syncableObjects');
+        $prop->setAccessible(true);
+        $objects = $prop->getValue($this->controller);
+        $objects[$objectType]['pull_where'] = $clause;
+        $prop->setValue($this->controller, $objects);
+    }
+
+    private function pullProducts(array $extra = []): array
+    {
+        return $this->controller->pull(array_merge([
+            'user_id' => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'product',
+            'last_sync_at' => self::PULL_TEST_LAST_SYNC,
+        ], $extra));
+    }
+
+    private function updatedIds(array $result): array
+    {
+        return array_map(static function ($item) {
+            return (int) $item['id'];
+        }, $result[0]['updated']);
+    }
+
+    private function deletedIds(array $result): array
+    {
+        return array_map(static function ($item) {
+            return (int) $item['id'];
+        }, $result[0]['deleted']);
+    }
+
+    /**
+     * pull_where must keep matching rows in 'updated' and surface
+     * non-matching changed rows as exclusions in 'deleted'.
+     */
+    public function testPullWhereFiltersNonMatchingRows(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+        $this->injectPullWhere('product', 'tosell = 1');
+
+        try {
+            $sellableId = $this->createSyncTestProduct(1, '2030-01-01 10:00:01');
+            $hiddenId = $this->createSyncTestProduct(0, '2030-01-01 10:00:02');
+
+            $result = $this->pullProducts();
+
+            $this->assertEquals(200, $result[1]);
+            $this->assertContains($sellableId, $this->updatedIds($result));
+            $this->assertNotContains($hiddenId, $this->updatedIds($result));
+            // The non-matching changed row is an exclusion: the offline
+            // client must prune it.
+            $this->assertContains($hiddenId, $this->deletedIds($result));
+            $this->assertNotContains($sellableId, $this->deletedIds($result));
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * A row leaving the filter (tosell 1 -> 0, tms bumped) must show up in
+     * 'deleted' on the next delta pull so clients drop it.
+     */
+    public function testPullWhereEmitsExclusionForRowLeavingFilter(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+        $this->injectPullWhere('product', 'tosell = 1');
+
+        try {
+            $productId = $this->createSyncTestProduct(1, '2030-01-01 10:00:01');
+
+            $first = $this->pullProducts();
+            $this->assertContains($productId, $this->updatedIds($first));
+
+            // Product becomes non-sellable; tms bumps (as Product::update
+            // and setStatus do on a live instance).
+            $this->db->query(
+                "UPDATE " . MAIN_DB_PREFIX . "product"
+                . " SET tosell = 0, tms = '2030-01-02 10:00:00'"
+                . " WHERE rowid = " . $productId
+            );
+
+            $second = $this->pullProducts(['last_sync_at' => '2030-01-01 12:00:00']);
+            $this->assertEquals(200, $second[1]);
+            $this->assertNotContains($productId, $this->updatedIds($second));
+            $this->assertContains($productId, $this->deletedIds($second));
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * Exclusions and updated rows must stay scoped to the caller's entity:
+     * a filtered-out row of another entity must never leak its rowid.
+     */
+    public function testPullWhereExclusionsRespectEntityIsolation(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+        $this->injectPullWhere('product', 'tosell = 1');
+
+        try {
+            $sameEntityId = $this->createSyncTestProduct(0, '2030-01-01 10:00:01', 1);
+            $otherEntityId = $this->createSyncTestProduct(0, '2030-01-01 10:00:02', 2);
+
+            $result = $this->pullProducts();
+
+            $this->assertEquals(200, $result[1]);
+            $this->assertContains($sameEntityId, $this->deletedIds($result));
+            $this->assertNotContains($otherEntityId, $this->deletedIds($result));
+            $this->assertNotContains($otherEntityId, $this->updatedIds($result));
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * Paging with limit/offset must cover the full set exactly once and
+     * flag has_more on every page but the last.
+     */
+    public function testPullPaginationPagesAreCompleteAndDisjoint(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        try {
+            $created = [];
+            for ($i = 1; $i <= 5; $i++) {
+                $created[] = $this->createSyncTestProduct(1, '2030-01-01 10:00:0' . $i);
+            }
+
+            $collected = [];
+            $page0 = $this->pullProducts(['limit' => 2, 'offset' => 0]);
+            $this->assertEquals(200, $page0[1]);
+            $this->assertCount(2, $page0[0]['updated']);
+            $this->assertTrue($page0[0]['has_more']);
+            $collected = array_merge($collected, $this->updatedIds($page0));
+
+            $page1 = $this->pullProducts(['limit' => 2, 'offset' => 2]);
+            $this->assertCount(2, $page1[0]['updated']);
+            $this->assertTrue($page1[0]['has_more']);
+            $collected = array_merge($collected, $this->updatedIds($page1));
+
+            $page2 = $this->pullProducts(['limit' => 2, 'offset' => 4]);
+            $this->assertCount(1, $page2[0]['updated']);
+            $this->assertFalse($page2[0]['has_more']);
+            $collected = array_merge($collected, $this->updatedIds($page2));
+
+            sort($collected);
+            sort($created);
+            $this->assertSame($created, $collected, 'Pages must union to the full set, no dup, no hole');
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * A legacy call (no limit/offset/pull_where) keeps its historic shape
+     * and behavior; has_more is additive and false under the cap.
+     */
+    public function testPullLegacyCallShapeUnchanged(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        try {
+            $productId = $this->createSyncTestProduct(1, '2030-01-01 10:00:01');
+
+            $result = $this->pullProducts();
+
+            $this->assertEquals(200, $result[1]);
+            $this->assertArrayHasKey('updated', $result[0]);
+            $this->assertArrayHasKey('deleted', $result[0]);
+            $this->assertArrayHasKey('server_time', $result[0]);
+            $this->assertArrayHasKey('has_more', $result[0]);
+            $this->assertFalse($result[0]['has_more']);
+            $this->assertContains($productId, $this->updatedIds($result));
+            $this->assertEmpty($result[0]['deleted']);
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * Tombstones (and exclusions) are first-page-only: a paginating client
+     * must not receive N copies of the same deletion list.
+     */
+    public function testPullTombstonesOnlyOnFirstPage(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        try {
+            for ($i = 1; $i <= 3; $i++) {
+                $this->createSyncTestProduct(1, '2030-01-01 10:00:0' . $i);
+            }
+
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_sync_tombstones";
+            $sql .= " (table_name, object_id, deleted_at, deleted_by)";
+            $sql .= " VALUES ('product', 424242, '2030-01-05 00:00:00', " . (int) $this->testUser->id . ")";
+            $this->db->query($sql);
+
+            $page0 = $this->pullProducts(['limit' => 2, 'offset' => 0]);
+            $this->assertEquals(200, $page0[1]);
+            $this->assertContains(424242, $this->deletedIds($page0));
+
+            $page1 = $this->pullProducts(['limit' => 2, 'offset' => 2]);
+            $this->assertEquals(200, $page1[1]);
+            $this->assertEmpty($page1[0]['deleted'], 'Tombstones must only be sent on the first page');
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * Malformed last_sync_at must be rejected with an explicit 400, never
+     * silently fed into the tms comparison.
+     */
+    public function testPullRejectsMalformedLastSyncAt(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        foreach (["x'; DROP TABLE llx_product; --", 'not-a-date', '2030-13-45', ['array']] as $bad) {
+            $result = $this->pullProducts(['last_sync_at' => $bad]);
+            $this->assertEquals(400, $result[1], 'Malformed last_sync_at must yield 400');
+        }
+
+        // Both accepted shapes still pass: SQL datetime and ISO 8601.
+        foreach (['2030-01-01 00:00:00', '2030-01-01T00:00:00+00:00', '2030-01-01T00:00:00Z'] as $good) {
+            $result = $this->pullProducts(['last_sync_at' => $good]);
+            $this->assertEquals(200, $result[1], 'Valid datetime shape must be accepted: ' . $good);
+        }
+    }
+
+    /**
+     * Out-of-range or non-integer limit/offset must be rejected with 400
+     * (clamping would desync the client's offset arithmetic).
+     */
+    public function testPullRejectsOutOfRangePagination(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        foreach ([0, -1, 1001, 'abc', 2.5] as $badLimit) {
+            $result = $this->pullProducts(['limit' => $badLimit]);
+            $this->assertEquals(400, $result[1], 'Invalid limit must yield 400: ' . var_export($badLimit, true));
+        }
+
+        foreach ([-1, 1000001, 'abc'] as $badOffset) {
+            $result = $this->pullProducts(['offset' => $badOffset]);
+            $this->assertEquals(400, $result[1], 'Invalid offset must yield 400: ' . var_export($badOffset, true));
+        }
+
+        // Boundary values remain accepted.
+        $result = $this->pullProducts(['limit' => 1000, 'offset' => 0]);
+        $this->assertEquals(200, $result[1]);
+        $result = $this->pullProducts(['limit' => '10', 'offset' => '5']);
+        $this->assertEquals(200, $result[1], 'Digit strings (JSON via form data) must be accepted');
+    }
+
+    /**
+     * Non-regression CR-7-style: the read permission gate on pull() must
+     * survive the filter/pagination changes (fail-closed).
+     */
+    public function testPullReadRightGateStillEnforced(): void
+    {
+        global $user;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $saved = $user->rights->produit->lire;
+        $user->rights->produit->lire = 0;
+        try {
+            $result = $this->pullProducts();
+            $this->assertEquals(403, $result[1], 'pull without the read right must be refused');
+        } finally {
+            $user->rights->produit->lire = $saved;
+        }
+    }
 }

@@ -337,7 +337,7 @@ trait dmTrait
 	 *
 	 * @return  array|null  Field definition array or null if field doesn't exist
 	 */
-	private function _getFieldDefinition($doliObject, $fieldName)
+	private function _getFieldDefinition($doliObject, $fieldName, $applyNameHeuristics = true)
 	{
 		// First check if field exists in $fields array (preferred)
 		if (isset($doliObject->fields[$fieldName])) {
@@ -371,21 +371,29 @@ trait dmTrait
 			}
 		}
 
-		// Detect type from field name patterns
-		if (preg_match('/^(fk_|rowid$|id$)/', $fieldName)) {
-			$fieldDef['type'] = 'integer';
-		} elseif (preg_match('/^date|_date$|datec|datem|tms/', $fieldName)) {
-			$fieldDef['type'] = 'datetime';
-		} elseif (preg_match('/^(price|amount|total|qty|quantity|weight|volume)/', $fieldName)) {
-			$fieldDef['type'] = 'double(24,8)';
-		} elseif (preg_match('/^(note|description|comment)/', $fieldName)) {
-			$fieldDef['type'] = 'text';
-		} elseif (preg_match('/^(email)$/', $fieldName)) {
-			$fieldDef['type'] = 'email';
-		} elseif (preg_match('/^(phone|fax)/', $fieldName)) {
-			$fieldDef['type'] = 'phone';
-		} elseif (preg_match('/^(url|website)/', $fieldName)) {
-			$fieldDef['type'] = 'url';
+		// Detect type from field name patterns. These are NAME-based GUESSES,
+		// only meant to hint the front-end schema (_objectDesc). They are
+		// skipped on the import path ($applyNameHeuristics = false): guessing a
+		// numeric type from a name is dangerous for casting -- e.g.
+		// 'price_display' holds 'HT'/'TTC' (a string) but matches /^price/, so
+		// _castInputValue would coerce it to 0 and destroy the value. On import,
+		// an unknown field stays a string and Dolibarr coerces it at persistence.
+		if ($applyNameHeuristics) {
+			if (preg_match('/^(fk_|rowid$|id$)/', $fieldName)) {
+				$fieldDef['type'] = 'integer';
+			} elseif (preg_match('/^date|_date$|datec|datem|tms/', $fieldName)) {
+				$fieldDef['type'] = 'datetime';
+			} elseif (preg_match('/^(price|amount|total|qty|quantity|weight|volume)/', $fieldName)) {
+				$fieldDef['type'] = 'double(24,8)';
+			} elseif (preg_match('/^(note|description|comment)/', $fieldName)) {
+				$fieldDef['type'] = 'text';
+			} elseif (preg_match('/^(email)$/', $fieldName)) {
+				$fieldDef['type'] = 'email';
+			} elseif (preg_match('/^(phone|fax)/', $fieldName)) {
+				$fieldDef['type'] = 'phone';
+			} elseif (preg_match('/^(url|website)/', $fieldName)) {
+				$fieldDef['type'] = 'url';
+			}
 		}
 
 		return $fieldDef;
@@ -484,7 +492,11 @@ trait dmTrait
 		$doliBaseClass = new $this->_dolobjectclassname($this->_db);
 		foreach ($input as $apiKey => $apiValue) {
 			$doliField = $reverseMap[$apiKey];
-			$fieldDef = $this->_getFieldDefinition($doliBaseClass, $doliField);
+			// $applyNameHeuristics = false: on import we only trust real
+			// Dolibarr $fields types for casting. For classes without $fields,
+			// name-based type guesses would corrupt string values (e.g.
+			// 'price_display' = 'HT' -> 0); leave the value as-is instead.
+			$fieldDef = $this->_getFieldDefinition($doliBaseClass, $doliField, false);
 			$output->{$doliField} = $this->_castInputValue($apiValue, $fieldDef);
 		}
 

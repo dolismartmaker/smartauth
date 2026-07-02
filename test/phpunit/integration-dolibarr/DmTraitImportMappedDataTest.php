@@ -82,6 +82,45 @@ class TestImportReadOnlyMapper extends dmBase
     }
 }
 
+/**
+ * A minimal object WITHOUT a Dolibarr $fields array, exposing a string
+ * property whose name matches the numeric name-heuristic ('price_display'
+ * matches /^price/). Used to prove importMappedData() no longer coerces such
+ * a value to a number for classes that have no real $fields metadata.
+ */
+class NoFieldsNumericNameStub
+{
+    public $rowid;
+    public $price_display; // holds 'HT'/'TTC' (a string), not a price amount
+
+    public function __construct($db = null)
+    {
+        // No $fields declared on purpose.
+    }
+}
+
+class TestNoFieldsHeuristicMapper extends dmBase
+{
+    use dmTrait;
+
+    protected $type = 'object';
+    protected $dolibarrClassName = 'SmartAuth\\Tests\\IntegrationDolibarr\\NoFieldsNumericNameStub';
+
+    protected $listOfPublishedFields = [
+        'rowid'         => 'id',
+        'price_display' => 'price_display',
+    ];
+
+    protected $writableFields = [
+        'price_display',
+    ];
+
+    public function __construct()
+    {
+        $this->boot();
+    }
+}
+
 class DmTraitImportMappedDataTest extends DolibarrRealTestCase
 {
     public function testReadOnlyMapperRejectsAnyInput(): void
@@ -210,5 +249,31 @@ class DmTraitImportMappedDataTest extends DolibarrRealTestCase
         $this->assertEquals('INV-001', $result->ref_client);
         $this->assertEquals('public', $result->note_public);
         $this->assertEquals('private', $result->note_private);
+    }
+
+    /**
+     * Regression: for a class WITHOUT $fields, a string field whose name
+     * matches the numeric heuristic ('price_display' -> /^price/) must NOT be
+     * cast to 0 on import. The name heuristic is read-only (objectDesc);
+     * casting on import only trusts real Dolibarr $fields types.
+     */
+    public function testImportKeepsStringForNumericLikeNameOnNoFieldsClass(): void
+    {
+        $mapper = new TestNoFieldsHeuristicMapper();
+        $result = $mapper->importMappedData(['price_display' => 'HT']);
+
+        $this->assertSame('HT', $result->price_display);
+    }
+
+    /**
+     * Counterpart: a numeric string is still stored intact (not lost). Casting
+     * to int/float only happens when a real $fields type says so.
+     */
+    public function testImportKeepsNumericStringForNoFieldsClass(): void
+    {
+        $mapper = new TestNoFieldsHeuristicMapper();
+        $result = $mapper->importMappedData(['price_display' => '58']);
+
+        $this->assertSame('58', $result->price_display);
     }
 }

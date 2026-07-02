@@ -43,6 +43,16 @@ class SyncController
      */
     private $syncableObjects = [];
 
+    /**
+     * Pull pagination bounds. The default equals the historic hard cap so a
+     * client sending no pagination params keeps the exact legacy behavior.
+     * MAX_OFFSET bounds the O(offset) scan cost of offset pagination on the
+     * database side (authenticated clients only, but still abusable).
+     */
+    const PULL_DEFAULT_LIMIT = 1000;
+    const PULL_MAX_LIMIT = 1000;
+    const PULL_MAX_OFFSET = 1000000;
+
     public function __construct()
     {
         global $db;
@@ -53,6 +63,17 @@ class SyncController
     /**
      * Load syncable objects configuration
      * Includes built-in objects and those registered via hooks
+     *
+     * Optional per-object key 'pull_where': trusted SQL fragment appended to
+     * the WHERE clause of the pull() queries (eg 'tosell = 1'). Rules:
+     * - MUST be a hardcoded string in module code. NEVER build it from
+     *   request input or any user-controlled value: it is concatenated into
+     *   SQL as-is (same trust model as the 'table' key).
+     * - Business/volume filter ONLY, never an access-control mechanism: row
+     *   ids that stop matching the filter are exposed to every authorized
+     *   client as exclusions in the 'deleted' list. Access control stays
+     *   with the 'rights' mapping and entity scoping.
+     * - Reference bare column names (the pull queries use no table alias).
      */
     private function loadSyncableObjects()
     {
@@ -327,9 +348,16 @@ class SyncController
      * @apiQuery {String} client_uuid Client UUID
      * @apiQuery {String} object_type Object type to pull (thirdparty, contact, product...)
      * @apiQuery {String} [last_sync_at] ISO timestamp of last sync (optional, uses stored value if not provided)
+     * @apiQuery {Number} [limit=1000] Page size, 1..1000
+     * @apiQuery {Number} [offset=0] Page offset. Keep last_sync_at FIXED while
+     *   paginating (offset 0, limit, 2*limit...) until has_more is false, then
+     *   store server_time from the last page only.
      *
-     * @apiSuccess {Object[]} updated List of updated/created objects
-     * @apiSuccess {Object[]} deleted List of deleted object IDs with timestamps
+     * @apiSuccess {Object[]} updated List of updated/created objects (current page)
+     * @apiSuccess {Object[]} deleted List of deleted object IDs with timestamps.
+     *   Only sent on the first page (offset 0); includes tombstones and, for
+     *   object types declaring a pull_where filter, rows that no longer match it.
+     * @apiSuccess {Boolean} has_more True when more pages are available
      * @apiSuccess {String} server_time Current server timestamp for next sync
      *
      * @apiSuccessExample {json} Success-Response:
@@ -342,6 +370,7 @@ class SyncController
      *     "deleted": [
      *         {"id": 5, "deleted_at": "2025-01-19T09:00:00+00:00"}
      *     ],
+     *     "has_more": false,
      *     "server_time": "2025-01-19T10:30:00+00:00"
      * }
      */
@@ -374,6 +403,46 @@ class SyncController
             $last_sync_at = $client->last_sync_at;
         }
 
+        // last_sync_at feeds string comparisons against tms/deleted_at. It is
+        // escaped (no injection) but a garbage value would silently corrupt
+        // the delta filters, so reject anything that is not a datetime.
+        if ($last_sync_at !== null && !$this->isValidSyncTimestamp($last_sync_at)) {
+            dol_syslog(
+                "[SmartAuth] SyncController::pull - malformed last_sync_at rejected: "
+                . $this->describeForLog($last_sync_at, 64),
+                LOG_WARNING
+            );
+            return [['error' => 'Invalid last_sync_at, expected ISO 8601 datetime'], 400];
+        }
+
+        // Pagination bounds. Out-of-range values are rejected, not clamped: a
+        // silently reduced limit would desync the client's offset arithmetic
+        // (it advances by the limit IT requested) and skip rows.
+        $limit = self::PULL_DEFAULT_LIMIT;
+        if (isset($payload['limit'])) {
+            $limit = $this->parseBoundedInt($payload['limit'], 1, self::PULL_MAX_LIMIT);
+            if ($limit === null) {
+                dol_syslog(
+                    "[SmartAuth] SyncController::pull - invalid limit rejected: "
+                    . $this->describeForLog($payload['limit'], 32),
+                    LOG_WARNING
+                );
+                return [['error' => 'limit must be an integer between 1 and ' . self::PULL_MAX_LIMIT], 400];
+            }
+        }
+        $offset = 0;
+        if (isset($payload['offset'])) {
+            $offset = $this->parseBoundedInt($payload['offset'], 0, self::PULL_MAX_OFFSET);
+            if ($offset === null) {
+                dol_syslog(
+                    "[SmartAuth] SyncController::pull - invalid offset rejected: "
+                    . $this->describeForLog($payload['offset'], 32),
+                    LOG_WARNING
+                );
+                return [['error' => 'offset must be an integer between 0 and ' . self::PULL_MAX_OFFSET], 400];
+            }
+        }
+
         $config = $this->syncableObjects[$object_type];
         $table = $config['table'];
 
@@ -388,6 +457,7 @@ class SyncController
         $result = [
             'updated' => [],
             'deleted' => [],
+            'has_more' => false,
             'server_time' => date('c'),
         ];
 
@@ -397,32 +467,92 @@ class SyncController
         if ($last_sync_at) {
             $sql .= " AND tms > '" . $this->db->escape($last_sync_at) . "'";
         }
+        if (!empty($config['pull_where'])) {
+            // Trusted, module-declared SQL fragment (see loadSyncableObjects
+            // PHPDoc). NEVER built from request input.
+            $sql .= " AND (" . $config['pull_where'] . ")";
+        }
         $sql .= " ORDER BY tms ASC";
-        $sql .= " LIMIT 1000"; // Pagination for large datasets
+        // Fetch one extra row to detect a next page without a COUNT query.
+        $sql .= " LIMIT " . ($limit + 1) . " OFFSET " . $offset;
 
         $withFiles = !empty($payload['with_files']);
 
         $resql = $this->db->query($sql);
-        if ($resql) {
-            while ($obj = $this->db->fetch_object($resql)) {
-                $result['updated'][] = $this->formatObjectForSync($obj, $object_type, $withFiles);
+        if (!$resql) {
+            // A broken pull_where fragment would otherwise look like a
+            // permanently empty sync on the client - fail loudly instead.
+            dol_syslog(
+                "[SmartAuth] SyncController::pull - updated query failed for "
+                . $object_type . ": " . $this->db->lasterror(),
+                LOG_ERR
+            );
+            return [['error' => 'Database error during pull'], 500];
+        }
+        $rows = [];
+        while ($obj = $this->db->fetch_object($resql)) {
+            $rows[] = $obj;
+        }
+        if (count($rows) > $limit) {
+            $result['has_more'] = true;
+            array_pop($rows); // drop the probe row
+        }
+        foreach ($rows as $obj) {
+            $result['updated'][] = $this->formatObjectForSync($obj, $object_type, $withFiles);
+        }
+
+        // Tombstones and filter exclusions are page-independent lists: emit
+        // them on the first page only so a paginating client does not receive
+        // N identical copies.
+        if ($offset === 0) {
+            // Get tombstones (deleted records)
+            $sql = "SELECT object_id, deleted_at FROM " . MAIN_DB_PREFIX . "smartauth_sync_tombstones";
+            $sql .= " WHERE table_name = '" . $this->db->escape($table) . "'";
+            if ($last_sync_at) {
+                $sql .= " AND deleted_at > '" . $this->db->escape($last_sync_at) . "'";
             }
-        }
 
-        // Get tombstones (deleted records)
-        $sql = "SELECT object_id, deleted_at FROM " . MAIN_DB_PREFIX . "smartauth_sync_tombstones";
-        $sql .= " WHERE table_name = '" . $this->db->escape($table) . "'";
-        if ($last_sync_at) {
-            $sql .= " AND deleted_at > '" . $this->db->escape($last_sync_at) . "'";
-        }
-
-        $resql = $this->db->query($sql);
-        if ($resql) {
+            $resql = $this->db->query($sql);
+            if (!$resql) {
+                dol_syslog(
+                    "[SmartAuth] SyncController::pull - tombstones query failed for "
+                    . $object_type . ": " . $this->db->lasterror(),
+                    LOG_ERR
+                );
+                return [['error' => 'Database error during pull'], 500];
+            }
             while ($obj = $this->db->fetch_object($resql)) {
                 $result['deleted'][] = [
                     'id' => (int) $obj->object_id,
                     'deleted_at' => $obj->deleted_at,
                 ];
+            }
+
+            // Filter exclusions: rows updated since last sync that no longer
+            // match the business filter are surfaced as deletions so offline
+            // clients prune them (eg a product flipped to tosell=0). Only
+            // meaningful on delta pulls: a full sync simply omits them.
+            if ($last_sync_at && !empty($config['pull_where'])) {
+                $sql = "SELECT rowid, tms FROM " . MAIN_DB_PREFIX . $table;
+                $sql .= " WHERE entity IN (" . getEntity($config['module']) . ")";
+                $sql .= " AND tms > '" . $this->db->escape($last_sync_at) . "'";
+                $sql .= " AND NOT (" . $config['pull_where'] . ")";
+
+                $resql = $this->db->query($sql);
+                if (!$resql) {
+                    dol_syslog(
+                        "[SmartAuth] SyncController::pull - exclusions query failed for "
+                        . $object_type . ": " . $this->db->lasterror(),
+                        LOG_ERR
+                    );
+                    return [['error' => 'Database error during pull'], 500];
+                }
+                while ($obj = $this->db->fetch_object($resql)) {
+                    $result['deleted'][] = [
+                        'id' => (int) $obj->rowid,
+                        'deleted_at' => $obj->tms,
+                    ];
+                }
             }
         }
 
@@ -430,6 +560,8 @@ class SyncController
         $this->logSyncEvent($client->rowid, 'pull', $table, null, [
             'updated_count' => count($result['updated']),
             'deleted_count' => count($result['deleted']),
+            'offset' => $offset,
+            'has_more' => $result['has_more'],
         ]);
 
         return [$result, 200];
@@ -1444,6 +1576,69 @@ class SyncController
         $count = $this->db->num_rows($resql);
         $this->db->free($resql);
         return $count > 0;
+    }
+
+    /**
+     * Describe a rejected payload value for logging without risking a PHP
+     * warning on non-scalars (an array cast to string) or log injection.
+     *
+     * @param mixed $value  Raw payload value
+     * @param int   $maxLen Maximum logged length
+     * @return string       Loggable description
+     */
+    private function describeForLog($value, int $maxLen): string
+    {
+        if (!is_scalar($value)) {
+            return '(' . gettype($value) . ')';
+        }
+        return InputSanitizer::sanitizeForLog($value, $maxLen, $this->db);
+    }
+
+    /**
+     * Validate a sync timestamp coming from the client (or stored).
+     *
+     * Accepts ISO 8601 (2025-01-19T10:30:00+00:00, trailing Z, optional
+     * fractional seconds) and SQL datetime (2025-01-19 10:30:00). The value
+     * is compared as a string against tms/deleted_at columns, so any other
+     * shape would corrupt the comparison without failing.
+     *
+     * @param mixed $value Raw timestamp
+     * @return bool        True when the shape is a usable datetime
+     */
+    private function isValidSyncTimestamp($value): bool
+    {
+        if (!is_string($value)) {
+            return false;
+        }
+        return (bool) preg_match(
+            '/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/',
+            $value
+        );
+    }
+
+    /**
+     * Parse a payload value as a strict integer within [$min, $max].
+     *
+     * Stricter than InputSanitizer::sanitizeInt (which casts anything):
+     * floats, negative strings and garbage return null so the caller can
+     * reject the request instead of silently reinterpreting it.
+     *
+     * @param mixed $value Raw payload value (int or digit-only string)
+     * @param int   $min   Lower bound (inclusive)
+     * @param int   $max   Upper bound (inclusive)
+     * @return int|null    Parsed value, or null when invalid/out of range
+     */
+    private function parseBoundedInt($value, int $min, int $max): ?int
+    {
+        if (is_int($value)) {
+            $n = $value;
+        } elseif (is_string($value) && ctype_digit($value)) {
+            $n = (int) $value;
+        } else {
+            return null;
+        }
+
+        return ($n >= $min && $n <= $max) ? $n : null;
     }
 
     /**
