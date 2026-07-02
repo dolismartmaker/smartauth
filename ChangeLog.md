@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.34 -- 20260702
+
+ - update add sync process regarding smartpos needs
+ - add cursor for sync partial data on big database
+
 ## 2.0.32 -- 20260629
 
  - better idempotency for synced data
