@@ -1135,8 +1135,15 @@ class ObjectDocumentController
         if (!is_array($shares) || empty($shares)) {
             return [['error' => 'Missing or empty shares array'], 400];
         }
+        // Count overflow is handled as soft pagination (like the total-size
+        // limit below): process the first BUNDLE_MAX_SHARES and hand the rest
+        // back in manifest.remaining so the client loop fetches them next round.
+        // A hard 400 here would break sync for any object with >500 documents.
+        $shareOverflow = [];
         if (count($shares) > self::BUNDLE_MAX_SHARES) {
-            return [['error' => 'Too many shares (max ' . self::BUNDLE_MAX_SHARES . ')'], 400];
+            $shareOverflow = array_slice($shares, self::BUNDLE_MAX_SHARES);
+            $shares = array_slice($shares, 0, self::BUNDLE_MAX_SHARES);
+            dol_syslog('[SmartAuth] ObjectDocumentController::bundle - share count over limit, paginating ' . count($shareOverflow) . ' shares', LOG_NOTICE);
         }
 
         $maxFileSize = isset($payload['max_file_size'])
@@ -1151,7 +1158,7 @@ class ObjectDocumentController
 
         $included = [];
         $oversized = [];
-        $remaining = [];
+        $remaining = $shareOverflow;
         $errors = [];
         $filesToAdd = [];
         $totalSize = 0;
