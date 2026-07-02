@@ -53,6 +53,13 @@ class SyncController
     const PULL_MAX_LIMIT = 1000;
     const PULL_MAX_OFFSET = 1000000;
 
+    /**
+     * Upper bound on the opaque keyset cursor string (hex of "tms|rowid").
+     * A well-formed cursor is ~60 hex chars; anything longer is malformed
+     * input and rejected before hex-decoding.
+     */
+    const PULL_MAX_CURSOR_LENGTH = 128;
+
     public function __construct()
     {
         global $db;
@@ -352,12 +359,19 @@ class SyncController
      * @apiQuery {Number} [offset=0] Page offset. Keep last_sync_at FIXED while
      *   paginating (offset 0, limit, 2*limit...) until has_more is false, then
      *   store server_time from the last page only.
+     * @apiQuery {String} [cursor] Opaque keyset continuation token. Preferred
+     *   over offset: pass back the previous page's next_cursor to fetch the
+     *   next page. Robust to rows inserted during the pass (no dup, no skip).
+     *   When set, offset is ignored. Keep last_sync_at FIXED across pages.
      *
      * @apiSuccess {Object[]} updated List of updated/created objects (current page)
      * @apiSuccess {Object[]} deleted List of deleted object IDs with timestamps.
-     *   Only sent on the first page (offset 0); includes tombstones and, for
-     *   object types declaring a pull_where filter, rows that no longer match it.
+     *   Only sent on the first page (no cursor, offset 0); includes tombstones
+     *   and, for object types declaring a pull_where filter, rows that no
+     *   longer match it.
      * @apiSuccess {Boolean} has_more True when more pages are available
+     * @apiSuccess {String} [next_cursor] Present only when has_more is true:
+     *   opaque token to pass as cursor on the next request.
      * @apiSuccess {String} server_time Current server timestamp for next sync
      *
      * @apiSuccessExample {json} Success-Response:
@@ -443,6 +457,24 @@ class SyncController
             }
         }
 
+        // Keyset (cursor) pagination. Opaque continuation token encoding the
+        // last row's (tms, rowid). When present it drives paging instead of
+        // offset (offset is ignored) and is robust to rows inserted mid-pass:
+        // a fresh row always carries tms=now > any earlier cursor, so it is
+        // picked up without duplicating or skipping already-paged rows.
+        $cursor = null;
+        if (isset($payload['cursor']) && $payload['cursor'] !== '') {
+            $cursor = $this->decodeSyncCursor($payload['cursor']);
+            if ($cursor === null) {
+                dol_syslog(
+                    "[SmartAuth] SyncController::pull - malformed cursor rejected: "
+                    . $this->describeForLog($payload['cursor'], 64),
+                    LOG_WARNING
+                );
+                return [['error' => 'Invalid cursor'], 400];
+            }
+        }
+
         $config = $this->syncableObjects[$object_type];
         $table = $config['table'];
 
@@ -467,14 +499,28 @@ class SyncController
         if ($last_sync_at) {
             $sql .= " AND tms > '" . $this->db->escape($last_sync_at) . "'";
         }
+        if ($cursor !== null) {
+            // Keyset predicate on the (tms, rowid) total order. rowid breaks
+            // ties when several rows share a tms, so no row is seen twice or
+            // skipped across pages. Values are validated/escaped in decode.
+            $sql .= " AND (tms > '" . $this->db->escape($cursor['tms']) . "'";
+            $sql .= " OR (tms = '" . $this->db->escape($cursor['tms']) . "'";
+            $sql .= " AND rowid > " . (int) $cursor['rowid'] . "))";
+        }
         if (!empty($config['pull_where'])) {
             // Trusted, module-declared SQL fragment (see loadSyncableObjects
             // PHPDoc). NEVER built from request input.
             $sql .= " AND (" . $config['pull_where'] . ")";
         }
-        $sql .= " ORDER BY tms ASC";
+        // rowid tiebreaker gives a stable total order: required for keyset,
+        // and makes offset pages deterministic too.
+        $sql .= " ORDER BY tms ASC, rowid ASC";
         // Fetch one extra row to detect a next page without a COUNT query.
-        $sql .= " LIMIT " . ($limit + 1) . " OFFSET " . $offset;
+        $sql .= " LIMIT " . ($limit + 1);
+        // Keyset mode carries its position in the cursor, so no OFFSET.
+        if ($cursor === null) {
+            $sql .= " OFFSET " . $offset;
+        }
 
         $withFiles = !empty($payload['with_files']);
 
@@ -496,6 +542,10 @@ class SyncController
         if (count($rows) > $limit) {
             $result['has_more'] = true;
             array_pop($rows); // drop the probe row
+            // Continuation token for keyset clients: position of the last
+            // delivered row. Additive - offset clients ignore it.
+            $lastRow = end($rows);
+            $result['next_cursor'] = $this->encodeSyncCursor($lastRow->tms, (int) $lastRow->rowid);
         }
         foreach ($rows as $obj) {
             $result['updated'][] = $this->formatObjectForSync($obj, $object_type, $withFiles);
@@ -503,8 +553,8 @@ class SyncController
 
         // Tombstones and filter exclusions are page-independent lists: emit
         // them on the first page only so a paginating client does not receive
-        // N identical copies.
-        if ($offset === 0) {
+        // N identical copies. First page = neither a cursor nor an offset.
+        if ($cursor === null && $offset === 0) {
             // Get tombstones (deleted records)
             $sql = "SELECT object_id, deleted_at FROM " . MAIN_DB_PREFIX . "smartauth_sync_tombstones";
             $sql .= " WHERE table_name = '" . $this->db->escape($table) . "'";
@@ -1639,6 +1689,60 @@ class SyncController
         }
 
         return ($n >= $min && $n <= $max) ? $n : null;
+    }
+
+    /**
+     * Encode a keyset pagination cursor from a row's (tms, rowid).
+     *
+     * The token is opaque hex of "tms|rowid". Hex keeps it purely
+     * alphanumeric so it survives the generic payload sanitizer untouched
+     * (sync/pull has no dedicated schema, cf. sanitizeAll).
+     *
+     * @param string $tms   Row modification timestamp (SQL datetime string)
+     * @param int    $rowid Row primary key
+     * @return string       Opaque cursor token
+     */
+    private function encodeSyncCursor($tms, int $rowid): string
+    {
+        return bin2hex(((string) $tms) . '|' . $rowid);
+    }
+
+    /**
+     * Decode and validate a client-supplied keyset cursor.
+     *
+     * The token is untrusted input: it is length-bounded, hex-decoded, split
+     * on the last '|' (a tms never contains one), and its tms is validated
+     * with the same datetime shape as last_sync_at. Any deviation returns
+     * null so pull() rejects the request with 400 instead of feeding garbage
+     * into the WHERE clause.
+     *
+     * @param mixed $value Raw payload cursor value
+     * @return array|null  ['tms' => string, 'rowid' => int] or null if invalid
+     */
+    private function decodeSyncCursor($value): ?array
+    {
+        if (!is_string($value) || $value === '' || strlen($value) > self::PULL_MAX_CURSOR_LENGTH) {
+            return null;
+        }
+        // Strict hex: ctype_xdigit rejects any non-hex byte, and an odd
+        // length cannot be a valid bin2hex output.
+        if (strlen($value) % 2 !== 0 || !ctype_xdigit($value)) {
+            return null;
+        }
+        $decoded = hex2bin($value);
+        if ($decoded === false) {
+            return null;
+        }
+        $sep = strrpos($decoded, '|');
+        if ($sep === false) {
+            return null;
+        }
+        $tms = substr($decoded, 0, $sep);
+        $rowidPart = substr($decoded, $sep + 1);
+        if (!$this->isValidSyncTimestamp($tms) || !ctype_digit($rowidPart)) {
+            return null;
+        }
+        return ['tms' => $tms, 'rowid' => (int) $rowidPart];
     }
 
     /**

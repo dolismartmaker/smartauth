@@ -1333,4 +1333,154 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
             $user->rights->produit->lire = $saved;
         }
     }
+
+    /**
+     * Keyset (cursor) paging must cover the full set exactly once, expose a
+     * next_cursor while more pages remain, and drop it on the last page.
+     */
+    public function testPullCursorPaginationPagesAreCompleteAndDisjoint(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        try {
+            $created = [];
+            for ($i = 1; $i <= 5; $i++) {
+                $created[] = $this->createSyncTestProduct(1, '2030-01-01 10:00:0' . $i);
+            }
+
+            $collected = [];
+
+            $page0 = $this->pullProducts(['limit' => 2]);
+            $this->assertEquals(200, $page0[1]);
+            $this->assertCount(2, $page0[0]['updated']);
+            $this->assertTrue($page0[0]['has_more']);
+            $this->assertArrayHasKey('next_cursor', $page0[0]);
+            $collected = array_merge($collected, $this->updatedIds($page0));
+
+            $page1 = $this->pullProducts(['limit' => 2, 'cursor' => $page0[0]['next_cursor']]);
+            $this->assertCount(2, $page1[0]['updated']);
+            $this->assertTrue($page1[0]['has_more']);
+            $this->assertArrayHasKey('next_cursor', $page1[0]);
+            $collected = array_merge($collected, $this->updatedIds($page1));
+
+            $page2 = $this->pullProducts(['limit' => 2, 'cursor' => $page1[0]['next_cursor']]);
+            $this->assertCount(1, $page2[0]['updated']);
+            $this->assertFalse($page2[0]['has_more']);
+            $this->assertArrayNotHasKey('next_cursor', $page2[0], 'No next_cursor on the last page');
+            $collected = array_merge($collected, $this->updatedIds($page2));
+
+            sort($collected);
+            sort($created);
+            $this->assertSame($created, $collected, 'Keyset pages must union to the full set, no dup, no hole');
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * Robustness: a row inserted mid-pass (fresh tms, sorts after the cursor)
+     * is picked up on the next page, and already-paged rows never reappear.
+     * This is the property offset pagination cannot guarantee.
+     */
+    public function testPullCursorPicksUpRowsInsertedDuringPassWithoutDuplicates(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        try {
+            $r1 = $this->createSyncTestProduct(1, '2030-01-01 10:00:01');
+            $r2 = $this->createSyncTestProduct(1, '2030-01-01 10:00:02');
+            $r3 = $this->createSyncTestProduct(1, '2030-01-01 10:00:05');
+            $r4 = $this->createSyncTestProduct(1, '2030-01-01 10:00:06');
+
+            $page0 = $this->pullProducts(['limit' => 2]);
+            $this->assertSame([$r1, $r2], $this->updatedIds($page0));
+            $this->assertTrue($page0[0]['has_more']);
+
+            // New row appears between the cursor (10:00:02) and r3 (10:00:05).
+            $r5 = $this->createSyncTestProduct(1, '2030-01-01 10:00:03');
+
+            $page1 = $this->pullProducts(['limit' => 2, 'cursor' => $page0[0]['next_cursor']]);
+            $ids1 = $this->updatedIds($page1);
+            $this->assertContains($r5, $ids1, 'Mid-pass insert after the cursor must be delivered');
+            $this->assertNotContains($r1, $ids1, 'Already-paged rows must not reappear');
+            $this->assertNotContains($r2, $ids1, 'Already-paged rows must not reappear');
+
+            // Drain the rest and check the union has every row exactly once.
+            $collected = array_merge($this->updatedIds($page0), $ids1);
+            $cursor = $page1[0]['next_cursor'] ?? null;
+            while ($cursor !== null) {
+                $page = $this->pullProducts(['limit' => 2, 'cursor' => $cursor]);
+                $collected = array_merge($collected, $this->updatedIds($page));
+                $cursor = $page[0]['has_more'] ? $page[0]['next_cursor'] : null;
+            }
+
+            $expected = [$r1, $r2, $r3, $r4, $r5];
+            sort($expected);
+            sort($collected);
+            $this->assertSame($expected, $collected, 'Every row delivered exactly once despite the mid-pass insert');
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * Tombstones/exclusions stay first-page-only in keyset mode too: a page
+     * requested with a cursor must not repeat the deletion list.
+     */
+    public function testPullCursorTombstonesOnlyOnFirstPage(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        try {
+            for ($i = 1; $i <= 3; $i++) {
+                $this->createSyncTestProduct(1, '2030-01-01 10:00:0' . $i);
+            }
+
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_sync_tombstones";
+            $sql .= " (table_name, object_id, deleted_at, deleted_by)";
+            $sql .= " VALUES ('product', 424243, '2030-01-05 00:00:00', " . (int) $this->testUser->id . ")";
+            $this->db->query($sql);
+
+            $page0 = $this->pullProducts(['limit' => 2]);
+            $this->assertEquals(200, $page0[1]);
+            $this->assertContains(424243, $this->deletedIds($page0));
+
+            $page1 = $this->pullProducts(['limit' => 2, 'cursor' => $page0[0]['next_cursor']]);
+            $this->assertEquals(200, $page1[1]);
+            $this->assertEmpty($page1[0]['deleted'], 'Tombstones must only be sent on the first page (no cursor)');
+        } finally {
+            $this->cleanSyncTestProducts();
+        }
+    }
+
+    /**
+     * A malformed or tampered cursor must be rejected with 400, never fed
+     * into the WHERE clause. A well-formed cursor round-trips to 200.
+     */
+    public function testPullRejectsMalformedCursor(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $bad = [
+            'not-hex-!!',                                       // non-hex chars
+            'abc',                                              // odd-length hex
+            bin2hex('nopipe'),                                  // valid hex, no separator
+            bin2hex('not-a-date|5'),                            // bad tms
+            bin2hex('2030-01-01 10:00:00|x'),                   // non-digit rowid
+            str_repeat('a', 130),                               // over length cap
+        ];
+        foreach ($bad as $cursor) {
+            $result = $this->pullProducts(['cursor' => $cursor]);
+            $this->assertEquals(400, $result[1], 'Malformed cursor must yield 400: ' . $cursor);
+        }
+
+        // A well-formed cursor is accepted (points before every test row).
+        $good = bin2hex('2030-01-01 00:00:00|0');
+        $result = $this->pullProducts(['cursor' => $good]);
+        $this->assertEquals(200, $result[1], 'Well-formed cursor must be accepted');
+    }
 }
