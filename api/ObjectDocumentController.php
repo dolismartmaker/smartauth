@@ -946,6 +946,55 @@ class ObjectDocumentController
     }
 
     /**
+     * Thumbnail mode: reduce a directory's image files to a single entry per
+     * image -- the small thumbnail if present, else the mini thumbnail, else
+     * the original. Non-image files pass through unchanged.
+     *
+     * Dolibarr generates thumbnails in a thumbs/ subdirectory named
+     * "{base}_small.{ext}" and "{base}_mini.{ext}" alongside the original
+     * "{base}.{ext}". Grouping by "{base}" lets a grid view download one small
+     * file per image instead of the full-resolution original plus its variants.
+     *
+     * @param array $files dol_dir_list entries (each with a 'name' key)
+     * @return array Filtered file entries
+     */
+    private function selectThumbnailFiles($files)
+    {
+        $groups = array();      // base name => ['small'=>file, 'mini'=>file, 'orig'=>file]
+        $passthrough = array(); // non-image files, kept as-is
+
+        foreach ($files as $file) {
+            $mimeType = dol_mimetype($file['name']);
+            if (strpos($mimeType, 'image/') !== 0) {
+                $passthrough[] = $file;
+                continue;
+            }
+            $name = $file['name'];
+            if (preg_match('/^(.*)_small\.[^.]+$/', $name, $m)) {
+                $groups[$m[1]]['small'] = $file;
+            } elseif (preg_match('/^(.*)_mini\.[^.]+$/', $name, $m)) {
+                $groups[$m[1]]['mini'] = $file;
+            } else {
+                $base = preg_replace('/\.[^.]+$/', '', $name);
+                $groups[$base]['orig'] = $file;
+            }
+        }
+
+        $kept = $passthrough;
+        foreach ($groups as $variants) {
+            if (isset($variants['small'])) {
+                $kept[] = $variants['small'];
+            } elseif (isset($variants['mini'])) {
+                $kept[] = $variants['mini'];
+            } elseif (isset($variants['orig'])) {
+                $kept[] = $variants['orig'];
+            }
+        }
+
+        return $kept;
+    }
+
+    /**
      * @api {get} /object/documents/{type}/{doctypes} Batch list documents for all objects of a type
      * @api {get} /object/documents/{type}/{doctypes}/since/{timestamp} Batch list with incremental sync
      * @apiName BatchListObjectDocuments
@@ -1006,9 +1055,17 @@ class ObjectDocumentController
             return [['error' => 'Access denied'], 403];
         }
 
-        // Parse document types from path segment (e.g., "image,pdf")
+        // Parse document types from path segment (e.g., "image,pdf"). The
+        // special "thumb" token requests image thumbnails only: each image is
+        // collapsed to its small (or mini) variant so grid views download tiny
+        // files instead of full-resolution originals. It is opt-in, so clients
+        // still asking for "image" keep the original behaviour.
         $doctypesParam = $payload['doctypes'] ?? 'image,pdf,other';
         $doctypes = array_map('trim', explode(',', $doctypesParam));
+        $thumbMode = in_array('thumb', $doctypes, true);
+        if ($thumbMode) {
+            $doctypes = array('image');
+        }
 
         // Parse optional since timestamp from path segment
         $since = isset($payload['timestamp']) ? (int) $payload['timestamp'] : 0;
@@ -1037,6 +1094,9 @@ class ObjectDocumentController
             }
 
             $files = dol_dir_list($docDir, 'files', 1, '', array('(\.meta|_preview.*\.png)$', '^\.'), 'date', SORT_DESC, 1);
+            if ($thumbMode) {
+                $files = $this->selectThumbnailFiles($files);
+            }
 
             foreach ($files as $file) {
                 // Skip files not modified since last sync
