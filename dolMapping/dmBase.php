@@ -22,6 +22,17 @@ namespace SmartAuth\DolibarrMapping;
 
 abstract class dmBase
 {
+    // dmBase composes dmTrait so the mapping methods (exportMappedData,
+    // importMappedData, boot, ...) live on the base class itself. This is
+    // what makes `parent::exportMappedData()` resolvable from a consumer
+    // mapper that overrides the method (eg Dolipocket adding FK-label
+    // post-processing) - without it PHP raises
+    // "Call to undefined method dmBase::exportMappedData()".
+    // Concrete mappers still `use dmTrait;` too; re-applying the same trait
+    // in a subclass whose parent already uses it is legal (identical
+    // defaults/visibility, no collision) and left untouched on purpose.
+    use dmTrait;
+
     protected $type;
 
     /**

@@ -174,6 +174,47 @@ class TestDmTraitClassBooted extends TestDmTraitClass
 }
 
 /**
+ * Consumer-style mapper reproducing the Dolipocket pattern: it extends
+ * dmBase DIRECTLY, uses dmTrait, overrides exportMappedData() and calls
+ * parent::exportMappedData() to reuse the trait logic before its own
+ * post-processing. That parent:: call only resolves because dmBase itself
+ * composes dmTrait - remove `use dmTrait;` from dmBase and this fatals with
+ * "Call to undefined method dmBase::exportMappedData()". This class is the
+ * regression guard for that composition.
+ */
+class TestDmConsumerOverrideMapper extends dmBase
+{
+    use dmTrait;
+
+    protected $type = 'Societe';
+
+    protected $listOfPublishedFields = [
+        'rowid' => 'id',
+        'nom'   => 'name',
+    ];
+
+    protected $listOfPublishedFieldsForLines = [];
+
+    public function __construct($db)
+    {
+        $this->_db = $db;
+        $this->_dolmapping = new dmHelper();
+        $this->_dolmapclassname = static::class;
+        $this->_dolobjectclassname = 'Societe';
+        $this->_cacheDesc = new stdClass();
+    }
+
+    public function exportMappedData($obj)
+    {
+        // Reuse the trait's mapping (via dmBase), then post-process, exactly
+        // like a real consumer mapper (eg FK-label resolution in Dolipocket).
+        $mapped = parent::exportMappedData($obj);
+        $mapped->consumer_post_processed = true;
+        return $mapped;
+    }
+}
+
+/**
  * @covers \SmartAuth\DolibarrMapping\dmTrait
  * @covers \SmartAuth\DolibarrMapping\dmBase
  */
@@ -223,6 +264,45 @@ class DmTraitTest extends DolibarrRealTestCase
         $this->assertEquals(123, $result->id);
         $this->assertEquals('TEST COMPANY', $result->name);  // fieldFilterValueNom applies strtoupper
         $this->assertEquals('123 Test Street', $result->address);
+    }
+
+    /**
+     * Regression: a consumer mapper that extends dmBase directly and
+     * overrides exportMappedData() must be able to call
+     * parent::exportMappedData() to reuse the trait logic. This only works
+     * because dmBase composes dmTrait; without it the call fatals with
+     * "Call to undefined method dmBase::exportMappedData()".
+     */
+    public function testConsumerCanCallParentExportMappedData(): void
+    {
+        $obj = new stdClass();
+        $obj->rowid = 123;
+        $obj->id = 123;
+        $obj->nom = 'Test Company';
+        $obj->array_options = [];
+
+        $mapper = new TestDmConsumerOverrideMapper($this->db);
+        $result = $mapper->exportMappedData($obj);
+
+        // Base mapping came from the trait via parent::.
+        $this->assertInstanceOf(stdClass::class, $result);
+        $this->assertEquals(123, $result->id);
+        $this->assertEquals('Test Company', $result->name);
+        // The child's post-processing ran on top of the parent result.
+        $this->assertTrue($result->consumer_post_processed);
+    }
+
+    /**
+     * dmBase must actually expose the trait methods (belt-and-suspenders for
+     * the composition, independent of the override path above).
+     */
+    public function testDmBaseComposesDmTrait(): void
+    {
+        $this->assertContains(
+            dmTrait::class,
+            class_uses(dmBase::class),
+            'dmBase must use dmTrait so consumers can call parent:: mapping methods'
+        );
     }
 
     /**
