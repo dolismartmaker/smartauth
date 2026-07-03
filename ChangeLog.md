@@ -1,5 +1,9 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.35 -- 20260703
+
+ - new option to get only thumbnails on request for local cache / offline
+
 ## 2.0.34 -- 20260702
 
  - update add sync process regarding smartpos needs
