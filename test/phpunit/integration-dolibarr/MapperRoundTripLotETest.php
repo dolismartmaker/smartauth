@@ -334,6 +334,7 @@ class MapperRoundTripLotETest extends DolibarrRealTestCase
         $this->assertEquals($orderId, (int) $line->supplier_order_id);
         $this->assertEquals($productId, (int) $line->product);
         $this->assertEquals(7, (int) $line->quantity);
+        $this->assertEquals(1, (int) $line->warehouse);
         $this->assertEquals('reception line', $line->comment);
     }
 

@@ -220,14 +220,18 @@ trait dmLinesTrait
 	 */
 	protected function getReceptionLinesMapping(): array
 	{
+		// Reception lines are CommandeFournisseurDispatch rows.
+		// CommandeFournisseurDispatch::fetch() exposes the warehouse under
+		// $line->fk_entrepot (NOT $line->entrepot_id, which ExpeditionLigne
+		// uses), and the class has no 'rang' column/property, so a 'rang'
+		// mapping would always export null. Map the real property names.
 		return [
 			'rowid'                 => 'id',
 			'fk_reception'          => 'reception_id',
 			'fk_commande'           => 'supplier_order_id',
 			'fk_product'            => 'product',
 			'qty'                   => 'quantity',
-			'entrepot_id'           => 'warehouse',
-			'rang'                  => 'position',
+			'fk_entrepot'           => 'warehouse',
 			'comment'               => 'comment',
 		];
 	}
@@ -257,11 +261,10 @@ trait dmLinesTrait
 			'total_ttc'             => 'total_incl_tax',
 			'total_localtax1'       => 'total_local_tax1',
 			'total_localtax2'       => 'total_local_tax2',
-			'fk_multicurrency'      => 'multicurrency_id',
-			'multicurrency_code'    => 'multicurrency_code',
-			'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
-			'multicurrency_total_tva' => 'multicurrency_total_vat',
-			'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
+			// Unlike Facture/Commande/Propal::fetch_lines, ExpenseReport::
+			// fetch_lines does NOT select the multicurrency_* columns onto its
+			// line objects, so mapping them here would always export null.
+			// Omitted until fetch_lines populates them.
 		];
 	}
 
@@ -289,14 +292,14 @@ trait dmLinesTrait
 	 */
 	protected function getInterventionLinesMapping(): array
 	{
-		// FichinterLigne::fetch (fichinter.class.php line 466, 1633)
-		// reads the SQL column 'duree' INTO $line->duration (renamed at
-		// fetch time). The mapper must read $line->duration, not
-		// $line->duree which is never populated.
+		// Fichinter::fetch_lines renames the SQL column 'duree' INTO
+		// $line->duration, so the mapper must read $line->duration (never
+		// $line->duree). Intervention lines carry no product: llx_fichinterdet
+		// has no fk_product column and fetch_lines never sets $line->fk_product,
+		// so a 'fk_product' mapping would always export null - omitted.
 		return [
 			'rowid'                 => 'id',
 			'fk_fichinter'          => 'intervention_id',
-			'fk_product'            => 'product',
 			'desc'                  => 'description',
 			'date'                  => 'date',
 			'duration'              => 'duration',
