@@ -125,14 +125,79 @@ class MapperRoundTripLotETest extends DolibarrRealTestCase
 
     public function testDmShipmentRoundTripLinesExport(): void
     {
-        // Lines round-trip is skipped: Expedition::addline() chains into
-        // OrderLine::fetch() and stock-movement checks that need a full
-        // Commande/OrderLine fixture on top of stock availability. Out of
-        // scope for the SQLite vendor baseline.
-        $this->markTestSkipped(
-            'Expedition lines require a validated parent Commande + OrderLine'
-            . ' chain; not available in the integration-dolibarr SQLite baseline.'
-        );
+        // Expedition::addline() chains into OrderLine::fetch() and
+        // stock-movement checks that need stock availability - out of scope
+        // for the SQLite baseline. Instead we seed the exact rows
+        // Expedition::fetch_lines() reads (a commandedet origin line + an
+        // expeditiondet row) and assert dmShipment maps the line. This
+        // exercises the mapper's line export without the stock machinery.
+        $societe = $this->createTestSociete(['name' => 'Shipment lines customer']);
+
+        $shipment = new \Expedition($this->db);
+        $shipment->socid = $societe->id;
+        $shipment->ref_customer = 'CUST-SHIPL-' . uniqid();
+        $shipment->date_expedition = dol_now();
+        $shipment->date_delivery = dol_now() + 86400;
+        $shipment->sizeS = null;
+        $shipment->sizeW = null;
+        $shipment->sizeH = null;
+        $shipment->size_units = null;
+        $shipment->weight = null;
+        $shipment->weight_units = null;
+        $shipmentId = $shipment->create($this->testUser);
+        $this->assertGreaterThan(0, $shipmentId, 'failed to create shipment: ' . $shipment->error);
+
+        $now = $this->db->idate(dol_now());
+        $prefix = MAIN_DB_PREFIX;
+
+        // Product (LEFT-joined by fetch_lines for its ref/label).
+        $ref = 'SHIPLINE-' . uniqid();
+        $this->assertTrue((bool) $this->db->query(
+            "INSERT INTO {$prefix}product (ref, label, entity, tosell, tobuy, fk_product_type, datec, tms)"
+            . " VALUES ('" . $this->db->escape($ref) . "', 'Shipment line product', 1, 1, 0, 0, '$now', '$now')"
+        ), 'insert product: ' . $this->db->lasterror());
+        $productId = (int) $this->db->last_insert_id($prefix . 'product');
+
+        // Origin order + order line (fetch_lines inner-joins commandedet on
+        // ed.fk_origin_line = cd.rowid).
+        $this->assertTrue((bool) $this->db->query(
+            "INSERT INTO {$prefix}commande (ref, entity, fk_soc, date_creation, tms)"
+            . " VALUES ('CMD-" . $this->db->escape(uniqid()) . "', 1, " . ((int) $societe->id) . ", '$now', '$now')"
+        ), 'insert commande: ' . $this->db->lasterror());
+        $orderId = (int) $this->db->last_insert_id($prefix . 'commande');
+
+        $this->assertTrue((bool) $this->db->query(
+            "INSERT INTO {$prefix}commandedet (fk_commande, fk_product, qty, product_type, rang, description)"
+            . " VALUES ($orderId, $productId, 5, 0, 1, 'shipment origin line')"
+        ), 'insert commandedet: ' . $this->db->lasterror());
+        $orderLineId = (int) $this->db->last_insert_id($prefix . 'commandedet');
+
+        // The shipment line proper.
+        $this->assertTrue((bool) $this->db->query(
+            "INSERT INTO {$prefix}expeditiondet (fk_expedition, fk_origin_line, fk_entrepot, qty, rang)"
+            . " VALUES ($shipmentId, $orderLineId, 1, 3, 1)"
+        ), 'insert expeditiondet: ' . $this->db->lasterror());
+        $shipmentLineId = (int) $this->db->last_insert_id($prefix . 'expeditiondet');
+
+        $fresh = new \Expedition($this->db);
+        $fresh->fetch($shipmentId);
+        $fresh->fetch_lines();
+
+        $mapper = new dmShipment();
+        $payload = $mapper->exportMappedData($fresh);
+
+        $this->assertObjectHasProperty('lines', $payload, 'export must carry a lines array');
+        $this->assertIsArray($payload->lines);
+        $this->assertCount(1, $payload->lines);
+
+        $line = $payload->lines[0];
+        $this->assertEquals($shipmentLineId, (int) $line->id);
+        $this->assertEquals($shipmentId, (int) $line->shipment_id);
+        $this->assertEquals('orderline', $line->origin_type);
+        $this->assertEquals($orderLineId, (int) $line->origin_line_id);
+        $this->assertEquals($productId, (int) $line->product);
+        $this->assertEquals(3, (int) $line->quantity_shipped);
+        $this->assertEquals(1, (int) $line->warehouse);
     }
 
     public function testDmShipmentImportRejectsStatusChange(): void
@@ -196,11 +261,80 @@ class MapperRoundTripLotETest extends DolibarrRealTestCase
 
     public function testDmReceptionRoundTripLinesExport(): void
     {
-        $this->markTestSkipped(
-            'Reception lines use CommandeFournisseurDispatch which requires'
-            . ' a validated parent CommandeFournisseur; out of scope for the'
-            . ' SQLite vendor baseline.'
-        );
+        // Reception::addline() needs a validated CommandeFournisseur +
+        // CommandeFournisseurDispatch (stock) chain. We instead seed the
+        // dispatch row Reception::fetch_lines() reads and assert dmReception
+        // maps the line, exercising the mapper's line export without the
+        // stock machinery.
+        $societe = $this->createTestSociete(['name' => 'Reception lines supplier']);
+
+        $reception = new \Reception($this->db);
+        $reception->socid = $societe->id;
+        $reception->ref_supplier = 'SUP-RECL-' . uniqid();
+        $reception->date_reception = dol_now();
+        $reception->date_delivery = dol_now() + 86400;
+        $reception->weight = null;
+        $reception->trueDepth = null;
+        $reception->trueWidth = null;
+        $reception->trueHeight = null;
+        $reception->weight_units = null;
+        $reception->size_units = null;
+        $reception->fk_incoterms = 0;
+        $reception->location_incoterms = '';
+        $receptionId = $reception->create($this->testUser);
+        $this->assertGreaterThan(0, $receptionId, 'failed to create reception: ' . $reception->error);
+
+        $now = $this->db->idate(dol_now());
+        $prefix = MAIN_DB_PREFIX;
+
+        $ref = 'RECLINE-' . uniqid();
+        $this->assertTrue((bool) $this->db->query(
+            "INSERT INTO {$prefix}product (ref, label, entity, tosell, tobuy, fk_product_type, datec, tms)"
+            . " VALUES ('" . $this->db->escape($ref) . "', 'Reception line product', 1, 0, 1, 0, '$now', '$now')"
+        ), 'insert product: ' . $this->db->lasterror());
+        $productId = (int) $this->db->last_insert_id($prefix . 'product');
+
+        // Supplier order referenced by the dispatch row (fk_commande).
+        $this->assertTrue((bool) $this->db->query(
+            "INSERT INTO {$prefix}commande_fournisseur (ref, entity, fk_soc, source, date_creation, tms)"
+            . " VALUES ('CMDF-" . $this->db->escape(uniqid()) . "', 1, " . ((int) $societe->id) . ", 0, '$now', '$now')"
+        ), 'insert commande_fournisseur: ' . $this->db->lasterror());
+        $orderId = (int) $this->db->last_insert_id($prefix . 'commande_fournisseur');
+
+        // Supplier order line: Reception::fetch_lines() reads it (unguarded)
+        // via the dispatch row's fk_commandefourndet, so it must exist.
+        $this->assertTrue((bool) $this->db->query(
+            "INSERT INTO {$prefix}commande_fournisseurdet (fk_commande, fk_product, qty, description, rang)"
+            . " VALUES ($orderId, $productId, 7, 'reception origin line', 1)"
+        ), 'insert commande_fournisseurdet: ' . $this->db->lasterror());
+        $orderLineId = (int) $this->db->last_insert_id($prefix . 'commande_fournisseurdet');
+
+        // The reception line proper (CommandeFournisseurDispatch row).
+        $this->assertTrue((bool) $this->db->query(
+            "INSERT INTO {$prefix}commande_fournisseur_dispatch"
+            . " (fk_commande, fk_product, fk_commandefourndet, fk_reception, qty, fk_entrepot, comment, status, datec)"
+            . " VALUES ($orderId, $productId, $orderLineId, $receptionId, 7, 1, 'reception line', 1, '$now')"
+        ), 'insert dispatch: ' . $this->db->lasterror());
+        $dispatchId = (int) $this->db->last_insert_id($prefix . 'commande_fournisseur_dispatch');
+
+        $fresh = new \Reception($this->db);
+        $fresh->fetch($receptionId);
+        $fresh->fetch_lines();
+
+        $mapper = new dmReception();
+        $payload = $mapper->exportMappedData($fresh);
+
+        $this->assertObjectHasProperty('lines', $payload, 'export must carry a lines array');
+        $this->assertIsArray($payload->lines);
+        $this->assertCount(1, $payload->lines);
+
+        $line = $payload->lines[0];
+        $this->assertEquals($dispatchId, (int) $line->id);
+        $this->assertEquals($receptionId, (int) $line->reception_id);
+        $this->assertEquals($orderId, (int) $line->supplier_order_id);
+        $this->assertEquals($productId, (int) $line->product);
+        $this->assertEquals(7, (int) $line->quantity);
+        $this->assertEquals('reception line', $line->comment);
     }
 
     public function testDmReceptionImportRejectsStatusChange(): void

@@ -1203,26 +1203,35 @@ class RouteControllerTest extends TestCase
      */
     public function testGetClientIpFromXRealIP(): void
     {
-        // This test requires apache_request_headers which may not be available
-        // Skip if function doesn't exist
-        if (!function_exists('apache_request_headers')) {
-            $this->markTestSkipped('apache_request_headers not available');
-        }
-
-        // Backup and set
+        // No apache_request_headers needed: get_client_ip() falls back to
+        // $_SERVER['HTTP_X_REAL_IP'] when the Apache helper is unavailable
+        // (CLI), so the X-Real-IP path is fully testable here.
         $backupRemote = $_SERVER['REMOTE_ADDR'] ?? null;
+        $backupXRealIp = $_SERVER['HTTP_X_REAL_IP'] ?? null;
+
+        // Loopback peer + no explicit allow-list => forwarded headers trusted.
         $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+        $_SERVER['HTTP_X_REAL_IP'] = '203.0.113.7';
 
-        $ip = RouteController::get_client_ip();
-
-        // Restore
-        if ($backupRemote !== null) {
-            $_SERVER['REMOTE_ADDR'] = $backupRemote;
-        } else {
-            unset($_SERVER['REMOTE_ADDR']);
+        try {
+            $ip = RouteController::get_client_ip();
+            $this->assertEquals(
+                '203.0.113.7',
+                $ip,
+                'X-Real-IP set by a trusted proxy must win over the loopback REMOTE_ADDR'
+            );
+        } finally {
+            if ($backupRemote !== null) {
+                $_SERVER['REMOTE_ADDR'] = $backupRemote;
+            } else {
+                unset($_SERVER['REMOTE_ADDR']);
+            }
+            if ($backupXRealIp !== null) {
+                $_SERVER['HTTP_X_REAL_IP'] = $backupXRealIp;
+            } else {
+                unset($_SERVER['HTTP_X_REAL_IP']);
+            }
         }
-
-        $this->assertNotEmpty($ip);
     }
 
     /**

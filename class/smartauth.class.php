@@ -147,6 +147,11 @@ class SmartAuth extends CommonObject
 		'family_id' => array('type' => 'integer', 'label' => 'smartAuthFamilyId', 'enabled' => '1', 'position' => 70, 'notnull' => 0, 'visible' => 1,),
 		'token_type' => array('type' => 'varchar(20)', 'label' => 'smartAuthTokenType', 'enabled' => '1', 'position' => 75, 'notnull' => 0, 'visible' => 1,),
 		'status' => array('type' => 'integer', 'label' => 'Status', 'enabled' => 1, 'visible' => 2, 'position' => 1000, 'notnull' => 1, 'default' => 0, 'index' => 1, 'arrayofkeyval' => array(1 => 'Enabled', 9 => 'Disabled')),
+		// Multi-entity: mapped like SmartAuthDevices. Disabled (and dropped
+		// from INSERT/UPDATE) unless the multicompany module is enabled, so
+		// single-entity installs keep the DB default; multicompany installs
+		// scope tokens to the creating entity. See the constructor.
+		'entity' => array('type' => 'integer', 'label' => 'Entity', 'enabled' => '1', 'position' => 3000, 'notnull' => 1, 'visible' => 0,),
 	);
 	public $rowid;
 	public $appuid;
@@ -165,6 +170,7 @@ class SmartAuth extends CommonObject
 	public $ip;
 	public $token_type;
 	public $status;
+	public $entity;
 	// END MODULEBUILDER PROPERTIES
 
 	/**

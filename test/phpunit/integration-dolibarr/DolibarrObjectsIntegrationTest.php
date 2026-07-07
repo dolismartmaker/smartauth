@@ -33,6 +33,22 @@ class DolibarrObjectsIntegrationTest extends DolibarrRealTestCase
     }
 
     /**
+     * The SmartAuth/SmartAuthDevices constructors disable their 'entity'
+     * field (createCommon() then drops it from the INSERT) unless
+     * isModEnabled('multicompany') is true. The per-entity tests below flip
+     * that module flag on; this tearDown always clears it again so it never
+     * leaks to sibling tests, even when a test fails mid-way.
+     */
+    protected function tearDown(): void
+    {
+        global $conf;
+        if (isset($conf->modules['multicompany'])) {
+            unset($conf->modules['multicompany']);
+        }
+        parent::tearDown();
+    }
+
+    /**
      * Generate a valid UUID v4
      */
     private function generateUUID(): string
@@ -192,11 +208,13 @@ class DolibarrObjectsIntegrationTest extends DolibarrRealTestCase
      */
     public function testUserWithMultipleEntities(): void
     {
-        // Skip if multicompany is not enabled
+        // Enable the multicompany flag so SmartAuth/SmartAuthDevices keep
+        // their 'entity' field active (their constructors disable it
+        // otherwise, collapsing every row to entity 1). Restored in
+        // tearDown. The tables carry the entity column; nothing else from
+        // the module is needed.
         global $conf;
-        if (empty($conf->multicompany->enabled)) {
-            $this->markTestSkipped('Multicompany module is not enabled');
-        }
+        $conf->modules['multicompany'] = 'multicompany';
 
         // Create user in entity 1
         $user = $this->createTestUser([
@@ -678,11 +696,12 @@ class DolibarrObjectsIntegrationTest extends DolibarrRealTestCase
      */
     public function testEntityFilteringInQueries(): void
     {
-        // Skip if multicompany is not enabled (entities 2+ don't exist)
+        // Enable multicompany so SmartAuth objects keep their 'entity' field
+        // active (see tearDown); otherwise the constructor disables it and
+        // entities 2/3 collapse to 1. The tables carry the entity column, so
+        // no other part of the module is required.
         global $conf;
-        if (empty($conf->multicompany->enabled)) {
-            $this->markTestSkipped('Multicompany module is not enabled');
-        }
+        $conf->modules['multicompany'] = 'multicompany';
 
         $user = $this->createTestUser([
             'login' => 'entityfilter_' . uniqid()

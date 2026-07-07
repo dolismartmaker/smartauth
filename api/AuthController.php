@@ -80,11 +80,114 @@ class AuthController
 	{
 		global $mysoc;
 		dol_syslog("[SmartAuth] AuthController : index");
+		$logo = $this->_api_GetMysocLogoDataUri();
 		$ret = [
 			'entities' => $this->_api_GetListOfEntities(),
 			'socname' => $mysoc->name,
+			// Company logo inlined as a data: URI so any consumer (PWA login
+			// page, etc.) can brand its screen with the Dolibarr mysoc logo
+			// without a separate authenticated image route. null when no
+			// usable logo file exists.
+			'logo' => ($logo !== '' ? $logo : null),
 		];
 		return ([$ret, 200]);
+	}
+
+	/**
+	 * Build a data: URI (base64) of the Dolibarr company (mysoc) logo, to be
+	 * inlined in the public login response for branding.
+	 *
+	 * Prefers the small thumbnail (payload stays tiny), then the squarred
+	 * small thumbnail, then the full-size logo. Returns '' when no usable
+	 * file is found, the file is too large to inline, or the mime type is
+	 * not a recognized image.
+	 *
+	 * @return string data: URI or empty string
+	 */
+	private function _api_GetMysocLogoDataUri()
+	{
+		global $mysoc, $conf;
+
+		// Cap the inlined size so an oversized upload cannot bloat the login
+		// payload (this endpoint is hit on every login page load).
+		$maxBytes = 200 * 1024;
+
+		if (!is_object($mysoc)) {
+			return '';
+		}
+
+		$baseDir = '';
+		if (is_object($conf) && isset($conf->mycompany) && !empty($conf->mycompany->dir_output)) {
+			$baseDir = rtrim($conf->mycompany->dir_output, '/');
+		} elseif (defined('DOL_DATA_ROOT')) {
+			$baseDir = rtrim(DOL_DATA_ROOT, '/') . '/mycompany';
+		}
+		if ($baseDir === '') {
+			dol_syslog('[SmartAuth] AuthController: cannot resolve mycompany dir for branding logo', LOG_DEBUG);
+			return '';
+		}
+
+		// Preference order mirrors Dolibarr's own login logo logic
+		// (security2.lib.php): small thumb, squarred small thumb, full logo.
+		$candidates = array();
+		if (!empty($mysoc->logo_small)) {
+			$candidates[] = $baseDir . '/logos/thumbs/' . $mysoc->logo_small;
+		}
+		if (!empty($mysoc->logo_squarred_small)) {
+			$candidates[] = $baseDir . '/logos/thumbs/' . $mysoc->logo_squarred_small;
+		}
+		if (!empty($mysoc->logo)) {
+			$candidates[] = $baseDir . '/logos/' . $mysoc->logo;
+		}
+
+		$logoFile = '';
+		foreach ($candidates as $candidate) {
+			if (is_file($candidate) && is_readable($candidate)) {
+				$logoFile = $candidate;
+				break;
+			}
+		}
+		if ($logoFile === '') {
+			dol_syslog('[SmartAuth] AuthController: no mysoc logo file found for branding', LOG_DEBUG);
+			return '';
+		}
+
+		$size = filesize($logoFile);
+		if ($size === false || $size > $maxBytes) {
+			dol_syslog('[SmartAuth] AuthController: mysoc logo skipped (size ' . var_export($size, true) . ' > ' . $maxBytes . ')', LOG_WARNING);
+			return '';
+		}
+
+		$mime = '';
+		if (function_exists('mime_content_type')) {
+			$mime = (string) mime_content_type($logoFile);
+		}
+		if ($mime === '' || strpos($mime, 'image/') !== 0) {
+			// Fallback: derive from extension when mime_content_type is
+			// unavailable or returned something nonsensical.
+			$ext = strtolower(pathinfo($logoFile, PATHINFO_EXTENSION));
+			$extMap = array(
+				'png'  => 'image/png',
+				'jpg'  => 'image/jpeg',
+				'jpeg' => 'image/jpeg',
+				'gif'  => 'image/gif',
+				'svg'  => 'image/svg+xml',
+				'webp' => 'image/webp',
+			);
+			$mime = isset($extMap[$ext]) ? $extMap[$ext] : '';
+		}
+		if (strpos($mime, 'image/') !== 0) {
+			dol_syslog('[SmartAuth] AuthController: mysoc logo mime not recognized for ' . $logoFile, LOG_WARNING);
+			return '';
+		}
+
+		$bytes = @file_get_contents($logoFile);
+		if ($bytes === false || $bytes === '') {
+			dol_syslog('[SmartAuth] AuthController: failed to read mysoc logo file ' . $logoFile, LOG_WARNING);
+			return '';
+		}
+
+		return 'data:' . $mime . ';base64,' . base64_encode($bytes);
 	}
 
 	/**

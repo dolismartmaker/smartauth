@@ -429,13 +429,10 @@ class MapperRoundTripLotBTest extends DolibarrRealTestCase
 
     public function testDmTicketRoundTripExport(): void
     {
-        // The SQLite test database used by integration-dolibarr does NOT
-        // ship llx_ticket (the Ticket module schema is not installed in the
-        // baseline). We mark the test as skipped instead of failing so the
-        // suite still proves dmTicket itself loads and boots correctly --
-        // the import-side strict-rejection tests below run unconditionally
-        // since they exercise the mapper without touching the database.
-        $this->skipIfTicketTableMissing();
+        // The dolibarr-integration-sqlite baseline does not ship llx_ticket;
+        // create it on the fly from the Dolibarr install SQL so the DB-backed
+        // round-trip actually runs.
+        $this->ensureTicketTable();
 
         $ticket = new \Ticket($this->db);
         $ticket->ref      = 'TK-' . uniqid();
@@ -495,18 +492,43 @@ class MapperRoundTripLotBTest extends DolibarrRealTestCase
      * --------------------------------------------------------------- */
 
     /**
-     * Skip the current test if llx_ticket is missing. The Ticket module
-     * SQL files are not shipped by the dolibarr-integration-sqlite vendor
-     * package -- only the c_ticket_* dictionaries are. Round-trip tests
-     * that hit the database must opt out cleanly in that environment.
+     * Ensure llx_ticket (and its extrafields table) exist. The
+     * dolibarr-integration-sqlite vendor baseline ships the c_ticket_*
+     * dictionaries but not the Ticket module's own tables, so we create
+     * them from the Dolibarr install SQL. run_sql() reads the file, strips
+     * comments and converts the MySQL DDL to SQLite. Idempotent: a no-op
+     * once the table is present.
      */
-    private function skipIfTicketTableMissing(): void
+    private function ensureTicketTable(): void
     {
         $prefix = MAIN_DB_PREFIX;
         $sql    = "SELECT name FROM sqlite_master WHERE type='table' AND name = '" . $prefix . "ticket'";
         $resql  = $this->db->query($sql);
+        if ($resql && $this->db->fetch_object($resql)) {
+            return; // already present
+        }
+
+        require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
+        $dir = DOL_DOCUMENT_ROOT . '/install/mysql/tables/';
+        // Header table first, then its extrafields companion (Ticket::create
+        // touches array_options via insertExtraFields), then the category
+        // link table (dmTrait::getCategoriesForObject queries it on export).
+        foreach ([
+            'llx_ticket-ticket.sql',
+            'llx_ticket_extrafields-ticket.sql',
+            'llx_categorie_ticket-ticket.sql',
+        ] as $file) {
+            $res = run_sql($dir . $file, 1, 0, 0);
+            if ($res <= 0) {
+                $this->markTestSkipped(
+                    'Could not create ' . $file . ' on the SQLite baseline (run_sql returned ' . $res . ').'
+                );
+            }
+        }
+
+        $resql = $this->db->query($sql);
         if (!$resql || !$this->db->fetch_object($resql)) {
-            $this->markTestSkipped('llx_ticket is not installed in the integration-dolibarr SQLite baseline.');
+            $this->markTestSkipped('llx_ticket still missing after run_sql on the SQLite baseline.');
         }
     }
 
