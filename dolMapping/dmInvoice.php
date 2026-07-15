@@ -56,8 +56,11 @@ class dmInvoice extends dmBase
 		'date_valid'        => 'validated_at',
 		'date_lim_reglement' => 'date_due',
 		'delivery_date'     => 'date_delivery',
-		'fk_soc'            => 'thirdparty',
-		'fk_projet'         => 'project',
+		// Thirdparty/project links live on the PHP properties $socid / $fk_project
+		// (SQL columns fk_soc / fk_projet). Facture::create/fetch read those
+		// properties, so addressing the columns would never persist on write.
+		'socid'             => 'thirdparty',
+		'fk_project'        => 'project',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
 		'fk_user_modif'     => 'updated_by',
@@ -86,8 +89,8 @@ class dmInvoice extends dmBase
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
 	protected $writableFields = [
 		'ref_customer',
-		'fk_soc',
-		'fk_projet',
+		'socid',
+		'fk_project',
 		'date',
 		'date_lim_reglement',
 		'delivery_date',

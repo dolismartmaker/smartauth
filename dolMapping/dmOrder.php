@@ -53,8 +53,11 @@ class dmOrder extends dmBase
 		'date'              => 'date_order',
 		'date_valid'        => 'validated_at',
 		'date_livraison'    => 'date_delivery',
-		'fk_soc'            => 'thirdparty',
-		'fk_projet'         => 'project',
+		// Thirdparty/project links live on the PHP properties $socid / $fk_project
+		// (SQL columns fk_soc / fk_projet). Commande::create/fetch read those
+		// properties, so addressing the columns would never persist on write.
+		'socid'             => 'thirdparty',
+		'fk_project'        => 'project',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
 		'fk_user_modif'     => 'updated_by',
@@ -84,8 +87,8 @@ class dmOrder extends dmBase
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
 	protected $writableFields = [
 		'ref_customer',
-		'fk_soc',
-		'fk_projet',
+		'socid',
+		'fk_project',
 		'date',
 		'date_livraison',
 		'fk_cond_reglement',

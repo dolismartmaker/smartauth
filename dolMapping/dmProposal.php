@@ -55,8 +55,11 @@ class dmProposal extends dmBase
 		'date_signature'    => 'signed_at',
 		'fin_validite'      => 'date_expiry',
 		'delivery_date'     => 'date_delivery',
-		'fk_soc'            => 'thirdparty',
-		'fk_projet'         => 'project',
+		// Thirdparty/project links live on the PHP properties $socid / $fk_project
+		// (SQL columns fk_soc / fk_projet). Propal::create/fetch read those
+		// properties, so addressing the columns would never persist on write.
+		'socid'             => 'thirdparty',
+		'fk_project'        => 'project',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
 		'fk_user_modif'     => 'updated_by',
@@ -86,8 +89,8 @@ class dmProposal extends dmBase
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
 	protected $writableFields = [
 		'ref_client',
-		'fk_soc',
-		'fk_projet',
+		'socid',
+		'fk_project',
 		'date',
 		'fin_validite',
 		'delivery_date',

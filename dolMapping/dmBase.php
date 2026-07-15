@@ -457,6 +457,22 @@ abstract class dmBase
      *
      * @return array<int,array<string,mixed>>
      */
+    /**
+     * Raw line field mapping (Dolibarr line field => API field), snake_case as
+     * produced by exportMappedData()'s line loop. Consumed by the write facade
+     * (ObjectLineController) to translate an incoming API line payload back to
+     * Dolibarr line field names, so a client can read a line, edit it and write
+     * it back with the SAME keys it received.
+     *
+     * @return array<string,string>
+     */
+    public function getLinesFieldMapping()
+    {
+        return (isset($this->listOfPublishedFieldsForLines) && is_array($this->listOfPublishedFieldsForLines))
+            ? $this->listOfPublishedFieldsForLines
+            : [];
+    }
+
     public function getLinesCatalog()
     {
         global $langs;

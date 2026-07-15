@@ -78,6 +78,26 @@ class RestApiHttpTest extends HttpTestCase
             'GET product'   => ['GET', '/objects/product'],
             'GET contact'   => ['GET', '/objects/contact'],
             'GET category'  => ['GET', '/objects/category'],
+            // Vague 2 types reuse the same generic {objtype} routes; a 401 (not a
+            // 404) proves they dispatch through the router just like Vague 1.
+            'GET order'        => ['GET', '/objects/order'],
+            'GET invoice'      => ['GET', '/objects/invoice'],
+            'GET proposal'     => ['GET', '/objects/proposal'],
+            'GET project'      => ['GET', '/objects/project'],
+            'GET task'         => ['GET', '/objects/task'],
+            'GET agenda_event' => ['GET', '/objects/agenda_event'],
+            'GET user'         => ['GET', '/objects/user'],
+            // Document line routes (ObjectLineController). A 401 proves dispatch.
+            'GET lines'        => ['GET', '/objects/proposal/' . $id . '/lines'],
+            'POST line'        => ['POST', '/objects/proposal/' . $id . '/lines'],
+            'POST reorder'     => ['POST', '/objects/proposal/' . $id . '/lines/reorder'],
+            'PATCH line'       => ['PATCH', '/objects/proposal/' . $id . '/lines/42'],
+            'DELETE line'      => ['DELETE', '/objects/proposal/' . $id . '/lines/42'],
+            // Workflow action route (ObjectActionController).
+            'POST action'      => ['POST', '/objects/order/' . $id . '/actions/validate'],
+            // Invoice payment routes (ObjectPaymentController).
+            'GET payments'     => ['GET', '/objects/invoice/' . $id . '/payments'],
+            'POST payment'     => ['POST', '/objects/invoice/' . $id . '/payments'],
         ];
     }
 

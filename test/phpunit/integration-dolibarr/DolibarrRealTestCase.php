@@ -110,9 +110,41 @@ abstract class DolibarrRealTestCase extends TestCase
         }
         // isModEnabled('produit') maps to module 'product'; 'category' maps to
         // 'categorie'. Enable under the keys hasRight()/isModEnabled() read.
-        foreach (['societe', 'product', 'categorie'] as $mod) {
+        // Vague 2 adds the document/project/agenda modules the facade gates on.
+        foreach (['societe', 'product', 'categorie', 'commande', 'facture', 'propal', 'projet', 'agenda'] as $mod) {
             $conf->modules[$mod] = 1;
         }
+
+        // Document classes (Commande/Facture/Propal/...) read
+        // $conf->{module}->multidir_output[entity] when deleting a record (to
+        // remove its generated PDF directory). The in-RAM conf does not set it,
+        // so delete() would fatal on an undefined property. Point every document
+        // module at a temp output dir for both entity 1 and the active entity.
+        $entity = (int) ($conf->entity ?? 1);
+        $docRoot = sys_get_temp_dir() . '/smartauth_test_docs';
+        // Note: the project module stores its conf under $conf->project (English
+        // key), while its enable flag / rights use 'projet'. Task::delete reads
+        // $conf->project->dir_output, so both keys must be seeded.
+        foreach (['commande', 'facture', 'propal', 'projet', 'project', 'agenda', 'actioncomm', 'user'] as $mod) {
+            if (!isset($conf->$mod) || !is_object($conf->$mod)) {
+                $conf->$mod = new \stdClass();
+            }
+            $dir = $docRoot . '/' . $mod;
+            $conf->$mod->dir_output = $dir;
+            $conf->$mod->multidir_output = [1 => $dir, $entity => $dir];
+        }
+
+        // Numbering models: document validate() (valid/validate) assigns a final
+        // ref via getNextNumRef, which reads $conf->global->{MODULE}_ADDON. The
+        // in-RAM conf sets none, so validate() would notice-fatal. Point each
+        // module at a counter/mask model shipped with the vendored Dolibarr.
+        if (!isset($conf->global) || !is_object($conf->global)) {
+            $conf->global = new \stdClass();
+        }
+        $conf->global->PROPALE_ADDON = 'mod_propale_marbre';
+        $conf->global->COMMANDE_ADDON = 'mod_commande_marbre';
+        $conf->global->FACTURE_ADDON = 'mod_facture_terre';
+        $conf->global->FACTURE_TERRE_MASK = 'FA{yy}{mm}-{0000}';
 
         if (!isset($user->rights) || !is_object($user->rights)) {
             $user->rights = new \stdClass();
@@ -122,6 +154,11 @@ abstract class DolibarrRealTestCase extends TestCase
             'societe'   => ['lire', 'creer', 'supprimer'],
             'produit'   => ['lire', 'creer', 'supprimer'],
             'categorie' => ['lire', 'creer', 'supprimer'],
+            'commande'  => ['lire', 'creer', 'supprimer'],
+            'facture'   => ['lire', 'creer', 'supprimer'],
+            'propal'    => ['lire', 'creer', 'supprimer'],
+            'projet'    => ['lire', 'creer', 'supprimer'],
+            'user'      => ['lire', 'creer', 'supprimer'],
         ];
         foreach ($grants as $path => $perms) {
             if (!isset($user->rights->$path) || !is_object($user->rights->$path)) {
@@ -132,12 +169,24 @@ abstract class DolibarrRealTestCase extends TestCase
             }
         }
 
-        // Contacts use the societe->contact sub-permission.
-        if (!isset($user->rights->societe->contact) || !is_object($user->rights->societe->contact)) {
-            $user->rights->societe->contact = new \stdClass();
-        }
-        foreach (['lire', 'creer', 'supprimer'] as $perm) {
-            $user->rights->societe->contact->$perm = 1;
+        // Nested sub-permissions the facade checks: societe->contact,
+        // agenda->myactions->{read,create,delete}, user->user->{lire,creer,supprimer}.
+        $nested = [
+            ['societe', 'contact', ['lire', 'creer', 'supprimer']],
+            ['agenda', 'myactions', ['read', 'create', 'delete']],
+            ['user', 'user', ['lire', 'creer', 'supprimer']],
+        ];
+        foreach ($nested as $entry) {
+            list($path, $sub, $perms) = $entry;
+            if (!isset($user->rights->$path) || !is_object($user->rights->$path)) {
+                $user->rights->$path = new \stdClass();
+            }
+            if (!isset($user->rights->$path->$sub) || !is_object($user->rights->$path->$sub)) {
+                $user->rights->$path->$sub = new \stdClass();
+            }
+            foreach ($perms as $perm) {
+                $user->rights->$path->$sub->$perm = 1;
+            }
         }
     }
 

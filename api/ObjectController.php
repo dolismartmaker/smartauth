@@ -48,110 +48,8 @@ use SmartAuth\DolibarrMapping\MapperValidationException;
  */
 class ObjectController
 {
+    use ObjectFacadeTrait;
     use PaginatedListTrait;
-
-    /**
-     * Resolve the {type} into its registry config + a booted dm* mapper.
-     *
-     * @param  array|null $payload
-     * @return array{0:?array,1:?object,2:?array}  [cfg, mapper, errorTuple]. On
-     *         failure cfg/mapper are null and errorTuple is a [body,code] pair.
-     */
-    private function resolve($payload)
-    {
-        global $hookmanager;
-
-        // The object kind comes from the {objtype} route segment (named so it
-        // does not clash with an object's own 'type' field). Not concatenated
-        // into SQL (registry lookup is the whitelist); we still strip to
-        // [a-z0-9_] to keep logs/messages clean and allow future multi-word
-        // types (e.g. supplier_order).
-        $type = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '', (string) ($payload['objtype'] ?? '')));
-        $type = substr($type, 0, 64);
-        if ($type === '') {
-            return [null, null, [['error' => 'Object type is required'], 400]];
-        }
-
-        $cfg = ObjectRegistry::get($type, is_object($hookmanager) ? $hookmanager : null);
-        if ($cfg === null) {
-            dol_syslog("[SmartAuth] ObjectController: unsupported object type '" . $type . "'", LOG_WARNING);
-            return [null, null, [['error' => "Unsupported object type '" . $type . "'"], 400]];
-        }
-
-        $mapperClass = isset($cfg['mapper']) ? (string) $cfg['mapper'] : '';
-        if ($mapperClass === '' || !class_exists($mapperClass)) {
-            dol_syslog("[SmartAuth] ObjectController: no mapper class for type '" . $type . "'", LOG_ERR);
-            return [null, null, [['error' => 'No mapper registered for this object type'], 500]];
-        }
-
-        // Load the Dolibarr class BEFORE booting the mapper (its constructor
-        // instantiates that class to build the field descriptor).
-        if (!empty($cfg['file'])) {
-            require_once $cfg['file'];
-        }
-        if (empty($cfg['class']) || !class_exists($cfg['class'])) {
-            dol_syslog("[SmartAuth] ObjectController: Dolibarr class unavailable for type '" . $type . "'", LOG_ERR);
-            return [null, null, [['error' => 'Object class unavailable'], 500]];
-        }
-
-        $mapper = new $mapperClass();
-        return [$cfg, $mapper, null];
-    }
-
-    /**
-     * Fail-closed permission gate: module enabled + Dolibarr right for $action.
-     *
-     * @param  array  $cfg
-     * @param  string $action  read|create|update|delete
-     * @return array|null      An error [body,code] tuple, or null when allowed.
-     */
-    private function authorize($cfg, $action)
-    {
-        global $user;
-
-        if (!is_object($user)) {
-            dol_syslog("[SmartAuth] ObjectController: no authenticated user for " . $action, LOG_WARNING);
-            return [['error' => 'Authentication required'], 401];
-        }
-
-        $type = $cfg['object_type'] ?? '?';
-
-        if (!empty($cfg['module']) && !isModEnabled($cfg['module'])) {
-            dol_syslog("[SmartAuth] ObjectController: module '" . $cfg['module'] . "' disabled for type " . $type, LOG_WARNING);
-            return [['error' => 'Module not enabled'], 403];
-        }
-
-        $rights = (isset($cfg['rights'][$action]) && is_array($cfg['rights'][$action])) ? $cfg['rights'][$action] : null;
-        if (empty($rights)) {
-            dol_syslog("[SmartAuth] ObjectController: no " . $action . " right mapping for " . $type . " - refusing (fail-closed)", LOG_WARNING);
-            return [['error' => 'Access denied'], 403];
-        }
-
-        if (!call_user_func_array([$user, 'hasRight'], $rights)) {
-            dol_syslog("[SmartAuth] ObjectController: user " . ((int) $user->id) . " lacks " . implode('->', $rights) . " for " . $action . " on " . $type, LOG_WARNING);
-            return [['error' => 'Access denied'], 403];
-        }
-
-        return null;
-    }
-
-    /**
-     * Whether a fetched object is within the current user's entity scope.
-     *
-     * @param  object $object
-     * @param  array  $cfg
-     * @return bool
-     */
-    private function inEntityScope($object, $cfg)
-    {
-        if (!isset($object->entity)) {
-            return true;
-        }
-        $element = (string) ($cfg['element'] ?? '');
-        $allowed = array_map('intval', explode(',', getEntity($element, 1)));
-        $oe = (int) $object->entity;
-        return $oe === 0 || in_array($oe, $allowed, true);
-    }
 
     /**
      * Parse the optional ?include=col1,col2 into a whitelist of appside keys.
@@ -215,12 +113,17 @@ class ObjectController
 
         $alias = (string) ($cfg['alias'] ?? 't');
         $element = (string) ($cfg['element'] ?? '');
+        // Primary key column: most Dolibarr tables use 'rowid', but a few (e.g.
+        // llx_actioncomm) use 'id'. The registry declares it per type; default
+        // 'rowid'. Aliased back to "rowid" in the SELECT so downstream code
+        // (fetch loop, catalog) keeps reading $obj->rowid unchanged.
+        $pk = (string) ($cfg['pk'] ?? 'rowid');
         $baseFrom = " FROM " . MAIN_DB_PREFIX . $cfg['table'] . " as " . $alias;
         $baseWhere = " WHERE " . $alias . ".entity IN (" . getEntity($element) . ")";
         list($filterWhere, ) = $this->buildSqlFiltersFromCatalog($params, $mapper, $alias);
         $where = $baseWhere . $filterWhere;
 
-        $countSql = "SELECT COUNT(" . $alias . ".rowid) as nb" . $baseFrom . $where;
+        $countSql = "SELECT COUNT(" . $alias . "." . $pk . ") as nb" . $baseFrom . $where;
         $countRes = $db->query($countSql);
         if (!$countRes) {
             dol_syslog("[SmartAuth] ObjectController::index count SQL error: " . $db->lasterror(), LOG_ERR);
@@ -230,9 +133,9 @@ class ObjectController
         $total = $countRow ? (int) $countRow->nb : 0;
         $db->free($countRes);
 
-        $defaultSort = (string) ($cfg['default_sort'] ?? ($alias . '.rowid ASC'));
+        $defaultSort = (string) ($cfg['default_sort'] ?? ($alias . '.' . $pk . ' ASC'));
         $orderBy = $this->buildSortClauseFromCatalog($params, $mapper, $alias, $defaultSort);
-        $sql = "SELECT " . $alias . ".rowid" . $baseFrom . $where . $orderBy;
+        $sql = "SELECT " . $alias . "." . $pk . " as rowid" . $baseFrom . $where . $orderBy;
         $sql .= $db->plimit((int) $params['limit'], (int) $params['offset']);
 
         $resql = $db->query($sql);
@@ -282,9 +185,10 @@ class ObjectController
         $params = $this->parseListParams($payload);
         $alias = (string) ($cfg['alias'] ?? 't');
         $element = (string) ($cfg['element'] ?? '');
+        $pk = (string) ($cfg['pk'] ?? 'rowid');
         list($filterWhere, ) = $this->buildSqlFiltersFromCatalog($params, $mapper, $alias);
 
-        $sql = "SELECT COUNT(" . $alias . ".rowid) as nb FROM " . MAIN_DB_PREFIX . $cfg['table'] . " as " . $alias;
+        $sql = "SELECT COUNT(" . $alias . "." . $pk . ") as nb FROM " . MAIN_DB_PREFIX . $cfg['table'] . " as " . $alias;
         $sql .= " WHERE " . $alias . ".entity IN (" . getEntity($element) . ")" . $filterWhere;
 
         $resql = $db->query($sql);

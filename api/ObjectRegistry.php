@@ -47,6 +47,10 @@ namespace SmartAuth\Api;
  *   - mapper           : fully qualified SmartAuth\DolibarrMapping\dm* class
  *   - alias            : SQL table alias used by the facade list query
  *   - default_sort     : facade default ORDER BY clause (without "ORDER BY ")
+ *   - pk               : primary key column of the table (optional, default
+ *                        'rowid'). A few Dolibarr tables use 'id' instead
+ *                        (e.g. llx_actioncomm); the facade list/count queries
+ *                        read this so they never assume 'rowid'.
  *
  * The 'mapper', 'alias' and 'default_sort' keys are additive: sync ignores keys
  * it does not read, so seeding syncableObjects from this registry keeps the
@@ -194,6 +198,203 @@ class ObjectRegistry
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmCategory',
                 'alias' => 'c',
                 'default_sort' => 'c.label ASC, c.rowid ASC',
+            ],
+
+            // ===== Vague 2: documents a lignes + gestion projet =====
+            // These are NOT enabled for offline sync by default (default_enabled
+            // false): the synchronous REST facade is their online access path.
+            // allowed_fields mirrors each mapper's $writableFields (defence in
+            // depth for the sync legacy path; the mapper path is primary).
+            'order' => [
+                'class' => 'Commande',
+                'file' => DOL_DOCUMENT_ROOT . '/commande/class/commande.class.php',
+                'table' => 'commande',
+                'element' => 'commande',
+                'label' => 'Orders',
+                'module' => 'commande',
+                'priority' => 'medium',
+                'default_enabled' => false,
+                'rights' => [
+                    'read'   => ['commande', 'lire'],
+                    'create' => ['commande', 'creer'],
+                    'update' => ['commande', 'creer'],
+                    'delete' => ['commande', 'supprimer'],
+                ],
+                'allowed_fields' => [
+                    'ref_customer', 'socid', 'fk_project', 'date', 'date_livraison',
+                    'fk_cond_reglement', 'fk_mode_reglement', 'fk_availability',
+                    'fk_shipping_method', 'fk_input_reason', 'note_public', 'note_private',
+                ],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmOrder',
+                'alias' => 'c',
+                'default_sort' => 'c.rowid DESC',
+                // Document lines are writable through ObjectLineController
+                // (add/update/delete/reorder) via DocumentLineInvoker.
+                'supports_lines' => true,
+                // Workflow actions exposed via ObjectActionController
+                // (POST objects/order/{id}/actions/{action}), dispatched by
+                // DocumentActionInvoker.
+                'actions' => ['validate', 'setdraft', 'classifybilled', 'close', 'cancel'],
+            ],
+            'invoice' => [
+                'class' => 'Facture',
+                'file' => DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php',
+                'table' => 'facture',
+                'element' => 'facture',
+                'label' => 'Invoices',
+                'module' => 'facture',
+                'priority' => 'medium',
+                'default_enabled' => false,
+                'rights' => [
+                    'read'   => ['facture', 'lire'],
+                    'create' => ['facture', 'creer'],
+                    'update' => ['facture', 'creer'],
+                    'delete' => ['facture', 'supprimer'],
+                ],
+                'allowed_fields' => [
+                    'ref_customer', 'socid', 'fk_project', 'date', 'date_lim_reglement',
+                    'delivery_date', 'fk_cond_reglement', 'fk_mode_reglement',
+                    'note_public', 'note_private',
+                ],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmInvoice',
+                'alias' => 'f',
+                'default_sort' => 'f.rowid DESC',
+                'supports_lines' => true,
+                'actions' => ['validate', 'setdraft', 'setpaid', 'setunpaid', 'setcanceled'],
+                // Customer payments via ObjectPaymentController
+                // (POST/GET objects/invoice/{id}/payments).
+                'payment' => [
+                    'class' => 'Paiement',
+                    'file' => DOL_DOCUMENT_ROOT . '/compta/paiement/class/paiement.class.php',
+                ],
+            ],
+            'proposal' => [
+                'class' => 'Propal',
+                'file' => DOL_DOCUMENT_ROOT . '/comm/propal/class/propal.class.php',
+                'table' => 'propal',
+                'element' => 'propal',
+                'label' => 'Proposals',
+                'module' => 'propal',
+                'priority' => 'medium',
+                'default_enabled' => false,
+                'rights' => [
+                    'read'   => ['propal', 'lire'],
+                    'create' => ['propal', 'creer'],
+                    'update' => ['propal', 'creer'],
+                    'delete' => ['propal', 'supprimer'],
+                ],
+                'allowed_fields' => [
+                    'ref_client', 'socid', 'fk_project', 'date', 'fin_validite',
+                    'delivery_date', 'fk_cond_reglement', 'fk_mode_reglement',
+                    'fk_availability', 'fk_shipping_method', 'fk_input_reason',
+                    'note_public', 'note_private',
+                ],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmProposal',
+                'alias' => 'p',
+                'default_sort' => 'p.rowid DESC',
+                'supports_lines' => true,
+                'actions' => ['validate', 'setdraft', 'classifybilled', 'closesign', 'closeunsign'],
+            ],
+            'project' => [
+                'class' => 'Project',
+                'file' => DOL_DOCUMENT_ROOT . '/projet/class/project.class.php',
+                'table' => 'projet',
+                'element' => 'project',
+                'label' => 'Projects',
+                'module' => 'projet',
+                'priority' => 'medium',
+                'default_enabled' => false,
+                'rights' => [
+                    'read'   => ['projet', 'lire'],
+                    'create' => ['projet', 'creer'],
+                    'update' => ['projet', 'creer'],
+                    'delete' => ['projet', 'supprimer'],
+                ],
+                'allowed_fields' => [
+                    'ref', 'title', 'description', 'dateo', 'datee', 'socid',
+                    'note_public', 'note_private',
+                ],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmProject',
+                'alias' => 'proj',
+                'default_sort' => 'proj.rowid DESC',
+            ],
+            'task' => [
+                'class' => 'Task',
+                'file' => DOL_DOCUMENT_ROOT . '/projet/class/task.class.php',
+                'table' => 'projet_task',
+                'element' => 'project_task',
+                'label' => 'Tasks',
+                'module' => 'projet',
+                'priority' => 'low',
+                'default_enabled' => false,
+                'rights' => [
+                    'read'   => ['projet', 'lire'],
+                    'create' => ['projet', 'creer'],
+                    'update' => ['projet', 'creer'],
+                    'delete' => ['projet', 'supprimer'],
+                ],
+                'allowed_fields' => [
+                    'ref', 'label', 'description', 'fk_project', 'fk_task_parent',
+                    'date_start', 'date_end', 'planned_workload', 'progress', 'priority',
+                ],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmTask',
+                'alias' => 'pt',
+                'default_sort' => 'pt.rowid DESC',
+            ],
+            'agenda_event' => [
+                'class' => 'ActionComm',
+                'file' => DOL_DOCUMENT_ROOT . '/comm/action/class/actioncomm.class.php',
+                'table' => 'actioncomm',
+                'element' => 'actioncomm',
+                'label' => 'Events',
+                'module' => 'agenda',
+                'priority' => 'low',
+                'default_enabled' => false,
+                // llx_actioncomm's primary key is 'id', not 'rowid'.
+                'pk' => 'id',
+                // Agenda uses nested rights agenda->myactions->{read,create,delete}.
+                'rights' => [
+                    'read'   => ['agenda', 'myactions', 'read'],
+                    'create' => ['agenda', 'myactions', 'create'],
+                    'update' => ['agenda', 'myactions', 'create'],
+                    'delete' => ['agenda', 'myactions', 'delete'],
+                ],
+                'allowed_fields' => [
+                    'label', 'datep', 'datef', 'duree', 'fk_soc', 'fk_contact',
+                    'fk_projet', 'location', 'percent', 'priority',
+                    'note_public', 'note_private',
+                ],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmAgendaEvent',
+                'alias' => 'a',
+                'default_sort' => 'a.datep DESC, a.id DESC',
+            ],
+            'user' => [
+                'class' => 'User',
+                'file' => DOL_DOCUMENT_ROOT . '/user/class/user.class.php',
+                'table' => 'user',
+                'element' => 'user',
+                'label' => 'Users',
+                // No 'module' key: user management is a core capability, always
+                // available; an isModEnabled('user') gate would wrongly 403.
+                'priority' => 'low',
+                'default_enabled' => false,
+                // Nested rights user->user->{lire,creer,supprimer}. Writes are
+                // allowed but dmUser::$writableFields excludes login/pass*/admin/
+                // statut, so no privilege escalation through the facade.
+                'rights' => [
+                    'read'   => ['user', 'user', 'lire'],
+                    'create' => ['user', 'user', 'creer'],
+                    'update' => ['user', 'user', 'creer'],
+                    'delete' => ['user', 'user', 'supprimer'],
+                ],
+                'allowed_fields' => [
+                    'civility_code', 'lastname', 'firstname', 'gender', 'email',
+                    'office_phone', 'user_mobile', 'job', 'address', 'zip', 'town',
+                    'state_id', 'country_id',
+                ],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmUser',
+                'alias' => 'u',
+                'default_sort' => 'u.lastname ASC, u.firstname ASC, u.rowid ASC',
             ],
         ];
     }

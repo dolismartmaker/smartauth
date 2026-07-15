@@ -920,11 +920,31 @@ class AuthController
 			$sql .= " WHERE rowid = " . (int) $decoded->token_id;
 
 			SmartAuthLogger::debug("smartauth : update token last used " . $sql);
-			$resql = $db->query($sql);
 
+			// At this point the token is ALREADY fully validated (_decodeJWT has
+			// checked the signature, status, type and expiry above). This UPDATE
+			// is pure bookkeeping: last-used timestamp, sliding eol and client ip.
+			// A write failure -- typically a transient "database is locked" when
+			// several authenticated requests hit a SQLite backend concurrently at
+			// app boot -- must NOT deny access to an otherwise-valid token.
+			// Emitting a 401 here made the client treat a valid session as dead
+			// and fire a reactive /refresh, rotating (and under contention,
+			// revoking) the whole token family and bouncing the user to /login.
+			// Retry a couple of times to absorb a transient lock, then log and
+			// carry on returning the decoded token rather than 401.
+			$resql = false;
+			for ($attempt = 0; $attempt < 3; $attempt++) {
+				$resql = $db->query($sql);
+				if ($resql) {
+					break;
+				}
+				dol_syslog("[SmartAuth] check(): last-used bookkeeping UPDATE attempt " . ($attempt + 1) . " failed for token_id=" . (int) $decoded->token_id . " (retrying): " . $db->lasterror(), LOG_WARNING);
+				usleep(20000); // 20ms backoff before retrying a transient lock
+			}
 			if (!$resql) {
-				dol_syslog("[SmartAuth] update token failed: " . $db->lasterror(), LOG_ERR);
-				json_reply('Access denied', 401);
+				// Give up on the bookkeeping write but keep the session alive: the
+				// token itself is valid, only the last-used metadata is stale.
+				dol_syslog("[SmartAuth] check(): last-used bookkeeping UPDATE gave up for token_id=" . (int) $decoded->token_id . "; token is valid, granting access anyway: " . $db->lasterror(), LOG_WARNING);
 			}
 		}
 		return $decoded;

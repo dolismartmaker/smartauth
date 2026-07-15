@@ -25,6 +25,9 @@ use SmartAuth\Api\SmartTempFileController;
 use SmartAuth\Api\SyncController;
 use SmartAuth\Api\ObjectDocumentController;
 use SmartAuth\Api\ObjectController;
+use SmartAuth\Api\ObjectLineController;
+use SmartAuth\Api\ObjectActionController;
+use SmartAuth\Api\ObjectPaymentController;
 use SmartAuth\Api\PwaController;
 use SmartAuth\Api\UploadController;
 use SmartAuth\Api\QrPairController;
@@ -157,6 +160,29 @@ Route::post('objects/{objtype}', ObjectController::class, 'create', true);
 Route::patch('objects/{objtype}/{id}', ObjectController::class, 'update', true);
 Route::delete('objects/{objtype}/{id}', ObjectController::class, 'destroy', true);
 Route::delete('objects/{objtype}', ObjectController::class, 'deleteBulk', true);
+
+// ----- Document lines (order/invoice/proposal ; supports_lines types) -----
+// These patterns carry extra static segments ('lines') so they never collide by
+// segment count with the CRUD routes above. Within POST, the 5-segment
+// lines/reorder and the 4-segment lines patterns differ in length, and the
+// PATCH/DELETE lines/{lineid} routes are 5-segment (vs the 3-segment CRUD
+// {id}). No same-method same-length ambiguity, so ordering here is free.
+Route::get('objects/{objtype}/{id}/lines', ObjectLineController::class, 'index', true);
+Route::post('objects/{objtype}/{id}/lines/reorder', ObjectLineController::class, 'reorder', true);
+Route::post('objects/{objtype}/{id}/lines', ObjectLineController::class, 'store', true);
+Route::patch('objects/{objtype}/{id}/lines/{lineid}', ObjectLineController::class, 'update', true);
+Route::delete('objects/{objtype}/{id}/lines/{lineid}', ObjectLineController::class, 'destroy', true);
+
+// ----- Document workflow actions (validate/setDraft/close/setPaid/...) -----
+// 5-segment POST like lines/reorder, but the 4th segment is the literal
+// 'actions' (vs 'lines'), so the two never match the same path.
+Route::post('objects/{objtype}/{id}/actions/{action}', ObjectActionController::class, 'invoke', true);
+
+// ----- Invoice payments (record/list) -----
+// 4-segment routes with the static 'payments' segment; no collision with the
+// CRUD or line routes.
+Route::get('objects/{objtype}/{id}/payments', ObjectPaymentController::class, 'index', true);
+Route::post('objects/{objtype}/{id}/payments', ObjectPaymentController::class, 'store', true);
 
 // ========== Media Routes ========== //
 //

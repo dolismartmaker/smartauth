@@ -38,7 +38,9 @@ class dmProject extends dmBase
 		'datec'             => 'created_at',
 		'dateo'             => 'date_start',
 		'datee'             => 'date_end',
-		'fk_soc'            => 'customer',
+		// Project::create/fetch read the PHP property $socid (SQL column fk_soc),
+		// so the mapper must address the property, not the column.
+		'socid'             => 'customer',
 		'description'       => 'description',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
@@ -52,7 +54,7 @@ class dmProject extends dmBase
 		'description',
 		'dateo',
 		'datee',
-		'fk_soc',
+		'socid',
 		'note_public',
 		'note_private',
 	];

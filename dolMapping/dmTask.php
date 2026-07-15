@@ -36,7 +36,9 @@ class dmTask extends dmBase
 		'ref'               => 'ref',
 		'label'             => 'label',
 		'description'       => 'description',
-		'fk_projet'         => 'project',
+		// Task::create/fetch read the PHP property $fk_project (SQL column
+		// fk_projet), so the mapper must address the property, not the column.
+		'fk_project'        => 'project',
 		'fk_task_parent'    => 'parent_task',
 		'date_c'            => 'created_at',
 		'date_start'        => 'date_start',
@@ -54,7 +56,7 @@ class dmTask extends dmBase
 		'ref',
 		'label',
 		'description',
-		'fk_projet',
+		'fk_project',
 		'fk_task_parent',
 		'date_start',
 		'date_end',

@@ -5,6 +5,9 @@ namespace SmartAuth\Tests\IntegrationDolibarr;
 use SmartAuth\Api\RouteCache;
 use SmartAuth\Api\RouteController as Route;
 use SmartAuth\Api\ObjectController;
+use SmartAuth\Api\ObjectLineController;
+use SmartAuth\Api\ObjectActionController;
+use SmartAuth\Api\ObjectPaymentController;
 
 /**
  * Deterministic routing tests for the objects/{objtype} facade, driven against
@@ -52,20 +55,38 @@ class RouteResolutionTest extends DolibarrRealTestCase
         Route::patch('objects/{objtype}/{id}', ObjectController::class, 'update', true);
         Route::delete('objects/{objtype}/{id}', ObjectController::class, 'destroy', true);
         Route::delete('objects/{objtype}', ObjectController::class, 'deleteBulk', true);
+        // Line routes -- same registration order as api/LocalRoutes.php.
+        Route::get('objects/{objtype}/{id}/lines', ObjectLineController::class, 'index', true);
+        Route::post('objects/{objtype}/{id}/lines/reorder', ObjectLineController::class, 'reorder', true);
+        Route::post('objects/{objtype}/{id}/lines', ObjectLineController::class, 'store', true);
+        Route::patch('objects/{objtype}/{id}/lines/{lineid}', ObjectLineController::class, 'update', true);
+        Route::delete('objects/{objtype}/{id}/lines/{lineid}', ObjectLineController::class, 'destroy', true);
+        Route::post('objects/{objtype}/{id}/actions/{action}', ObjectActionController::class, 'invoke', true);
+        Route::get('objects/{objtype}/{id}/payments', ObjectPaymentController::class, 'index', true);
+        Route::post('objects/{objtype}/{id}/payments', ObjectPaymentController::class, 'store', true);
         RouteCache::endRegistration();
         RouteCache::loadCache();
     }
 
+    /** @var string */
+    private const LINE_CTRL = 'SmartAuth\\Api\\ObjectLineController';
+
+    /** @var string */
+    private const ACTION_CTRL = 'SmartAuth\\Api\\ObjectActionController';
+
+    /** @var string */
+    private const PAYMENT_CTRL = 'SmartAuth\\Api\\ObjectPaymentController';
+
     /**
-     * Assert a method+path resolves to ObjectController::$fn with $params.
+     * Assert a method+path resolves to $class::$fn with $params.
      *
      * @param array<string,string> $params
      */
-    private function assertRoute(string $method, string $path, string $fn, array $params = []): void
+    private function assertRoute(string $method, string $path, string $fn, array $params = [], string $class = self::CTRL): void
     {
         $route = RouteCache::findRoute($method, $path);
         $this->assertNotNull($route, "$method $path did not resolve to any route");
-        $this->assertSame(self::CTRL, ltrim((string) $route['class'], '\\'), "$method $path resolved to the wrong class");
+        $this->assertSame($class, ltrim((string) $route['class'], '\\'), "$method $path resolved to the wrong class");
         $this->assertSame($fn, $route['function'], "$method $path resolved to the wrong method");
         foreach ($params as $key => $value) {
             $this->assertSame($value, $route['params'][$key] ?? null, "$method $path param '$key' mismatch");
@@ -124,5 +145,55 @@ class RouteResolutionTest extends DolibarrRealTestCase
         $this->assertNotNull($route);
         $this->assertArrayHasKey('objtype', $route['params']);
         $this->assertArrayNotHasKey('type', $route['params']);
+    }
+
+    // ------------------------------------------------------------ line routes
+
+    public function testShowIsNotSwallowedByLinesIndex(): void
+    {
+        // objects/proposal/5 (3 seg) must still be 'show', not the 4-seg lines
+        // index -- proving the extra static segment keeps them distinct.
+        $this->assertRoute('GET', 'objects/proposal/5', 'show', ['objtype' => 'proposal', 'id' => '5']);
+    }
+
+    public function testLinesIndexResolves(): void
+    {
+        $this->assertRoute('GET', 'objects/proposal/5/lines', 'index', ['objtype' => 'proposal', 'id' => '5'], self::LINE_CTRL);
+    }
+
+    public function testLineReorderResolvesNotSwallowedByLineId(): void
+    {
+        // POST .../lines/reorder must hit reorder, never the store (4-seg) or the
+        // PATCH lines/{lineid} (different method).
+        $this->assertRoute('POST', 'objects/proposal/5/lines/reorder', 'reorder', ['objtype' => 'proposal', 'id' => '5'], self::LINE_CTRL);
+    }
+
+    public function testLineStoreResolves(): void
+    {
+        $this->assertRoute('POST', 'objects/proposal/5/lines', 'store', ['objtype' => 'proposal', 'id' => '5'], self::LINE_CTRL);
+    }
+
+    public function testLineUpdateResolvesWithLineId(): void
+    {
+        $this->assertRoute('PATCH', 'objects/order/9/lines/42', 'update', ['objtype' => 'order', 'id' => '9', 'lineid' => '42'], self::LINE_CTRL);
+    }
+
+    public function testLineDestroyResolvesWithLineId(): void
+    {
+        $this->assertRoute('DELETE', 'objects/invoice/3/lines/7', 'destroy', ['objtype' => 'invoice', 'id' => '3', 'lineid' => '7'], self::LINE_CTRL);
+    }
+
+    public function testActionResolvesNotConfusedWithLineReorder(): void
+    {
+        // Both are 5-segment POST; the literal 4th segment ('actions' vs 'lines')
+        // keeps them apart.
+        $this->assertRoute('POST', 'objects/order/5/actions/validate', 'invoke', ['objtype' => 'order', 'id' => '5', 'action' => 'validate'], self::ACTION_CTRL);
+        $this->assertRoute('POST', 'objects/order/5/lines/reorder', 'reorder', ['objtype' => 'order', 'id' => '5'], self::LINE_CTRL);
+    }
+
+    public function testPaymentRoutesResolve(): void
+    {
+        $this->assertRoute('GET', 'objects/invoice/8/payments', 'index', ['objtype' => 'invoice', 'id' => '8'], self::PAYMENT_CTRL);
+        $this->assertRoute('POST', 'objects/invoice/8/payments', 'store', ['objtype' => 'invoice', 'id' => '8'], self::PAYMENT_CTRL);
     }
 }

@@ -16,6 +16,9 @@ class ObjectRegistryTest extends TestCase
     /** @var string[] The Vague 1 types the registry ships built-in. */
     private const VAGUE1 = ['thirdparty', 'contact', 'product', 'category'];
 
+    /** @var string[] The Vague 2 types (documents/lines + project management). */
+    private const VAGUE2 = ['order', 'invoice', 'proposal', 'project', 'task', 'agenda_event', 'user'];
+
     public function testBuiltinsExposesTheFourVague1Types(): void
     {
         $builtins = ObjectRegistry::builtins();
@@ -24,9 +27,19 @@ class ObjectRegistryTest extends TestCase
         }
     }
 
+    public function testBuiltinsExposesTheVague2Types(): void
+    {
+        $builtins = ObjectRegistry::builtins();
+        foreach (self::VAGUE2 as $type) {
+            $this->assertArrayHasKey($type, $builtins, "built-in type $type missing");
+        }
+    }
+
     public function testEveryBuiltinCarriesTheKeysTheFacadeNeeds(): void
     {
-        $required = ['class', 'file', 'table', 'element', 'module', 'rights', 'mapper', 'alias', 'default_sort'];
+        // 'module' is optional: user management is a core capability without a
+        // toggleable module, so the 'user' type omits it on purpose.
+        $required = ['class', 'file', 'table', 'element', 'rights', 'mapper', 'alias', 'default_sort'];
         foreach (ObjectRegistry::builtins() as $type => $cfg) {
             foreach ($required as $key) {
                 $this->assertArrayHasKey($key, $cfg, "type $type is missing config key '$key'");
@@ -34,7 +47,16 @@ class ObjectRegistryTest extends TestCase
             $this->assertNotSame('', (string) $cfg['class']);
             $this->assertNotSame('', (string) $cfg['table']);
             $this->assertNotSame('', (string) $cfg['alias']);
+            if ($type !== 'user') {
+                $this->assertArrayHasKey('module', $cfg, "type $type must declare a module");
+            }
         }
+    }
+
+    public function testAgendaEventDeclaresNonRowidPrimaryKey(): void
+    {
+        $cfg = ObjectRegistry::builtins()['agenda_event'];
+        $this->assertSame('id', $cfg['pk'], 'llx_actioncomm primary key is id, not rowid');
     }
 
     public function testRightsMapCoversEveryCrudAction(): void
