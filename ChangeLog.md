@@ -1,8 +1,13 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 2.0.35 -- 20260703
+## 2.0.36 -- 20260715
 
  - new option to get only thumbnails on request for local cache / offline
+ - add entity on auth
+ - cleanup warehouses code
+ - trait base / dmtrait
+ - add crud on base objects
+ - better sync algo
 
 ## 2.0.34 -- 20260702
 
