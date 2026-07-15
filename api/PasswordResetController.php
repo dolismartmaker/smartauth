@@ -26,6 +26,10 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/security2.lib.php';
 dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
 dol_include_once('/smartauth/api/OAuth2/SubjectAuthenticator.php');
 dol_include_once('/smartauth/api/Account/EmailValidationToken.php');
+// validatePassword() delegates to PasswordPolicy::validate(); in production
+// there is no composer autoload, so the class must be wired explicitly or the
+// reset-password POST path fatals with "Class PasswordPolicy not found".
+dol_include_once('/smartauth/api/PasswordPolicy.php');
 
 use User;
 use SmartAuth\Api\RateLimiter;

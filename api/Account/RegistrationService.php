@@ -31,6 +31,11 @@ namespace SmartAuth\Api\Account;
 
 use SmartAuth\Api\OAuth2\OAuthConfig;
 
+// isStrongPassword() delegates to PasswordPolicy::validate(); production has no
+// composer autoload, so wire the class explicitly to avoid a "Class
+// PasswordPolicy not found" fatal on the self-registration path.
+dol_include_once('/smartauth/api/PasswordPolicy.php');
+
 class RegistrationService
 {
     public const ERR_INVALID_EMAIL = -1;
