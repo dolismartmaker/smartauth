@@ -169,6 +169,25 @@ if (!$db || !$user) {
 
 $user->fetch(1);
 
+// The bundled SQLite fixture can lag the vendored Dolibarr htdocs by a patch
+// release (e.g. DB recorded 18.0.8 while the code runs 18.0.9). public/index.php
+// loads main.inc.php, which on such a version mismatch redirects to
+// /install/index.php -- so the OAuth front controller is never exercised and the
+// smoke test only ever sees the installer-redirect HTML. Align the recorded
+// install version with the running code, both in the DB (read by main.inc.php's
+// setValues) and in the already-loaded $conf->global (read on the non-reloading
+// path), so public/index.php actually runs.
+if (defined('DOL_VERSION')) {
+    $db->query(
+        "UPDATE " . MAIN_DB_PREFIX . "const SET value = '" . $db->escape(DOL_VERSION) . "'"
+        . " WHERE name IN ('MAIN_VERSION_LAST_INSTALL', 'MAIN_VERSION_LAST_UPGRADE')"
+    );
+    if (isset($conf->global)) {
+        $conf->global->MAIN_VERSION_LAST_INSTALL = DOL_VERSION;
+        $conf->global->MAIN_VERSION_LAST_UPGRADE = DOL_VERSION;
+    }
+}
+
 if (!isset($conf->file->dol_document_root) || !is_array($conf->file->dol_document_root)) {
     $conf->file->dol_document_root = ['main' => DOL_DOCUMENT_ROOT];
 }
@@ -200,6 +219,11 @@ if (!isset($conf->global)) {
     $conf->global = new stdClass();
 }
 $conf->global->SMARTAUTH_OAUTH_ENABLED = 1;
+
+// Enable self-registration too so the landing page renders its "Créer un
+// compte" card and the /register surface is reachable (RegistrationGate::
+// isEnabled() reads SMARTAUTH_REGISTRATION_ENABLED via getDolGlobalInt()).
+$conf->global->SMARTAUTH_REGISTRATION_ENABLED = 1;
 
 // public/index.php discovers main.inc.php by walking up from its own
 // dirname and falling back to a few hard-coded paths. None match our

@@ -155,8 +155,19 @@ require_once $projectRoot . '/api/RouteCache.php';
 
 // Load SmartAuth classes
 require_once $projectRoot . '/api/SmartAuthLogger.php';
+require_once $projectRoot . '/api/RouteController.php';
 require_once $projectRoot . '/api/PwaController.php';
 require_once $projectRoot . '/api/ThirdpartyMediaController.php';
+
+// Load (or compile) the route table so the default-case RouteController::dispatch()
+// below can resolve REST routes -- same bootstrap as a consumer pwa/api.php.
+// Registration only records route->class strings (controllers load lazily at
+// dispatch), so compiling every module's LocalRoutes.php here is cheap and safe.
+if (!(\SmartAuth\Api\RouteCache::isCacheValid() && \SmartAuth\Api\RouteCache::loadCache())) {
+    \SmartAuth\Api\RouteCache::startRegistration();
+    \SmartAuth\Api\RouteCache::endRegistration();
+    \SmartAuth\Api\RouteCache::loadCache();
+}
 
 // Account / registration controllers (Lots 5-7)
 require_once $projectRoot . '/api/OAuth2/OAuthConfig.php';
@@ -419,6 +430,14 @@ switch (true) {
         break;
 
     default:
+        // Fall back to the real SmartAuth REST router so every registered
+        // route (objects/{objtype}/..., etc.) is reachable over HTTP through
+        // RouteCache + RouteController, exactly like production. parseAction()
+        // strips everything up to 'api.php/', so present the path in that form.
+        $_SERVER['REQUEST_URI'] = 'api.php/' . ltrim($requestPath, '/');
+        if (\SmartAuth\Api\RouteController::dispatch()) {
+            break;
+        }
         http_response_code(404);
         header('Content-Type: application/json');
         echo json_encode(['error' => 'Not found', 'path' => $requestPath]);

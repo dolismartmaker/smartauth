@@ -45,8 +45,12 @@ require_once __DIR__ . '/HttpTestCase.php';
 
 class OAuthFrontControllerSmokeTest extends HttpTestCase
 {
-    /** @var int Reserved start port for the OAuth smoke server. */
-    private const SMOKE_PORT_START = 8950;
+    /**
+     * Fallback base for the OAuth smoke server when SMARTAUTH_TEST_BACKEND_PORT
+     * is unset. It is the reserved smartauth backend port (8885) + 1, i.e. the
+     * secondary server slot inside smartauth's port window (cf ~/docs/TESTING_PWA.md).
+     */
+    private const SMOKE_PORT_FALLBACK = 8886;
 
     public static function setUpBeforeClass(): void
     {
@@ -65,7 +69,12 @@ class OAuthFrontControllerSmokeTest extends HttpTestCase
         // exactly as they do on the deployed server.
         self::$documentRoot = $projectRoot . '/public';
 
-        self::$serverPort = self::findAvailablePort(self::SMOKE_PORT_START);
+        // Secondary server: derive from the reserved backend port (+1) so both
+        // smartauth php -S servers stay inside the project's port window and no
+        // absolute port is hardcoded (cf ~/docs/TESTING_PWA.md).
+        $envPort = (int) getenv('SMARTAUTH_TEST_BACKEND_PORT');
+        $basePort = ($envPort > 0 ? $envPort + 1 : self::SMOKE_PORT_FALLBACK);
+        self::$serverPort = self::findAvailablePort($basePort);
         self::$baseUrl = 'http://127.0.0.1:' . self::$serverPort;
 
         $command = sprintf(

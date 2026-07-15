@@ -16,8 +16,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  */
 abstract class HttpTestCase extends TestCase
 {
-    /** @var int Server port */
-    protected static int $serverPort = 8899;
+    /** @var int Server port (reserved 8885, cf ~/docs/TESTING_PWA.md; overwritten in setUpBeforeClass) */
+    protected static int $serverPort = 8885;
 
     /** @var int|null Server process ID */
     protected static ?int $serverPid = null;
@@ -45,8 +45,12 @@ abstract class HttpTestCase extends TestCase
         self::$routerPath = $projectRoot . '/test/http/router.php';
         self::$documentRoot = $projectRoot;
 
-        // Find an available port
-        self::$serverPort = self::findAvailablePort(8899);
+        // Reserved backend port for smartauth (~/docs/TESTING_PWA.md), overridable
+        // via SMARTAUTH_TEST_BACKEND_PORT (defined once in the project settings).
+        // Never hardcode the absolute port. findAvailablePort is a last-resort
+        // fallback if the reserved port is momentarily busy.
+        $basePort = (int) (getenv('SMARTAUTH_TEST_BACKEND_PORT') ?: 8885);
+        self::$serverPort = self::findAvailablePort($basePort);
         self::$baseUrl = 'http://127.0.0.1:' . self::$serverPort;
 
         // Start PHP built-in server
