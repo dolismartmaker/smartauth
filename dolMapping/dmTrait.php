@@ -468,9 +468,22 @@ trait dmTrait
 		}
 
 		$writableSet = array_flip($this->writableFields ?? []);
+
+		// Extrafields opt-in write allowlist. A mapper exposes writable
+		// extrafields via $extrafieldsRW (attribute names, with or without the
+		// 'options_' prefix). Anything not listed there stays rejected --
+		// default-deny, same spirit as $writableFields for native columns.
+		$writableExtraSet = [];
+		if (!empty($this->extrafieldsRW) && is_array($this->extrafieldsRW)) {
+			foreach ($this->extrafieldsRW as $ef) {
+				$efKey = (strncmp((string) $ef, 'options_', 8) === 0) ? (string) $ef : ('options_' . $ef);
+				$writableExtraSet[$efKey] = true;
+			}
+		}
+
 		$reverseMap = [];
 		foreach ($this->listOfPublishedFields as $doliside => $appside) {
-			if (isset($writableSet[$doliside])) {
+			if (isset($writableSet[$doliside]) || isset($writableExtraSet[$doliside])) {
 				$reverseMap[$appside] = $doliside;
 			}
 		}
