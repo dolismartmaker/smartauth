@@ -47,7 +47,13 @@ class dmContact extends dmBase
 		'email' 			=> 'email',
 		'note_public' 		=> 'public_note',
 		'note_private' 		=> 'private_note',
-		'fk_soc'            => 'thirdparty',
+		// The thirdparty link lives on the PHP property $socid: Contact::create
+		// and Contact::update read $this->socid (the SQL column is fk_soc), and
+		// Contact::fetch populates BOTH $this->socid and $this->fk_soc. Same
+		// property-is-source-of-truth rule as dmThirdparty's idprof mapping --
+		// addressing 'fk_soc' would export fine (dmTrait special-cases it) but
+		// import/create would never link the contact.
+		'socid'             => 'thirdparty',
 		'poste'             => 'job_title',
 	];
 	// 'fk_c_type_contact' => 'contact_type',
@@ -66,7 +72,7 @@ class dmContact extends dmBase
 		'phone',
 		'phone_mobile',
 		'email',
-		'fk_soc',
+		'socid',
 		'poste',
 		'note_public',
 		'note_private',

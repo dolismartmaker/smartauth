@@ -61,9 +61,15 @@ class dmThirdparty extends dmBase
 		'fournisseur'       => 'is_supplier',
 		'code_client'       => 'customer_code',
 		'code_fournisseur'  => 'supplier_code',
-		'siren'             => 'siren',
-		'siret'             => 'siret',
-		'ape'               => 'ape',
+		// siren/siret/ape live on the PHP properties idprof1/idprof2/idprof3:
+		// Societe::fetch SELECTs `s.siren as idprof1` (etc., line 1743) and
+		// Societe::update writes the SQL column FROM $this->idprof1 (line 1470).
+		// Same property-is-source-of-truth rule as 'name' above -- addressing
+		// 'siren'/'siret'/'ape' directly reads/writes nothing (those properties
+		// are never populated by fetch nor consumed by update).
+		'idprof1'           => 'siren',
+		'idprof2'           => 'siret',
+		'idprof3'           => 'ape',
 		'idprof4'           => 'idprof4',
 		'tva_intra'         => 'vat_intra',
 		'note_public'       => 'public_note',
@@ -104,9 +110,9 @@ class dmThirdparty extends dmBase
 		'fournisseur',
 		'code_client',
 		'code_fournisseur',
-		'siren',
-		'siret',
-		'ape',
+		'idprof1',
+		'idprof2',
+		'idprof3',
 		'idprof4',
 		'tva_intra',
 		'note_public',
