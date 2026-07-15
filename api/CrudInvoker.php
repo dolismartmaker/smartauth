@@ -55,6 +55,13 @@ class CrudInvoker
      */
     public static function update($object, $user)
     {
+        // A few Dolibarr classes (e.g. SupplierProposal) expose no generic
+        // update() -- guard so callers get a clean failure code, not a fatal
+        // ReflectionException.
+        if (!method_exists($object, 'update')) {
+            dol_syslog('[SmartAuth] CrudInvoker::update: ' . get_class($object) . ' has no update() method', LOG_WARNING);
+            return -1;
+        }
         $reflection = new \ReflectionMethod($object, 'update');
         $params = $reflection->getParameters();
 
@@ -121,8 +128,10 @@ class CrudInvoker
         $firstParamType = $firstParam->getType();
         $firstTypeName = ($firstParamType instanceof \ReflectionNamedType) ? $firstParamType->getName() : '';
 
-        // id-first: delete($id, $user, ...)
-        if ($firstParamName === 'id'
+        // id-first: delete($id, $user, ...) or delete($rowid, $user, ...).
+        // Some classes (e.g. Adherent::delete($rowid, $user)) name the id param
+        // 'rowid' and leave it untyped, so match both names besides an int type.
+        if (in_array($firstParamName, ['id', 'rowid'], true)
             || in_array($firstTypeName, ['int', 'integer'], true)) {
             return $object->delete($object->id, $user);
         }

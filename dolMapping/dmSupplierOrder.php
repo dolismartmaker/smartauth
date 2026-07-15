@@ -58,7 +58,8 @@ class dmSupplierOrder extends dmBase
 		'date_commande'     => 'date_order_supplier',
 		'delivery_date'     => 'date_delivery',
 		'socid'             => 'thirdparty',
-		'fk_projet'         => 'project',
+		// CommandeFournisseur reads $this->fk_project (SQL column fk_projet).
+		'fk_project'        => 'project',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
 		'fk_user_approve'   => 'approved_by',
@@ -87,7 +88,7 @@ class dmSupplierOrder extends dmBase
 	protected $writableFields = [
 		'ref_supplier',
 		'socid',
-		'fk_projet',
+		'fk_project',
 		'date',
 		'date_commande',
 		'delivery_date',

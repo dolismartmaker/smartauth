@@ -44,8 +44,10 @@ class dmContract extends dmBase
 		'datec'             => 'created_at',
 		'tms'               => 'updated_at',
 		'date_contrat'      => 'date_contract',
-		'fk_soc'            => 'thirdparty',
-		'fk_projet'         => 'project',
+		// Contrat::create/fetch read the PHP properties $socid / $fk_project
+		// (SQL columns fk_soc / fk_projet).
+		'socid'             => 'thirdparty',
+		'fk_project'        => 'project',
 		'fk_user_author'    => 'created_by',
 		// Contrat::fetch (contrat.class.php line 715-716) reads the SQL
 		// columns 'fk_commercial_signature' / 'fk_commercial_suivi' INTO
@@ -67,8 +69,8 @@ class dmContract extends dmBase
 		'ref_customer',
 		'ref_supplier',
 		'date_contrat',
-		'fk_soc',
-		'fk_projet',
+		'socid',
+		'fk_project',
 		'commercial_signature_id',
 		'commercial_suivi_id',
 		'note_public',

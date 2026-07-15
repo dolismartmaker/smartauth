@@ -41,7 +41,7 @@ class DocumentActionInvoker
      */
     private static function supportedClasses()
     {
-        return ['Commande', 'Facture', 'Propal'];
+        return ['Commande', 'Facture', 'Propal', 'CommandeFournisseur', 'FactureFournisseur', 'SupplierProposal'];
     }
 
     /**
@@ -121,6 +121,39 @@ class DocumentActionInvoker
                 return (int) $object->setUnpaid($user);
             case 'Facture:setcanceled':
                 return (int) $object->setCanceled($user, $closeCode, $closeNote);
+
+            // ----- CommandeFournisseur (supplier order) -----
+            case 'CommandeFournisseur:validate':
+                return (int) $object->valid($user);
+            case 'CommandeFournisseur:approve':
+                return (int) $object->approve($user);
+            case 'CommandeFournisseur:cancel':
+                // Method is spelled Cancel($user) on this class.
+                return (int) $object->Cancel($user);
+
+            // ----- FactureFournisseur (supplier invoice) -----
+            case 'FactureFournisseur:validate':
+                return (int) $object->validate($user);
+            case 'FactureFournisseur:setdraft':
+                return (int) $object->setDraft($user);
+            case 'FactureFournisseur:setpaid':
+                return (int) $object->setPaid($user, $closeCode, $closeNote);
+            case 'FactureFournisseur:setunpaid':
+                return (int) $object->setUnpaid($user);
+            case 'FactureFournisseur:setcanceled':
+                return (int) $object->setCanceled($user, $closeCode, $closeNote);
+
+            // ----- SupplierProposal -----
+            case 'SupplierProposal:validate':
+                return (int) $object->valid($user);
+            case 'SupplierProposal:setdraft':
+                return (int) $object->setDraft($user);
+            case 'SupplierProposal:closesign':
+                // cloture($user, status, note); STATUS_SIGNED = 2.
+                return (int) $object->cloture($user, self::PROPAL_STATUS_SIGNED, $note);
+            case 'SupplierProposal:closeunsign':
+                // STATUS_NOTSIGNED = 3.
+                return (int) $object->cloture($user, self::PROPAL_STATUS_NOTSIGNED, $note);
         }
 
         return self::UNKNOWN;

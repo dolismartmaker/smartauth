@@ -51,7 +51,8 @@ class dmSupplierProposal extends dmBase
 		'date_validation'   => 'validated_at',
 		'delivery_date'     => 'date_delivery',
 		'socid'             => 'thirdparty',
-		'fk_projet'         => 'project',
+		// SupplierProposal reads $this->fk_project (SQL column fk_projet).
+		'fk_project'        => 'project',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
 		'fk_user_close'     => 'closed_by',
@@ -77,7 +78,7 @@ class dmSupplierProposal extends dmBase
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
 	protected $writableFields = [
 		'socid',
-		'fk_projet',
+		'fk_project',
 		'date',
 		'delivery_date',
 		'cond_reglement_id',

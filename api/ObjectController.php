@@ -119,7 +119,13 @@ class ObjectController
         // (fetch loop, catalog) keeps reading $obj->rowid unchanged.
         $pk = (string) ($cfg['pk'] ?? 'rowid');
         $baseFrom = " FROM " . MAIN_DB_PREFIX . $cfg['table'] . " as " . $alias;
-        $baseWhere = " WHERE " . $alias . ".entity IN (" . getEntity($element) . ")";
+        // A few Dolibarr tables (llx_stock_mouvement, llx_subscription) have no
+        // 'entity' column; the registry flags them has_entity=false so we do not
+        // emit an entity filter that would be a SQL error.
+        $hasEntity = !array_key_exists('has_entity', $cfg) || $cfg['has_entity'] !== false;
+        $baseWhere = $hasEntity
+            ? " WHERE " . $alias . ".entity IN (" . getEntity($element) . ")"
+            : " WHERE 1=1";
         list($filterWhere, ) = $this->buildSqlFiltersFromCatalog($params, $mapper, $alias);
         $where = $baseWhere . $filterWhere;
 
@@ -187,9 +193,13 @@ class ObjectController
         $element = (string) ($cfg['element'] ?? '');
         $pk = (string) ($cfg['pk'] ?? 'rowid');
         list($filterWhere, ) = $this->buildSqlFiltersFromCatalog($params, $mapper, $alias);
+        $hasEntity = !array_key_exists('has_entity', $cfg) || $cfg['has_entity'] !== false;
+        $baseWhere = $hasEntity
+            ? " WHERE " . $alias . ".entity IN (" . getEntity($element) . ")"
+            : " WHERE 1=1";
 
         $sql = "SELECT COUNT(" . $alias . "." . $pk . ") as nb FROM " . MAIN_DB_PREFIX . $cfg['table'] . " as " . $alias;
-        $sql .= " WHERE " . $alias . ".entity IN (" . getEntity($element) . ")" . $filterWhere;
+        $sql .= $baseWhere . $filterWhere;
 
         $resql = $db->query($sql);
         if (!$resql) {
@@ -385,6 +395,11 @@ class ObjectController
         } catch (MapperValidationException $e) {
             dol_syslog("[SmartAuth] ObjectController::update rejected payload for " . ($cfg['object_type'] ?? '?') . ": " . json_encode($e->getErrors()), LOG_WARNING);
             return [['errors' => $e->getErrors()], 400];
+        }
+
+        if (!method_exists($o, 'update')) {
+            dol_syslog("[SmartAuth] ObjectController::update: type " . ($cfg['object_type'] ?? '?') . " (" . get_class($o) . ") has no generic update()", LOG_WARNING);
+            return [['error' => 'This object type does not support update'], 400];
         }
 
         $mapper->applyImportedFields($o, $sanitized);

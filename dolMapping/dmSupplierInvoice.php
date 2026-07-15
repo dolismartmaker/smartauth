@@ -57,7 +57,8 @@ class dmSupplierInvoice extends dmBase
 		'date'              => 'date_invoice',
 		'date_echeance'     => 'date_due',
 		'socid'             => 'thirdparty',
-		'fk_projet'         => 'project',
+		// FactureFournisseur reads $this->fk_project (SQL column fk_projet).
+		'fk_project'        => 'project',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
 		'cond_reglement_id' => 'payment_terms',
@@ -88,7 +89,7 @@ class dmSupplierInvoice extends dmBase
 		'ref_supplier',
 		'label',
 		'socid',
-		'fk_projet',
+		'fk_project',
 		'date',
 		'date_echeance',
 		'cond_reglement_id',

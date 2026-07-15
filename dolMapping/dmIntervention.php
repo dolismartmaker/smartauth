@@ -45,8 +45,10 @@ class dmIntervention extends dmBase
 		'datei'             => 'date_intervention',
 		'dateo'             => 'date_start',
 		'datee'             => 'date_end',
-		'fk_soc'            => 'thirdparty',
-		'fk_projet'         => 'project',
+		// Fichinter::create/fetch read the PHP properties $socid / $fk_project
+		// (SQL columns fk_soc / fk_projet).
+		'socid'             => 'thirdparty',
+		'fk_project'        => 'project',
 		'fk_contrat'        => 'contract',
 		'fk_user_author'    => 'created_by',
 		'fk_user_modif'     => 'updated_by',
@@ -63,8 +65,8 @@ class dmIntervention extends dmBase
 	// 'datec' is intentionally excluded (case-by-case, conservative).
 	protected $writableFields = [
 		'ref_client',
-		'fk_soc',
-		'fk_projet',
+		'socid',
+		'fk_project',
 		'fk_contrat',
 		'datei',
 		'dateo',

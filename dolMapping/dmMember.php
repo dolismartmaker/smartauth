@@ -61,7 +61,8 @@ class dmMember extends dmBase
 		'public'            => 'is_public',
 		'morphy'            => 'nature',
 		'typeid'            => 'member_type',
-		'fk_soc'            => 'thirdparty',
+		// Adherent reads the PHP property $socid (SQL column fk_soc).
+		'socid'             => 'thirdparty',
 		'fk_user_creat'     => 'created_by',
 		'fk_user_modif'     => 'updated_by',
 		'fk_user_valid'     => 'validated_by',
@@ -97,7 +98,7 @@ class dmMember extends dmBase
 		'login',
 		'morphy',
 		'typeid',
-		'fk_soc',
+		'socid',
 		'note_public',
 		'note_private',
 	];

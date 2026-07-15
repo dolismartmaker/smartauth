@@ -46,7 +46,8 @@ class dmShipment extends dmBase
 		'date_delivery'     => 'date_delivery',
 		'date_valid'        => 'validated_at',
 		'socid'             => 'thirdparty',
-		'fk_projet'         => 'project',
+		// Expedition reads $this->fk_project (SQL column fk_projet).
+		'fk_project'        => 'project',
 		'commande_id'       => 'order',
 		'fk_user_author'    => 'created_by',
 		'fk_user_valid'     => 'validated_by',
@@ -79,7 +80,7 @@ class dmShipment extends dmBase
 	protected $writableFields = [
 		'ref_customer',
 		'socid',
-		'fk_projet',
+		'fk_project',
 		'date_expedition',
 		'date_delivery',
 		'entrepot_id',

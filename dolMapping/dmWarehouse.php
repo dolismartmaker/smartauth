@@ -50,7 +50,8 @@ class dmWarehouse extends dmBase
 		'phone'             => 'phone',
 		'fax'               => 'fax',
 		'fk_parent'         => 'parent_warehouse',
-		'fk_projet'         => 'project',
+		// Entrepot reads the PHP property $fk_project (SQL column fk_projet).
+		'fk_project'        => 'project',
 		'statut'            => 'status',
 	];
 
@@ -70,7 +71,7 @@ class dmWarehouse extends dmBase
 		'phone',
 		'fax',
 		'fk_parent',
-		'fk_projet',
+		'fk_project',
 	];
 
 	/**

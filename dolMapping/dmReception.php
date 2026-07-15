@@ -47,7 +47,8 @@ class dmReception extends dmBase
 		'date_delivery'     => 'date_delivery',
 		'date_valid'        => 'validated_at',
 		'socid'             => 'thirdparty',
-		'fk_projet'         => 'project',
+		// Reception reads $this->fk_project (SQL column fk_projet).
+		'fk_project'        => 'project',
 		'origin_id'         => 'origin_id',
 		'origin'            => 'origin_type',
 		'fk_user_author'    => 'created_by',
@@ -75,7 +76,7 @@ class dmReception extends dmBase
 	protected $writableFields = [
 		'ref_supplier',
 		'socid',
-		'fk_projet',
+		'fk_project',
 		'date_reception',
 		'date_delivery',
 		'entrepot_id',

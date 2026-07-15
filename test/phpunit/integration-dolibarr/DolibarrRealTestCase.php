@@ -111,7 +111,11 @@ abstract class DolibarrRealTestCase extends TestCase
         // isModEnabled('produit') maps to module 'product'; 'category' maps to
         // 'categorie'. Enable under the keys hasRight()/isModEnabled() read.
         // Vague 2 adds the document/project/agenda modules the facade gates on.
-        foreach (['societe', 'product', 'categorie', 'commande', 'facture', 'propal', 'projet', 'agenda'] as $mod) {
+        foreach ([
+            'societe', 'product', 'categorie', 'commande', 'facture', 'propal', 'projet', 'agenda',
+            'stock', 'adherent', 'expensereport', 'contrat', 'ticket', 'ficheinter',
+            'fournisseur', 'supplier_proposal', 'expedition', 'reception',
+        ] as $mod) {
             $conf->modules[$mod] = 1;
         }
 
@@ -125,7 +129,11 @@ abstract class DolibarrRealTestCase extends TestCase
         // Note: the project module stores its conf under $conf->project (English
         // key), while its enable flag / rights use 'projet'. Task::delete reads
         // $conf->project->dir_output, so both keys must be seeded.
-        foreach (['commande', 'facture', 'propal', 'projet', 'project', 'agenda', 'actioncomm', 'user'] as $mod) {
+        foreach ([
+            'commande', 'facture', 'propal', 'projet', 'project', 'agenda', 'actioncomm', 'user',
+            'stock', 'adherent', 'expensereport', 'contrat', 'ticket', 'ficheinter', 'fichinter',
+            'fournisseur', 'supplier_proposal', 'commande_fournisseur', 'facturefourn',
+        ] as $mod) {
             if (!isset($conf->$mod) || !is_object($conf->$mod)) {
                 $conf->$mod = new \stdClass();
             }
@@ -145,6 +153,20 @@ abstract class DolibarrRealTestCase extends TestCase
         $conf->global->COMMANDE_ADDON = 'mod_commande_marbre';
         $conf->global->FACTURE_ADDON = 'mod_facture_terre';
         $conf->global->FACTURE_TERRE_MASK = 'FA{yy}{mm}-{0000}';
+        // Vague 3 numbering models (counter/mask based).
+        $conf->global->FICHINTER_ADDON = 'mod_pacific';
+        $conf->global->CONTRACT_ADDON = 'mod_contract_serpis';
+        $conf->global->CONTRACT_SERPIS_MASK = 'CT{yy}{mm}-{0000}';
+        $conf->global->TICKET_ADDON = 'mod_ticket_simple';
+        $conf->global->EXPENSEREPORT_ADDON = 'mod_expensereport_sand';
+        $conf->global->COMMANDE_SUPPLIER_ADDON_NUMBER = 'mod_commande_fournisseur_muguet';
+        $conf->global->INVOICE_SUPPLIER_ADDON_NUMBER = 'mod_facture_fournisseur_cactus';
+        $conf->global->SUPPLIER_PROPOSAL_ADDON = 'mod_supplier_proposal_marbre';
+        // SupplierProposal::cloture() reads these ODT template globals when it
+        // regenerates the PDF; leave them empty so no notice-fatal under
+        // stopOnDefect.
+        $conf->global->SUPPLIER_PROPOSAL_ADDON_PDF_ODT_CLOSED = '';
+        $conf->global->SUPPLIER_PROPOSAL_ADDON_PDF_ODT_TOBILL = '';
 
         if (!isset($user->rights) || !is_object($user->rights)) {
             $user->rights = new \stdClass();
@@ -159,6 +181,15 @@ abstract class DolibarrRealTestCase extends TestCase
             'propal'    => ['lire', 'creer', 'supprimer'],
             'projet'    => ['lire', 'creer', 'supprimer'],
             'user'      => ['lire', 'creer', 'supprimer'],
+            'stock'     => ['lire', 'creer', 'supprimer'],
+            'adherent'  => ['lire', 'creer', 'supprimer'],
+            'expensereport' => ['lire', 'creer', 'supprimer'],
+            'contrat'   => ['lire', 'creer', 'supprimer'],
+            'ficheinter' => ['lire', 'creer', 'supprimer'],
+            'ticket'    => ['read', 'write', 'delete'],
+            'supplier_proposal' => ['lire', 'creer', 'supprimer'],
+            'expedition' => ['lire', 'creer', 'supprimer'],
+            'reception' => ['lire', 'creer', 'supprimer'],
         ];
         foreach ($grants as $path => $perms) {
             if (!isset($user->rights->$path) || !is_object($user->rights->$path)) {
@@ -175,6 +206,10 @@ abstract class DolibarrRealTestCase extends TestCase
             ['societe', 'contact', ['lire', 'creer', 'supprimer']],
             ['agenda', 'myactions', ['read', 'create', 'delete']],
             ['user', 'user', ['lire', 'creer', 'supprimer']],
+            ['fournisseur', 'commande', ['lire', 'creer', 'supprimer', 'approuver', 'commander']],
+            ['fournisseur', 'facture', ['lire', 'creer', 'supprimer']],
+            ['stock', 'mouvement', ['lire', 'creer']],
+            ['adherent', 'cotisation', ['lire', 'creer']],
         ];
         foreach ($nested as $entry) {
             list($path, $sub, $perms) = $entry;

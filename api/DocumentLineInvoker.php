@@ -45,7 +45,7 @@ class DocumentLineInvoker
      */
     public static function supportedClasses()
     {
-        return ['Commande', 'Facture', 'Propal'];
+        return ['Commande', 'Facture', 'Propal', 'CommandeFournisseur', 'FactureFournisseur', 'SupplierProposal'];
     }
 
     /**
@@ -157,6 +157,39 @@ class DocumentLineInvoker
                     $f['type'], $f['rang'], $f['special'], '', 0, 0, null, 0, $f['label'],
                     0, 100, 0, $f['fk_unit']
                 );
+            case 'CommandeFournisseur':
+                // addline(desc, pu_ht, qty, txtva, txlocaltax1, txlocaltax2, fk_product,
+                //   fk_prod_fourn_price, ref_supplier, remise_percent, price_base_type,
+                //   pu_ttc, type, info_bits, notrigger, date_start, date_end,
+                //   array_options, fk_unit, pu_ht_devise, origin, origin_id, rang,
+                //   special_code)
+                return (int) $object->addline(
+                    $f['desc'], $f['pu'], $f['qty'], $f['txtva'], 0.0, 0.0, $f['fk_product'],
+                    0, '', $f['remise'], 'HT', 0.0, $f['type'], 0, false, $f['date_start'],
+                    $f['date_end'], 0, $f['fk_unit'], 0, '', 0, $f['rang'], $f['special']
+                );
+            case 'FactureFournisseur':
+                // addline(desc, pu, txtva, txlocaltax1, txlocaltax2, qty, fk_product,
+                //   remise_percent, date_start, date_end, ventil, info_bits,
+                //   price_base_type, type, rang, notrigger, array_options, fk_unit,
+                //   origin_id, pu_devise, ref_supplier, special_code, fk_parent_line,
+                //   fk_remise_except). NOTE: pu/txtva precede qty here.
+                return (int) $object->addline(
+                    $f['desc'], $f['pu'], $f['txtva'], 0, 0, $f['qty'], $f['fk_product'],
+                    $f['remise'], $f['date_start'], $f['date_end'], 0, '', 'HT', $f['type'],
+                    $f['rang'], false, 0, $f['fk_unit'], 0, 0, '', $f['special'], 0, 0
+                );
+            case 'SupplierProposal':
+                // addline(desc, pu_ht, qty, txtva, txlocaltax1, txlocaltax2, fk_product,
+                //   remise_percent, price_base_type, pu_ttc, info_bits, type, rang,
+                //   special_code, fk_parent_line, fk_fournprice, pa_ht, label,
+                //   array_options, ref_supplier, fk_unit, origin, origin_id,
+                //   pu_ht_devise, date_start, date_end)
+                return (int) $object->addline(
+                    $f['desc'], $f['pu'], $f['qty'], $f['txtva'], 0, 0, $f['fk_product'],
+                    $f['remise'], 'HT', 0, 0, $f['type'], $f['rang'], $f['special'], 0, 0, 0,
+                    $f['label'], 0, '', $f['fk_unit'], '', 0, 0, $f['date_start'], $f['date_end']
+                );
         }
 
         return -1;
@@ -211,6 +244,33 @@ class DocumentLineInvoker
                     $f['txtva'], 0, 0, 'HT', 0, $f['type'], 0, 0, null, 0, $f['label'],
                     $f['special'], 0, 100, $f['fk_unit'], 0, 0, '', $f['rang']
                 );
+            case 'CommandeFournisseur':
+                // updateline(rowid, desc, pu, qty, remise_percent, txtva, txlocaltax1,
+                //   txlocaltax2, price_base_type, info_bits, type, notrigger, date_start,
+                //   date_end, array_options, fk_unit, pu_ht_devise, ref_supplier)
+                return (int) $object->updateline(
+                    $lineId, $f['desc'], $f['pu'], $f['qty'], $f['remise'], $f['txtva'], 0, 0,
+                    'HT', 0, $f['type'], 0, $f['date_start'], $f['date_end'], 0, $f['fk_unit'], 0, ''
+                );
+            case 'FactureFournisseur':
+                // updateline(id, desc, pu, vatrate, txlocaltax1, txlocaltax2, qty,
+                //   idproduct, price_base_type, info_bits, type, remise_percent,
+                //   notrigger, date_start, date_end, array_options, fk_unit, pu_devise,
+                //   ref_supplier, rang)
+                return (int) $object->updateline(
+                    $lineId, $f['desc'], $f['pu'], $f['txtva'], 0, 0, $f['qty'], $f['fk_product'],
+                    'HT', 0, $f['type'], $f['remise'], false, $f['date_start'], $f['date_end'],
+                    0, $f['fk_unit'], 0, '', $f['rang']
+                );
+            case 'SupplierProposal':
+                // updateline(rowid, pu, qty, remise_percent, txtva, txlocaltax1,
+                //   txlocaltax2, desc, price_base_type, info_bits, special_code,
+                //   fk_parent_line, skip_update_total, fk_fournprice, pa_ht, label, type,
+                //   array_options, ref_supplier, fk_unit, pu_ht_devise)
+                return (int) $object->updateline(
+                    $lineId, $f['pu'], $f['qty'], $f['remise'], $f['txtva'], 0, 0, $f['desc'],
+                    'HT', 0, $f['special'], 0, 0, 0, 0, $f['label'], $f['type'], 0, '', $f['fk_unit'], 0
+                );
         }
 
         return -1;
@@ -241,6 +301,15 @@ class DocumentLineInvoker
             case 'Facture':
                 // deleteline($rowid, $id)
                 return (int) $object->deleteline($lineId, $id);
+            case 'CommandeFournisseur':
+                // deleteline($idline, $notrigger) -- no user.
+                return (int) $object->deleteline($lineId);
+            case 'FactureFournisseur':
+                // deleteline($rowid, $notrigger) -- no user.
+                return (int) $object->deleteline($lineId);
+            case 'SupplierProposal':
+                // deleteline($lineid) -- single arg.
+                return (int) $object->deleteline($lineId);
         }
 
         return -1;
