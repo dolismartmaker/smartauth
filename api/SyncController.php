@@ -86,155 +86,14 @@ class SyncController
     {
         global $hookmanager;
 
-        // Built-in syncable objects (Phase 1: simple objects only).
-        // The 'allowed_fields' key whitelists which payload keys may be
-        // copied onto the Dolibarr object - any other key (and any key from
-        // the universal denylist below) is rejected. See
+        // Single source of truth: the built-in core-object definitions, the
+        // smartmaker_registerSyncableObjects hook merge and the object_type
+        // self-stamp now live in ObjectRegistry, shared with the synchronous
+        // REST facade (ObjectController). The 'allowed_fields' key whitelists
+        // which payload keys may be copied onto the Dolibarr object - any other
+        // key (and any key from the universal denylist) is rejected. See
         // applyDataToObject() and CR-6 of TODO-SECURITY-01.
-        $this->syncableObjects = [
-            'thirdparty' => [
-                'class' => 'Societe',
-                'file' => DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php',
-                'table' => 'societe',
-                'element' => 'societe',
-                'label' => 'ThirdParties',
-                'module' => 'societe',
-                'priority' => 'high',
-                'default_enabled' => true,
-                // Dolibarr permission required per write action. Arguments are
-                // forwarded as-is to User::hasRight($module, $perm1[, $perm2]).
-                // push() refuses any action whose right is not granted (CR: BFLA fix).
-                'rights' => [
-                    'read'   => ['societe', 'lire'],
-                    'create' => ['societe', 'creer'],
-                    'update' => ['societe', 'creer'],
-                    'delete' => ['societe', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'name', 'name_alias',
-                    'email', 'phone', 'fax', 'url',
-                    'address', 'zip', 'town', 'country_id', 'state_id',
-                    'client', 'fournisseur',
-                    'code_client', 'code_fournisseur',
-                    'note_public', 'note_private',
-                    'siren', 'siret', 'ape',
-                    'idprof4', 'idprof5', 'idprof6',
-                    'capital', 'tva_assuj', 'tva_intra',
-                    'gencod', 'barcode',
-                    'effectif_id', 'forme_juridique_code', 'typent_id',
-                    'outstanding_limit',
-                    'mode_reglement_id', 'cond_reglement_id',
-                    'status',
-                ],
-            ],
-            'contact' => [
-                'class' => 'Contact',
-                'file' => DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php',
-                'table' => 'socpeople',
-                'element' => 'contact',
-                'label' => 'Contacts',
-                'module' => 'societe',
-                'priority' => 'high',
-                'default_enabled' => true,
-                // Contacts use the societe->contact sub-permission.
-                'rights' => [
-                    'read'   => ['societe', 'contact', 'lire'],
-                    'create' => ['societe', 'contact', 'creer'],
-                    'update' => ['societe', 'contact', 'creer'],
-                    'delete' => ['societe', 'contact', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'lastname', 'firstname', 'civility_id',
-                    'address', 'zip', 'town', 'country_id',
-                    'email', 'phone_pro', 'phone_mobile', 'phone_perso', 'fax',
-                    'fk_soc', 'socid',
-                    'no_email',
-                    'note_public', 'note_private',
-                    'poste', 'birthday',
-                ],
-            ],
-            'product' => [
-                'class' => 'Product',
-                'file' => DOL_DOCUMENT_ROOT . '/product/class/product.class.php',
-                'table' => 'product',
-                'element' => 'product',
-                'label' => 'Products',
-                'module' => 'product',
-                'priority' => 'medium',
-                'default_enabled' => true,
-                // Product permissions live under the 'produit' rights class.
-                'rights' => [
-                    'read'   => ['produit', 'lire'],
-                    'create' => ['produit', 'creer'],
-                    'update' => ['produit', 'creer'],
-                    'delete' => ['produit', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'ref', 'label', 'description',
-                    'status', 'status_buy', 'status_batch',
-                    'finished', 'type',
-                    'customcode', 'country_id',
-                    'weight', 'weight_units',
-                    'length', 'length_units',
-                    'surface', 'surface_units',
-                    'volume', 'volume_units',
-                    'price', 'price_ttc',
-                    'price_min', 'price_min_ttc',
-                    'price_label',
-                    'tva_tx', 'barcode',
-                    'note_public', 'note_private',
-                ],
-            ],
-            'category' => [
-                'class' => 'Categorie',
-                'file' => DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php',
-                'table' => 'categorie',
-                'element' => 'categorie',
-                'label' => 'Categories',
-                'module' => 'categorie',
-                'priority' => 'low',
-                'default_enabled' => true,
-                'rights' => [
-                    'read'   => ['categorie', 'lire'],
-                    'create' => ['categorie', 'creer'],
-                    'update' => ['categorie', 'creer'],
-                    'delete' => ['categorie', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'label', 'description', 'color', 'type', 'fk_parent',
-                ],
-            ],
-        ];
-
-        // Load additional objects via hooks
-        if (is_object($hookmanager)) {
-            $parameters = [];
-            $objects = [];
-            $action = '';
-
-            $hookmanager->initHooks(['smartmaker']);
-            $reshook = $hookmanager->executeHooks(
-                'smartmaker_registerSyncableObjects',
-                $parameters,
-                $objects,
-                $action
-            );
-
-            if ($reshook >= 0 && is_array($objects) && !empty($objects)) {
-                $this->syncableObjects = array_merge($this->syncableObjects, $objects);
-            }
-        }
-
-        // Self-stamp the object_type key onto each config so downstream
-        // helpers (mapper resolution, FK validation) can recover the
-        // type from a $config alone without having to thread an extra
-        // parameter through every call site.
-        foreach ($this->syncableObjects as $type => &$cfg) {
-            if (is_array($cfg)) {
-                $cfg['object_type'] = $type;
-            }
-        }
-        unset($cfg);
+        $this->syncableObjects = ObjectRegistry::resolveWithHooks($hookmanager);
     }
 
     /**
@@ -1252,28 +1111,17 @@ class SyncController
      * object_type. Returns null when no mapper is registered (the caller
      * then falls back to the raw cast path and logs a warning).
      *
-     * Built-in mappings only for now. If a future module registers a
-     * custom object_type via the smartmaker_registerSyncableObjects
-     * hook, this resolver can be extended to read a 'mapper' key from
-     * the $syncableObjects config -- the hook payload already supports
-     * arbitrary keys so the contract extension is non-breaking.
+     * The mapper class is read straight from the (single-source-of-truth)
+     * config carried by $syncableObjects, which ObjectRegistry seeds with a
+     * 'mapper' key for every built-in type. A hook-registered custom object
+     * type provides its own mapper the same way
+     * ($syncableObjects['xxx']['mapper'] = '\\Ns\\dmXxx').
      *
      * @param string $object_type Sync object type key
      * @return string|null        Fully qualified mapper class name
      */
     private function resolveMapperClass($object_type)
     {
-        $map = [
-            'thirdparty' => '\\SmartAuth\\DolibarrMapping\\dmThirdparty',
-            'contact'    => '\\SmartAuth\\DolibarrMapping\\dmContact',
-            'product'    => '\\SmartAuth\\DolibarrMapping\\dmProduct',
-            'category'   => '\\SmartAuth\\DolibarrMapping\\dmCategory',
-        ];
-        if (isset($map[$object_type])) {
-            return $map[$object_type];
-        }
-        // Honour an explicit mapper class declared by a hook-registered
-        // syncable object: $syncableObjects['xxx']['mapper'] = '\\Ns\\dmXxx'.
         $cfgMapper = $this->syncableObjects[$object_type]['mapper'] ?? null;
         if (is_string($cfgMapper) && $cfgMapper !== '') {
             return $cfgMapper;
