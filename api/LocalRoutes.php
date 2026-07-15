@@ -24,6 +24,7 @@ use SmartAuth\Api\SmartFileController;
 use SmartAuth\Api\SmartTempFileController;
 use SmartAuth\Api\SyncController;
 use SmartAuth\Api\ObjectDocumentController;
+use SmartAuth\Api\ObjectController;
 use SmartAuth\Api\PwaController;
 use SmartAuth\Api\UploadController;
 use SmartAuth\Api\QrPairController;
@@ -131,6 +132,31 @@ Route::get('object/{type}/{id}/document/{path}', ObjectDocumentController::class
 
 // Download a document binary via path segment (legacy)
 Route::get('object/{type}/{id}/document/{path}/binary', ObjectDocumentController::class, 'downloadBinary', true);
+
+// ========== Generic Object Facade (objects/{type}) ========== //
+//
+// Synchronous CRUD/search/pagination over the core Dolibarr objects, driven
+// by ObjectRegistry + the dm* mappers. Replaces the per-module reimplementation
+// of the same controller (cf TODO-facade-rest-objets-dolibarr.md).
+//
+// The route param is named {objtype} (not {type}) on purpose: RouteController
+// merges path params over the body, so a placeholder named 'type' would shadow
+// the object's own 'type' field (Product/Category/ActionComm...) and make it
+// impossible to set on create/update. The URL is unchanged (e.g. objects/product).
+//
+// ORDERING MATTERS: RouteCache matches dynamic routes (those carrying a
+// {placeholder}) in registration order, first match wins. The static
+// sub-resources count/columns/describe MUST be declared BEFORE the catch-all
+// objects/{objtype}/{id} pattern -- otherwise {id}=([^/]+) would swallow 'count'.
+Route::get('objects/{objtype}/count', ObjectController::class, 'count', true);
+Route::get('objects/{objtype}/columns', ObjectController::class, 'columns', true);
+Route::get('objects/{objtype}/describe', ObjectController::class, 'describe', true);
+Route::get('objects/{objtype}/{id}', ObjectController::class, 'show', true);
+Route::get('objects/{objtype}', ObjectController::class, 'index', true);
+Route::post('objects/{objtype}', ObjectController::class, 'create', true);
+Route::patch('objects/{objtype}/{id}', ObjectController::class, 'update', true);
+Route::delete('objects/{objtype}/{id}', ObjectController::class, 'destroy', true);
+Route::delete('objects/{objtype}', ObjectController::class, 'deleteBulk', true);
 
 // ========== Media Routes ========== //
 //
