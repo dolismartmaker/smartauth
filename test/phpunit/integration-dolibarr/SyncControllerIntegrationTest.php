@@ -1483,4 +1483,245 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $result = $this->pullProducts(['cursor' => $good]);
         $this->assertEquals(200, $result[1], 'Well-formed cursor must be accepted');
     }
+
+    // =========================================================================
+    // Conflict round-trip: a real conflict must be persisted, listed, counted
+    // and resolvable. Regression guard for the bug where createConflictRecord's
+    // INSERT was rolled back together with the rejected business update, so the
+    // conflict silently vanished (sync/conflicts empty, pending_conflicts = 0).
+    // =========================================================================
+
+    /**
+     * Force a known email + tms on a societe row so base_tms / server_tms are
+     * deterministic for the conflict-detection assertions.
+     *
+     * @param int    $id    Societe rowid
+     * @param string $email Value to set on the pushed field
+     * @param string $tms   Timestamp to set (drives the tms comparison)
+     * @return void
+     */
+    private function forceSocieteState(int $id, string $email, string $tms): void
+    {
+        $sql = "UPDATE " . MAIN_DB_PREFIX . "societe";
+        $sql .= " SET email = '" . $this->db->escape($email) . "',";
+        $sql .= " tms = '" . $this->db->escape($tms) . "'";
+        $sql .= " WHERE rowid = " . (int) $id;
+        if (!$this->db->query($sql)) {
+            throw new \RuntimeException('Failed to force societe state: ' . $this->db->lasterror());
+        }
+    }
+
+    /**
+     * A real conflict (stale base_tms + genuinely different data) must be
+     * rolled back on the business row yet PERSISTED as a pending conflict, so
+     * it surfaces in sync/conflicts and sync/status and can be resolved.
+     */
+    public function testRealConflictIsPersistedListedAndResolvable(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        // State the client saw at pull time -> the base_tms it will send back.
+        $societe = $this->createTestSociete(['name' => 'Conflict Co ' . uniqid()]);
+        $baseTms = '2020-01-01 00:00:00';
+        $this->forceSocieteState($societe->id, 'original@example.test', $baseTms);
+
+        // Concurrent server-side edit: the pushed field changed, tms bumped.
+        $this->forceSocieteState($societe->id, 'server@example.test', '2020-06-15 12:00:00');
+
+        // Client pushes its own value with the now-stale base_tms -> conflict.
+        $push = $this->controller->push([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [[
+                'action'   => 'update',
+                'id'       => $societe->id,
+                'base_tms' => $baseTms,
+                'data'     => ['email' => 'client@example.test'],
+            ]],
+        ]);
+
+        $this->assertEquals(200, $push[1]);
+        $this->assertNotEmpty($push[0]['conflicts'], 'push must report the conflict to the client');
+        $this->assertEmpty($push[0]['success'], 'the conflicting update must not be applied');
+
+        // Business row keeps the server value (data rollback is intended).
+        $reloaded = new \Societe($this->db);
+        $reloaded->fetch($societe->id);
+        $this->assertEquals('server@example.test', $reloaded->email, 'client data must not overwrite the server row on conflict');
+
+        // Regression core: the conflict must survive server-side (it used to be
+        // eaten by the update rollback).
+        $conflicts = $this->controller->conflicts([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+        ]);
+        $this->assertEquals(200, $conflicts[1]);
+        $this->assertCount(1, $conflicts[0]['conflicts'], 'the conflict must be persisted and listable');
+        $this->assertEquals($societe->id, $conflicts[0]['conflicts'][0]['object_id']);
+        $conflictId = $conflicts[0]['conflicts'][0]['id'];
+
+        $status = $this->controller->status([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+        ]);
+        $this->assertEquals(1, $status[0]['pending_conflicts'], 'status must count the pending conflict');
+
+        // The resolution workflow now has a row to act on.
+        $resolve = $this->controller->resolveConflict([
+            'id'         => $conflictId,
+            'resolution' => 'client',
+        ]);
+        $this->assertEquals(200, $resolve[1]);
+        $this->assertTrue($resolve[0]['success']);
+
+        // Client resolution applied, and the conflict left the pending list.
+        $afterResolve = new \Societe($this->db);
+        $afterResolve->fetch($societe->id);
+        $this->assertEquals('client@example.test', $afterResolve->email, 'client resolution must write the client value');
+
+        $after = $this->controller->conflicts([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+        ]);
+        $this->assertEmpty($after[0]['conflicts'], 'resolved conflict must leave the pending list');
+    }
+
+    /**
+     * Offline-first clients retry the same push after a lost 2xx. A replayed
+     * conflicting update must refresh the SAME pending conflict row, never pile
+     * up duplicates in sync/conflicts / sync/status.
+     */
+    public function testReplayedConflictDoesNotDuplicatePendingRows(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $societe = $this->createTestSociete(['name' => 'Retry Co ' . uniqid()]);
+        $baseTms = '2020-01-01 00:00:00';
+        $this->forceSocieteState($societe->id, 'original@example.test', $baseTms);
+        $this->forceSocieteState($societe->id, 'server@example.test', '2020-06-15 12:00:00');
+
+        $payload = [
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [[
+                'action'   => 'update',
+                'id'       => $societe->id,
+                'base_tms' => $baseTms,
+                'data'     => ['email' => 'client@example.test'],
+            ]],
+        ];
+
+        // Same conflicting push three times (lost-response retries).
+        $this->controller->push($payload);
+        $this->controller->push($payload);
+        $this->controller->push($payload);
+
+        $status = $this->controller->status([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+        ]);
+        $this->assertEquals(1, $status[0]['pending_conflicts'], 'retries must not multiply the pending conflict');
+
+        $conflicts = $this->controller->conflicts([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+        ]);
+        $this->assertCount(1, $conflicts[0]['conflicts'], 'a single pending row must represent the repeated conflict');
+    }
+
+    /**
+     * tms drift alone must NOT raise a conflict: when the data the client
+     * pushes is identical to the server's, detectRealConflict lets the update
+     * proceed (no false conflict, nothing persisted).
+     */
+    public function testCleanUpdateWithStaleTmsButSameDataIsNotAConflict(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $societe = $this->createTestSociete(['name' => 'Clean Co ' . uniqid()]);
+        $baseTms = '2020-01-01 00:00:00';
+        $this->forceSocieteState($societe->id, 'stable@example.test', $baseTms);
+
+        // Server bumped tms only (an unrelated writer); the field is unchanged.
+        $this->forceSocieteState($societe->id, 'stable@example.test', '2020-06-15 12:00:00');
+
+        // Client pushes the same value it already holds, with a stale base_tms.
+        $push = $this->controller->push([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [[
+                'action'   => 'update',
+                'id'       => $societe->id,
+                'base_tms' => $baseTms,
+                'data'     => ['email' => 'stable@example.test'],
+            ]],
+        ]);
+
+        $this->assertEquals(200, $push[1]);
+        $this->assertEmpty($push[0]['conflicts'], 'identical data must not raise a false conflict on tms drift');
+        $this->assertContains($societe->id, $push[0]['success'], 'the clean update must be applied');
+
+        $status = $this->controller->status([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+        ]);
+        $this->assertEquals(0, $status[0]['pending_conflicts'], 'no conflict must be persisted');
+    }
+
+    /**
+     * A second authenticated user must not reach another user's sync client on
+     * the same physical device (M-11): getClientByUUID scopes on the device's
+     * owning user, so status / conflicts / push all fail closed with 404.
+     */
+    public function testForeignUserCannotUsePeerSyncClientOnSharedDevice(): void
+    {
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        // Owner (the user who created the device) reaches its own client.
+        $ownerStatus = $this->controller->status([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+        ]);
+        $this->assertEquals(200, $ownerStatus[1], 'owner must reach its own sync client');
+
+        // A different authenticated user, same client_uuid / device: refused.
+        $otherUser = $this->createTestUser();
+
+        foreach (['status', 'conflicts'] as $endpoint) {
+            $res = $this->controller->$endpoint([
+                'user_id'     => $otherUser->id,
+                'client_uuid' => $this->testClientUUID,
+            ]);
+            $this->assertEquals(404, $res[1], "foreign user must not reach peer client via $endpoint");
+        }
+
+        // Write path is refused before any object is touched.
+        $push = $this->controller->push([
+            'user_id'     => $otherUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [[
+                'action'  => 'create',
+                'temp_id' => 'tmp-x',
+                'data'    => ['name' => 'Should not be created'],
+            ]],
+        ]);
+        $this->assertEquals(404, $push[1], 'foreign user must not push through peer client');
+    }
 }

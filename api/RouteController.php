@@ -100,7 +100,8 @@ class RouteController
 
 		list($user, $entity, $token_id, $buyer, $family_id, $device_id, $oauthContext) = $authContext;
 
-		// Execute controller action
+		// Execute controller action. Route path params are passed separately so they
+		// keep precedence over the auth-injected keys (e.g. a {user_id} segment).
 		self::executeAction(
 			$route['class'],
 			$route['function'],
@@ -111,7 +112,8 @@ class RouteController
 			$buyer,
 			$family_id,
 			$device_id,
-			$oauthContext
+			$oauthContext,
+			!empty($route['params']) ? $route['params'] : array()
 		);
 
 		return true;
@@ -270,7 +272,9 @@ class RouteController
 		// Parse request data
 		$data = self::parseRequestData($method, $targetAction);
 
-		// Extract URL parameters
+		// Extract URL parameters (keep them separately too, so path params can keep
+		// precedence over the auth-injected keys in executeAction).
+		$urlParams = self::extractUrlParameters($targetAction, $action, array());
 		$data = self::extractUrlParameters($targetAction, $action, $data);
 
 		// Authentication and authorization
@@ -291,7 +295,9 @@ class RouteController
 			$token_id,
 			$buyer,
 			$family_id,
-			$device_id
+			$device_id,
+			null,
+			$urlParams
 		);
 	}
 
@@ -930,7 +936,7 @@ class RouteController
 	 *
 	 * @return  void                            Outputs JSON and exits
 	 */
-	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id, $device_id, $oauthContext = null)
+	private static function executeAction($targetClass, $redirectFunction, $data, $user, $entity, $token_id, $buyer, $family_id, $device_id, $oauthContext = null, $routeParams = array())
 	{
 		dol_syslog("[SmartAuth] executeAction: $targetClass, redirectFunction=$redirectFunction, token_id=$token_id, family_id=$family_id, device_id=$device_id");
 
@@ -971,11 +977,21 @@ class RouteController
 			$payload['oauth_grant_type'] = $oauthContext['grant_type'] ?? null;
 		}
 
-		// Flatten data into payload for easier access
+		// Flatten data into payload for easier access. Body/query values must NOT
+		// override the auth-injected keys (user, user_id, entity, ...): that guard is a
+		// security property (a request body cannot impersonate another user_id).
 		foreach ($data as $key => $value) {
 			if (!isset($payload[$key])) { // Don't override main keys
 				$payload[$key] = $value;
 			}
+		}
+
+		// URL PATH parameters are part of the route contract, not user-supplied body,
+		// so they take precedence - including over the injected convenience keys. This
+		// is what makes routes like /users/{user_id}/... or /profile/photo/{user_id}
+		// receive the path value instead of being shadowed by the caller's own id.
+		foreach ($routeParams as $key => $value) {
+			$payload[$key] = $value;
 		}
 
 		// Execute action

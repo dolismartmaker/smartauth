@@ -1868,9 +1868,16 @@ class SyncController
             $conflict = $this->detectRealConflict($data, $server_obj, $config);
 
             if ($conflict) {
-                // Real conflict - create conflict record
-                $this->createConflictRecord($client_id, $config['table'], $id, $data, $server_obj, $base_tms, $server_tms, $conflict);
+                // Real conflict. Roll back the unwanted business-data write
+                // FIRST, then persist the conflict record. Recording it before
+                // the rollback would enrol the INSERT in the very transaction
+                // being rolled back, so the conflict row would be discarded --
+                // it would then never surface in sync/conflicts nor
+                // sync/status, and the resolve workflow would have nothing to
+                // act on. The data rollback is intended; only the conflict
+                // record must survive.
                 $this->db->rollback();
+                $this->createConflictRecord($client_id, $config['table'], $id, $data, $server_obj, $base_tms, $server_tms, $conflict);
                 return [
                     'success' => false,
                     'conflict' => [
@@ -1888,7 +1895,11 @@ class SyncController
         $object->fetch($id);
         $this->applyDataToObject($object, $data, $config);
 
-        $result = $object->update($user);
+        // Dolibarr update() signatures differ (Societe/Product/Contact take
+        // $id first, User/Facture take $user first). Use the reflection-based
+        // dispatcher, same as applyResolvedData -- calling update($user)
+        // directly puts the User object into $id on Societe et al.
+        $result = $this->callUpdateMethod($object, $user);
         if ($result > 0) {
             $this->db->commit();
             return ['success' => true];
@@ -1950,25 +1961,78 @@ class SyncController
     }
 
     /**
-     * Create a conflict record in the database
+     * Create (or refresh) a pending conflict record in the database.
+     *
+     * Must be called OUTSIDE the update transaction that was rolled back:
+     * otherwise the INSERT is discarded with that rollback (see processUpdate).
+     *
+     * @param int    $client_id      Sync client rowid
+     * @param string $table          Business table name (eg 'societe')
+     * @param int    $object_id      Conflicting object rowid
+     * @param array  $client_data    Data the client tried to push
+     * @param object $server_obj     Current server row
+     * @param string $client_tms     Base tms the client held
+     * @param string $server_tms     Current server tms
+     * @param array  $field_conflicts Per-field client/server diff
+     * @return bool True if the row was persisted, false on SQL error
      */
     private function createConflictRecord($client_id, $table, $object_id, $client_data, $server_obj, $client_tms, $server_tms, $field_conflicts)
     {
-        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_sync_conflicts";
-        $sql .= " (fk_client, table_name, object_id, client_data, server_data, client_tms, server_tms, field_conflicts, status, date_creation)";
-        $sql .= " VALUES (";
-        $sql .= (int) $client_id . ", ";
-        $sql .= "'" . $this->db->escape($table) . "', ";
-        $sql .= (int) $object_id . ", ";
-        $sql .= "'" . $this->db->escape(json_encode($client_data)) . "', ";
-        $sql .= "'" . $this->db->escape(json_encode((array) $server_obj)) . "', ";
-        $sql .= "'" . $this->db->escape($client_tms) . "', ";
-        $sql .= "'" . $this->db->escape($server_tms) . "', ";
-        $sql .= "'" . $this->db->escape(json_encode($field_conflicts)) . "', ";
-        $sql .= "'pending', ";
-        $sql .= "'" . $this->db->idate(dol_now()) . "')";
+        $clientJson = json_encode($client_data);
+        $serverJson = json_encode((array) $server_obj);
+        $fieldsJson = json_encode($field_conflicts);
+        $now = $this->db->idate(dol_now());
 
-        $this->db->query($sql);
+        // Offline-first clients retry the same push until they observe a 2xx,
+        // so the same (client, table, object) can conflict repeatedly. Refresh
+        // the existing pending row instead of piling up duplicates that would
+        // inflate sync/conflicts and sync/status.
+        $existingId = 0;
+        $sqlSel = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_sync_conflicts";
+        $sqlSel .= " WHERE fk_client = " . (int) $client_id;
+        $sqlSel .= " AND table_name = '" . $this->db->escape($table) . "'";
+        $sqlSel .= " AND object_id = " . (int) $object_id;
+        $sqlSel .= " AND status = 'pending'";
+        $resql = $this->db->query($sqlSel);
+        if ($resql && ($row = $this->db->fetch_object($resql))) {
+            $existingId = (int) $row->rowid;
+        }
+
+        if ($existingId > 0) {
+            $sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_sync_conflicts SET";
+            $sql .= " client_data = '" . $this->db->escape($clientJson) . "'";
+            $sql .= ", server_data = '" . $this->db->escape($serverJson) . "'";
+            $sql .= ", client_tms = '" . $this->db->escape($client_tms) . "'";
+            $sql .= ", server_tms = '" . $this->db->escape($server_tms) . "'";
+            $sql .= ", field_conflicts = '" . $this->db->escape($fieldsJson) . "'";
+            $sql .= ", date_creation = '" . $now . "'";
+            $sql .= " WHERE rowid = " . $existingId;
+        } else {
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_sync_conflicts";
+            $sql .= " (fk_client, table_name, object_id, client_data, server_data, client_tms, server_tms, field_conflicts, status, date_creation)";
+            $sql .= " VALUES (";
+            $sql .= (int) $client_id . ", ";
+            $sql .= "'" . $this->db->escape($table) . "', ";
+            $sql .= (int) $object_id . ", ";
+            $sql .= "'" . $this->db->escape($clientJson) . "', ";
+            $sql .= "'" . $this->db->escape($serverJson) . "', ";
+            $sql .= "'" . $this->db->escape($client_tms) . "', ";
+            $sql .= "'" . $this->db->escape($server_tms) . "', ";
+            $sql .= "'" . $this->db->escape($fieldsJson) . "', ";
+            $sql .= "'pending', ";
+            $sql .= "'" . $now . "')";
+        }
+
+        if (!$this->db->query($sql)) {
+            dol_syslog(
+                '[SmartAuth] SyncController::createConflictRecord: failed to persist conflict for '
+                . $table . ' rowid=' . (int) $object_id . ' (client ' . (int) $client_id . ') - '
+                . $this->db->lasterror(),
+                LOG_ERR
+            );
+            return false;
+        }
+        return true;
     }
 
     /**

@@ -27,10 +27,19 @@ $sqliteVendorPath = $projectRoot . '/vendor/cap-rel/dolibarr-integration-sqlite'
 $originalDbPath = $sqliteVendorPath . '/documents/database_dolibarr.sdb';
 $backupDbPath = $sqliteVendorPath . '/documents/database_dolibarr.sdb_save';
 
-// Prepare clean database
+// Prepare clean database.
+// Restore ONLY the SQLite database file, never the whole working tree. A
+// 'git reset --hard' here would wipe uncommitted work when the package is a
+// local dev checkout linked as a symlink (composer path repository, cf
+// ~/docs/DOLIBARR_SQLITE_DEV_LINK.md) -- the reset would run *through* the
+// symlink and blow away in-progress driver/schema changes in the shared
+// source. 'git checkout HEAD -- <sdb>' restores the known-clean database for
+// both the copied-package and the linked-source setups, and touches no code.
 if (is_dir($sqliteVendorPath . '/.git')) {
-    // The sqlite package has its own git repo, reset it directly
-    exec('cd ' . escapeshellarg($sqliteVendorPath) . ' && git reset --hard HEAD 2>/dev/null');
+    exec(
+        'cd ' . escapeshellarg($sqliteVendorPath)
+        . ' && git checkout HEAD -- documents/database_dolibarr.sdb 2>/dev/null'
+    );
 } elseif (is_file($backupDbPath)) {
     copy($backupDbPath, $originalDbPath);
 } elseif (is_file($originalDbPath)) {
