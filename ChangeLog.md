@@ -1,5 +1,10 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.38 -- 20260724
+
+ - new option to disable force update password on first login
+ - generic rest facade for common objects
+
 ## 2.0.36 -- 20260715
 
  - new option to get only thumbnails on request for local cache / offline
