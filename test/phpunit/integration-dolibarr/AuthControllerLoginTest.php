@@ -127,6 +127,66 @@ class AuthControllerLoginTest extends DolibarrRealTestCase
     }
 
     /**
+     * A fresh user (datepreviouslogin NULL) is asked to change its password on
+     * first login by default.
+     */
+    public function testFirstLoginForcesPasswordChangeByDefault(): void
+    {
+        global $conf;
+        unset($conf->global->SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE);
+
+        $user = $this->createTestUser([
+            'login' => 'firstlogin_' . uniqid(),
+            'email' => 'firstlogin_' . uniqid() . '@example.com',
+            'pass' => 'TestPass123!@#',
+            'statut' => 1,
+        ]);
+
+        $result = $this->authController->login([
+            'email' => $user->email,
+            'password' => 'TestPass123!@#',
+            'entity' => 1,
+            'rememberMe' => 0,
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertTrue($result[0]['must_change_password'], 'first login forces a password change by default');
+    }
+
+    /**
+     * SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE = 1 opts the instance out: even a
+     * first login no longer requires a password change.
+     */
+    public function testFirstLoginPasswordChangeCanBeDisabled(): void
+    {
+        global $conf, $db;
+        // login() calls $conf->setValues($db), which rebuilds $conf->global from
+        // llx_const - so the const must be persisted, not just set in memory.
+        dolibarr_set_const($db, 'SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE', '1', 'chaine', 0, '', $conf->entity);
+
+        try {
+            $user = $this->createTestUser([
+                'login' => 'nochange_' . uniqid(),
+                'email' => 'nochange_' . uniqid() . '@example.com',
+                'pass' => 'TestPass123!@#',
+                'statut' => 1,
+            ]);
+
+            $result = $this->authController->login([
+                'email' => $user->email,
+                'password' => 'TestPass123!@#',
+                'entity' => 1,
+                'rememberMe' => 0,
+            ]);
+
+            $this->assertEquals(200, $result[1]);
+            $this->assertFalse($result[0]['must_change_password'], 'the forced change is disabled by the const');
+        } finally {
+            dolibarr_del_const($db, 'SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE', $conf->entity);
+        }
+    }
+
+    /**
      * Test login creates token family
      */
     public function testLoginCreatesTokenFamily(): void

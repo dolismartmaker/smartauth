@@ -609,8 +609,10 @@ class AuthController
 		// Check if user must change password
 		$mustChangePassword = false;
 
-		// First login: datepreviouslogin is null
-		if (empty($tmpuser->datepreviouslogin)) {
+		// First login (datepreviouslogin is null) forces a password change, unless
+		// the host instance opted out via SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE.
+		// Default 0 keeps the historical behaviour for every other setup.
+		if (empty($tmpuser->datepreviouslogin) && !getDolGlobalInt('SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE')) {
 			$mustChangePassword = true;
 			SmartAuthLogger::debug("smartauth : first login detected for user " . $tmpuser->id . ", password change required");
 		}
