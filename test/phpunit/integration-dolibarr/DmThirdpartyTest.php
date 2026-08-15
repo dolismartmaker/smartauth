@@ -263,10 +263,10 @@ class DmThirdpartyTest extends DolibarrRealTestCase
         $property->setAccessible(true);
         $fields = $property->getValue($this->mapper);
 
-        // 22 mapped fields: 12 historiques + 10 ajoutes en Phase 2 (2026-05-20)
-        // pour aligner sur Dolipocket : name_alias, client, fournisseur,
-        // code_client, code_fournisseur, siren, siret, ape, idprof4, tva_intra.
-        $this->assertCount(22, $fields);
+        // 29 mapped fields: 22 (12 historiques + 10 Phase 2 2026-05-20) + 7
+        // ajoutes pour la parite facade Dolipocket (2026-07) : country_code,
+        // status, tva_assuj, code_compta, code_compta_fournisseur, datec, tms.
+        $this->assertCount(29, $fields);
     }
 
     /**

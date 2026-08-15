@@ -177,19 +177,22 @@ class Vague2ObjectControllerIntegrationTest extends DolibarrRealTestCase
 
     public function testTaskCrud(): void
     {
-        $ref = 'PJ-' . uniqid();
+        // project + task ref are SERVER-generated (numbering addon, mirrored by
+        // the local controllers) -> not writable; the payload must NOT send it.
         list($pBody, $pCode) = $this->controller->create([
-            'objtype' => 'project', 'ref' => $ref, 'title' => 'Task Host Project',
+            'objtype' => 'project', 'title' => 'Task Host Project',
         ]);
         $this->assertSame(201, $pCode, 'host project create body: ' . json_encode($pBody));
         $projectId = (int) $pBody->id;
+        $this->assertNotEmpty($pBody->ref, 'project ref must be auto-generated');
         $this->track('projet', $projectId);
 
         list($body, $code) = $this->controller->create([
-            'objtype' => 'task', 'ref' => 'T-' . uniqid(), 'label' => 'Facade Task',
+            'objtype' => 'task', 'label' => 'Facade Task',
             'project' => $projectId,
         ]);
         $this->assertSame(201, $code, 'task create body: ' . json_encode($body));
+        $this->assertNotEmpty($body->ref, 'task ref must be auto-generated');
         $id = (int) $body->id;
         $this->track('projet_task', $id);
         // Project link round-trips only because dmTask addresses $fk_project.

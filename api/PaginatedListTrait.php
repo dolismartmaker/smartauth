@@ -377,6 +377,26 @@ trait PaginatedListTrait
             ];
         }
 
+        // Mechanism 3.5: explicit filterable columns declared by the mapper,
+        // for cases the catalog cannot derive -- a Dolibarr class with an empty
+        // $fields (Expedition/Reception/Task), or an appside key whose doliside
+        // is a PHP property, NOT the real SQL column (Task 'project' reads the
+        // property fk_project but must FILTER on the column fk_projet). Each entry
+        // is apiKey => 'sql_col' or apiKey => ['column'=>'sql_col','kind'=>'select'].
+        // These override / add to the catalog-derived map.
+        if (method_exists($mapper, 'getFilterableColumns')) {
+            foreach ((array) $mapper->getFilterableColumns() as $key => $def) {
+                $col = is_array($def) ? (string) ($def['column'] ?? '') : (string) $def;
+                if ($col === '') {
+                    continue;
+                }
+                $filterMap[(string) $key] = [
+                    'column' => $aliasPrefix.$col,
+                    'kind'   => is_array($def) ? (string) ($def['kind'] ?? 'text') : 'text',
+                ];
+            }
+        }
+
         $searchFields = [];
         foreach ($searchFieldsRaw as $col) {
             $searchFields[] = $aliasPrefix.((string) $col);
@@ -414,6 +434,18 @@ trait PaginatedListTrait
                 continue;
             }
             $sortableMap[(string) $entry['key']] = $aliasPrefix.((string) $entry['doliside']);
+        }
+
+        // Mechanism 3.5: explicit sortable columns declared by the mapper (same
+        // rationale as getFilterableColumns above -- empty $fields / property
+        // != SQL column). apiKey => 'sql_col'.
+        if (method_exists($mapper, 'getSortableColumns')) {
+            foreach ((array) $mapper->getSortableColumns() as $key => $col) {
+                if ((string) $col === '') {
+                    continue;
+                }
+                $sortableMap[(string) $key] = $aliasPrefix.((string) $col);
+            }
         }
 
         return $this->buildSortClause($params, $sortableMap, $defaultSort);

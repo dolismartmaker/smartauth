@@ -165,6 +165,173 @@ abstract class dmBase
     protected $listOfForeignKeyLabels;
 
     /**
+     * Tenant guard for the writable foreign keys of this mapper (write side).
+     *
+     * WHY. The facade validates the NAMES of the incoming fields
+     * ($writableFields) and never their VALUES. The three isolation guards of
+     * ObjectController (inEntityScope / isolationDenies / visibilityDenies) all
+     * run on the row AS IT STANDS, before the body is parsed: they answer "is
+     * this object mine?", never "is what you send me yours?". A PATCH carrying
+     * the socid of another tenant's company was therefore written verbatim --
+     * not a disclosure (Societe::fetch() keeps its entity clause, so the label
+     * resolver returns nothing) but a corruption: the invoice stays in its
+     * entity while pointing at a company that does not exist for it.
+     *
+     * SHAPE. Key = Dolibarr-side field name, exactly as in $writableFields.
+     * Value = the target, in one of three forms:
+     *
+     *   'socid' => 'thirdparty'          // an ObjectRegistry type key: table,
+     *                                    // pk, element and has_entity are read
+     *                                    // from the registry, so the guard can
+     *                                    // never drift from the rest of the
+     *                                    // facade
+     *
+     *   'typeid' => ['table' => 'adherent_type', 'element' => 'adherent_type']
+     *                                    // a target that is NOT a registry
+     *                                    // type; 'pk' defaults to 'rowid'
+     *
+     *   'fk_element' => ['polymorphic' => 'elementtype']
+     *                                    // the target table is named by a
+     *                                    // sibling field of the same payload
+     *
+     * A registry target flagged has_entity=false (llx_bank) is guarded by
+     * REPLAYING its own mapper's isolationWhereSql() -- the very predicate the
+     * read routes use -- so a table with no entity column needs no special case
+     * here.
+     *
+     * Declared here without an initializer, like $listOfForeignKeyLabels, so a
+     * concrete mapper simply overrides it.
+     *
+     * @var array<string,string|array<string,mixed>>
+     */
+    protected $foreignKeyGuards;
+
+    /**
+     * Foreign-key-shaped writable fields this mapper deliberately does NOT
+     * guard, each mapped to the reason.
+     *
+     * The contract test (ForeignKeyGuardContractTest) walks the registry and
+     * fails on any writable field whose NAME looks like a foreign key and that
+     * is neither guarded above nor exempted here: an exemption must be a
+     * decision, never an oversight. The reason string is what the failure
+     * message shows, so it has to say WHY, not just "not needed".
+     *
+     * The dictionary columns shared by many mappers are exempted once and for
+     * all in $GLOBAL_FK_GUARD_EXEMPTIONS below; this property is for the local
+     * cases only. A key declared in $foreignKeyGuards wins over both.
+     *
+     * @var array<string,string>
+     */
+    protected $foreignKeyGuardExemptions;
+
+    /**
+     * Dictionary columns exempted from the tenant guard for EVERY mapper.
+     *
+     * These reference reference-data tables that the installer ships and that
+     * every tenant reads as-is. Several of them DO carry an `entity` column,
+     * which is exactly the trap: their rows are inserted with a hardcoded
+     * entity 1 (cf htdocs/install/mysql/data/llx_accounting_abc.sql l.50-56 for
+     * the accounting journals, and the same pattern for the c_* tables), so a
+     * check "does this key belong to my entity?" would refuse EVERY one of them
+     * on every tenant whose entity is not 1. That regression would be far more
+     * visible than the defect this mechanism closes -- the lot banque of
+     * Dolipocket hit it on c_paiement, whose ids are referenced from a dozen
+     * documentary columns.
+     *
+     * A dictionary key pointing at a row of another tenant writes a wrong
+     * reference; it discloses nothing and reparents nothing.
+     *
+     * EVERY KEY HERE IS AN INTEGER COLUMN, and that is load-bearing, not
+     * decorative: getForeignKeyIntegerFields() feeds this list to the same
+     * integer normalisation as the guarded keys. Exempting a field means "do
+     * not probe the target tenant", NEVER "let a non-integer reach an integer
+     * column" -- several core update() methods interpolate these raw, so a
+     * string would smuggle a second assignment into the SET clause exactly like
+     * a guarded key would. A field that is NOT an integer (Adherent's
+     * civility_id holds a CODE, adherent.class.php l.817 writes it quoted) must
+     * therefore be documented on its own mapper, not here.
+     *
+     * @var array<string,string>
+     */
+    private static $GLOBAL_FK_GUARD_EXEMPTIONS = [
+        'fk_cond_reglement'      => 'dictionary llx_c_payment_term, shipped by the installer and read by every tenant',
+        'cond_reglement_id'      => 'dictionary llx_c_payment_term (property alias of fk_cond_reglement)',
+        'fk_mode_reglement'      => 'dictionary llx_c_paiement, shipped by the installer and read by every tenant',
+        'mode_reglement_id'      => 'dictionary llx_c_paiement (property alias of fk_mode_reglement)',
+        'fk_c_paiement'          => 'dictionary llx_c_paiement',
+        'fk_availability'        => 'dictionary llx_c_availability, no entity column at all',
+        'fk_shipping_method'     => 'dictionary llx_c_shipment_mode',
+        'shipping_method_id'     => 'dictionary llx_c_shipment_mode (property alias of fk_shipping_method)',
+        'fk_input_reason'        => 'dictionary llx_c_input_reason, no entity column at all',
+        'fk_departement'         => 'dictionary llx_c_departements, no entity column at all',
+        'state_id'               => 'dictionary llx_c_departements (property alias of fk_departement)',
+        'fk_pays'                => 'dictionary llx_c_country, no entity column at all',
+        'country_id'             => 'dictionary llx_c_country (property alias of fk_pays)',
+        'owner_country_id'       => 'dictionary llx_c_country (bank account owner address)',
+        'effectif_id'            => 'dictionary llx_c_effectif, no entity column at all',
+        'typent_id'              => 'dictionary llx_c_typent, no entity column at all',
+        'fk_accountancy_journal' => 'dictionary llx_accounting_journal: it HAS an entity column, but the installer seeds every journal with a hardcoded entity 1 (data/llx_accounting_abc.sql l.50-56), so guarding it would refuse the shipped journals on every tenant that is not entity 1',
+    ];
+
+    /**
+     * Resolved tenant guards of this mapper (see $foreignKeyGuards).
+     *
+     * Public because ObjectFacadeTrait reads it from the controllers and the
+     * contract test walks it across the whole registry.
+     *
+     * @return array<string,string|array<string,mixed>>
+     */
+    public function getForeignKeyGuards()
+    {
+        return (isset($this->foreignKeyGuards) && is_array($this->foreignKeyGuards))
+            ? $this->foreignKeyGuards
+            : [];
+    }
+
+    /**
+     * Resolved exemptions: the global dictionary list, overridable per mapper.
+     *
+     * @return array<string,string>
+     */
+    public function getForeignKeyGuardExemptions()
+    {
+        $local = (isset($this->foreignKeyGuardExemptions) && is_array($this->foreignKeyGuardExemptions))
+            ? $this->foreignKeyGuardExemptions
+            : [];
+
+        return array_merge(self::$GLOBAL_FK_GUARD_EXEMPTIONS, $local);
+    }
+
+    /**
+     * Fields that MUST reach the database as integers: the guarded keys plus
+     * the global dictionary keys.
+     *
+     * Read by ObjectFacadeTrait::foreignKeyViolation(), which narrows each of
+     * them with an (int) cast. Guarding a key already implied it; the dictionary
+     * keys need it just as much and were the hole: importMappedData() only casts
+     * a field whose Dolibarr-side name is a key of the class $fields, so the
+     * property aliases (cond_reglement_id, mode_reglement_id,
+     * shipping_method_id, ...) come out as STRINGS -- and
+     * CommandeFournisseur::update() l.1690-1691, Reception::update() l.970 and
+     * their siblings interpolate them with no quote, no cast and no escape. A
+     * payload of "0, fk_soc=<foreign id>" on payment_terms therefore reparented
+     * the document while never touching a guarded key at all.
+     *
+     * The per-mapper $foreignKeyGuardExemptions are deliberately NOT included:
+     * they are free-form documentation and may describe a field that is not an
+     * integer (Adherent::$civility_id holds a code).
+     *
+     * @return array<int,string>
+     */
+    public function getForeignKeyIntegerFields()
+    {
+        return array_values(array_unique(array_merge(
+            array_keys($this->getForeignKeyGuards()),
+            array_keys(self::$GLOBAL_FK_GUARD_EXEMPTIONS)
+        )));
+    }
+
+    /**
      * name of class for lines, for exemple FichinterLigne or InventoryLine
      *
      * @var string
@@ -228,6 +395,22 @@ abstract class dmBase
      * @param  \stdClass $sanitized  Output of importMappedData().
      * @return void
      */
+    /**
+     * Dolibarr legacy write-aliases: a handful of FK columns are persisted by
+     * the object's create()/update() SQL from a DIFFERENT property than the
+     * $fields column name. Facture/Commande/Propal/CommandeFournisseur all
+     * write `fk_cond_reglement = $this->cond_reglement_id` (never
+     * $this->fk_cond_reglement) and `fk_mode_reglement = $this->mode_reglement_id`.
+     * A facade update that only sets the $fields column name would be silently
+     * dropped, so we mirror the value onto the alias the SQL actually reads.
+     *
+     * @var array<string,string>  columnName => aliasProperty
+     */
+    private static $WRITE_ALIASES = [
+        'fk_cond_reglement' => 'cond_reglement_id',
+        'fk_mode_reglement' => 'mode_reglement_id',
+    ];
+
     public function applyImportedFields($object, $sanitized)
     {
         foreach (get_object_vars($sanitized) as $field => $value) {
@@ -238,6 +421,12 @@ abstract class dmBase
                 $object->array_options[$field] = $value;
             } else {
                 $object->{$field} = $value;
+                // Mirror onto the legacy alias property the create()/update()
+                // SQL reads for this column (see $WRITE_ALIASES). Harmless for
+                // classes that read the column property directly.
+                if (isset(self::$WRITE_ALIASES[$field])) {
+                    $object->{self::$WRITE_ALIASES[$field]} = $value;
+                }
             }
         }
     }

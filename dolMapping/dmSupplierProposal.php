@@ -33,6 +33,21 @@ class dmSupplierProposal extends dmBase
 	protected $type = "object";
 	protected $dolibarrClassName = 'SupplierProposal';
 
+	// Opt-in FK -> label companion fields resolved by dmTrait::_resolveForeignKeyLabels().
+	// Surfaces the parent thirdparty (supplier) name (+ email) alongside the raw
+	// `thirdparty` (socid) scalar, using the per-process fetch cache (one Societe
+	// fetch per list, no N+1). Additive: strict consumers keep the scalar id and
+	// gain a display name. Same declaration shape as dmProposal::$listOfForeignKeyLabels
+	// (keyed on the PHP property `socid`, which SupplierProposal::fetch fills from
+	// the SQL column fk_soc).
+	protected $listOfForeignKeyLabels = [
+		'socid' => [
+			'class'  => 'Societe',
+			'path'   => 'societe/class/societe.class.php',
+			'labels' => ['thirdpartyName' => 'name', 'thirdpartyEmail' => 'email'],
+		],
+	];
+
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	// Note : llx_supplier_proposal has NO ref_supplier column. The
@@ -72,10 +87,24 @@ class dmSupplierProposal extends dmBase
 		'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
 		'multicurrency_total_tva' => 'multicurrency_total_vat',
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
+		// Last generated PDF (relative path under DOL_DATA_ROOT). Read-only
+		// (server-owned, set by generateDocument()): NOT in $writableFields.
+		// The SQL column exists on llx_supplier_proposal but SupplierProposal::fetch()
+		// does not currently select it, so the exported value is empty until a
+		// document is generated through a code path that populates the property.
+		// Kept for facade parity with dmProposal; harmless (additive, read-only).
+		'last_main_doc'     => 'last_main_doc',
 	];
 
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// Tenant guard on the VALUES written into these foreign keys
+	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
+	protected $foreignKeyGuards = [
+		'socid'      => 'thirdparty',
+		'fk_project' => 'project',
+	];
+
 	protected $writableFields = [
 		'socid',
 		'fk_project',
@@ -103,5 +132,88 @@ class dmSupplierProposal extends dmBase
 	{
 		$this->listOfPublishedFieldsForLines = $this->getSupplierProposalLinesMapping();
 		$this->boot();
+	}
+
+	/**
+	 * Global-search columns for objects/supplier_proposal.
+	 *
+	 * SupplierProposal declares NO $fields, so the generic catalog marks every
+	 * column non-searchable and dmBase::getSearchFields() would return an empty
+	 * set (no LIKE clause at all). Narrow it explicitly to the single user-facing
+	 * reference column. llx_supplier_proposal has a real `ref` varchar column
+	 * (and NO ref_supplier / ref_fourn header column -- those live on the det
+	 * rows), so the generated `sp.ref LIKE ...` is SQL-safe and matches the
+	 * former local SupplierProposalController search.
+	 *
+	 * @return array<int,string>  real SQL column names (used as alias.col LIKE)
+	 */
+	public function getSearchFields()
+	{
+		return ['ref'];
+	}
+
+	/**
+	 * Setter-based header update fallback for the generic facade.
+	 *
+	 * SupplierProposal (the header class) exposes NO generic update() method:
+	 * the update() near the bottom of supplier_proposal.class.php belongs to the
+	 * SupplierProposalLine class. ObjectController::update() therefore cannot call
+	 * $object->update(); when a mapper defines this method it is used instead,
+	 * replaying the exact dedicated setters supplier_proposal/card.php uses.
+	 *
+	 * Handles the writable header fields the Dolipocket edit form sends (public/
+	 * private notes, payment terms/method, delivery date). Fields with no
+	 * dedicated setter (socid / fk_project / date) are create-only in the UI and
+	 * are logged + skipped here (they were assigned in memory by
+	 * applyImportedFields but are not persisted; the caller re-fetches afterwards).
+	 *
+	 * @param  \SupplierProposal $object    already fetched + entity-checked
+	 * @param  \stdClass         $sanitized importMappedData() output (doliside keys)
+	 * @param  \User             $user
+	 * @return int  >0 on success, <0 on the first failing setter
+	 */
+	public function updateViaSetters($object, $sanitized, $user)
+	{
+		$fields = get_object_vars($sanitized);
+
+		if (array_key_exists('note_public', $fields)) {
+			if ($object->update_note((string) $fields['note_public'], '_public') < 0) {
+				dol_syslog('[SmartAuth] dmSupplierProposal::updateViaSetters update_note(public) failed: ' . $object->error, LOG_ERR);
+				return -1;
+			}
+		}
+		if (array_key_exists('note_private', $fields)) {
+			if ($object->update_note((string) $fields['note_private'], '_private') < 0) {
+				dol_syslog('[SmartAuth] dmSupplierProposal::updateViaSetters update_note(private) failed: ' . $object->error, LOG_ERR);
+				return -1;
+			}
+		}
+		if (!empty($fields['cond_reglement_id'])) {
+			if ($object->setPaymentTerms((int) $fields['cond_reglement_id']) < 0) {
+				dol_syslog('[SmartAuth] dmSupplierProposal::updateViaSetters setPaymentTerms failed: ' . $object->error, LOG_ERR);
+				return -1;
+			}
+		}
+		if (!empty($fields['mode_reglement_id'])) {
+			if ($object->setPaymentMethods((int) $fields['mode_reglement_id']) < 0) {
+				dol_syslog('[SmartAuth] dmSupplierProposal::updateViaSetters setPaymentMethods failed: ' . $object->error, LOG_ERR);
+				return -1;
+			}
+		}
+		if (array_key_exists('delivery_date', $fields)) {
+			$dd = (int) $fields['delivery_date'];
+			if ($object->setDeliveryDate($user, $dd > 0 ? $dd : '') < 0) {
+				dol_syslog('[SmartAuth] dmSupplierProposal::updateViaSetters setDeliveryDate failed: ' . $object->error, LOG_ERR);
+				return -1;
+			}
+		}
+
+		foreach (['socid', 'fk_project', 'date'] as $unsettable) {
+			if (array_key_exists($unsettable, $fields)) {
+				dol_syslog('[SmartAuth] dmSupplierProposal::updateViaSetters ignoring non-persistable header field on update: ' . $unsettable, LOG_NOTICE);
+			}
+		}
+
+		return 1;
 	}
 }

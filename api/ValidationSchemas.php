@@ -282,6 +282,23 @@ class ValidationSchemas
 					'required' => false,
 				],
 			],
+
+			// Generic object facade (objects/{objtype} and sub-routes).
+			// The facade sanitizes writes through the dm* mapper's
+			// importMappedData() -- allowlist ($writableFields) + per-field
+			// type cast -- and reads through PaginatedListTrait (catalog
+			// allowlist + $db->escape). The route-level default sanitizer
+			// would truncate every string to MAX_STRING_LENGTH (255),
+			// corrupting long note_public / note_private / description /
+			// line labels before the mapper ever sees them. TYPE_RAW
+			// passthrough hands the body to the real gatekeeper untouched.
+			// The '*' wildcard (empty prefix) matches every field. Applies
+			// to all methods on objects/* routes.
+			'objects_facade' => [
+				'*' => [
+					'type' => InputSanitizer::TYPE_RAW,
+				],
+			],
 		];
 
 		if ($includeExternal) {
@@ -333,6 +350,13 @@ class ValidationSchemas
 
 		if (isset($routeMap[$base])) {
 			return $routeMap[$base];
+		}
+
+		// Generic object facade: objects/{objtype} and every sub-route
+		// (lines, actions, payments) sanitize through the mapper, not the
+		// route-level string truncator. See the 'objects_facade' schema.
+		if ($base === 'objects') {
+			return 'objects_facade';
 		}
 
 		// No specific schema found

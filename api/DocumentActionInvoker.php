@@ -41,7 +41,30 @@ class DocumentActionInvoker
      */
     private static function supportedClasses()
     {
-        return ['Commande', 'Facture', 'Propal', 'CommandeFournisseur', 'FactureFournisseur', 'SupplierProposal'];
+        return [
+            'Commande', 'Facture', 'Propal',
+            'CommandeFournisseur', 'FactureFournisseur', 'SupplierProposal',
+            'Expedition', 'Reception',
+        ];
+    }
+
+    /**
+     * Normalize a Dolibarr "already in that state" no-op to a success code.
+     *
+     * Expedition::setClosed/reOpen/setDraft and Reception::setClosed/setDraft
+     * return 0 (not >0) when the document ALREADY is in the requested state --
+     * a guard, not an error. The caller treats <=0 as a failure, which would
+     * turn an idempotent transition into a 400 with an empty message. The
+     * module screens (expedition/card.php, reception/card.php) accept it, so we
+     * do the same, per (class, action) pair -- never globally, because 0 IS a
+     * failure code on other methods.
+     *
+     * @param  int $res
+     * @return int
+     */
+    private static function zeroIsNoop($res)
+    {
+        return $res === 0 ? 1 : $res;
     }
 
     /**
@@ -154,6 +177,34 @@ class DocumentActionInvoker
             case 'SupplierProposal:closeunsign':
                 // STATUS_NOTSIGNED = 3.
                 return (int) $object->cloture($user, self::PROPAL_STATUS_NOTSIGNED, $note);
+
+            // ----- Expedition (customer shipment) -----
+            // Stock is moved by valid()/setClosed()/cancel() themselves,
+            // according to STOCK_CALCULATE_ON_SHIPMENT[_CLOSE]: never here.
+            case 'Expedition:validate':
+                return (int) $object->valid($user);
+            case 'Expedition:close':
+                return self::zeroIsNoop((int) $object->setClosed());
+            case 'Expedition:reopen':
+                // reOpen() takes no $user (it reads the global).
+                return self::zeroIsNoop((int) $object->reOpen());
+            case 'Expedition:setdraft':
+                return self::zeroIsNoop((int) $object->setDraft($user));
+            case 'Expedition:cancel':
+                // cancel() takes no $user; refused by Dolibarr when a delivery
+                // receipt is linked.
+                return (int) $object->cancel();
+
+            // ----- Reception (supplier reception) -----
+            // No cancel(): the Reception class does not implement one.
+            case 'Reception:validate':
+                return (int) $object->valid($user);
+            case 'Reception:close':
+                return self::zeroIsNoop((int) $object->setClosed());
+            case 'Reception:reopen':
+                return self::zeroIsNoop((int) $object->reOpen());
+            case 'Reception:setdraft':
+                return self::zeroIsNoop((int) $object->setDraft($user));
         }
 
         return self::UNKNOWN;

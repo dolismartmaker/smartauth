@@ -35,6 +35,20 @@ class dmSupplierOrder extends dmBase
 	protected $dolibarrClassName = 'CommandeFournisseur';
 	protected $parentTableElementToUseForExtraFields = 'commande_fournisseur';
 
+	// Opt-in FK -> label companion fields resolved by dmTrait::_resolveForeignKeyLabels().
+	// Surfaces the parent thirdparty (supplier) name (+ email) alongside the raw
+	// `thirdparty` (socid) scalar, using the per-process fetch cache (one Societe
+	// fetch per list, no N+1). Additive: strict consumers keep the scalar id and
+	// gain a display name. Keyed on the PHP property `socid`, which
+	// CommandeFournisseur::fetch fills from the SQL column fk_soc.
+	protected $listOfForeignKeyLabels = [
+		'socid' => [
+			'class'  => 'Societe',
+			'path'   => 'societe/class/societe.class.php',
+			'labels' => ['thirdpartyName' => 'name', 'thirdpartyEmail' => 'email'],
+		],
+	];
+
 	// Hints front-side: render these FKs as sellists wired to the
 	// matching Dolibarr dictionary tables. Supplier flow exposes
 	// fk_account directly.
@@ -81,10 +95,28 @@ class dmSupplierOrder extends dmBase
 		'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
 		'multicurrency_total_tva' => 'multicurrency_total_vat',
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
+		// Last generated PDF (relative path under DOL_DATA_ROOT). Read-only
+		// (server-owned, set by generateDocument()): NOT in $writableFields.
+		// CommandeFournisseur declares the SQL column in $fields but its custom
+		// fetch() does not currently SELECT it, so the exported value stays empty
+		// until a document is generated through a code path that populates the
+		// property. Additive + read-only + harmless; kept for facade parity with
+		// dmProposal / dmSupplierProposal (the front reads `lastMainDoc`).
+		'last_main_doc'     => 'last_main_doc',
 	];
 
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// Tenant guard on the VALUES written into these foreign keys
+	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
+	// fk_account is a llx_bank_account reference: pointing it at another
+	// tenant's account is how a payment ends up in the wrong ledger.
+	protected $foreignKeyGuards = [
+		'socid'      => 'thirdparty',
+		'fk_project' => 'project',
+		'fk_account' => 'bank_account',
+	];
+
 	protected $writableFields = [
 		'ref_supplier',
 		'socid',
@@ -115,6 +147,23 @@ class dmSupplierOrder extends dmBase
 	{
 		$this->listOfPublishedFieldsForLines = $this->getSupplierOrderLinesMapping();
 		$this->boot();
+	}
+
+	/**
+	 * Global-search columns for objects/supplier_order.
+	 *
+	 * CommandeFournisseur DOES declare $fields, but to pin the facade global
+	 * search to the same behaviour the former local SupplierOrderController had
+	 * (LIKE on ref + ref_supplier), narrow it explicitly to the two user-facing
+	 * reference columns. Both `ref` and `ref_supplier` are real varchar columns
+	 * on llx_commande_fournisseur, so the generated `cf.ref LIKE ... OR
+	 * cf.ref_supplier LIKE ...` is SQL-safe.
+	 *
+	 * @return array<int,string>  real SQL column names (used as alias.col LIKE)
+	 */
+	public function getSearchFields()
+	{
+		return ['ref', 'ref_supplier'];
 	}
 }
 

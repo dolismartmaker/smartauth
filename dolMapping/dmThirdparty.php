@@ -74,6 +74,21 @@ class dmThirdparty extends dmBase
 		'tva_intra'         => 'vat_intra',
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
+		// Company status open/closed flag (Societe->status, SQL column status).
+		'status'            => 'status',
+		// EU VAT liability flag + customer/supplier accounting codes.
+		'tva_assuj'         => 'tva_assuj',
+		'code_compta'       => 'code_compta',
+		'code_compta_fournisseur' => 'code_compta_fournisseur',
+		// ISO country code. Exposed for READ only: Societe::update() writes the
+		// SQL column fk_pays FROM $this->country_id (never from
+		// $this->country_code, a JOIN-derived read property), so it is NOT in
+		// $writableFields below -- listing it there would silently drop the
+		// value (see the country_code note in $writableFields).
+		'country_code'      => 'country_code',
+		// Creation / last-modification timestamps (read-only, server-owned).
+		'datec'             => 'created_at',
+		'tms'               => 'updated_at',
 	];
 
 	// Derived fields exposed alongside the Dolibarr-backed columns. These
@@ -117,6 +132,21 @@ class dmThirdparty extends dmBase
 		'tva_intra',
 		'note_public',
 		'note_private',
+		// Documented exception to Rule 1 (status = state machine): a company
+		// 'status' (open/closed) is a plain editable flag on Societe, NOT a
+		// transition-driven state machine. Societe exposes no dedicated
+		// transition method and the facade registers no thirdparty action, so
+		// the only way to open/close a company is to write the field -- same
+		// reasoning as the dmWarehouse 'statut' exception.
+		'status',
+		'tva_assuj',
+		'code_compta',
+		'code_compta_fournisseur',
+		// NOTE: 'country_code' is intentionally ABSENT. It is published above
+		// for READ, but Societe::update() persists the country via fk_pays =
+		// $this->country_id, ignoring $this->country_code. Making it writable
+		// would accept the value then silently discard it. To edit the country
+		// through the facade, write 'country' (fk_pays) with a country_id.
 	];
 
 	/**
@@ -229,6 +259,26 @@ class dmThirdparty extends dmBase
 	private function _miniLogoFileName($logoFileName)
 	{
 		return str_replace(['.jpg', '.jpeg', '.png'], ['_mini.jpg','_mini.jpg','_mini.png'], $logoFileName);
+	}
+
+	/**
+	 * Global-search columns for objects/thirdparty.
+	 *
+	 * The generic dmBase::getSearchFields() keeps only published fields whose
+	 * `doliside` is a real key of Societe::$fields. This mapper deliberately
+	 * addresses the company name via the PHP property `name` (see the note
+	 * above) whereas the SQL column is `nom`, so the base implementation would
+	 * DROP the name from the searchable set -- the ?search= term would never
+	 * match a company by its name (a core lookup used by the list search box
+	 * and every thirdparty <SearchPicker>). We override with the real
+	 * llx_societe varchar columns so global search behaves like the former
+	 * local controller (which searched nom/name_alias/email/town/codes).
+	 *
+	 * @return array<int,string>  real SQL column names (used as alias.col LIKE)
+	 */
+	public function getSearchFields()
+	{
+		return ['nom', 'name_alias', 'email', 'town', 'code_client', 'code_fournisseur', 'phone'];
 	}
 }
 

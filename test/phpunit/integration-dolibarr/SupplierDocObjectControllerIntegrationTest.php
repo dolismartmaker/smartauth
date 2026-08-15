@@ -116,10 +116,12 @@ class SupplierDocObjectControllerIntegrationTest extends DolibarrRealTestCase
         $this->track('supplier_proposal', $id);
         $this->assertSame($socid, (int) $body->thirdparty);
 
-        // SupplierProposal exposes no generic update() -> the facade returns a
-        // clean 400 (not a fatal), guarded in ObjectController/CrudInvoker.
+        // SupplierProposal exposes no generic update(); the facade now persists
+        // the header through the mapper's setter fallback (dmSupplierProposal::
+        // updateViaSetters -> update_note/setPaymentTerms/... like card.php).
         list($u, $uc) = $this->controller->update(['objtype' => 'supplier_proposal', 'id' => $id, 'public_note' => 'sp note']);
-        $this->assertSame(400, $uc, 'supplier_proposal update should be a clean 400: ' . json_encode($u));
+        $this->assertSame(200, $uc, 'supplier_proposal update should persist via setters: ' . json_encode($u));
+        $this->assertSame('sp note', $u->public_note, 'public_note must persist through the setter fallback');
 
         list(, $dc) = $this->controller->destroy(['objtype' => 'supplier_proposal', 'id' => $id]);
         $this->assertSame(200, $dc);

@@ -40,6 +40,9 @@ use SmartAuth\DolibarrMapping\MapperValidationException;
  *     turns it into the JSON response (controllers never call json_reply()).
  *   - permissions are fail-closed via the registry 'rights' map.
  *   - entity scoping is systematic (list WHERE + per-object check on read/write).
+ *   - a single-object route refused for scoping/isolation/visibility answers
+ *     404 "Object not found", never 403: telling those apart from an unknown id
+ *     would let a caller enumerate other tenants' rowids. The reason is logged.
  *   - writes go through the mapper $writableFields allowlist; unknown fields ->
  *     400 with the MapperValidationException error list.
  *   - extrafields are opt-in writable: only options_* keys the mapper allowlists
@@ -127,7 +130,9 @@ class ObjectController
             ? " WHERE " . $alias . ".entity IN (" . getEntity($element) . ")"
             : " WHERE 1=1";
         list($filterWhere, ) = $this->buildSqlFiltersFromCatalog($params, $mapper, $alias);
-        $where = $baseWhere . $filterWhere;
+        $where = $baseWhere . $filterWhere
+            . $this->isolationWhereFragment($mapper, $alias, $cfg)
+            . $this->visibilitySqlFragment($mapper, $alias);
 
         $countSql = "SELECT COUNT(" . $alias . "." . $pk . ") as nb" . $baseFrom . $where;
         $countRes = $db->query($countSql);
@@ -199,7 +204,9 @@ class ObjectController
             : " WHERE 1=1";
 
         $sql = "SELECT COUNT(" . $alias . "." . $pk . ") as nb FROM " . MAIN_DB_PREFIX . $cfg['table'] . " as " . $alias;
-        $sql .= $baseWhere . $filterWhere;
+        $sql .= $baseWhere . $filterWhere
+            . $this->isolationWhereFragment($mapper, $alias, $cfg)
+            . $this->visibilitySqlFragment($mapper, $alias);
 
         $resql = $db->query($sql);
         if (!$resql) {
@@ -283,9 +290,21 @@ class ObjectController
         if ($o->fetch($id) <= 0) {
             return [['error' => 'Object not found'], 404];
         }
+        // Refusals answer 404, exactly like an unknown id: a distinct 403 would
+        // be an existence oracle (enumerate rowids, tell "exists elsewhere"
+        // apart from "does not exist"). The syslog lines below keep the real
+        // reason server-side.
         if (!$this->inEntityScope($o, $cfg)) {
             dol_syslog("[SmartAuth] ObjectController::show cross-entity read refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
-            return [['error' => 'Access denied (entity)'], 403];
+            return [['error' => 'Object not found'], 404];
+        }
+        if ($this->isolationDenies($cfg, $mapper, $id)) {
+            dol_syslog("[SmartAuth] ObjectController::show isolation refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
+        }
+        if ($this->visibilityDenies($mapper, $o, 'read')) {
+            dol_syslog("[SmartAuth] ObjectController::show visibility refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id . " user=" . ((int) $GLOBALS['user']->id), LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
         }
         if (method_exists($o, 'fetch_optionals')) {
             $o->fetch_optionals();
@@ -324,6 +343,27 @@ class ObjectController
             return [['errors' => $e->getErrors()], 400];
         }
 
+        // Tenant guard on the VALUES, not just the field names: a payload may
+        // not point a foreign key at another tenant's row. Same 404 as every
+        // other scope refusal of the facade -- a 403 would confirm the id
+        // exists somewhere else, which is the oracle we refuse to be.
+        $fkField = $this->foreignKeyViolation($mapper, $sanitized, $cfg);
+        if ($fkField !== null) {
+            dol_syslog("[SmartAuth] ObjectController::create cross-tenant foreign key refused on " . ($cfg['object_type'] ?? '?') . "." . $fkField . " user=" . ((int) $user->id), LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
+        }
+
+        // Optional pre-create authorization a mapper may declare (mechanism 3.2,
+        // create side): the entity right (authorize('create')) is coarse -- a
+        // sub-object may need finer access on its PARENT (a task under a project
+        // the user may not write to). Companion of canAccess() for the one route
+        // with no target object yet. A mapper opts in with:
+        //   public function canCreate($sanitized, $user): bool
+        if (method_exists($mapper, 'canCreate') && $mapper->canCreate($sanitized, $user) !== true) {
+            dol_syslog("[SmartAuth] ObjectController::create visibility refused for " . ($cfg['object_type'] ?? '?') . " user=" . ((int) $user->id), LOG_WARNING);
+            return [['error' => 'Access denied'], 403];
+        }
+
         $classname = $cfg['class'];
         $o = new $classname($db);
         $mapper->applyImportedFields($o, $sanitized);
@@ -340,6 +380,17 @@ class ObjectController
         if ($this->sanitizedHasExtrafields($sanitized) && $o->insertExtraFields() < 0) {
             dol_syslog("[SmartAuth] ObjectController::create insertExtraFields failed for " . ($cfg['object_type'] ?? '?') . ": " . $o->error, LOG_ERR);
             return [['error' => 'Object created but failed to persist extrafields: ' . $o->error], 500];
+        }
+
+        // Optional create side-effects a mapper may declare (mechanism 3.6):
+        //   public function postCreate($object, $user): void
+        // Some Dolibarr create() do NOT do everything the module does on the
+        // "add" screen -- notably ref generation via the numbering addon and the
+        // default internal contact (project -> PROJECTLEADER, task ->
+        // TASKEXECUTIVE). The mapper replays those here, on the freshly created
+        // object (its id is set), BEFORE the re-fetch that returns the payload.
+        if (method_exists($mapper, 'postCreate')) {
+            $mapper->postCreate($o, $user);
         }
 
         $o->fetch($res);
@@ -379,9 +430,18 @@ class ObjectController
         if ($o->fetch($id) <= 0) {
             return [['error' => 'Object not found'], 404];
         }
-        if (!$this->inEntityScope($o, $cfg)) {
+        // 404 on every refusal, cf show(): no existence oracle.
+        if (!$this->inEntityScope($o, $cfg, 'write')) {
             dol_syslog("[SmartAuth] ObjectController::update cross-entity write refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
-            return [['error' => 'Access denied (entity)'], 403];
+            return [['error' => 'Object not found'], 404];
+        }
+        if ($this->isolationDenies($cfg, $mapper, $id)) {
+            dol_syslog("[SmartAuth] ObjectController::update isolation refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
+        }
+        if ($this->visibilityDenies($mapper, $o, 'write')) {
+            dol_syslog("[SmartAuth] ObjectController::update visibility refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id . " user=" . ((int) $GLOBALS['user']->id), LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
         }
         if (method_exists($o, 'fetch_optionals')) {
             $o->fetch_optionals();
@@ -397,14 +457,35 @@ class ObjectController
             return [['errors' => $e->getErrors()], 400];
         }
 
-        if (!method_exists($o, 'update')) {
-            dol_syslog("[SmartAuth] ObjectController::update: type " . ($cfg['object_type'] ?? '?') . " (" . get_class($o) . ") has no generic update()", LOG_WARNING);
+        // Tenant guard on the VALUES. The three checks above all ran on the row
+        // BEFORE the write -- they say "this invoice is mine", never "the socid
+        // you send me is mine". Without this, a PATCH carrying another tenant's
+        // socid was written verbatim. $o is passed so a partial payload can be
+        // judged together with the sibling fields it does not restate.
+        $fkField = $this->foreignKeyViolation($mapper, $sanitized, $cfg, $o);
+        if ($fkField !== null) {
+            dol_syslog("[SmartAuth] ObjectController::update cross-tenant foreign key refused on " . ($cfg['object_type'] ?? '?') . "." . $fkField . " id=" . $id . " user=" . ((int) $user->id), LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
+        }
+
+        // Most Dolibarr classes expose a generic update($user)/update($id,$user).
+        // A few (notably SupplierProposal) do NOT -- their header is persisted
+        // through dedicated setters (update_note, setPaymentTerms, ...). Such a
+        // mapper may declare updateViaSetters() to replay those setters; we use it
+        // as a fallback ONLY when there is no generic update(). Types that have
+        // neither still get the historical clean 400 (no fatal).
+        $hasGenericUpdate = method_exists($o, 'update');
+        $hasSetterUpdate  = method_exists($mapper, 'updateViaSetters');
+        if (!$hasGenericUpdate && !$hasSetterUpdate) {
+            dol_syslog("[SmartAuth] ObjectController::update: type " . ($cfg['object_type'] ?? '?') . " (" . get_class($o) . ") has no generic update() and no setter fallback", LOG_WARNING);
             return [['error' => 'This object type does not support update'], 400];
         }
 
         $mapper->applyImportedFields($o, $sanitized);
 
-        $res = CrudInvoker::update($o, $user);
+        $res = $hasGenericUpdate
+            ? CrudInvoker::update($o, $user)
+            : $mapper->updateViaSetters($o, $sanitized, $user);
         if ($res < 0) {
             dol_syslog("[SmartAuth] ObjectController::update failed for " . ($cfg['object_type'] ?? '?') . " id=" . $id . ": " . $o->error, LOG_ERR);
             return [['error' => 'Failed to update object: ' . $o->error], 400];
@@ -452,9 +533,18 @@ class ObjectController
         if ($o->fetch($id) <= 0) {
             return [['error' => 'Object not found'], 404];
         }
-        if (!$this->inEntityScope($o, $cfg)) {
+        // 404 on every refusal, cf show(): no existence oracle.
+        if (!$this->inEntityScope($o, $cfg, 'delete')) {
             dol_syslog("[SmartAuth] ObjectController::destroy cross-entity delete refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
-            return [['error' => 'Access denied (entity)'], 403];
+            return [['error' => 'Object not found'], 404];
+        }
+        if ($this->isolationDenies($cfg, $mapper, $id)) {
+            dol_syslog("[SmartAuth] ObjectController::destroy isolation refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
+        }
+        if ($this->visibilityDenies($mapper, $o, 'delete')) {
+            dol_syslog("[SmartAuth] ObjectController::destroy visibility refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id . " user=" . ((int) $user->id), LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
         }
 
         $res = CrudInvoker::delete($o, $user);
@@ -519,9 +609,22 @@ class ObjectController
                 $errors[] = ['id' => $id, 'reason' => 'Object not found'];
                 continue;
             }
-            if (!$this->inEntityScope($o, $cfg)) {
+            // Same reason string as an unknown id, cf show(): the per-id report
+            // must not tell "exists in another tenant" apart from "does not
+            // exist". The syslog lines keep the real reason server-side.
+            if (!$this->inEntityScope($o, $cfg, 'delete')) {
                 dol_syslog("[SmartAuth] ObjectController::deleteBulk cross-entity delete refused id=" . $id, LOG_WARNING);
-                $errors[] = ['id' => $id, 'reason' => 'Access denied (entity)'];
+                $errors[] = ['id' => $id, 'reason' => 'Object not found'];
+                continue;
+            }
+            if ($this->isolationDenies($cfg, $mapper, $id)) {
+                dol_syslog("[SmartAuth] ObjectController::deleteBulk isolation refused id=" . $id, LOG_WARNING);
+                $errors[] = ['id' => $id, 'reason' => 'Object not found'];
+                continue;
+            }
+            if ($this->visibilityDenies($mapper, $o, 'delete')) {
+                dol_syslog("[SmartAuth] ObjectController::deleteBulk visibility refused id=" . $id, LOG_WARNING);
+                $errors[] = ['id' => $id, 'reason' => 'Object not found'];
                 continue;
             }
             $res = CrudInvoker::delete($o, $user);

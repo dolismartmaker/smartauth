@@ -51,6 +51,14 @@ class dmProduct extends dmBase
 		'height'             => 'height',
 		'stock_reel'         => 'stock',
 		'seuil_stock_alerte' => 'stock_alert_threshold',
+		// Published for READ only (NOT in $writableFields): some PWA consumers
+		// (e.g. Dolipocket, whose product create/update stays on a local
+		// controller for the updatePrice() flow) display the customs code and
+		// desired stock but write them through their own path. Adding them here
+		// exposes the values on the facade read endpoints without opening a
+		// generic write for them.
+		'customcode'         => 'customcode',
+		'desiredstock'       => 'desired_stock',
 		'note_public'        => 'public_note',
 		'note_private'       => 'private_note',
 		'datec'              => 'created_at',

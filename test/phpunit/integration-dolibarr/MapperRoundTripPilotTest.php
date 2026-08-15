@@ -161,19 +161,23 @@ class MapperRoundTripPilotTest extends DolibarrRealTestCase
         $this->assertApiKeyEquals($payload, 'label', $warehouse->label);
     }
 
-    public function testDmWarehouseImportRejectsStatusChange(): void
+    public function testDmWarehouseImportAcceptsStatusButRejectsUnknownKeys(): void
     {
         $mapper = new dmWarehouse();
 
-        // 'statut' is a state machine; closing a warehouse goes through
-        // Entrepot::setStatut(). A payload trying to flip statut must
-        // be rejected. The api-side name is 'status'.
+        // 'status' (statut) IS writable -- documented Rule 1 exception in
+        // dmWarehouse: a warehouse open/closed flag is a plain field, there is
+        // no transition method to preserve (proven end-to-end by the Dolipocket
+        // WarehouseFacadeTest).
+        $sanitized = $mapper->importMappedData(['status' => 0]);
+        $this->assertSame(0, (int) $sanitized->statut);
+
+        // The allowlist still rejects anything it does not publish as writable.
         try {
-            $mapper->importMappedData(['status' => 0]);
+            $mapper->importMappedData(['made_up_key' => 'x']);
             $this->fail('Expected MapperValidationException');
         } catch (MapperValidationException $e) {
-            $errors = $e->getErrors();
-            $this->assertArrayHasKey('status', $errors);
+            $this->assertArrayHasKey('made_up_key', $e->getErrors());
         }
     }
 

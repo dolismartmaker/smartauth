@@ -479,7 +479,7 @@ class ObjectDocumentController
      */
     private function validateObjectParams($payload)
     {
-        global $db;
+        global $db, $conf;
 
         // Get authenticated user
         $user = $payload['user'] ?? null;
@@ -522,10 +522,51 @@ class ObjectDocumentController
             return ['error' => 'Object not found', 'status' => 404];
         }
 
-        // Check entity
-        $entity = (int) ($payload['entity'] ?? $object->entity ?? 1);
-        if (property_exists($object, 'entity') && $object->entity != $entity && $object->entity != 0) {
-            return ['error' => 'Access denied (entity)', 'status' => 403];
+        // Entity scope, fail-closed.
+        //
+        // The EXPECTED entity comes from the request payload only, where the
+        // router puts the entity carried by the JWT. It used to fall back on
+        // $object->entity, which turned the whole check into a comparison of a
+        // value with itself -- a no-op. An absent or non-positive entity is now
+        // a refusal, not a default of 1.
+        //
+        // The comparison is a STRICT integer equality: the previous loose one
+        // matched "1" with 1 but also with true, and it additionally accepted
+        // any object carrying entity = 0 (fail-open on rows shared across
+        // tenants).
+        //
+        // Refusals answer 404, exactly like an unknown id: a distinct 403 would
+        // be an existence oracle (enumerate rowids, tell "exists in another
+        // tenant" apart from "does not exist").
+        // When the payload carries no entity, fall back on the entity the server
+        // is currently running as, NOT on the object's own value: $conf->entity
+        // is set from the authenticated session, so comparing against it is the
+        // same guard TenantGuardTrait applies. Falling back on $object->entity
+        // is what made the check a no-op.
+        $expectedEntity = isset($payload['entity']) ? (int) $payload['entity'] : 0;
+        if ($expectedEntity <= 0) {
+            $expectedEntity = isset($conf->entity) ? (int) $conf->entity : 0;
+        }
+        if ($expectedEntity <= 0) {
+            dol_syslog("[SmartAuth] ObjectDocumentController - No entity in the request context for $type id=$objectId - refusing (fail-closed)", LOG_ERR);
+            return ['error' => 'Object not found', 'status' => 404];
+        }
+
+        $objectEntity = isset($object->entity) ? (int) $object->entity : 0;
+        if ($objectEntity <= 0) {
+            // A few core fetch() implementations leave ->entity unhydrated; read
+            // the column straight from the object's own table rather than trust
+            // the object. Unresolvable means refused.
+            $objectEntity = $this->entityFromObjectTable($config, $object, $objectId);
+            if ($objectEntity === null) {
+                dol_syslog("[SmartAuth] ObjectDocumentController - Cannot resolve entity for $type id=$objectId - refusing (fail-closed)", LOG_ERR);
+                return ['error' => 'Object not found', 'status' => 404];
+            }
+        }
+
+        if ($objectEntity !== $expectedEntity) {
+            dol_syslog("[SmartAuth] ObjectDocumentController - Cross-entity access refused for $type id=$objectId (object entity $objectEntity, request entity $expectedEntity)", LOG_WARNING);
+            return ['error' => 'Object not found', 'status' => 404];
         }
 
         return [
@@ -535,6 +576,57 @@ class ObjectDocumentController
             'config' => $config,
             'object' => $object,
         ];
+    }
+
+    /**
+     * Read the 'entity' column of a fetched object straight from its own table.
+     *
+     * Fallback of the entity check in validateObjectParams() for the classes
+     * whose fetch() leaves ->entity unhydrated: trusting an unhydrated property
+     * would read as entity 0 and let a guessed rowid escape its tenant.
+     *
+     * The table name comes from the type configuration (developer-controlled,
+     * never request input) and is additionally restricted to [a-z0-9_] because a
+     * third-party module can register a type through registerObjectType(); only
+     * the id is user input and it is cast to int.
+     *
+     * @param  array  $config    Object type configuration
+     * @param  object $object    The fetched Dolibarr object
+     * @param  int    $objectId  Row id
+     * @return int|null          The entity, or null when it cannot be resolved
+     *                           (no table known, missing column, unknown row,
+     *                           SQL error) -- the caller then refuses.
+     */
+    private function entityFromObjectTable($config, $object, $objectId)
+    {
+        global $db;
+
+        $table = (string) ($config['table_element'] ?? '');
+        if ($table === '' && is_object($object) && !empty($object->table_element)) {
+            $table = (string) $object->table_element;
+        }
+        $table = preg_replace('/[^a-z0-9_]/', '', strtolower($table));
+        $objectId = (int) $objectId;
+
+        if ($table === '' || $objectId <= 0) {
+            dol_syslog("[SmartAuth] ObjectDocumentController - Entity lookup impossible (no table_element or no id) for id=$objectId", LOG_ERR);
+            return null;
+        }
+
+        $sql = "SELECT entity FROM " . MAIN_DB_PREFIX . $table . " WHERE rowid = " . $objectId;
+        $resql = $db->query($sql);
+        if (!$resql) {
+            dol_syslog("[SmartAuth] ObjectDocumentController - Entity lookup failed on $table: " . $db->lasterror(), LOG_ERR);
+            return null;
+        }
+        $row = $db->fetch_object($resql);
+        $db->free($resql);
+        if (!$row || !isset($row->entity)) {
+            dol_syslog("[SmartAuth] ObjectDocumentController - No entity column value on $table for id=$objectId", LOG_ERR);
+            return null;
+        }
+
+        return (int) $row->entity;
     }
 
     /**

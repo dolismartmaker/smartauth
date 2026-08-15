@@ -44,6 +44,21 @@ class dmSupplierInvoice extends dmBase
 		'fk_account'        => ['type' => 'sellist:bank_account:label:rowid', 'label' => 'BankAccount'],
 	];
 
+	// Opt-in FK -> label companion fields resolved by dmTrait::_resolveForeignKeyLabels().
+	// Surfaces the parent thirdparty (supplier) name (+ email) alongside the raw
+	// `thirdparty` (socid) scalar, using the per-process fetch cache (one Societe
+	// fetch per list, no N+1). Additive: strict consumers keep the scalar id and
+	// gain a display name. Same declaration shape as dmInvoice (keyed on the PHP
+	// property `socid`, which FactureFournisseur::fetch fills from the SQL column
+	// fk_soc). The front reads `thirdpartyName` in place of the legacy socname.
+	protected $listOfForeignKeyLabels = [
+		'socid' => [
+			'class'  => 'Societe',
+			'path'   => 'societe/class/societe.class.php',
+			'labels' => ['thirdpartyName' => 'name', 'thirdpartyEmail' => 'email'],
+		],
+	];
+
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
@@ -51,6 +66,9 @@ class dmSupplierInvoice extends dmBase
 		'ref'               => 'ref',
 		'ref_supplier'      => 'supplier_ref',
 		'label'             => 'label',
+		// Supplier invoice type (standard 0 / replacement 1 / credit note 2 /
+		// deposit 3). Writable on create; immutable afterwards (the app never
+		// resends it on update).
 		'type'              => 'type',
 		'datec'             => 'created_at',
 		'tms'               => 'updated_at',
@@ -72,6 +90,10 @@ class dmSupplierInvoice extends dmBase
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
 		'statut'            => 'status',
+		// Paid flag (0 unpaid, 1 paid). READ-ONLY: it is set by the payment
+		// facade / setpaid()/setunpaid() actions, never written directly (absent
+		// from $writableFields). The front reads it (StatusPill, canPay) via the
+		// legacy alias `paye`.
 		'paye'              => 'paid',
 		'close_code'        => 'close_code',
 		'close_note'        => 'close_note',
@@ -81,13 +103,34 @@ class dmSupplierInvoice extends dmBase
 		'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
 		'multicurrency_total_tva' => 'multicurrency_total_vat',
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
+		// Last generated PDF (relative path under DOL_DATA_ROOT). Read-only
+		// (server-owned, set by generateDocument()): NOT in $writableFields.
+		// NOTE: unlike Facture, FactureFournisseur::fetch() does NOT select this
+		// column, so a plain show/list exports it empty; it only carries a value
+		// on the in-memory object right after generateDocument(). Published for
+		// shape parity with dmInvoice (consumed by the front PDF button /
+		// SendEmailModal, which fall back to the LOCAL pdf/download endpoint).
+		'last_main_doc'     => 'last_main_doc',
 	];
 
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// Tenant guard on the VALUES written into these foreign keys
+	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
+	// fk_account is a llx_bank_account reference: pointing it at another
+	// tenant's account is how a payment ends up in the wrong ledger.
+	protected $foreignKeyGuards = [
+		'socid'      => 'thirdparty',
+		'fk_project' => 'project',
+		'fk_account' => 'bank_account',
+	];
+
 	protected $writableFields = [
 		'ref_supplier',
 		'label',
+		// type is writable so the app can create a credit-note/deposit supplier
+		// invoice; harmless on update because the edit forms never resend it.
+		'type',
 		'socid',
 		'fk_project',
 		'date',
@@ -115,6 +158,24 @@ class dmSupplierInvoice extends dmBase
 	{
 		$this->listOfPublishedFieldsForLines = $this->getSupplierInvoiceLinesMapping();
 		$this->boot();
+	}
+
+	/**
+	 * Global-search columns for objects/supplier_invoice.
+	 *
+	 * FactureFournisseur::$fields is empty, so the generic
+	 * dmBase::getSearchFields() (which keeps string-typed published fields whose
+	 * `doliside` is a real $fields column) would yield nothing. Pin the two
+	 * user-facing reference columns to match the former local
+	 * SupplierInvoiceController search parity (ref + ref_supplier). Both are real
+	 * llx_facture_fourn varchar columns, so the generated `ff.ref LIKE ...` /
+	 * `ff.ref_supplier LIKE ...` is SQL-safe.
+	 *
+	 * @return array<int,string>  real SQL column names (used as alias.col LIKE)
+	 */
+	public function getSearchFields()
+	{
+		return ['ref', 'ref_supplier'];
 	}
 }
 

@@ -30,14 +30,19 @@ namespace SmartAuth\Api;
  *
  * Contract (store):
  *   - body: amount (required, non-zero float), payment_mode (required, id from
- *     llx_c_paiement), fk_account (optional bank account id), payment_date
- *     (optional, defaults to now), ref (optional cheque/transfer label), note
- *     (optional private note).
+ *     llx_c_paiement), fk_account (bank account id -- REQUIRED whenever the
+ *     bank module is enabled), payment_date (optional, defaults to now), ref
+ *     (optional cheque/transfer number), note (optional private note),
+ *     cheque_issuer and cheque_bank (the first is required for a cheque).
  *   - Paiement::create($user, 1) is used so Dolibarr flips the invoice 'paye'
  *     flag when the running total reaches total_ttc, matching the standard
- *     payment card. Mirrors the Dolipocket reference implementation; like it,
- *     this does not post a bank-ledger line (addPaymentToBank) -- fk_account is
- *     only recorded on the payment row.
+ *     payment card.
+ *   - When the bank module is enabled, addPaymentToBank() then posts the
+ *     matching line in llx_bank, inside the same transaction. Skipping it used
+ *     to lose fk_account outright -- llx_paiement has no such column, the
+ *     property is read back through a JOIN on llx_bank -- so a tenant's bank
+ *     balance never moved. The 'bank_mode' of the registry decides the sign:
+ *     money in for a customer payment, out for a supplier one.
  *   - gated by the type's 'update' right and entity scope, via ObjectFacadeTrait.
  */
 class ObjectPaymentController
@@ -82,9 +87,19 @@ class ObjectPaymentController
         if ($o->fetch($id) <= 0) {
             return [null, null, null, [['error' => 'Object not found'], 404]];
         }
-        if (!$this->inEntityScope($o, $cfg)) {
+        // Refusals answer 404, exactly like an unknown id: a distinct 403 would
+        // be an existence oracle (enumerate rowids, tell "exists in another
+        // tenant" apart from "does not exist"). The syslog lines keep the real
+        // reason server-side.
+        if (!$this->inEntityScope($o, $cfg, $this->entityScopeMode($action))) {
             dol_syslog("[SmartAuth] ObjectPaymentController: cross-entity access refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
-            return [null, null, null, [['error' => 'Access denied (entity)'], 403]];
+            return [null, null, null, [['error' => 'Object not found'], 404]];
+        }
+        // Types whose table has no entity column are scoped by this probe ONLY
+        // (inEntityScope short-circuits to true for them).
+        if ($this->isolationDenies($cfg, $mapper, $id)) {
+            dol_syslog("[SmartAuth] ObjectPaymentController: isolation refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
+            return [null, null, null, [['error' => 'Object not found'], 404]];
         }
 
         return [$cfg, $mapper, $o, null];
@@ -181,20 +196,103 @@ class ObjectPaymentController
         $payment->num_payment = isset($payload['ref']) ? (string) $payload['ref'] : '';
         $payment->note_private = isset($payload['note']) ? (string) $payload['note'] : '';
         $payment->note = $payment->note_private;
+        // The payment mode CODE ('CHQ', 'VIR', ...), not just its id.
+        // addPaymentToBank falls back to the numeric id when the code is
+        // missing, and Account::addline() then resolves it through a SELECT
+        // whose failure branch calls dol_print_error() -- which writes to the
+        // output stream and corrupts the JSON response. Resolve it here, as
+        // api_invoices.class.php l.1597 and api_supplier_invoices.class.php
+        // l.479 both do.
+        //
+        // WITHOUT the entity filter those two pass as their 6th argument, and
+        // that difference matters on a multi-tenant install. llx_c_paiement is
+        // a dictionary SHIPPED by the installer: its rows carry no explicit
+        // entity, so they all take the column default of 1. A tenant running on
+        // entity 5 filtering on its own entity therefore resolves NOTHING, the
+        // code comes back empty, the numeric id reaches Account::addline(), and
+        // its failure branch prints into the response. The dictionary is
+        // identical for everyone and is addressed by id from a dozen document
+        // tables (fk_mode_reglement, fk_paiement): it is global reference data,
+        // not tenant data.
+        $payment->paiementcode = dol_getIdFromCode($db, $paymentMode, 'c_paiement', 'id', 'code', 0);
+        if ((string) $payment->paiementcode === '') {
+            dol_syslog("[SmartAuth] ObjectPaymentController::store unknown payment_mode " . $paymentMode, LOG_WARNING);
+            return [['error' => 'Unknown payment_mode'], 400];
+        }
+
         $fkAccount = isset($payload['fk_account']) ? (int) $payload['fk_account'] : 0;
+        $bankEnabled = isModEnabled('banque');
+        // Same tenant guard as the foreign keys of ObjectController: the invoice
+        // is scoped, the account id sent along with it was NOT. Without this,
+        // cashing a local invoice on another tenant's account was accepted and
+        // addPaymentToBank() below wrote a real llx_bank line into their ledger.
+        // 404 like every other scope refusal of the facade, never 403.
+        if ($fkAccount > 0 && $this->foreignKeyTargetDenies('bank_account', $fkAccount, $cfg, 'fk_account')) {
+            dol_syslog("[SmartAuth] ObjectPaymentController::store cross-tenant fk_account " . $fkAccount . " refused for invoice " . $id, LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
+        }
         if ($fkAccount > 0) {
             $payment->fk_account = $fkAccount;
         }
+
+        // A bank account is REQUIRED once the bank module is on. Until this
+        // check existed, fk_account was accepted, assigned to the object, and
+        // then silently dropped: llx_paiement has no fk_account column (the
+        // property is read back through a JOIN on llx_bank), so without the
+        // addPaymentToBank call below the chosen account was lost and no bank
+        // ledger line was ever written. Refusing early is what the core's own
+        // REST API does in effect -- it calls addPaymentToBank unconditionally,
+        // and that method returns -1 on a missing account id.
+        if ($bankEnabled && $fkAccount <= 0) {
+            dol_syslog("[SmartAuth] ObjectPaymentController::store missing fk_account for invoice " . ((int) $o->id) . " while module banque is enabled", LOG_WARNING);
+            return [['error' => 'fk_account is required when the bank module is enabled'], 400];
+        }
+        // Mirrors the core API: the issuer identifies the cheque in the ledger.
+        $chqEmetteur = isset($payload['cheque_issuer']) ? (string) $payload['cheque_issuer'] : '';
+        $chqBank = isset($payload['cheque_bank']) ? (string) $payload['cheque_bank'] : '';
+        if ($bankEnabled && $payment->paiementcode === 'CHQ' && $chqEmetteur === '') {
+            dol_syslog("[SmartAuth] ObjectPaymentController::store missing cheque_issuer for invoice " . ((int) $o->id), LOG_WARNING);
+            return [['error' => 'cheque_issuer is required when the payment mode is a cheque'], 400];
+        }
+
+        // One transaction around both writes: a payment without its bank line
+        // is a silent accounting hole, so a failure on the second must undo the
+        // first (same begin/rollback envelope as api_invoices.class.php).
+        $db->begin();
 
         // $closepaidinvoices=1: core flips llx_facture.paye once the running
         // total reaches total_ttc (same behaviour as the standard payment card).
         $res = $payment->create($user, 1);
         if ($res <= 0) {
+            $db->rollback();
             $errMsg = ($payment->error !== '' && $payment->error !== null) ? $payment->error : 'Failed to create payment';
             dol_syslog("[SmartAuth] ObjectPaymentController::store create() failed for invoice " . $id . ": " . $errMsg, LOG_ERR);
             return [['error' => 'Failed to create payment: ' . $errMsg], 400];
         }
         $paymentId = (int) $res;
+
+        $bankLineId = 0;
+        if ($bankEnabled) {
+            $bankMode = (string) ($cfg['payment']['bank_mode'] ?? 'payment');
+            $bankLabel = (string) ($cfg['payment']['bank_label'] ?? '(CustomerInvoicePayment)');
+            // A payment on a credit note is a refund: the core swaps the label.
+            // Facture::TYPE_CREDIT_NOTE is 2; compare the value rather than the
+            // constant so the branch also holds for a supplier document, whose
+            // own credit-note type shares the same numbering.
+            if (!empty($cfg['payment']['bank_label_credit_note']) && (int) ($o->type ?? 0) === 2) {
+                $bankLabel = (string) $cfg['payment']['bank_label_credit_note'];
+            }
+
+            $bankLineId = (int) $payment->addPaymentToBank($user, $bankMode, $bankLabel, $fkAccount, $chqEmetteur, $chqBank);
+            if ($bankLineId <= 0) {
+                $db->rollback();
+                $errMsg = ($payment->error !== '' && $payment->error !== null) ? $payment->error : 'Failed to write the bank ledger line';
+                dol_syslog("[SmartAuth] ObjectPaymentController::store addPaymentToBank() failed for payment " . $paymentId . " on invoice " . $id . ": " . $errMsg, LOG_ERR);
+                return [['error' => 'Failed to write the bank ledger line: ' . $errMsg], 400];
+            }
+        }
+
+        $db->commit();
 
         $o->fetch($id);
         if (method_exists($o, 'fetch_lines')) {
@@ -205,6 +303,7 @@ class ObjectPaymentController
 
         return [[
             'payment_id'    => $paymentId,
+            'bank_line_id'  => $bankLineId,
             'invoice_id'    => $id,
             'amount'        => $amount,
             'total_paid'    => $totalPaid,

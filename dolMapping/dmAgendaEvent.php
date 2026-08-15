@@ -23,8 +23,38 @@ namespace SmartAuth\DolibarrMapping;
 require_once DOL_DOCUMENT_ROOT . '/comm/action/class/actioncomm.class.php';
 
 /**
- * Mapping for Dolibarr ActionComm -> API AgendaEvent
- * Alias: dmActioncomm (for backward compatibility with Dolibarr internal calls)
+ * Mapping for Dolibarr ActionComm (agenda event) -> API AgendaEvent.
+ * Alias: dmActionComm (for backward compatibility with Dolibarr internal calls).
+ *
+ * Backs the generic object facade objects/agenda_event (CRUD show/create/update/
+ * delete). The calendar READ path (windowed list, delta-sync, birthdays, buckets,
+ * counts, filter-options) stays a dedicated Dolipocket-local controller -- it has
+ * no facade equivalent -- so this mapper only has to serve single-object CRUD.
+ *
+ * IMPORTANT -- doliside keys are PHP PROPERTY names, NOT SQL column names. That
+ * distinction is the "doliside pitfall": ActionComm::fetch() aliases several
+ * columns onto differently named properties, and ActionComm::create()/update()
+ * read those SAME properties (not the columns) when persisting. exportMappedData()
+ * reads $obj->{doliside} and applyImportedFields() writes $object->{doliside}, so
+ * BOTH paths must address the property:
+ *
+ *   SQL column        PHP property (doliside used here)
+ *   ----------        --------------------------------
+ *   percent       ->  percentage
+ *   fk_soc        ->  socid
+ *   fk_contact    ->  contact_id
+ *   fk_project    ->  fk_project        (same name, but NOT fk_projet)
+ *   fk_user_action->  userownerid       (the assigned/owner user)
+ *   fk_user_author->  authorid
+ *   datep2        ->  datef
+ *
+ * Verified against htdocs/comm/action/class/actioncomm.class.php: fetch() lines
+ * ~835-890, create() lines ~439-600, update() lines ~1120-1211.
+ *
+ * The assigned user needs extra care: create() REQUIRES $userownerid (returns -1
+ * otherwise) and update() DELETEs+reINSERTs the actioncomm_resources rows from
+ * $userassigned (wiping them when empty), so applyImportedFields() keeps
+ * userownerid + userassigned consistent.
  */
 class dmAgendaEvent extends dmBase
 {
@@ -33,55 +63,287 @@ class dmAgendaEvent extends dmBase
 	protected $type = "object";
 	protected $dolibarrClassName = 'ActionComm';
 
-	// Dolibarr field => Front field
-	// See documentation/api-naming-convention.md
+	// Element name for file storage / ECM ($object->element).
+	protected $parentElementToUseForExtraFields = 'actioncomm';
+
+	// Table-side element name for extrafields (= llx_extrafields.elementtype).
+	protected $parentTableElementToUseForExtraFields = 'actioncomm';
+
+	// Dolibarr property (doliside) => Front field (appside).
+	// See documentation/api-naming-convention.md.
 	protected $listOfPublishedFields = [
-		'rowid'             => 'id',
-		'ref'               => 'ref',
-		'label'             => 'label',
-		'type_code'         => 'type_code',
-		'type_label'        => 'type_label',
-		'datec'             => 'created_at',
-		'datep'             => 'date_start',
-		'datef'             => 'date_end',
-		'duree'             => 'duration',
-		'fk_soc'            => 'thirdparty',
-		'fk_contact'        => 'contact',
-		'fk_projet'         => 'project',
-		'fk_user_author'    => 'created_by',
-		'fk_user_action'    => 'assigned_to',
-		'location'          => 'location',
-		'note_public'       => 'public_note',
-		'note_private'      => 'private_note',
-		'percent'           => 'progress',
-		'priority'          => 'priority',
+		'rowid'          => 'id',            // read-only (pk 'id', see registry pk)
+		'ref'            => 'ref',           // read-only
+		'label'          => 'label',
+		'type_code'      => 'type_code',
+		'type_label'     => 'type_label',    // read-only display label
+		'datec'          => 'created_at',    // read-only
+		'datep'          => 'date_start',
+		'datef'          => 'date_end',
+		'percentage'     => 'progress',
+		'location'       => 'location',
+		'fulldayevent'   => 'fulldayevent',
+		'note_private'   => 'private_note',
+		'userownerid'    => 'assigned_to',   // property, not the fk_user_action column
+		'socid'          => 'thirdparty',    // property, not the fk_soc column
+		'contact_id'     => 'contact',       // property, not the fk_contact column
+		'fk_project'     => 'project',       // property (fk_project), not fk_projet
+		'fk_element'     => 'fk_element',    // linked object id
+		'elementtype'    => 'elementtype',   // linked object type
+		'priority'       => 'priority',
+		'status'         => 'status',
+		'authorid'       => 'created_by',    // read-only (property, not fk_user_author)
 	];
 
-	// Allowlist for importMappedData() (Dolibarr field names).
-	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// Allowlist for importMappedData() (Dolibarr-side PROPERTY names, i.e. the
+	// LEFT side of $listOfPublishedFields). See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// `rowid`/`ref`/`type_label`/`datec`/`authorid` are intentionally absent
+	// (read-only). `note_public` is NOT here because ActionComm has no public
+	// note column (only `note` = note_private), so a writable public_note would
+	// be a silent no-op.
+	// Tenant guard on the VALUES written into these foreign keys
+	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
+	//
+	// userownerid targets llx_user, whose element getEntity() prefixes with "0,"
+	// (the $addzero list of htdocs/core/lib/functions.lib.php). An entity-0 user
+	// is genuinely visible from every tenant, so owning an event to one stays
+	// legal; only ANOTHER tenant's user is refused.
+	//
+	// fk_element is polymorphic: its table is named by the sibling elementtype
+	// column, which ActionComm::create() partly rewrites on the way in
+	// (facture -> invoice, commande -> order, contrat -> contract, l.470-478).
+	// The resolver accepts both spellings and leaves an element type it does not
+	// know unguarded, so a module linking an event to its OWN object is not
+	// broken by this mechanism.
+	protected $foreignKeyGuards = [
+		'userownerid' => 'user',
+		'socid'       => 'thirdparty',
+		'contact_id'  => 'contact',
+		'fk_project'  => 'project',
+		'fk_element'  => ['polymorphic' => 'elementtype'],
+	];
+
 	protected $writableFields = [
 		'label',
+		'type_code',
 		'datep',
 		'datef',
-		'duree',
-		'fk_soc',
-		'fk_contact',
-		'fk_projet',
+		'percentage',
 		'location',
-		'percent',
-		'priority',
-		'note_public',
+		'fulldayevent',
 		'note_private',
+		'userownerid',
+		'socid',
+		'contact_id',
+		'fk_project',
+		'fk_element',
+		'elementtype',
+		'priority',
+		'status',
 	];
 
 	/**
 	 * object constructor
-	 *
-	 * @return  [type]  [return description]
 	 */
 	public function __construct()
 	{
 		$this->boot();
+	}
+
+	/**
+	 * Global-search columns for objects/agenda_event.
+	 *
+	 * ActionComm::$fields is EMPTY, so the generic dmBase::getSearchFields()
+	 * (which requires the doliside to be declared in $object->fields) returns [].
+	 * Narrow it to the two user-facing reference columns. Both are real
+	 * llx_actioncomm varchar columns so `a.label LIKE ...` / `a.ref LIKE ...`
+	 * stays SQL-safe.
+	 *
+	 * @return array<int,string>  real SQL column names (used as alias.col LIKE)
+	 */
+	public function getSearchFields()
+	{
+		return ['label', 'ref'];
+	}
+
+	/**
+	 * Write the sanitized payload onto the ActionComm, then reconcile the few
+	 * ActionComm-specific quirks the generic writer cannot know about.
+	 *
+	 * Runs right before CrudInvoker::create()/update():
+	 *   - normalise datep/datef to Unix seconds (ActionComm::$fields is empty so
+	 *     importMappedData() cannot type-cast a date; a stray ms value would be
+	 *     mis-stored by idate()).
+	 *   - reset type_id when type_code was sent so create()/update() re-resolve
+	 *     the numeric type from the code (see actioncomm.class.php:494 / :1162).
+	 *   - keep the assigned user coherent: create() REQUIRES userownerid and
+	 *     update() rebuilds the resources table from userassigned. On a fresh
+	 *     event default the owner to the current user (mirrors the former local
+	 *     AgendaController), and default an empty type_code to 'AC_OTH' (create()
+	 *     rejects an unknown/empty type). On update, preserve the fetched
+	 *     userassigned unless a new owner was sent.
+	 *
+	 * @param  \ActionComm $object     Fresh (create) or fetched (update) event.
+	 * @param  \stdClass   $sanitized  Output of importMappedData().
+	 * @return void
+	 */
+	public function applyImportedFields($object, $sanitized)
+	{
+		global $user;
+
+		parent::applyImportedFields($object, $sanitized);
+
+		// Defensive date normalization for the fields the client actually sent.
+		foreach (['datep', 'datef'] as $df) {
+			if (property_exists($sanitized, $df)) {
+				$ts = $this->normalizeToSeconds($object->{$df});
+				$object->{$df} = ($ts !== null) ? $ts : '';
+			}
+		}
+
+		// Changing the type by code must clear the cached numeric id so the core
+		// re-resolves it (setting type_code alone otherwise keeps the old type_id).
+		if (property_exists($sanitized, 'type_code')) {
+			$object->type_id = 0;
+		}
+
+		$isNew = empty($object->id);
+		$ownerSent = property_exists($sanitized, 'userownerid')
+			&& $sanitized->userownerid !== '' && $sanitized->userownerid !== null;
+
+		if ($isNew) {
+			// create() returns -1 without a defined owner: default to the caller.
+			if (!$ownerSent || (int) $object->userownerid <= 0) {
+				$object->userownerid = (int) $user->id;
+			}
+			// create() rejects an empty/unknown type code.
+			if (empty($object->type_code)) {
+				$object->type_code = 'AC_OTH';
+				$object->type_id = 0;
+			}
+			$ownerId = (int) $object->userownerid;
+			$object->userassigned = [$ownerId => ['id' => $ownerId, 'transparency' => 0]];
+			return;
+		}
+
+		// Update: ActionComm::update() DELETEs then re-INSERTs the user resources
+		// from $userassigned. fetch() (with its default $loadresources=1) already
+		// populated it, so it is preserved as-is UNLESS the client sent a new
+		// owner -- in which case rebuild it to that single owner so the persisted
+		// fk_user_action column and the resources table stay in sync.
+		if ($ownerSent) {
+			$ownerId = (int) $object->userownerid;
+			$object->userassigned = [$ownerId => ['id' => $ownerId, 'transparency' => 0]];
+		} elseif (empty($object->userassigned) || !is_array($object->userassigned) || count($object->userassigned) === 0) {
+			if (method_exists($object, 'fetchResources')) {
+				$object->fetchResources();
+			}
+			if ((empty($object->userassigned) || !is_array($object->userassigned) || count($object->userassigned) === 0)
+				&& !empty($object->userownerid)) {
+				$ownerId = (int) $object->userownerid;
+				$object->userassigned = [$ownerId => ['id' => $ownerId, 'transparency' => 0]];
+			}
+		}
+	}
+
+	/**
+	 * Intra-tenant list/count visibility (mechanism 3.2): restrict to events the
+	 * user OWNS or is ASSIGNED to, unless they hold agenda.allactions.read (or are
+	 * admin). Replicates the former local AgendaController owned/assigned filter.
+	 *
+	 * @param  \User    $user
+	 * @param  string   $alias  SQL alias of llx_actioncomm in the host query.
+	 * @param  \DoliDB  $db
+	 * @return string           SQL fragment (starts with " AND ") or ''.
+	 */
+	public function visibilitySqlFilter($user, $alias, $db)
+	{
+		if (!empty($user->admin) || $user->hasRight('agenda', 'allactions', 'read')) {
+			return '';
+		}
+		$uid = (int) $user->id;
+		// NB: the actioncomm primary key is `id` (registry pk='id'), so the
+		// EXISTS correlates on {$alias}.id, not rowid.
+		return ' AND (' . $alias . '.fk_user_action = ' . $uid
+			. ' OR EXISTS (SELECT 1 FROM ' . MAIN_DB_PREFIX . 'actioncomm_resources ar'
+			. ' WHERE ar.fk_actioncomm = ' . $alias . '.id AND ar.element_type = \'user\''
+			. ' AND ar.fk_element = ' . $uid . '))';
+	}
+
+	/**
+	 * Intra-tenant per-object visibility for show / update / destroy
+	 * (mechanism 3.2). An event is accessible iff the user OWNS it or is ASSIGNED
+	 * to it, unless they hold agenda.allactions.read (or are admin).
+	 *
+	 * @param  \ActionComm $object
+	 * @param  \User       $user
+	 * @param  string      $mode    read|write|delete
+	 * @return bool                 false REFUSES (the controller emits a 403).
+	 */
+	public function canAccess($object, $user, $mode)
+	{
+		global $db;
+
+		if (!empty($user->admin) || $user->hasRight('agenda', 'allactions', 'read')) {
+			return true;
+		}
+
+		$uid = (int) $user->id;
+
+		// Owner: fetch() exposes the owner via $userownerid (from the
+		// fk_user_action column). Fall back to fk_user_action for a raw row.
+		$ownerId = 0;
+		if (isset($object->userownerid) && $object->userownerid !== '') {
+			$ownerId = (int) $object->userownerid;
+		} elseif (isset($object->fk_user_action)) {
+			$ownerId = (int) $object->fk_user_action;
+		}
+		if ($ownerId > 0 && $ownerId === $uid) {
+			return true;
+		}
+
+		// Assigned via the resources table (element_type='user').
+		$eventId = (int) ($object->id ?? 0);
+		if ($eventId <= 0) {
+			dol_syslog('[SmartAuth] dmAgendaEvent::canAccess event has no id', LOG_WARNING);
+			return false;
+		}
+		$sql = 'SELECT COUNT(*) as nb FROM ' . MAIN_DB_PREFIX . 'actioncomm_resources';
+		$sql .= " WHERE fk_actioncomm = " . $eventId . " AND element_type = 'user'";
+		$sql .= ' AND fk_element = ' . $uid;
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog('[SmartAuth] dmAgendaEvent::canAccess resources SQL failed: ' . $db->lasterror(), LOG_ERR);
+			return false;
+		}
+		$row = $db->fetch_object($resql);
+		$db->free($resql);
+		return $row !== null && (int) $row->nb > 0;
+	}
+
+	/**
+	 * Normalise a date/timestamp value to Unix seconds.
+	 *
+	 * Accepts seconds, milliseconds (12+ digits), ISO/human strings. Returns null
+	 * on empty / invalid input (caller decides on a default).
+	 *
+	 * @param  mixed $value
+	 * @return int|null
+	 */
+	private function normalizeToSeconds($value)
+	{
+		if ($value === null || $value === '' || $value === false) {
+			return null;
+		}
+		if (is_numeric($value)) {
+			$n = (int) $value;
+			if ($n > 99999999999) {
+				return intdiv($n, 1000);
+			}
+			return $n;
+		}
+		$ts = strtotime((string) $value);
+		return $ts === false ? null : $ts;
 	}
 }
 

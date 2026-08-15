@@ -94,9 +94,19 @@ class ObjectLineController
         if ($o->fetch($id) <= 0) {
             return [null, null, null, [['error' => 'Object not found'], 404]];
         }
-        if (!$this->inEntityScope($o, $cfg)) {
+        // Refusals answer 404, exactly like an unknown id: a distinct 403 would
+        // be an existence oracle (enumerate rowids, tell "exists in another
+        // tenant" apart from "does not exist"). The syslog lines keep the real
+        // reason server-side.
+        if (!$this->inEntityScope($o, $cfg, $this->entityScopeMode($action))) {
             dol_syslog("[SmartAuth] ObjectLineController: cross-entity access refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
-            return [null, null, null, [['error' => 'Access denied (entity)'], 403]];
+            return [null, null, null, [['error' => 'Object not found'], 404]];
+        }
+        // Types whose table has no entity column are scoped by this probe ONLY
+        // (inEntityScope short-circuits to true for them).
+        if ($this->isolationDenies($cfg, $mapper, $id)) {
+            dol_syslog("[SmartAuth] ObjectLineController: isolation refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
+            return [null, null, null, [['error' => 'Object not found'], 404]];
         }
         if (!DocumentLineInvoker::supports($o)) {
             dol_syslog("[SmartAuth] ObjectLineController: DocumentLineInvoker cannot drive lines on " . get_class($o), LOG_ERR);

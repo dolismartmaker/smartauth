@@ -46,9 +46,10 @@ class SupplierLinesActionsIntegrationTest extends DolibarrRealTestCase
         $this->actions = new ObjectActionController();
         $this->payments = new ObjectPaymentController();
         $this->created = [];
-        $res = $this->db->query("SELECT id FROM " . MAIN_DB_PREFIX . "c_paiement WHERE active = 1 ORDER BY id LIMIT 1");
+        // Skip cheques: they additionally require an issuer for the bank line.
+        $res = $this->db->query("SELECT id FROM " . MAIN_DB_PREFIX . "c_paiement WHERE active = 1 AND code <> 'CHQ' ORDER BY id LIMIT 1");
         $row = $res ? $this->db->fetch_object($res) : null;
-        $this->paymentModeId = $row ? (int) $row->id : 2;
+        $this->paymentModeId = $row ? (int) $row->id : 6;
     }
 
     protected function tearDown(): void
@@ -139,15 +140,31 @@ class SupplierLinesActionsIntegrationTest extends DolibarrRealTestCase
         list($v, $vc) = $this->act('supplier_invoice', $id, 'validate');
         $this->assertSame(200, $vc, 'supplier_invoice validate: ' . json_encode($v));
 
+        $account = $this->createTestBankAccount(['label' => 'Supplier payments account']);
+        $this->track('bank_account', (int) $account->id);
+
         list($p, $pc) = $this->payments->store([
             'objtype' => 'supplier_invoice', 'id' => $id,
             'amount' => 200, 'payment_mode' => $this->paymentModeId,
+            'fk_account' => (int) $account->id,
         ]);
         $this->assertSame(201, $pc, 'supplier payment: ' . json_encode($p));
         $this->assertEquals(200, $p['total_paid']);
         $this->assertEquals(0, $p['remain_to_pay']);
         $this->assertSame(1, (int) $p['paye']);
         $this->track('paiementfourn', (int) $p['payment_id']);
+
+        // The SIGN is the whole point of the 'payment_supplier' bank mode: money
+        // LEAVES the account, so the ledger line is negative. Getting this
+        // backwards would silently inflate every tenant's balance.
+        $bankLineId = (int) $p['bank_line_id'];
+        $this->assertGreaterThan(0, $bankLineId, 'a supplier payment must post a bank line');
+        $this->track('bank', $bankLineId);
+
+        $line = new \AccountLine($this->db);
+        $this->assertSame(1, $line->fetch($bankLineId));
+        $this->assertEquals(-200, (float) $line->amount, 'a supplier payment must debit the account');
+        $this->assertSame((int) $account->id, (int) $line->fk_account);
     }
 
     // ---------------------------------------------------- supplier_proposal

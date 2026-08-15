@@ -54,7 +54,10 @@ namespace SmartAuth\Api;
  *   - has_entity       : whether the table has an 'entity' column (optional,
  *                        default true). A few tables (llx_stock_mouvement,
  *                        llx_subscription) have none; set false so the list/
- *                        count queries omit the entity filter.
+ *                        count queries omit the entity filter. Such a type MUST
+ *                        then declare an isolationWhereSql() on its mapper (cf
+ *                        ObjectFacadeTrait) or it would serve every tenant's
+ *                        rows.
  *
  * The 'mapper', 'alias' and 'default_sort' keys are additive: sync ignores keys
  * it does not read, so seeding syncableObjects from this registry keeps the
@@ -133,14 +136,19 @@ class ObjectRegistry
                     'update' => ['societe', 'contact', 'creer'],
                     'delete' => ['societe', 'contact', 'supprimer'],
                 ],
+                // Mirrors dmContact::$writableFields (defence in depth for the
+                // async SyncController path; the synchronous ObjectController
+                // relies on the mapper allowlist directly). civility_code (not
+                // civility_id) + state_id + statut/priv/default_lang track the
+                // mapper's property-is-source-of-truth write keys.
                 'allowed_fields' => [
-                    'lastname', 'firstname', 'civility_id',
-                    'address', 'zip', 'town', 'country_id',
+                    'lastname', 'firstname', 'civility_code',
+                    'address', 'zip', 'town', 'state_id',
                     'email', 'phone_pro', 'phone_mobile', 'phone_perso', 'fax',
                     'fk_soc', 'socid',
-                    'no_email',
+                    'statut', 'priv', 'default_lang',
                     'note_public', 'note_private',
-                    'poste', 'birthday',
+                    'poste',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmContact',
                 'alias' => 'sp',
@@ -256,7 +264,7 @@ class ObjectRegistry
                     'delete' => ['facture', 'supprimer'],
                 ],
                 'allowed_fields' => [
-                    'ref_customer', 'socid', 'fk_project', 'date', 'date_lim_reglement',
+                    'ref_client', 'type', 'socid', 'fk_project', 'date', 'date_lim_reglement',
                     'delivery_date', 'fk_cond_reglement', 'fk_mode_reglement',
                     'note_public', 'note_private',
                 ],
@@ -267,9 +275,18 @@ class ObjectRegistry
                 'actions' => ['validate', 'setdraft', 'setpaid', 'setunpaid', 'setcanceled'],
                 // Customer payments via ObjectPaymentController
                 // (POST/GET objects/invoice/{id}/payments).
+                // 'bank_mode' and 'bank_label' drive Paiement::addPaymentToBank:
+                // the mode decides the SIGN of the bank line (money in for a
+                // customer, out for a supplier) and the label is the one the
+                // core's own REST API writes.
                 'payment' => [
                     'class' => 'Paiement',
                     'file' => DOL_DOCUMENT_ROOT . '/compta/paiement/class/paiement.class.php',
+                    'bank_mode' => 'payment',
+                    'bank_label' => '(CustomerInvoicePayment)',
+                    // A payment recorded on a credit note is a refund going the
+                    // other way; api_invoices.class.php l.1465 swaps the label.
+                    'bank_label_credit_note' => '(CustomerInvoicePaymentBack)',
                 ],
             ],
             'proposal' => [
@@ -363,10 +380,16 @@ class ObjectRegistry
                     'update' => ['agenda', 'myactions', 'create'],
                     'delete' => ['agenda', 'myactions', 'delete'],
                 ],
+                // Mirrors dmAgendaEvent::$writableFields (Dolibarr-side PROPERTY
+                // names, not SQL columns: percentage not percent, socid not
+                // fk_soc, contact_id not fk_contact, fk_project not fk_projet,
+                // userownerid not fk_user_action). Defence in depth for the
+                // sync-side write path.
                 'allowed_fields' => [
-                    'label', 'datep', 'datef', 'duree', 'fk_soc', 'fk_contact',
-                    'fk_projet', 'location', 'percent', 'priority',
-                    'note_public', 'note_private',
+                    'label', 'type_code', 'datep', 'datef', 'percentage',
+                    'location', 'fulldayevent', 'note_private', 'userownerid',
+                    'socid', 'contact_id', 'fk_project', 'fk_element',
+                    'elementtype', 'priority', 'status',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmAgendaEvent',
                 'alias' => 'a',
@@ -440,10 +463,17 @@ class ObjectRegistry
                     'update' => ['adherent', 'creer'],
                     'delete' => ['adherent', 'supprimer'],
                 ],
+                // Mirrors dmMember::$writableFields verbatim. phone_pro was
+                // dropped from both: llx_adherent has NO such column
+                // (install/mysql/tables/llx_adherent.sql l.66-68 ships phone,
+                // phone_perso and phone_mobile only) and Adherent::update()
+                // (l.834-836) never writes it, so it was a silent no-op
+                // answering 200. Same story for the read-only `fax`, removed
+                // from the published fields of the mapper.
                 'allowed_fields' => [
                     'civility_id', 'lastname', 'firstname', 'gender', 'birth', 'company',
                     'address', 'zip', 'town', 'state_id', 'country_id', 'email', 'url',
-                    'phone', 'phone_perso', 'phone_pro', 'phone_mobile', 'login', 'morphy',
+                    'phone', 'phone_perso', 'phone_mobile', 'login', 'morphy',
                     'typeid', 'socid', 'note_public', 'note_private',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmMember',
@@ -505,16 +535,40 @@ class ObjectRegistry
                 'priority' => 'low',
                 'default_enabled' => false,
                 // Ticket uses read/write/delete rights (English), not lire/creer.
+                // The module also declares 'manage' (l.209) and 'export'
+                // (l.216). A 'view' right exists in the file but sits INSIDE a
+                // block comment (core/modules/modTicket.class.php l.217-225,
+                // "Seems not used and in conflict with societe->client->voir"),
+                // so hasRight('ticket', 'view') is always false -- never map an
+                // action onto it.
                 'rights' => [
                     'read'   => ['ticket', 'read'],
                     'create' => ['ticket', 'write'],
                     'update' => ['ticket', 'write'],
                     'delete' => ['ticket', 'delete'],
                 ],
+                // CREATE IS UNREACHABLE THROUGH THE FACADE, and the 'create'
+                // right above only guards a route that cannot succeed:
+                // Ticket::create() (ticket.class.php l.474) calls verify(),
+                // which refuses an empty ref (l.444-447) and makes create()
+                // return -3 (l.591); the ref is produced by getDefaultRef()
+                // (l.2288), which create() never calls, it is not writable, and
+                // ObjectController::create() has no pre-create hook. A module
+                // needing to create tickets owns a local POST route that sets
+                // the default ref then calls create(), like the native REST API
+                // does. Kept declared so the entry stays uniform with its
+                // siblings and so a future pre-create mechanism needs no
+                // registry change.
+                //
+                // Mirrors dmTicket::$writableFields verbatim. note_public and
+                // note_private were dropped from both: llx_ticket has NO such
+                // columns (install/mysql/tables/llx_ticket-ticket.sql l.17-46)
+                // and Ticket::update() (l.985-1006) never writes them, so they
+                // were a silent no-op answering 200.
                 'allowed_fields' => [
                     'subject', 'message', 'fk_soc', 'fk_project', 'fk_user_assign',
                     'type_code', 'category_code', 'severity_code', 'resolution',
-                    'progress', 'note_public', 'note_private',
+                    'progress',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmTicket',
                 'alias' => 'tk',
@@ -535,9 +589,16 @@ class ObjectRegistry
                     'update' => ['ficheinter', 'creer'],
                     'delete' => ['ficheinter', 'supprimer'],
                 ],
+                // Mirrors dmIntervention::$writableFields verbatim, as the
+                // Vague 2 comment above requires. datei / dateo / datee / duree
+                // were dropped from the mapper because no Fichinter SQL verb
+                // writes them (dateo and datee are recomputed from the lines by
+                // FichinterLigne::update_total(), datei only by
+                // set_date_delivery()), and `duree` was renamed `duration`
+                // because update() reads the PHP property $this->duration.
                 'allowed_fields' => [
-                    'ref_client', 'socid', 'fk_project', 'fk_contrat', 'datei', 'dateo',
-                    'datee', 'duree', 'description', 'note_public', 'note_private',
+                    'ref_client', 'socid', 'fk_project', 'fk_contrat', 'duration',
+                    'description', 'note_public', 'note_private',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmIntervention',
                 'alias' => 'fi',
@@ -589,7 +650,7 @@ class ObjectRegistry
                     'delete' => ['fournisseur', 'facture', 'supprimer'],
                 ],
                 'allowed_fields' => [
-                    'ref_supplier', 'label', 'socid', 'fk_project', 'date', 'date_echeance',
+                    'ref_supplier', 'label', 'type', 'socid', 'fk_project', 'date', 'date_echeance',
                     'cond_reglement_id', 'mode_reglement_id', 'fk_account',
                     'note_public', 'note_private',
                 ],
@@ -598,9 +659,13 @@ class ObjectRegistry
                 'default_sort' => 'ff.rowid DESC',
                 'supports_lines' => true,
                 'actions' => ['validate', 'setdraft', 'setpaid', 'setunpaid', 'setcanceled'],
+                // Supplier payments. 'payment_supplier' makes addPaymentToBank
+                // negate the amount: the money leaves the account.
                 'payment' => [
                     'class' => 'PaiementFourn',
                     'file' => DOL_DOCUMENT_ROOT . '/fourn/class/paiementfourn.class.php',
+                    'bank_mode' => 'payment_supplier',
+                    'bank_label' => '(SupplierInvoicePayment)',
                 ],
             ],
             'supplier_proposal' => [
@@ -654,7 +719,17 @@ class ObjectRegistry
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmShipment',
                 'alias' => 'exp',
-                'default_sort' => 'exp.rowid DESC',
+                'default_sort' => 'exp.date_expedition DESC, exp.rowid DESC',
+                // Workflow transitions -> DocumentActionInvoker (Expedition:*).
+                // Stock is moved by Dolibarr itself inside valid()/setClosed()/
+                // cancel(), following STOCK_CALCULATE_ON_SHIPMENT[_CLOSE].
+                'actions' => ['validate', 'close', 'reopen', 'setdraft', 'cancel'],
+                // NO supports_lines: a shipment line is not a generic document
+                // line (Expedition::addline($entrepot_id, $origin_line, $qty)
+                // copies a source ORDER line), so the line writes stay on the
+                // create-from-order path. The READ needs nothing here anyway:
+                // Expedition::fetch() calls fetch_lines(), so show() already
+                // exports the lines.
             ],
             'reception' => [
                 'class' => 'Reception',
@@ -679,7 +754,16 @@ class ObjectRegistry
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmReception',
                 'alias' => 'rec',
-                'default_sort' => 'rec.rowid DESC',
+                'default_sort' => 'rec.date_reception DESC, rec.rowid DESC',
+                // Workflow transitions -> DocumentActionInvoker (Reception:*).
+                // No 'cancel': the Reception class has no cancel() method.
+                // Stock is INCREMENTED by valid()/setClosed(), per
+                // STOCK_CALCULATE_ON_RECEPTION[_CLOSE].
+                'actions' => ['validate', 'close', 'reopen', 'setdraft'],
+                // NO supports_lines, same rationale as shipment: a reception
+                // line is a CommandeFournisseurDispatch row created from a
+                // supplier order line, not a generic document line. Reception::
+                // fetch() calls fetch_lines(), so the READ already carries them.
             ],
             'stock_movement' => [
                 'class' => 'MouvementStock',
@@ -705,7 +789,9 @@ class ObjectRegistry
                 'allowed_fields' => [],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmStockMovement',
                 'alias' => 'sm',
-                'default_sort' => 'sm.rowid DESC',
+                // Audit trail: newest movement first (matches the module's own
+                // list screen and the pre-facade Dolipocket controller).
+                'default_sort' => 'sm.datem DESC, sm.rowid DESC',
             ],
             'subscription' => [
                 'class' => 'Subscription',
@@ -726,12 +812,105 @@ class ObjectRegistry
                     'update' => ['adherent', 'cotisation', 'creer'],
                     'delete' => ['adherent', 'cotisation', 'creer'],
                 ],
+                // Mirrors dmSubscription::$writableFields verbatim. fk_bank is
+                // honoured on PATCH only: Subscription::create() (l.159) does
+                // not list it among its INSERT columns while update() (l.284)
+                // writes it. Documented on the mapper, pinned by
+                // DmMemberMapperTest.
+                // fk_adherent is ABSENT on purpose: llx_subscription has no
+                // entity column, so the parent member IS the tenant boundary
+                // (dmSubscription::isolationWhereSql). Leaving it writable let a
+                // PATCH move a local fee onto another tenant's member, and a
+                // POST file one directly there. Full rationale on the mapper;
+                // the fee routes that need a parent are the local, URL-scoped
+                // member/{id}/subscription ones. This list is also the sync
+                // write allowlist (SyncController::applyDataLegacy l.1416), so
+                // the removal closes that second write path too.
                 'allowed_fields' => [
-                    'fk_adherent', 'fk_type', 'dateh', 'datef', 'amount', 'fk_bank', 'note',
+                    'fk_type', 'dateh', 'datef', 'amount', 'fk_bank', 'note',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmSubscription',
                 'alias' => 'sub',
                 'default_sort' => 'sub.rowid DESC',
+            ],
+
+            // ===== Banque =====
+            // Read and update only, by design. Both writes that the generic
+            // facade cannot express correctly stay in the consumer's local
+            // routes:
+            //   - creating an account needs date_solde and an opening balance,
+            //     which Account::create() requires but which are not columns of
+            //     llx_bank_account (they seed the first llx_bank line);
+            //   - deleting one must be refused when the account carries more
+            //     than its opening line, a guard Account::delete() does NOT
+            //     apply (it would orphan every llx_bank row);
+            //   - closing one writes `clos`, deliberately absent from the
+            //     writable fields because status is a state machine.
+            'bank_account' => [
+                'class' => 'Account',
+                'file' => DOL_DOCUMENT_ROOT . '/compta/bank/class/account.class.php',
+                'table' => 'bank_account',
+                'element' => 'bank_account',
+                'label' => 'BankAccounts',
+                'module' => 'banque',
+                'priority' => 'low',
+                'default_enabled' => false,
+                // Reading a bank account is 'lire'; every write on the account
+                // itself is 'configurer' -- NOT 'modifier', which governs the
+                // transactions (compta/bank/card.php l.883-901 vs
+                // bankentries_list.php l.239).
+                'rights' => [
+                    'read'   => ['banque', 'lire'],
+                    'create' => ['banque', 'configurer'],
+                    'update' => ['banque', 'configurer'],
+                    'delete' => ['banque', 'configurer'],
+                ],
+                // Mirrors dmBankAccount::$writableFields verbatim, minus 'clos'
+                // (state machine) which the mapper already excludes.
+                'allowed_fields' => [
+                    'ref', 'label', 'bank', 'courant', 'type',
+                    'iban', 'bic', 'number', 'code_banque', 'code_guichet', 'cle_rib',
+                    'currency_code', 'country_id', 'rappro', 'url', 'comment',
+                    'account_number', 'fk_accountancy_journal',
+                    'proprio', 'owner_address', 'owner_zip', 'owner_town', 'owner_country_id',
+                    'min_allowed', 'min_desired',
+                ],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmBankAccount',
+                'alias' => 'ba',
+                'default_sort' => 'ba.clos ASC, ba.label ASC, ba.rowid ASC',
+            ],
+            'bank_transaction' => [
+                'class' => 'AccountLine',
+                'file' => DOL_DOCUMENT_ROOT . '/compta/bank/class/account.class.php',
+                'table' => 'bank',
+                'element' => 'bank',
+                'label' => 'BankTransactions',
+                'module' => 'banque',
+                'priority' => 'low',
+                'default_enabled' => false,
+                // llx_bank has no entity column: dmBank::isolationWhereSql()
+                // scopes every row through its bank account. MANDATORY -- see
+                // the mapper for what breaks without it.
+                'has_entity' => false,
+                // Read-only through the facade. dmBank::$writableFields is
+                // empty (AccountLine::update() writes neither the fields a
+                // caller would edit nor safely the ones it does handle), and
+                // deletion must honour the reconciliation and accounting guards
+                // that AccountLine::delete() applies only partially. Both live
+                // in the consumer's local routes. 'create' and 'delete' still
+                // name a real right so a mis-declared entry fails closed.
+                'rights' => [
+                    'read'   => ['banque', 'lire'],
+                    'create' => ['banque', 'modifier'],
+                    'update' => ['banque', 'modifier'],
+                    'delete' => ['banque', 'modifier'],
+                ],
+                'allowed_fields' => [],
+                'mapper' => '\\SmartAuth\\DolibarrMapping\\dmBank',
+                'alias' => 'b',
+                // Statement order: most recent operation first, then the
+                // insertion order, exactly like compta/bank/bankentries_list.php.
+                'default_sort' => 'b.dateo DESC, b.rowid DESC',
             ],
         ];
     }

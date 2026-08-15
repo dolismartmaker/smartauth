@@ -42,6 +42,20 @@ class dmProposal extends dmBase
 		'fk_mode_reglement' => ['type' => 'sellist:c_paiement:libelle:id', 'label' => 'PaymentMode'],
 	];
 
+	// Opt-in FK -> label companion fields resolved by dmTrait::_resolveForeignKeyLabels().
+	// Surfaces the parent thirdparty name (+ email) alongside the raw `thirdparty`
+	// (socid) scalar, using the per-process fetch cache (one Societe fetch per list,
+	// no N+1). Additive: strict consumers keep the scalar id and gain a display name.
+	// Same declaration shape as dmContact::$listOfForeignKeyLabels (keyed on the
+	// PHP property `socid`, which Propal::fetch fills from the SQL column fk_soc).
+	protected $listOfForeignKeyLabels = [
+		'socid' => [
+			'class'  => 'Societe',
+			'path'   => 'societe/class/societe.class.php',
+			'labels' => ['thirdpartyName' => 'name', 'thirdpartyEmail' => 'email'],
+		],
+	];
+
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [
@@ -83,10 +97,22 @@ class dmProposal extends dmBase
 		'multicurrency_total_ht' => 'multicurrency_total_excl_tax',
 		'multicurrency_total_tva' => 'multicurrency_total_vat',
 		'multicurrency_total_ttc' => 'multicurrency_total_incl_tax',
+		// Last generated PDF (relative path under DOL_DATA_ROOT). Read-only
+		// (server-owned, set by generateDocument()): NOT in $writableFields.
+		// Propal::fetch() populates $this->last_main_doc from the SQL column.
+		// Consumed by the front "Telecharger PDF" button.
+		'last_main_doc'     => 'last_main_doc',
 	];
 
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// Tenant guard on the VALUES written into these foreign keys
+	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
+	protected $foreignKeyGuards = [
+		'socid'      => 'thirdparty',
+		'fk_project' => 'project',
+	];
+
 	protected $writableFields = [
 		'ref_client',
 		'socid',
@@ -120,6 +146,24 @@ class dmProposal extends dmBase
 	{
 		$this->listOfPublishedFieldsForLines = $this->getProposalLinesMapping();
 		$this->boot();
+	}
+
+	/**
+	 * Global-search columns for objects/proposal.
+	 *
+	 * The generic dmBase::getSearchFields() keeps every string-typed published
+	 * field whose `doliside` is a real Propal::$fields column. That set would
+	 * also drag in noise columns (last_main_doc = a PDF file path,
+	 * multicurrency_code) into the ?search= LIKE clause. Narrow it to the two
+	 * user-facing reference columns, matching the former local ProposalController
+	 * search (ref / ref_client). Both are real llx_propal varchar columns so the
+	 * generated `p.ref LIKE ...` / `p.ref_client LIKE ...` is SQL-safe.
+	 *
+	 * @return array<int,string>  real SQL column names (used as alias.col LIKE)
+	 */
+	public function getSearchFields()
+	{
+		return ['ref', 'ref_client'];
 	}
 }
 

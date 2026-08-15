@@ -352,7 +352,7 @@ class MapperRoundTripLotCTest extends DolibarrRealTestCase
         // A bank line is only meaningful with a parent Account, so we
         // create the account first, then use Account::addline() to push
         // a transaction.
-        $account = $this->createTestBankAccount('BankLines test');
+        $account = $this->createTestBankAccount(['label' => 'BankLines test']);
         $lineId  = $account->addline(
             dol_now(),
             'LIQ',
@@ -403,16 +403,31 @@ class MapperRoundTripLotCTest extends DolibarrRealTestCase
         }
     }
 
-    public function testDmBankImportAcceptsWritableField(): void
+    /**
+     * dmBank is READ-ONLY: $writableFields is empty on purpose, so every
+     * field is rejected -- including the four that used to be accepted.
+     *
+     * They were accepted and then thrown away. AccountLine::update() writes
+     * only amount, datev and dateo, so a PATCH carrying label / note /
+     * num_chq / bank_chq answered 200 without touching a single column. And
+     * had it written anything, it would have rewritten the three columns it
+     * DOES handle from a freshly fetched object, whose datev and dateo are
+     * raw database strings rather than timestamps -- idate() would have
+     * mangled both dates. The real edit path is the direct SQL of
+     * compta/bank/line.php, which the consumer exposes as a local route.
+     */
+    public function testDmBankImportRejectsEveryField(): void
     {
         $mapper = new dmBank();
-        $sanitized = $mapper->importMappedData([
-            'label' => 'Edited label',
-            'note'  => 'Some reconciliation note',
-        ]);
 
-        $this->assertSame('Edited label', $sanitized->label);
-        $this->assertSame('Some reconciliation note', $sanitized->note);
+        foreach (['label', 'note', 'num_chq', 'bank_chq', 'num_releve', 'rappro', 'fk_account'] as $field) {
+            try {
+                $mapper->importMappedData([$field => 'x']);
+                $this->fail('Expected MapperValidationException for ' . $field);
+            } catch (MapperValidationException $e) {
+                $this->assertArrayHasKey($field, $e->getErrors(), $field . ' must not be writable');
+            }
+        }
     }
 
     // ----------------------------------------------------------------
@@ -421,7 +436,7 @@ class MapperRoundTripLotCTest extends DolibarrRealTestCase
 
     public function testDmBankAccountRoundTripExport(): void
     {
-        $account = $this->createTestBankAccount('Round-trip account');
+        $account = $this->createTestBankAccount(['label' => 'Round-trip account']);
 
         $fresh = new \Account($this->db);
         $fresh->fetch($account->id);
@@ -472,39 +487,6 @@ class MapperRoundTripLotCTest extends DolibarrRealTestCase
     // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
-
-    /**
-     * Create a Dolibarr bank Account ready for testing. Required because
-     * Account::create() enforces country_id + date_solde + ref non-empty,
-     * so plain Dolibarr fixtures from the base class aren't enough.
-     */
-    private function createTestBankAccount(string $label): \Account
-    {
-        $account = new \Account($this->db);
-        $account->ref = 'BA-' . uniqid();
-        $account->label = $label;
-        $account->bank = 'Test Bank';
-        $account->iban = 'FR7630006000011234567890189';
-        $account->bic = 'AGRIFRPPXXX';
-        $account->number = '00012345678';
-        $account->code_banque = '30006';
-        $account->code_guichet = '00001';
-        $account->cle_rib = '89';
-        $account->courant = 1;        // 1 = current account, 2 = cash, 0 = savings
-        $account->type = 1;
-        $account->currency_code = 'EUR';
-        $account->country_id = 1;     // required by Account::create
-        $account->date_solde = dol_now();
-        $account->solde = 0;
-        $account->entity = 1;
-
-        $id = $account->create($this->testUser);
-        if ($id <= 0) {
-            throw new \Exception('Failed to create test bank account: ' . $account->error);
-        }
-        $account->id = $id;
-        return $account;
-    }
 
     /**
      * Helper mirroring MapperRoundTripPilotTest: assert that a key

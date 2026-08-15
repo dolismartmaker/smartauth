@@ -57,7 +57,21 @@ class dmWarehouse extends dmBase
 
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
-	// 'statut' is intentionally excluded per Rule 1 strict (status = state machine).
+	// Documented exception to Rule 1 (status = state machine): a warehouse
+	// 'statut' (open/closed) is a plain editable flag, NOT a transition-driven
+	// state machine. Entrepot exposes no dedicated transition method
+	// (no valid()/setClosed()) and the facade registers no warehouse action,
+	// so the only way to open/close a warehouse is to write the field. Keeping
+	// it read-only would strip the open/closed toggle every consumer UI ships.
+	// Tenant guard on the VALUES written into these foreign keys
+	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
+	// fk_parent points back at llx_entrepot: without the guard a local warehouse
+	// could be grafted under another tenant's warehouse tree.
+	protected $foreignKeyGuards = [
+		'fk_parent'  => 'warehouse',
+		'fk_project' => 'project',
+	];
+
 	protected $writableFields = [
 		'ref',
 		'label',
@@ -72,6 +86,7 @@ class dmWarehouse extends dmBase
 		'fax',
 		'fk_parent',
 		'fk_project',
+		'statut',
 	];
 
 	/**

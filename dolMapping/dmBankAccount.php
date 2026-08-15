@@ -102,6 +102,73 @@ class dmBankAccount extends dmBase
 		'min_desired',
 	];
 
+	/**
+	 * Searchable columns. Account::$fields is empty, so the generic catalog
+	 * cannot derive them, and two mapper keys are PHP properties whose SQL
+	 * column has a different name (see getFilterableColumns below).
+	 *
+	 * @return string[]
+	 */
+	public function getSearchFields()
+	{
+		return ['ref', 'label', 'bank', 'number'];
+	}
+
+	/**
+	 * Explicit filterable columns (facade mechanism 3.5).
+	 *
+	 * Two reasons the catalog cannot derive them. Account::$fields is empty,
+	 * AND Account::fetch() renames three columns onto PHP properties the mapper
+	 * addresses for the READ export:
+	 *   - 'type' and 'courant' both read the SQL column `courant`;
+	 *   - 'iban' reads `iban_prefix` (aliased "as iban" in the fetch query);
+	 *   - 'country_id' reads `fk_pays` (aliased "as country_id").
+	 * Emitting the API key as a column name would produce "Unknown column".
+	 *
+	 * Keys are the front-side keys of $listOfPublishedFields.
+	 *
+	 * @return array<string,array{column:string,kind:string}>
+	 */
+	public function getFilterableColumns()
+	{
+		return [
+			'ref'           => ['column' => 'ref', 'kind' => 'text'],
+			'label'         => ['column' => 'label', 'kind' => 'text'],
+			'bank'          => ['column' => 'bank', 'kind' => 'text'],
+			'number'        => ['column' => 'number', 'kind' => 'text'],
+			'iban'          => ['column' => 'iban_prefix', 'kind' => 'text'],
+			'bic'           => ['column' => 'bic', 'kind' => 'text'],
+			'type'          => ['column' => 'courant', 'kind' => 'select'],
+			'courant'       => ['column' => 'courant', 'kind' => 'select'],
+			'status'        => ['column' => 'clos', 'kind' => 'select'],
+			'rappro'        => ['column' => 'rappro', 'kind' => 'boolean'],
+			'currency_code' => ['column' => 'currency_code', 'kind' => 'select'],
+			'country_id'    => ['column' => 'fk_pays', 'kind' => 'select'],
+		];
+	}
+
+	/**
+	 * Explicit sortable columns (facade mechanism 3.5). Same rationale as
+	 * getFilterableColumns(): API key -> real SQL column.
+	 *
+	 * @return array<string,string>
+	 */
+	public function getSortableColumns()
+	{
+		return [
+			'id'            => 'rowid',
+			'ref'           => 'ref',
+			'label'         => 'label',
+			'bank'          => 'bank',
+			'number'        => 'number',
+			'type'          => 'courant',
+			'courant'       => 'courant',
+			'status'        => 'clos',
+			'currency_code' => 'currency_code',
+			'account_number' => 'account_number',
+		];
+	}
+
 	public function __construct()
 	{
 		$this->boot();

@@ -363,7 +363,10 @@ class MapperRoundTripLotBTest extends DolibarrRealTestCase
         $event->location    = 'Office';
         $event->priority    = 3;
         $event->percentage  = 0;
-        $event->note_public = 'Public agenda note';
+        // llx_actioncomm has ONE note column (`note`, read back as note_private):
+        // there is no public note on an agenda event, hence dmAgendaEvent
+        // publishes private_note only.
+        $event->note_private = 'Agenda note';
 
         $id = $event->create($this->testUser);
         $this->assertGreaterThan(0, $id, 'failed to create test action: ' . $event->error);
@@ -376,7 +379,7 @@ class MapperRoundTripLotBTest extends DolibarrRealTestCase
         $this->assertApiKeyEquals($payload, 'type_code', 'AC_RDV');
         $this->assertApiKeyEquals($payload, 'location', 'Office');
         $this->assertApiKeyEquals($payload, 'priority', 3);
-        $this->assertApiKeyEquals($payload, 'public_note', 'Public agenda note');
+        $this->assertApiKeyEquals($payload, 'private_note', 'Agenda note');
     }
 
     public function testDmAgendaEventAliasIsAvailable(): void
@@ -395,18 +398,23 @@ class MapperRoundTripLotBTest extends DolibarrRealTestCase
         $this->assertSame('object', $aliasMapper->objectType());
     }
 
-    public function testDmAgendaEventImportRejectsTypeCode(): void
+    public function testDmAgendaEventImportAcceptsTypeCodeButRejectsReadOnlyKeys(): void
     {
         $mapper = new dmAgendaEvent();
 
+        // 'type_code' IS writable: an event carries its CActionComm type from
+        // the create form, so the facade must be able to set it.
+        $sanitized = $mapper->importMappedData(['type_code' => 'AC_OTH']);
+        $this->assertSame('AC_OTH', $sanitized->type_code);
+
         try {
-            // 'type_code' (and 'type_label') are exposed for read but the
-            // event type is set once at create via the CActionComm
-            // dictionary. Not writable.
-            $mapper->importMappedData(['type_code' => 'AC_OTH']);
+            // 'type_label' is the resolved display label of that type, and
+            // 'created_by'/'ref' are server-owned: read-only.
+            $mapper->importMappedData(['type_label' => 'Other', 'created_by' => 1]);
             $this->fail('Expected MapperValidationException');
         } catch (MapperValidationException $e) {
-            $this->assertArrayHasKey('type_code', $e->getErrors());
+            $this->assertArrayHasKey('type_label', $e->getErrors());
+            $this->assertArrayHasKey('created_by', $e->getErrors());
         }
     }
 

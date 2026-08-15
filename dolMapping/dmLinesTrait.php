@@ -200,16 +200,37 @@ trait dmLinesTrait
 	 */
 	protected function getShipmentLinesMapping(): array
 	{
+		// Expedition::fetch_lines() GROUPS the expeditiondet rows and joins the
+		// origin order line, filling far more than the shipped quantity: the
+		// product identity, the description, the ordered quantity (qty_asked),
+		// the pricing and the recomputed totals. The shipment detail screen
+		// (and its Totals block) read them, so publish them all -- every key
+		// below is a property that fetch_lines() actually sets.
 		return [
 			'rowid'                 => 'id',
 			'fk_expedition'         => 'shipment_id',
 			'fk_origin'             => 'origin_type',
 			'fk_origin_line'        => 'origin_line_id',
 			'fk_product'            => 'product',
+			'product_ref'           => 'product_ref',
+			'product_label'         => 'product_label',
+			'product_type'          => 'product_type',
+			'label'                 => 'label',
+			'description'           => 'description',
+			'qty_asked'             => 'quantity_asked',
 			'qty'                   => 'quantity',
 			'qty_shipped'           => 'quantity_shipped',
 			'entrepot_id'           => 'warehouse',
 			'rang'                  => 'position',
+			'subprice'              => 'unit_price_excl_tax',
+			'tva_tx'                => 'vat_rate',
+			'remise_percent'        => 'discount_percent',
+			'total_ht'              => 'total_excl_tax',
+			'total_tva'             => 'total_vat',
+			'total_ttc'             => 'total_incl_tax',
+			'weight'                => 'weight',
+			'weight_units'          => 'weight_units',
+			'fk_unit'               => 'unit',
 		];
 	}
 
@@ -225,14 +246,36 @@ trait dmLinesTrait
 		// $line->fk_entrepot (NOT $line->entrepot_id, which ExpeditionLigne
 		// uses), and the class has no 'rang' column/property, so a 'rang'
 		// mapping would always export null. Map the real property names.
+		//
+		// Reception::fetch_lines() also joins the supplier ORDER line
+		// (commande_fournisseurdet) onto each dispatch row, filling the ordered
+		// quantity, the label/description, the pricing and the totals the
+		// reception screen displays. Publish them: they are properties the
+		// fetch actually sets, not columns of llx_commande_fournisseur_dispatch.
 		return [
 			'rowid'                 => 'id',
 			'fk_reception'          => 'reception_id',
 			'fk_commande'           => 'supplier_order_id',
+			'fk_commandefourndet'   => 'supplier_order_line_id',
 			'fk_product'            => 'product',
+			'ref_supplier'          => 'supplier_ref',
+			'label'                 => 'label',
+			'description'           => 'description',
+			'qty_asked'             => 'quantity_asked',
 			'qty'                   => 'quantity',
 			'fk_entrepot'           => 'warehouse',
+			'subprice'              => 'unit_price_excl_tax',
+			'tva_tx'                => 'vat_rate',
+			'remise_percent'        => 'discount_percent',
+			'total_ht'              => 'total_excl_tax',
+			'total_tva'             => 'total_vat',
+			'total_ttc'             => 'total_incl_tax',
+			'batch'                 => 'batch',
+			'eatby'                 => 'eatby',
+			'sellby'                => 'sellby',
+			'cost_price'            => 'cost_price',
 			'comment'               => 'comment',
+			'status'                => 'status',
 		];
 	}
 

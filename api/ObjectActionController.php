@@ -84,9 +84,19 @@ class ObjectActionController
         if ($o->fetch($id) <= 0) {
             return [['error' => 'Object not found'], 404];
         }
-        if (!$this->inEntityScope($o, $cfg)) {
+        // Refusals answer 404, exactly like an unknown id: a distinct 403 would
+        // be an existence oracle (enumerate rowids, tell "exists in another
+        // tenant" apart from "does not exist"). The syslog lines keep the real
+        // reason server-side. A workflow transition is a write, hence 'write'.
+        if (!$this->inEntityScope($o, $cfg, 'write')) {
             dol_syslog("[SmartAuth] ObjectActionController: cross-entity action refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
-            return [['error' => 'Access denied (entity)'], 403];
+            return [['error' => 'Object not found'], 404];
+        }
+        // Types whose table has no entity column are scoped by this probe ONLY
+        // (inEntityScope short-circuits to true for them).
+        if ($this->isolationDenies($cfg, $mapper, $id)) {
+            dol_syslog("[SmartAuth] ObjectActionController: isolation refused for " . ($cfg['object_type'] ?? '?') . " id=" . $id, LOG_WARNING);
+            return [['error' => 'Object not found'], 404];
         }
 
         $params = is_array($payload) ? $payload : [];

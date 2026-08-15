@@ -544,6 +544,233 @@ class MapperRoundTripLotETest extends DolibarrRealTestCase
         }
     }
 
+    /**
+     * Read side: the three keys whose doliside used to name the SQL column
+     * instead of the property Fichinter::fetch() fills. With the pre-fix
+     * mapping ('duree' / 'tms' / 'fk_user_author') every one of them resolved
+     * to null and exportMappedData() drops null, so the payload simply had no
+     * duration, no updated_at and no created_by.
+     */
+    public function testDmInterventionExportsDurationUpdatedAtAndCreatedBy(): void
+    {
+        $societe = $this->createTestSociete(['name' => 'Intervention audit fields']);
+
+        $fichinter = new \Fichinter($this->db);
+        $fichinter->socid = (int) $societe->id;
+        $fichinter->description = 'Audit fields intervention';
+        $id = $fichinter->create($this->testUser);
+        $this->assertGreaterThan(0, $id, 'failed to create fichinter: ' . $fichinter->error);
+
+        // create() never INSERTs duree; update() is the only writer (l.397),
+        // and it reads $this->duration.
+        $fichinter->duration = 5400;
+        $this->assertGreaterThan(0, $fichinter->update($this->testUser), 'failed to update fichinter: ' . $fichinter->error);
+
+        $fresh = new \Fichinter($this->db);
+        $this->assertGreaterThan(0, $fresh->fetch($id));
+
+        $mapper = new dmIntervention();
+        $payload = $mapper->exportMappedData($fresh);
+
+        $this->assertApiKeyEquals($payload, 'duration', 5400);
+        $this->assertApiKeyEquals($payload, 'created_by', (int) $this->testUser->id);
+        $this->assertObjectHasProperty(
+            'updated_at',
+            $payload,
+            'updated_at must be exported from $this->datem (SQL tms aliased by fetch())'
+        );
+        $this->assertNotEmpty($payload->updated_at);
+    }
+
+    /**
+     * created_by must stay a scalar id. Fichinter fills the SAME property
+     * $user_creation with an int in fetch() (l.481) and with a full \User
+     * object in info() (l.977-978); exporting the object would ship the whole
+     * user row (password hash, api key) inside the payload.
+     */
+    public function testDmInterventionCreatedByStaysAnIntEvenAfterInfo(): void
+    {
+        $societe = $this->createTestSociete(['name' => 'Intervention info() shape']);
+
+        $fichinter = new \Fichinter($this->db);
+        $fichinter->socid = (int) $societe->id;
+        $fichinter->description = 'info() shape intervention';
+        $id = $fichinter->create($this->testUser);
+        $this->assertGreaterThan(0, $id, 'failed to create fichinter: ' . $fichinter->error);
+
+        $fresh = new \Fichinter($this->db);
+        $fresh->fetch($id);
+        $fresh->info($id);
+        $this->assertIsObject($fresh->user_creation, 'info() is expected to store a \User object');
+
+        $mapper = new dmIntervention();
+        $payload = $mapper->exportMappedData($fresh);
+
+        $this->assertIsInt($payload->created_by);
+        $this->assertSame((int) $this->testUser->id, $payload->created_by);
+    }
+
+    /**
+     * Write side: 'duration' is the property update() reads, so the sanitized
+     * payload must carry it under that name (the old 'duree' entry produced a
+     * dynamic property nobody read).
+     */
+    public function testDmInterventionImportMapsDurationOntoTheReadProperty(): void
+    {
+        $mapper = new dmIntervention();
+
+        $sanitized = $mapper->importMappedData(['duration' => 7200]);
+
+        $this->assertObjectHasProperty('duration', $sanitized);
+        $this->assertSame(7200.0, (float) $sanitized->duration);
+        $this->assertObjectNotHasProperty('duree', $sanitized);
+    }
+
+    /**
+     * End-to-end proof of the same fix: the facade write path
+     * (importMappedData -> applyImportedFields -> update) must move the SQL
+     * column duree. Before the fix this scenario answered 200 and changed
+     * nothing.
+     */
+    public function testDmInterventionUpdatePersistsDurationThroughTheMapper(): void
+    {
+        $societe = $this->createTestSociete(['name' => 'Intervention duration write']);
+
+        $fichinter = new \Fichinter($this->db);
+        $fichinter->socid = (int) $societe->id;
+        $fichinter->description = 'Duration write intervention';
+        $id = $fichinter->create($this->testUser);
+        $this->assertGreaterThan(0, $id, 'failed to create fichinter: ' . $fichinter->error);
+
+        $mapper = new dmIntervention();
+
+        $target = new \Fichinter($this->db);
+        $target->fetch($id);
+        $mapper->applyImportedFields($target, $mapper->importMappedData(['duration' => 3600]));
+        $this->assertGreaterThan(0, $target->update($this->testUser), 'failed to update fichinter: ' . $target->error);
+
+        $this->assertDatabaseHas('fichinter', ['rowid' => $id, 'duree' => 3600]);
+
+        $fresh = new \Fichinter($this->db);
+        $fresh->fetch($id);
+        $this->assertApiKeyEquals($mapper->exportMappedData($fresh), 'duration', 3600);
+    }
+
+    /**
+     * The three columns no create()/update() ever writes must be refused
+     * loudly instead of answering 200 without touching the row. datei is not
+     * written by either (only set_date_delivery(), l.1127, which nothing in
+     * the module calls); dateo/datee are recomputed from the lines by
+     * FichinterLigne::update_total() (l.1811-1827).
+     */
+    public function testDmInterventionImportRejectsNonPersistedDateFields(): void
+    {
+        $mapper = new dmIntervention();
+
+        foreach (['date_intervention', 'date_start', 'date_end'] as $apiKey) {
+            try {
+                $mapper->importMappedData([$apiKey => dol_now()]);
+                $this->fail("Expected MapperValidationException for '$apiKey'");
+            } catch (MapperValidationException $e) {
+                $this->assertArrayHasKey($apiKey, $e->getErrors());
+            }
+        }
+    }
+
+    /**
+     * Every column named by the explicit filter/sort maps must really exist in
+     * llx_fichinter, otherwise a filtered or sorted list degenerates into an
+     * "Unknown column" SQL error. Probing with WHERE 1=0 keeps it free.
+     */
+    public function testDmInterventionFilterAndSortColumnsExistInTheTable(): void
+    {
+        $mapper = new dmIntervention();
+
+        $columns = [];
+        foreach ($mapper->getFilterableColumns() as $def) {
+            $columns[$def['column']] = true;
+        }
+        foreach ($mapper->getSortableColumns() as $column) {
+            $columns[$column] = true;
+        }
+        $this->assertNotEmpty($columns);
+
+        foreach (array_keys($columns) as $column) {
+            $resql = $this->db->query(
+                "SELECT " . $column . " FROM " . MAIN_DB_PREFIX . "fichinter WHERE 1=0"
+            );
+            // A failed SELECT gives back null on the sqlite3 driver (it swallows
+            // the exception and returns its uninitialised $ret) and false on
+            // mysqli -- only a real resultset is an object.
+            $this->assertIsObject($resql, "Column '$column' does not exist in llx_fichinter: " . $this->db->lasterror());
+        }
+
+        // The keys renamed by fetch() are exactly the ones the generic catalog
+        // cannot derive; they must be covered by both maps.
+        foreach (['status', 'thirdparty', 'project', 'duration', 'createdBy'] as $apiKey) {
+            $this->assertArrayHasKey($apiKey, $mapper->getFilterableColumns());
+            $this->assertArrayHasKey($apiKey, $mapper->getSortableColumns());
+        }
+
+        // Both maps are keyed on catalog keys: an entry naming a key the
+        // catalog does not publish would be dead weight the frontend can never
+        // send. Guards against the maps drifting away from
+        // $listOfPublishedFields.
+        $catalogKeys = [];
+        foreach ($mapper->getColumnCatalog() as $entry) {
+            $catalogKeys[$entry['key']] = true;
+        }
+        foreach (array_keys($mapper->getSortableColumns()) as $apiKey) {
+            $this->assertArrayHasKey($apiKey, $catalogKeys, "Sortable key '$apiKey' is not published in the column catalog");
+        }
+        foreach (array_keys($mapper->getFilterableColumns()) as $apiKey) {
+            $this->assertArrayHasKey($apiKey, $catalogKeys, "Filterable key '$apiKey' is not published in the column catalog");
+        }
+    }
+
+    /**
+     * The descriptor of the three repaired keys must carry a usable type and a
+     * translated label. Addressing a PHP property costs the Fichinter::$fields
+     * entry, so without $parentFieldsOverride the fallback types a duration as
+     * varchar(255) and labels it from the property name -- a text input in
+     * every AutoForm built on describe().
+     */
+    public function testDmInterventionDescribesRepairedFieldsWithUsableMetadata(): void
+    {
+        $mapper = new dmIntervention();
+        $desc = $mapper->objectDesc();
+
+        $this->assertSame('float', $desc->duration['type']);
+        $this->assertSame('datetime', $desc->updated_at['type']);
+        $this->assertSame('datetime', $desc->validated_at['type']);
+        $this->assertSame('int', $desc->created_by['type']);
+
+        // Audit fields are not writable: they must not be offered on a
+        // create/update form (visible=5 -> read only).
+        $this->assertSame(['read'], $desc->updated_at['visible']);
+        $this->assertSame(['read'], $desc->validated_at['visible']);
+        $this->assertSame(['read'], $desc->created_by['visible']);
+
+        // Labels go through $langs->transnoentities(): the raw key must not
+        // leak to the frontend.
+        foreach (['duration', 'updated_at', 'validated_at', 'created_by'] as $apiKey) {
+            $this->assertNotEmpty($desc->{$apiKey}['label']);
+        }
+    }
+
+    /**
+     * The global ?search= scan must stay on the two real varchar columns. No
+     * override is declared on the mapper: this locks the generic derivation of
+     * dmBase::getSearchFields() against a future published field that would
+     * silently drag a text column (or a non-column property) into the LIKE.
+     */
+    public function testDmInterventionSearchFieldsAreTheTwoReferenceColumns(): void
+    {
+        $mapper = new dmIntervention();
+
+        $this->assertSame(['ref', 'ref_client'], $mapper->getSearchFields());
+    }
+
     /* -----------------------------------------------------------------
      * dmExpenseReport
      * --------------------------------------------------------------- */

@@ -173,14 +173,18 @@ class ValidationSchemasIntegrationTest extends DolibarrRealTestCase
         $this->assertArrayHasKey('push_subscribe', $schemas);
         $this->assertArrayHasKey('push_unsubscribe', $schemas);
         $this->assertArrayHasKey('push_subscriptions', $schemas);
+        // Generic objects/{objtype} facade (raw-typed: the mapper allowlist is
+        // the real gatekeeper, the sanitizer must not truncate long notes).
+        $this->assertArrayHasKey('objects_facade', $schemas);
     }
 
     public function testGetAllSchemasWithoutExternalModules(): void
     {
         $schemas = ValidationSchemas::getAllSchemas(false);
 
-        // Should only contain built-in schemas (7 core + 4 Web Push).
-        $this->assertCount(11, $schemas);
+        // Should only contain built-in schemas (7 core + 4 Web Push + the
+        // objects/{objtype} facade schema).
+        $this->assertCount(12, $schemas);
     }
 
     // =========================================================================

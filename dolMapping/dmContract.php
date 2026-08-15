@@ -65,6 +65,17 @@ class dmContract extends dmBase
 
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// Tenant guard on the VALUES written into these foreign keys
+	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
+	// The two commercial_* ids are llx_user references; getEntity('user') covers
+	// the shared entity-0 accounts, so only another TENANT's user is refused.
+	protected $foreignKeyGuards = [
+		'socid'                    => 'thirdparty',
+		'fk_project'               => 'project',
+		'commercial_signature_id'  => 'user',
+		'commercial_suivi_id'      => 'user',
+	];
+
 	protected $writableFields = [
 		'ref_customer',
 		'ref_supplier',

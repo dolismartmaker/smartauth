@@ -115,6 +115,11 @@ abstract class DolibarrRealTestCase extends TestCase
             'societe', 'product', 'categorie', 'commande', 'facture', 'propal', 'projet', 'agenda',
             'stock', 'adherent', 'expensereport', 'contrat', 'ticket', 'ficheinter',
             'fournisseur', 'supplier_proposal', 'expedition', 'reception',
+            // Enabled on purpose: every real tenant runs with the bank module
+            // on, and ObjectPaymentController only writes the llx_bank ledger
+            // line when isModEnabled('banque') is true. Leaving it off here
+            // made the payment tests green against a configuration nobody runs.
+            'banque',
         ] as $mod) {
             $conf->modules[$mod] = 1;
         }
@@ -133,6 +138,7 @@ abstract class DolibarrRealTestCase extends TestCase
             'commande', 'facture', 'propal', 'projet', 'project', 'agenda', 'actioncomm', 'user',
             'stock', 'adherent', 'expensereport', 'contrat', 'ticket', 'ficheinter', 'fichinter',
             'fournisseur', 'supplier_proposal', 'commande_fournisseur', 'facturefourn',
+            'banque',
         ] as $mod) {
             if (!isset($conf->$mod) || !is_object($conf->$mod)) {
                 $conf->$mod = new \stdClass();
@@ -190,6 +196,9 @@ abstract class DolibarrRealTestCase extends TestCase
             'supplier_proposal' => ['lire', 'creer', 'supprimer'],
             'expedition' => ['lire', 'creer', 'supprimer'],
             'reception' => ['lire', 'creer', 'supprimer'],
+            // modBanque declares no 'supprimer': deleting a transaction is
+            // gated on 'modifier' (compta/bank/bankentries_list.php l.239).
+            'banque'    => ['lire', 'modifier', 'configurer', 'consolidate', 'transfer'],
         ];
         foreach ($grants as $path => $perms) {
             if (!isset($user->rights->$path) || !is_object($user->rights->$path)) {
@@ -350,6 +359,52 @@ abstract class DolibarrRealTestCase extends TestCase
         }
 
         return $soc;
+    }
+
+    /**
+     * Create a test bank account in the database.
+     *
+     * Account::create() has three mandatory inputs that are NOT plain columns
+     * of llx_bank_account: country_id, ref, and date_solde -- the last one
+     * dates the opening llx_bank line the constructor writes for the initial
+     * balance. Omitting any of them returns -1.
+     *
+     * @param  array<string,mixed> $data
+     * @return \Account
+     */
+    protected function createTestBankAccount(array $data = []): \Account
+    {
+        require_once DOL_DOCUMENT_ROOT . '/compta/bank/class/account.class.php';
+
+        global $conf;
+
+        $acc = new \Account($this->db);
+        $acc->ref           = $data['ref'] ?? substr('BK' . uniqid(), 0, 12);
+        $acc->label         = $data['label'] ?? 'Test bank account';
+        $acc->bank          = $data['bank'] ?? 'Test Bank';
+        $acc->iban          = $data['iban'] ?? 'FR7630006000011234567890189';
+        $acc->bic           = $data['bic'] ?? 'AGRIFRPPXXX';
+        $acc->number        = $data['number'] ?? '00012345678';
+        $acc->code_banque   = $data['code_banque'] ?? '30006';
+        $acc->code_guichet  = $data['code_guichet'] ?? '00001';
+        $acc->cle_rib       = $data['cle_rib'] ?? '89';
+        // 1 = current account, 2 = cash, 0 = savings. Account::fetch() reads
+        // both properties back off the single `courant` column.
+        $acc->courant       = $data['courant'] ?? \Account::TYPE_CURRENT;
+        $acc->type          = $acc->courant;
+        $acc->country_id    = $data['country_id'] ?? 1;
+        $acc->currency_code = $data['currency_code'] ?? ($conf->currency ?? 'EUR');
+        $acc->date_solde    = $data['date_solde'] ?? dol_now();
+        $acc->balance       = $data['balance'] ?? 0;
+        $acc->rappro        = $data['rappro'] ?? 1;
+        $acc->entity        = $data['entity'] ?? (int) ($conf->entity ?? 1);
+
+        $result = $acc->create($this->testUser);
+        if ($result <= 0) {
+            throw new \Exception('Failed to create test bank account: ' . $acc->error);
+        }
+
+        return $acc;
     }
 
     /**

@@ -223,6 +223,19 @@ class SyncMapperInvariantTest extends DolibarrRealTestCase
             $allowed = array_merge($allowed, array_values($defaults['listOfDerivedFields']));
         }
 
+        // FK -> label companion fields: opt-in scalar labels derived from a
+        // foreign key (e.g. thirdpartyName from socid). Declared via
+        // $listOfForeignKeyLabels and emitted by exportMappedData() through
+        // _resolveForeignKeyLabels(), so they are a legitimate part of the
+        // mapper's declared API surface -- same rationale as listOfDerivedFields.
+        if (array_key_exists('listOfForeignKeyLabels', $defaults) && is_array($defaults['listOfForeignKeyLabels'])) {
+            foreach ($defaults['listOfForeignKeyLabels'] as $spec) {
+                if (is_array($spec) && isset($spec['labels']) && is_array($spec['labels'])) {
+                    $allowed = array_merge($allowed, array_keys($spec['labels']));
+                }
+            }
+        }
+
         // Sync metadata is universal for /sync/pull events.
         $allowed = array_merge($allowed, self::SYNC_METADATA_FIELDS);
 

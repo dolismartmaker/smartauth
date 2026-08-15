@@ -52,6 +52,15 @@ class dmCategory extends dmBase
 
 	// Allowlist for importMappedData() (Dolibarr field names).
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
+	// Tenant guard on the VALUES written into these foreign keys
+	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
+	// fk_parent points back at llx_categorie: without the guard a local category
+	// could be grafted under another tenant's tree.
+	protected $foreignKeyGuards = [
+		'fk_parent' => 'category',
+		'socid'     => 'thirdparty',
+	];
+
 	protected $writableFields = [
 		'fk_parent',
 		'label',
