@@ -33,7 +33,7 @@ if (!function_exists('smartauth_test_reset_conf')) {
         $fresh->file->dol_document_root = ['main' => defined('DOL_DOCUMENT_ROOT') ? DOL_DOCUMENT_ROOT : ''];
         $fresh->file->mailing_limit_sendbyweb = 0;
         $fresh->file->mailing_limit_sendbycli = 0;
-        $fresh->modules_parts = ['hooks' => [], 'tabs' => []];
+        $fresh->modules_parts = ['hooks' => [], 'tabs' => [], 'triggers' => []];
         $GLOBALS['conf'] = $fresh;
         return $fresh;
     }

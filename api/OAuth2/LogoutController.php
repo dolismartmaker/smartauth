@@ -37,6 +37,9 @@ dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
 dol_include_once('/smartauth/class/smartauthoauthtoken.class.php');
 dol_include_once('/smartauth/api/JwtKeyHelper.php');
 dol_include_once('/smartauth/api/OAuth2/TokenSubject.php');
+// LoginController owns the one-shot CSRF session key shared by every
+// interactive form of the portal (login, confirmed logout).
+dol_include_once('/smartauth/api/OAuth2/LoginController.php');
 
 use SmartAuth\Api\JwtKeyHelper;
 
@@ -68,40 +71,101 @@ class LogoutController
     /**
      * Handle logout request
      *
+     * Two very different callers meet here, and each gets the revocation
+     * scope it can prove:
+     *
+     *  - RP-initiated logout (valid id_token_hint): the hint is a signed
+     *    statement from ONE client the subject once logged into. An id_token
+     *    is not a secret (every RP holds valid ones, expired included), so it
+     *    must never authorise revoking the subject's tokens at OTHER
+     *    clients. Revocation is bounded to the hinting client (its aud),
+     *    and nothing happens at all when the hint contradicts the caller's
+     *    own session subject.
+     *
+     *  - Subject-initiated logout (session only, no hint): revoking every
+     *    token of the session subject is destructive, so it requires an
+     *    explicit POST confirmed by the one-shot session CSRF token. A bare
+     *    GET only drops the session cookie.
+     *
      * @return void
      */
     public function handleLogout(): void
     {
-        // Get parameters
-        $idTokenHint = $_GET['id_token_hint'] ?? null;
-        $postLogoutRedirectUri = $_GET['post_logout_redirect_uri'] ?? null;
-        $state = $_GET['state'] ?? null;
+        // GET stays the OIDC RP-Initiated Logout transport (the RP navigates
+        // the browser here); POST is accepted for both shapes.
+        $idTokenHint = $_GET['id_token_hint'] ?? $_POST['id_token_hint'] ?? null;
+        $postLogoutRedirectUri = $_GET['post_logout_redirect_uri'] ?? $_POST['post_logout_redirect_uri'] ?? null;
+        $state = $_GET['state'] ?? $_POST['state'] ?? null;
 
-        // Get current subject from session (before clearing it). Token bulk
-        // revocation is keyed on fk_user, so it applies to user subjects only;
-        // an account subject still gets its session cookie cleared below.
+        // Current subject from session (before any clearing).
         $sessionSubject = $this->sessionManager->validateSession();
-        $sessionUserId = ($sessionSubject !== null && $sessionSubject->isUser()) ? $sessionSubject->getId() : null;
 
-        // Extract user and client info from id_token_hint if provided
-        $tokenUserId = null;
+        $hintSubject = null;
         $tokenClientId = null;
         if ($idTokenHint !== null) {
             $tokenInfo = $this->decodeIdTokenHint($idTokenHint);
-            $tokenUserId = $tokenInfo['userId'];
+            $hintSubject = $tokenInfo['subject'];
             $tokenClientId = $tokenInfo['clientId'];
         }
 
-        // Determine which user to log out
-        $logoutUserId = $tokenUserId ?? $sessionUserId;
+        $tokensRevoked = false;
 
-        // Clear the session
-        $this->sessionManager->clearSession();
-        dol_syslog('[SmartAuth] LogoutController: Session cleared', LOG_INFO);
+        if ($hintSubject !== null) {
+            // The hint contradicts the browser's own session: act on nothing.
+            // A legitimate RP logout arrives either session-less or with the
+            // subject's own session; anything else is a replay attempt.
+            if ($sessionSubject !== null && $sessionSubject->toSub() !== $hintSubject->toSub()) {
+                dol_syslog(
+                    '[SmartAuth] LogoutController: id_token_hint subject ' . $hintSubject->toSub()
+                    . ' does not match session subject ' . $sessionSubject->toSub() . ' - no action taken',
+                    LOG_WARNING
+                );
+                $this->showLogoutPage($tokensRevoked);
+                return;
+            }
 
-        // Revoke user tokens if we know who to log out
-        if ($logoutUserId !== null) {
-            $this->revokeUserTokens($logoutUserId);
+            $this->sessionManager->clearSession();
+            dol_syslog('[SmartAuth] LogoutController: Session cleared (RP-initiated, subject ' . $hintSubject->toSub() . ')', LOG_INFO);
+
+            // Bounded revocation: only what the hinting client obtained.
+            if ($tokenClientId !== null) {
+                // The aud claim carries the client_id string; the revocation
+                // helper wants the rowid.
+                $client = new \SmartAuthOAuthClient($this->db);
+                if ($client->fetch(0, null, $tokenClientId) > 0) {
+                    $count = \SmartAuthOAuthToken::revokeAllForSubjectAndClient(
+                        $this->db,
+                        $hintSubject->getType(),
+                        $hintSubject->getId(),
+                        (int) $client->id
+                    );
+                    if ($count > 0) {
+                        $tokensRevoked = true;
+                        dol_syslog('[SmartAuth] LogoutController: Revoked ' . $count . ' tokens of subject '
+                            . $hintSubject->toSub() . ' for client ' . $tokenClientId, LOG_INFO);
+                    }
+                } else {
+                    dol_syslog('[SmartAuth] LogoutController: hint client ' . $tokenClientId . ' not found - nothing revoked', LOG_NOTICE);
+                }
+            }
+        } elseif ($sessionSubject !== null && $this->isConfirmedLogoutPost()) {
+            // Subject explicitly asked to end everything: confirmed POST only.
+            $this->sessionManager->clearSession();
+            $count = \SmartAuthOAuthToken::revokeAllForSubject(
+                $this->db,
+                $sessionSubject->getType(),
+                $sessionSubject->getId()
+            );
+            dol_syslog('[SmartAuth] LogoutController: Revoked ' . (int) $count . ' tokens of subject '
+                . $sessionSubject->toSub() . ' (confirmed logout)', LOG_INFO);
+            $tokensRevoked = true;
+        } else {
+            // Plain session logout: drop the cookie, keep the tokens.
+            if ($sessionSubject !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+                dol_syslog('[SmartAuth] LogoutController: unconfirmed POST - session cleared, tokens kept', LOG_NOTICE);
+            }
+            $this->sessionManager->clearSession();
+            dol_syslog('[SmartAuth] LogoutController: Session cleared (cookie only)', LOG_INFO);
         }
 
         // Handle redirect if post_logout_redirect_uri is provided
@@ -122,7 +186,31 @@ class LogoutController
         }
 
         // No redirect or invalid redirect - show logout confirmation page
-        $this->showLogoutPage();
+        $this->showLogoutPage($tokensRevoked);
+    }
+
+    /**
+     * Whether the request is a POST confirmed by the one-shot session CSRF
+     * token (same storage and key the login form uses).
+     *
+     * @return bool
+     */
+    private function isConfirmedLogoutPost(): bool
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            return false;
+        }
+        $provided = isset($_POST['csrf_token']) ? (string) $_POST['csrf_token'] : '';
+        if ($provided === '') {
+            return false;
+        }
+        $stored = isset($_SESSION[LoginController::CSRF_SESSION_KEY]) ? (string) $_SESSION[LoginController::CSRF_SESSION_KEY] : '';
+        if ($stored === '') {
+            return false;
+        }
+        // One-shot: consume the token whatever the outcome.
+        unset($_SESSION[LoginController::CSRF_SESSION_KEY]);
+        return hash_equals($stored, $provided);
     }
 
     /**
@@ -134,11 +222,11 @@ class LogoutController
      * payload would let any caller revoke another user's tokens.
      *
      * @param string $idTokenHint ID token JWT
-     * @return array ['userId' => int|null, 'clientId' => string|null]
+     * @return array ['subject' => TokenSubject|null, 'userId' => int|null, 'clientId' => string|null]
      */
     private function decodeIdTokenHint(string $idTokenHint): array
     {
-        $result = ['userId' => null, 'clientId' => null];
+        $result = ['subject' => null, 'userId' => null, 'clientId' => null];
 
         // Split JWT
         $parts = explode('.', $idTokenHint);
@@ -189,6 +277,10 @@ class LogoutController
         if (!empty($payload['sub'])) {
             try {
                 $hintSubject = TokenSubject::fromSub((string) $payload['sub']);
+                // External subjects (acc:/mbr:) are returned too: revocation
+                // is subject-aware downstream. userId stays user-only for
+                // backward compatibility with older callers.
+                $result['subject'] = $hintSubject;
                 if ($hintSubject->isUser()) {
                     $result['userId'] = $hintSubject->getId();
                 }
@@ -337,25 +429,12 @@ class LogoutController
     }
 
     /**
-     * Revoke all tokens for a user
-     *
-     * @param int $userId User ID
-     * @return void
-     */
-    private function revokeUserTokens(int $userId): void
-    {
-        $count = \SmartAuthOAuthToken::revokeAllForUser($this->db, $userId);
-        if ($count > 0) {
-            dol_syslog('[SmartAuth] LogoutController: Revoked ' . $count . ' tokens for user ' . $userId, LOG_INFO);
-        }
-    }
-
-    /**
      * Show logout confirmation page
      *
+     * @param bool $tokensRevoked Whether any OAuth token was actually revoked
      * @return void
      */
-    private function showLogoutPage(): void
+    private function showLogoutPage(bool $tokensRevoked = false): void
     {
         $issuer = OAuthConfig::getIssuer();
 

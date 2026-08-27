@@ -32,7 +32,11 @@ include __DIR__ . '/layout.tpl.php';
         </p>
 
         <p class="logout-info">
+            <?php if (!empty($tokensRevoked)) : ?>
             Votre session a été fermée et vos tokens d'accès ont été révoqués.
+            <?php else : ?>
+            Votre session a été fermée.
+            <?php endif; ?>
         </p>
 
         <div class="logout-actions">
