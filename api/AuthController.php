@@ -245,6 +245,33 @@ class AuthController
 		global $db, $smartAuthAppID;
 		SmartAuthLogger::debug("smartauth::AuthController : refresh");
 
+		// IP rate limit: every refresh runs a SELECT on llx_smartauth_auth, a
+		// key read, an HMAC verify and possibly a jti INSERT. /login and
+		// qr-pair are bucketed; without this one, an anonymous caller could
+		// hammer the endpoint and burn CPU/DB for free (the signature stops
+		// any leak - this is purely an exhaustion guard). Generous by design:
+		// legitimate fleets of devices behind one NAT refresh a few times a
+		// day each. Overridable via SMARTAUTH_RATELIMIT_REFRESH_IP_MAX /
+		// _WINDOW (0 disables).
+		$refreshMax = max(0, getDolGlobalInt('SMARTAUTH_RATELIMIT_REFRESH_IP_MAX', 60));
+		$refreshWindow = max(1, getDolGlobalInt('SMARTAUTH_RATELIMIT_REFRESH_IP_WINDOW', 300));
+		if ($refreshMax > 0) {
+			$rateLimiter = new RateLimiter($db);
+			$clientIp = RouteController::get_client_ip();
+			$rateCheck = $rateLimiter->checkLimit($clientIp, 'refresh_ip', $refreshMax, $refreshWindow);
+			if (empty($rateCheck['allowed'])) {
+				dol_syslog("[SmartAuth] refresh rate limit exceeded for ip=" . $clientIp, LOG_WARNING);
+				return [
+					[
+						'error' => 'Too many refresh requests',
+						'retry_after' => (int) ($rateCheck['retry_after'] ?? $refreshWindow),
+					],
+					429
+				];
+			}
+			$rateLimiter->recordAttempt($clientIp, 'refresh_ip');
+		}
+
 		// Get refresh token from Authorization header
 		$refresh_token = self::_getBearerToken();
 		if (empty($refresh_token)) {

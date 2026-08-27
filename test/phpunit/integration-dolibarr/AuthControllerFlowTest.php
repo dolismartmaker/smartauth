@@ -25,10 +25,14 @@ class AuthControllerFlowTest extends DolibarrRealTestCase
 {
     private AuthController $authController;
     private string $testDeviceUUID;
+    private int $initialObLevel;
 
     protected function setUp(): void
     {
         parent::setUp();
+        // json_reply() opens an output buffer before throwing under
+        // PHPUNIT_RUNNING; track the level so tearDown can drop orphans.
+        $this->initialObLevel = ob_get_level();
         $this->authController = new AuthController();
         $this->testDeviceUUID = $this->generateUUID();
         $_SERVER['HTTP_X_DEVICEID'] = $this->testDeviceUUID;
@@ -57,6 +61,9 @@ class AuthControllerFlowTest extends DolibarrRealTestCase
 
     protected function tearDown(): void
     {
+        while (ob_get_level() > $this->initialObLevel) {
+            ob_end_clean();
+        }
         parent::tearDown();
         unset($_SERVER['HTTP_X_DEVICEID']);
         unset($_SERVER['HTTP_AUTHORIZATION']);
@@ -114,6 +121,39 @@ class AuthControllerFlowTest extends DolibarrRealTestCase
         $this->assertEquals(200, $result[1]);
         $this->assertArrayHasKey('entities', $result[0]);
         $this->assertIsArray($result[0]['entities']);
+    }
+
+    /**
+     * /refresh is bucketed per IP: an anonymous caller must not be able to
+     * hammer the endpoint at zero cost (exhaustion guard). The limiter runs
+     * BEFORE any token work, so even garbage bearers burn the bucket.
+     */
+    public function testRefreshIsRateLimitedPerIp(): void
+    {
+        global $conf;
+        $conf->global->SMARTAUTH_RATELIMIT_REFRESH_IP_MAX = 2;
+        $conf->global->SMARTAUTH_RATELIMIT_REFRESH_IP_WINDOW = 300;
+
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer 1|not.a.jwt';
+
+        // Two attempts consume the bucket. The garbage token is refused
+        // through json_reply (JsonReplyEmittedError under PHPUnit) AFTER the
+        // limiter recorded the attempt - that ordering is the point.
+        $emitted = 0;
+        for ($i = 0; $i < 2; $i++) {
+            try {
+                $this->authController->refresh();
+                $this->fail('a garbage bearer must be refused');
+            } catch (\JsonReplyEmittedError $e) {
+                $emitted++;
+            }
+        }
+        $this->assertSame(2, $emitted, 'precondition: the first two attempts pass the limiter');
+
+        // Third: the IP bucket refuses before any token work.
+        $third = $this->authController->refresh();
+        $this->assertSame(429, $third[1], 'the IP bucket must refuse the third refresh');
+        $this->assertArrayHasKey('retry_after', $third[0]);
     }
 
     /**
