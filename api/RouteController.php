@@ -912,9 +912,13 @@ class RouteController
 		// to call these 'oauth2'-protected routes. When a single audience is
 		// configured we hand it to the validator (RFC 8725 aud check); a
 		// multi-client allow-list is enforced by membership just below.
-		$apiAudienceRaw = getDolGlobalString('SMARTAUTH_API_AUDIENCE', '');
-		$allowedAudiences = array_filter(array_map('trim', explode(',', $apiAudienceRaw)));
-		$expectedAudience = (count($allowedAudiences) === 1) ? $allowedAudiences[0] : null;
+		//
+		// The constant is read through ApiAudience and nowhere else: the client
+		// card writes it through the same class, and a second parsing here
+		// would end up disagreeing with the screen that shows the state.
+		dol_include_once('/smartauth/api/OAuth2/ApiAudience.php');
+		$allowedAudiences = \SmartAuth\Api\OAuth2\ApiAudience::listed();
+		$expectedAudience = \SmartAuth\Api\OAuth2\ApiAudience::expected();
 
 		$payload = $tokenService->validateAccessToken($jwt, $expectedAudience);
 

@@ -54,6 +54,29 @@ Lorsque le serveur OAuth est activé, les endpoints suivants sont disponibles :
 
 Ces URLs sont affichées directement dans l'onglet de configuration du serveur OAuth après activation.
 
+## API interne : autoriser un client
+
+Les routes que les modules de l'instance exposent en `oauth2` (l'API interne,
+dite first-party) sont **fermées par défaut**. Sans cela, n'importe quel client
+OAuth de l'instance pourrait appeler n'importe quelle route de n'importe quel
+module avec les droits de son utilisateur de service.
+
+La fiche d'un client OAuth affiche donc son état et porte les deux boutons
+correspondants :
+
+| État | Ce qu'il signifie |
+|------|-------------------|
+| Autorisé | Le client peut appeler les routes `oauth2` des modules de l'instance |
+| Non autorisé | Le client obtient bien un jeton, mais chaque appel répond 401 |
+
+C'est le symptôme à connaître : les identifiants sont bons, le jeton est délivré,
+la route est trouvée, et l'appel est refusé quand même. Le journal Dolibarr le
+nomme : `SMARTAUTH_API_AUDIENCE not set - refusing <client_id>`.
+
+Les boutons écrivent la constante `SMARTAUTH_API_AUDIENCE`, qui est une liste :
+autoriser un client ne touche pas les autres, et le retirer non plus. Le retrait
+demande une confirmation, les appels du produit concerné s'arrêtant aussitôt.
+
 ## Portail SSO public
 
 SmartAuth fournit un portail web public (`htdocs/custom/smartauth/public/`) destiné à être exposé sur un sous-domaine dédié (par exemple `https://auth.exemple.fr`). Ce portail sert :

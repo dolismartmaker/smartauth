@@ -55,6 +55,7 @@ require_once DOL_DOCUMENT_ROOT . '/core/class/html.formcompany.class.php';
 dol_include_once('/smartauth/lib/smartauth.lib.php');
 dol_include_once('/smartauth/core/lib/smartauth_oauth.lib.php');
 dol_include_once('/smartauth/class/smartauthoauthclient.class.php');
+dol_include_once('/smartauth/api/OAuth2/ApiAudience.php');
 
 // Load translation files
 $langs->loadLangs(array("admin", "smartauth@smartauth"));
@@ -299,6 +300,33 @@ if ($action == 'disable' && $id > 0) {
 	$object->fetch($id);
 	$object->status = SmartAuthOAuthClient::STATUS_DISABLED;
 	$object->update($user);
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $id);
+	exit;
+}
+
+// Allow the client on the first-party API (SMARTAUTH_API_AUDIENCE). Granting
+// takes no confirmation, revoking does: the API calls of the product behind
+// this client stop the moment it leaves the list.
+if ($action == 'grant_api_audience' && $id > 0) {
+	$object->fetch($id);
+
+	if (\SmartAuth\Api\OAuth2\ApiAudience::grant($db, $object->client_id, (int) $conf->entity)) {
+		setEventMessages($langs->trans('ApiAudienceGranted'), null, 'mesgs');
+	} else {
+		setEventMessages($langs->trans('ApiAudienceWriteFailed'), null, 'errors');
+	}
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $id);
+	exit;
+}
+
+if ($action == 'confirm_revoke_api_audience' && $confirm == 'yes' && $id > 0) {
+	$object->fetch($id);
+
+	if (\SmartAuth\Api\OAuth2\ApiAudience::revoke($db, $object->client_id, (int) $conf->entity)) {
+		setEventMessages($langs->trans('ApiAudienceRevoked'), null, 'mesgs');
+	} else {
+		setEventMessages($langs->trans('ApiAudienceWriteFailed'), null, 'errors');
+	}
 	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $id);
 	exit;
 }
@@ -565,6 +593,18 @@ if ($object->id > 0 && empty($action) || ($action != 'edit' && $action != 'creat
 		);
 	}
 
+	if ($action == 'revoke_api_audience') {
+		print $form->formconfirm(
+			$_SERVER["PHP_SELF"] . '?id=' . $object->id,
+			$langs->trans('RevokeApiAudience'),
+			$langs->trans('ConfirmRevokeApiAudience', $object->name),
+			'confirm_revoke_api_audience',
+			'',
+			0,
+			1
+		);
+	}
+
 	$head = smartauth_oauth_client_prepare_head($object);
 
 	print dol_get_fiche_head($head, 'card', $langs->trans("OAuthClientCard"), -1, 'fa-key');
@@ -634,6 +674,20 @@ if ($object->id > 0 && empty($action) || ($action != 'edit' && $action != 'creat
 	// Status
 	print '<tr><td>' . $langs->trans("Status") . '</td>';
 	print '<td>' . $object->getLibStatut(5) . '</td></tr>';
+
+	// First-party API allow-list. Shown here rather than left to a constant an
+	// operator has to find on his own: with the gate closed the only symptom is
+	// a 401 on a token that was issued without a hitch.
+	$apiAudienceAllowed = \SmartAuth\Api\OAuth2\ApiAudience::allows($object->client_id);
+	print '<tr><td>' . $form->textwithpicto($langs->trans("ApiAudience"), $langs->transnoentities("ApiAudienceHelp")) . '</td>';
+	print '<td>';
+	if ($apiAudienceAllowed) {
+		print dolGetStatus($langs->trans("ApiAudienceAllowed"), '', '', 'status4', 5);
+	} else {
+		print dolGetStatus($langs->trans("ApiAudienceNotAllowed"), '', '', 'status5', 5);
+		print ' <span class="opacitymedium">' . $langs->trans("ApiAudienceNotAllowedHint") . '</span>';
+	}
+	print '</td></tr>';
 
 	// Redirect URIs
 	print '<tr><td class="tdtop">' . $langs->trans("RedirectURIs") . '</td>';
@@ -776,6 +830,27 @@ if ($object->id > 0 && empty($action) || ($action != 'edit' && $action != 'creat
 			$langs->trans('Enable'),
 			'default',
 			$_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=enable&token=' . newToken(),
+			'',
+			true
+		);
+	}
+
+	// Allow or remove on the first-party API
+	if ($apiAudienceAllowed) {
+		print dolGetButtonAction(
+			'',
+			$langs->trans('RevokeApiAudience'),
+			'default',
+			$_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=revoke_api_audience&token=' . newToken(),
+			'',
+			true
+		);
+	} else {
+		print dolGetButtonAction(
+			'',
+			$langs->trans('GrantApiAudience'),
+			'default',
+			$_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=grant_api_audience&token=' . newToken(),
 			'',
 			true
 		);

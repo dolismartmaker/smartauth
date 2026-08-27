@@ -106,6 +106,24 @@ if (!function_exists('isModEnabled')) {
     }
 }
 
+// Mock dolibarr_set_const function if not defined. It writes into $conf->global
+// like the real one does, so a constant written by the code under test is read
+// back by getDolGlobalString in the same run.
+if (!function_exists('dolibarr_set_const')) {
+    function dolibarr_set_const($db, $name, $value, $type = 'chaine', $visible = 0, $note = '', $entity = 1)
+    {
+        global $conf;
+        if (!is_object($conf)) {
+            $conf = new stdClass();
+        }
+        if (!isset($conf->global) || !is_object($conf->global)) {
+            $conf->global = new stdClass();
+        }
+        $conf->global->$name = $value;
+        return 1;
+    }
+}
+
 // Mock getEntity function if not defined
 if (!function_exists('getEntity')) {
     function getEntity($element, $shared = 1)
