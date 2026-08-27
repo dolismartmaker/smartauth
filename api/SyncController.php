@@ -2515,12 +2515,20 @@ class SyncController
             return ['success' => false, 'error' => 'Object not found'];
         }
 
-        // Create tombstone before delete. The row's own entity is recorded so a
-        // client of another tenant is not told about this deletion.
-        $this->createTombstone($config['table'], $id, $user->id, $object->entity ?? null);
-
-        $result = $object->delete($user);
+        // Delete first, tombstone after success only. A tombstone created
+        // before the delete and left behind by a failed delete would tell
+        // every client of the tenant to drop a row that still exists
+        // server-side (audit S-7).
+        //
+        // delete() signatures differ across Dolibarr classes (Societe takes
+        // $id first, Product/Contact/User take $user first): the direct
+        // $object->delete($user) call made every id-first class fail with
+        // "Object of class User could not be converted to int".
+        $result = $this->callDeleteMethod($object, $user);
         if ($result > 0) {
+            // The row's own entity is recorded so a client of another tenant
+            // is not told about this deletion.
+            $this->createTombstone($config['table'], $id, $user->id, $object->entity ?? null);
             return ['success' => true];
         }
 
@@ -2673,6 +2681,46 @@ class SyncController
             }
             return $object->update($user);
         }
+    }
+
+    /**
+     * Call $object->delete() with the signature the class expects.
+     *
+     * Dolibarr core is not consistent: Societe::delete($id, User $fuser,
+     * $call_trigger) takes the row id first, while Product/Contact/User take
+     * the User first. Same reflection trick as callUpdateMethod().
+     *
+     * @param object $object Loaded Dolibarr business object
+     * @param User   $user   Acting Dolibarr user
+     * @return int|int<0,negative> delete() return value
+     */
+    private function callDeleteMethod($object, $user)
+    {
+        $reflection = new \ReflectionMethod($object, 'delete');
+        $params = $reflection->getParameters();
+
+        if (empty($params)) {
+            return $object->delete();
+        }
+
+        $firstParam = $params[0];
+        $firstParamName = $firstParam->getName();
+        $firstParamType = $firstParam->getType();
+
+        $isIdFirst = ($firstParamName === 'id')
+            || ($firstParamType && in_array($firstParamType->getName(), ['int', 'integer']));
+
+        if ($isIdFirst) {
+            // Signature: delete($id, User $fuser?, $call_trigger?)
+            $args = [$object->id];
+            if (count($params) >= 2) {
+                $args[] = $user;
+            }
+            return call_user_func_array([$object, 'delete'], $args);
+        }
+
+        // Signature: delete(User $user, $notrigger?)
+        return $object->delete($user);
     }
 
     /**

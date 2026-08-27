@@ -1746,6 +1746,63 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
     }
 
     /**
+     * A successful sync delete creates the tombstone (existing contract),
+     * and the tombstone is only written AFTER the delete succeeded: a
+     * tombstone left behind by a failed delete would make every client of
+     * the tenant drop a row that still exists server-side (audit S-7).
+     */
+    public function testPushDeleteCreatesTombstoneOnlyOnSuccess(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $societe = $this->createTestSociete(['name' => 'Doomed Co ' . uniqid()]);
+
+        $push = $this->controller->push([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [[
+                'action' => 'delete',
+                'id'     => $societe->id,
+            ]],
+        ]);
+
+        $this->assertEquals(200, $push[1]);
+        $this->assertEquals(
+            [$societe->id],
+            $push[0]['success'],
+            'the delete itself must succeed - errors: ' . json_encode($push[0]['errors'] ?? [])
+        );
+
+        // Success path: the tombstone exists.
+        $count = $this->getTableCount('smartauth_sync_tombstones', [
+            'table_name' => 'societe',
+            'object_id'  => $societe->id,
+        ]);
+        $this->assertEquals(1, $count, 'a successful delete must leave exactly one tombstone');
+
+        // Ordering contract: createTombstone is called inside the
+        // delete-success branch, never before the delete.
+        $src = (string) file_get_contents(dirname(__DIR__, 3) . '/api/SyncController.php');
+        $bodyStart = strpos($src, 'private function processDelete');
+        $bodyEnd = strpos($src, 'private function createTombstone');
+        $body = substr($src, $bodyStart, $bodyEnd - $bodyStart);
+        $deletePos = strpos($body, '$object->delete(');
+        $tombstonePos = strpos($body, 'createTombstone(');
+        $this->assertNotFalse($deletePos);
+        $this->assertNotFalse($tombstonePos);
+        $this->assertLessThan(
+            $tombstonePos,
+            $deletePos,
+            'S-7 fix: the tombstone must be created after the delete, inside the success branch'
+        );
+    }
+
+    /**
      * Offline-first clients retry the same push after a lost 2xx. A replayed
      * conflicting update must refresh the SAME pending conflict row, never pile
      * up duplicates in sync/conflicts / sync/status.
