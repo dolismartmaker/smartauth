@@ -2225,10 +2225,24 @@ class SyncController
             return ['success' => false, 'error' => 'Object not found'];
         }
 
+        // Load the business object BEFORE conflict detection: the mapper
+        // contract lives in Dolibarr property space (listOfPublishedFields
+        // maps PHP properties to API keys), and the locked SQL row above is
+        // NOT that space (Societe: property 'name' vs column 'nom').
+        // Comparing API keys against raw columns made detectRealConflict()
+        // miss nearly every mapped field, so real conflicts were written
+        // silently (audit S-6).
+        $fetchOk = $object->fetch($id);
+        if ($fetchOk <= 0) {
+            $this->db->rollback();
+            dol_syslog('[SmartAuth] SyncController::processUpdate: fetch failed for ' . $objectTypeForLog . ' id=' . (int) $id, LOG_WARNING);
+            return ['success' => false, 'error' => 'Object not found'];
+        }
+
         // Conflict detection: compare tms
         if ($base_tms && $server_tms != $base_tms) {
             // Potential conflict - compare data field by field
-            $conflict = $this->detectRealConflict($data, $server_obj, $config);
+            $conflict = $this->detectRealConflict($data, $server_obj, $config, $object);
 
             if ($conflict) {
                 // Real conflict. Roll back the unwanted business-data write
@@ -2254,8 +2268,9 @@ class SyncController
             // False conflict - tms differs but data is same, proceed
         }
 
-        // Apply update (whitelist + denylist gated, CR-6 fix)
-        $object->fetch($id);
+        // Apply update (whitelist + denylist gated, CR-6 fix).
+        // The object was already fetched (and its liveness checked) before
+        // conflict detection above.
         // BEFORE applying the payload: insertExtraFields() rebuilds the whole
         // extrafield row from array_options, so the existing values have to be
         // in there or a partial push erases the ones it does not restate.
@@ -2287,11 +2302,26 @@ class SyncController
     /**
      * Detect if there's a real data conflict (not just tms mismatch)
      * Returns array of conflicting fields or null if no real conflict
+     *
+     * With a dm* mapper registered for the type, the comparison happens in
+     * Dolibarr property space on the loaded $object: the client payload
+     * speaks API keys, the mapper contract maps Dolibarr PHP properties to
+     * API keys, and only that intersection is comparable. Without a mapper
+     * (hook-registered types), the legacy raw comparison against the SQL
+     * row applies (their apply path, applyDataLegacy(), is Dolibarr-key
+     * based too).
+     *
+     * @param array    $client_data Payload keys (API space)
+     * @param object   $server_obj  Locked raw SQL row (legacy space)
+     * @param array    $config      Registry config of the object type
+     * @param object|null $object   Loaded Dolibarr business object (mapper path)
+     * @return array|null
      */
-    private function detectRealConflict($client_data, $server_obj, $config)
+    private function detectRealConflict($client_data, $server_obj, $config, $object = null)
     {
         $conflicts = [];
         $server_data = (array) $server_obj;
+        $reverseMap = $this->reversePublishedFieldMap($config);
 
         foreach ($client_data as $field => $client_value) {
             // Skip metadata fields
@@ -2299,23 +2329,71 @@ class SyncController
                 continue;
             }
 
-            if (isset($server_data[$field])) {
-                $server_value = $server_data[$field];
-
-                // Normalize values for comparison
-                $client_normalized = $this->normalizeValue($client_value);
-                $server_normalized = $this->normalizeValue($server_value);
-
-                if ($client_normalized !== $server_normalized) {
-                    $conflicts[$field] = [
-                        'client' => $client_value,
-                        'server' => $server_value,
-                    ];
+            if ($reverseMap !== null && $object !== null) {
+                // Mapper path: API key -> Dolibarr property on the object.
+                if (!isset($reverseMap[$field])) {
+                    // Not a published key: the server state is not expressed
+                    // in this space, nothing to compare against.
+                    continue;
                 }
+                $property = $reverseMap[$field];
+                if (!isset($object->{$property})) {
+                    continue;
+                }
+                $server_value = $object->{$property};
+            } else {
+                // Legacy path: raw SQL row, Dolibarr-side key names.
+                if (!isset($server_data[$field])) {
+                    continue;
+                }
+                $server_value = $server_data[$field];
+            }
+
+            // Normalize values for comparison
+            $client_normalized = $this->normalizeValue($client_value);
+            $server_normalized = $this->normalizeValue($server_value);
+
+            if ($client_normalized !== $server_normalized) {
+                $conflicts[$field] = [
+                    'client' => $client_value,
+                    'server' => $server_value,
+                ];
             }
         }
 
         return empty($conflicts) ? null : $conflicts;
+    }
+
+    /**
+     * Reverse the mapper's published-fields map (Dolibarr property => API
+     * key) into API key => Dolibarr property, read via reflection on
+     * default properties to stay cheap (same trick as getWritableApiKeys).
+     *
+     * @param array $config Registry config of the object type
+     * @return array|null null when the type has no mapper (hook-registered)
+     */
+    private function reversePublishedFieldMap($config)
+    {
+        $objectType = $config['object_type'] ?? null;
+        if ($objectType === null) {
+            return null;
+        }
+        $mapperClass = $this->resolveMapperClass($objectType);
+        if ($mapperClass === null || !class_exists($mapperClass)) {
+            return null;
+        }
+        $ref = new \ReflectionClass($mapperClass);
+        $defaults = $ref->getDefaultProperties();
+        $published = $defaults['listOfPublishedFields'] ?? [];
+        if (!is_array($published) || $published === []) {
+            return null;
+        }
+
+        $reverse = [];
+        foreach ($published as $doliSide => $appSide) {
+            $reverse[(string) $appSide] = (string) $doliSide;
+        }
+        return $reverse;
     }
 
     /**

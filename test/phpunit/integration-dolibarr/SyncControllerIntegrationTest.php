@@ -1682,6 +1682,70 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
     }
 
     /**
+     * Force a known name + tms on a societe row (the email twin of
+     * forceSocieteState, for the 'nom' column).
+     */
+    private function forceSocieteNameState(int $id, string $name, string $tms): void
+    {
+        $sql = "UPDATE " . MAIN_DB_PREFIX . "societe";
+        $sql .= " SET nom = '" . $this->db->escape($name) . "',";
+        $sql .= " tms = '" . $this->db->escape($tms) . "'";
+        $sql .= " WHERE rowid = " . (int) $id;
+        if (!$this->db->query($sql)) {
+            throw new \RuntimeException('Failed to force societe name state: ' . $this->db->lasterror());
+        }
+    }
+
+    /**
+     * 'name' is the API key of a field whose SQL column is 'nom' and whose
+     * Dolibarr property is 'name' (Societe::fetch selects "s.nom as name").
+     * The historical raw SQL comparison could never match it, so a real
+     * conflict on the thirdparty NAME was silently overwritten. The mapper
+     * path must detect it (audit S-6).
+     */
+    public function testRealConflictIsDetectedOnMappedApiKeyField(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $societe = $this->createTestSociete(['name' => 'Mapped Co ' . uniqid()]);
+        $baseTms = '2020-01-01 00:00:00';
+        $this->forceSocieteNameState($societe->id, 'Server Name', $baseTms);
+        $this->forceSocieteNameState($societe->id, 'Server Name', '2020-06-15 12:00:00');
+
+        $push = $this->controller->push([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => [[
+                'action'   => 'update',
+                'id'       => $societe->id,
+                'base_tms' => $baseTms,
+                'data'     => ['name' => 'Client Name'],
+            ]],
+        ]);
+
+        $this->assertEquals(200, $push[1]);
+        $this->assertNotEmpty($push[0]['conflicts'], 'a real conflict on a mapped API-key field must be reported');
+        $this->assertEmpty($push[0]['success'], 'the conflicting update must not be applied');
+
+        // The conflict is expressed in API-key space, under 'name'.
+        $this->assertArrayHasKey(
+            'name',
+            $push[0]['conflicts'][0]['field_conflicts'] ?? [],
+            'field_conflicts must key the conflicting field by its API name'
+        );
+
+        // Business row keeps the server value.
+        $reloaded = new \Societe($this->db);
+        $reloaded->fetch($societe->id);
+        $this->assertEquals('Server Name', $reloaded->name, 'client data must not overwrite the server row on conflict');
+    }
+
+    /**
      * Offline-first clients retry the same push after a lost 2xx. A replayed
      * conflicting update must refresh the SAME pending conflict row, never pile
      * up duplicates in sync/conflicts / sync/status.
