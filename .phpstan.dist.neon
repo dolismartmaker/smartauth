@@ -108,12 +108,33 @@ parameters:
 		- PHP_SHLIB_SUFFIX
 		- PHP_FD_SETSIZE
 	paths:
-		- .
+		- admin
+		- api
+		- backport
+		- build
+		- class
+		- core
+		- dolMapping
+		- lib
+		- public
+		- auth_card.php
+		- auth_list.php
+		- autoload.php
+		- index.php
+		- logs_list.php
+		- push_logs_list.php
+		- smartauthdevices_card.php
+		- smartauthdevices_document.php
+		- smartauthdevices_list.php
+		- user_tab.php
 	excludePaths:
-		analyse:
+		analyseAndScan:
 			- vendor/*
 			- test/*
 			- stubs/*
+			- mobile/*
+			- documentation/*
+			- docs/*
 	bootstrapFiles:
 		- .phpstan-bootstrap.php
 	errorFormat: table
