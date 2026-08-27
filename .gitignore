@@ -31,3 +31,8 @@ todo*.md
 dev*.md
 TODO*.md
 DEV*.md
+# --- shared team rules ---
+SPEC*.md
+spec*.md
+*.log
+.env
