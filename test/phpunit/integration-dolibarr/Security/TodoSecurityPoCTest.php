@@ -189,6 +189,37 @@ class TodoSecurityPoCTest extends DolibarrRealTestCase
     }
 
     // =================================================================
+    //  S-4 - first-party API locked when SMARTAUTH_API_AUDIENCE is unset
+    // =================================================================
+
+    /**
+     * With SMARTAUTH_API_AUDIENCE unset, the first-party Bearer path used to
+     * accept any valid OAuth2 token of the instance (log warning only), so a
+     * third-party client's token reached every 'oauth2'-protected route of
+     * every consumer module. The gate is now closed by default: an operator
+     * exposing 'oauth2' routes MUST list the allowed client_id(s).
+     */
+    public function testS4_FirstPartyApiLockedWithoutConfiguredAudience(): void
+    {
+        $routeSrc = file_get_contents(dirname(__DIR__, 4) . '/api/RouteController.php');
+        $body = $this->extractFunctionBody($routeSrc, 'handleOAuth2Authentication');
+        $this->assertNotEmpty($body, 'handleOAuth2Authentication must exist');
+
+        $denyPos = strpos($body, 'no API audience configured');
+        $this->assertNotFalse($denyPos, 'S-4: the empty-audience case must refuse explicitly');
+
+        // The refusal must run before any allow-list logic: nothing is
+        // accepted on this instance until the audience is configured.
+        $allowPos = strpos($body, 'in_array($clientId, $allowedAudiences');
+        $this->assertNotFalse($allowPos);
+        $this->assertLessThan(
+            $allowPos,
+            $denyPos,
+            'S-4: an unset audience must refuse before the allow-list can accept anything'
+        );
+    }
+
+    // =================================================================
     //  TODO-5 - /sync/pull leaks data without a read permission check
     // =================================================================
 

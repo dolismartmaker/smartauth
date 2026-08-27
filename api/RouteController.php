@@ -930,18 +930,24 @@ class RouteController
 		$scopes = !empty($scopeString) ? explode(' ', $scopeString) : [];
 		$grantType = $payload['grant_type'] ?? 'authorization_code';
 
-		// Enforce the first-party audience allow-list (see above). An empty list
-		// means enforcement is disabled: log loudly so operators know the
-		// confused-deputy gate is open on this instance.
-		if (!empty($allowedAudiences)) {
-			if (!in_array($clientId, $allowedAudiences, true)) {
-				self::insertLogs(null, 401, 'OAuth2 token audience not allowed on first-party API', null);
-				dol_syslog('[SmartAuth] handleOAuth2Authentication: client ' . $clientId . ' not in SMARTAUTH_API_AUDIENCE allow-list - confused-deputy rejection', LOG_WARNING);
-				\json_reply('Invalid token: audience not allowed', 401);
-				return false;
-			}
-		} else {
-			dol_syslog('[SmartAuth] handleOAuth2Authentication: SMARTAUTH_API_AUDIENCE not set - first-party audience enforcement disabled', LOG_WARNING);
+		// Enforce the first-party audience allow-list (see above). Closed by
+		// default (audit S-4): with the constant unset, the gate used to be
+		// open with only a log warning, so ANY OAuth2 client of the instance
+		// (a third-party WordPress/M2M app) could call any 'oauth2'-protected
+		// route of any consumer module with its service user's rights. An
+		// operator exposing an 'oauth2' route now MUST name the allowed
+		// client_id(s) in SMARTAUTH_API_AUDIENCE.
+		if (empty($allowedAudiences)) {
+			self::insertLogs(null, 401, 'OAuth2 routes locked: SMARTAUTH_API_AUDIENCE not configured', null);
+			dol_syslog('[SmartAuth] handleOAuth2Authentication: SMARTAUTH_API_AUDIENCE not set - refusing ' . $clientId . ' (first-party API locked)', LOG_ERR);
+			\json_reply('Invalid token: no API audience configured on this instance', 401);
+			return false;
+		}
+		if (!in_array($clientId, $allowedAudiences, true)) {
+			self::insertLogs(null, 401, 'OAuth2 token audience not allowed on first-party API', null);
+			dol_syslog('[SmartAuth] handleOAuth2Authentication: client ' . $clientId . ' not in SMARTAUTH_API_AUDIENCE allow-list - confused-deputy rejection', LOG_WARNING);
+			\json_reply('Invalid token: audience not allowed', 401);
+			return false;
 		}
 
 		// Parse the prefixed subject (acc:/usr:). These protected API routes are
