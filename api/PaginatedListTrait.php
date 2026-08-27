@@ -17,6 +17,19 @@
 namespace SmartAuth\Api;
 
 /**
+ * Maximum number of values accepted in a single `in` filter.
+ *
+ * A set filter is meant to express a business category ("customers and
+ * prospects"), not to smuggle a thousand ids through the query string.
+ * The cap matches the one the facade already applies to bulk delete.
+ *
+ * Declared at namespace level (not inside the trait) because the module
+ * still targets PHP 7.4, where constants in traits are a parse error
+ * (PHP 8.2 feature).
+ */
+const PAGINATED_LIST_MAX_IN_VALUES = 100;
+
+/**
  * Generic helper for paginated/filtered/sortable list endpoints.
  *
  * Hoisted into SmartAuth from the (formerly Dolipocket-local) trait so the
@@ -315,13 +328,10 @@ trait PaginatedListTrait
     }
 
     /**
-     * Maximum number of values accepted in a single `in` filter.
-     *
-     * A set filter is meant to express a business category ("customers and
-     * prospects"), not to smuggle a thousand ids through the query string.
-     * The cap matches the one the facade already applies to bulk delete.
+     * Maximum number of values accepted in a single `in` filter: see the
+     * PAGINATED_LIST_MAX_IN_VALUES namespace constant above (traits cannot
+     * hold constants on PHP < 8.2).
      */
-    const MAX_IN_VALUES = 100;
 
     /**
      * Build an " AND col IN (...)" fragment for an `in` filter.
@@ -383,13 +393,13 @@ trait PaginatedListTrait
             return '';
         }
 
-        if (count($clean) > self::MAX_IN_VALUES) {
+        if (count($clean) > PAGINATED_LIST_MAX_IN_VALUES) {
             dol_syslog(
                 "[SmartAuth] PaginatedListTrait::buildInClause filter '".$apiCol."' carried ".count($clean)
-                    ." values, truncated to ".self::MAX_IN_VALUES,
+                    ." values, truncated to ".PAGINATED_LIST_MAX_IN_VALUES,
                 LOG_WARNING
             );
-            $clean = array_slice($clean, 0, self::MAX_IN_VALUES);
+            $clean = array_slice($clean, 0, PAGINATED_LIST_MAX_IN_VALUES);
         }
 
         $allNumeric = true;
