@@ -1134,12 +1134,12 @@ if ($object->id) {
 		print '</a> ';
 
 		// Revoke button -- disables the token (status=9) but keeps the row.
-		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=revoke&token_id=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . dol_escape_js($langs->trans("ConfirmRevokeToken")) . '\');" title="' . dol_escape_htmltag($langs->trans("RevokeToken")) . '">';
+		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=revoke&token_id=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . dol_escape_js($langs->transnoentities("ConfirmRevokeToken")) . '\');" title="' . dol_escape_htmltag($langs->trans("RevokeToken")) . '">';
 		print '<i class="fa fa-ban" style="color: #f59e0b;"></i>';
 		print '</a>';
 
 		// Delete button (todo l.25) -- really removes the token row.
-		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=delete_token&token_id=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . dol_escape_js($langs->trans("ConfirmDeleteToken")) . '\');" title="' . dol_escape_htmltag($langs->trans("DeleteToken")) . '">';
+		print '<a class="marginleftonly" href="' . $_SERVER['PHP_SELF'] . '?id=' . $id . '&action=delete_token&token_id=' . $object->id . '&token=' . newToken() . '" onclick="return confirm(\'' . dol_escape_js($langs->transnoentities("ConfirmDeleteToken")) . '\');" title="' . dol_escape_htmltag($langs->trans("DeleteToken")) . '">';
 		print '<i class="fa fa-trash" style="color: #ef4444;"></i>';
 		print '</a>';
 
@@ -1552,7 +1552,7 @@ if ($object->id) {
 <script type="text/javascript">
 // Rename device function
 function renameDevice(token_id, currentName) {
-	var newName = prompt('<?php echo dol_escape_js($langs->trans("EnterDeviceName")); ?>', currentName);
+	var newName = prompt('<?php echo dol_escape_js($langs->transnoentities("EnterDeviceName")); ?>', currentName);
 	if (newName != null && newName != '') {
 		window.location.href = '<?php echo $_SERVER['PHP_SELF']; ?>?id=<?php echo $id; ?>&action=rename&token_id=' + token_id + '&device_label=' + encodeURIComponent(newName) + '&token=<?php echo newToken(); ?>';
 	}
@@ -1568,7 +1568,7 @@ function viewHistory(token_id) {
 	var modalContent = document.createElement('div');
 	modalContent.style.cssText = 'background: white; padding: 30px; border-radius: 8px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto;';
 
-	modalContent.innerHTML = '<h3><?php echo dol_escape_js($langs->trans("TokenActivityHistory")); ?></h3><div id="historyContent"><?php echo dol_escape_js($langs->trans("Loading")); ?>...</div><br><button type="button" class="button" onclick="document.getElementById(\'historyModal\').remove();"><?php echo dol_escape_js($langs->trans("Close")); ?></button>';
+	modalContent.innerHTML = '<h3><?php echo dol_escape_js($langs->transnoentities("TokenActivityHistory")); ?></h3><div id="historyContent"><?php echo dol_escape_js($langs->transnoentities("Loading")); ?>...</div><br><button type="button" class="button" onclick="document.getElementById(\'historyModal\').remove();"><?php echo dol_escape_js($langs->transnoentities("Close")); ?></button>';
 
 	modal.appendChild(modalContent);
 	document.body.appendChild(modal);
@@ -1579,9 +1579,9 @@ function viewHistory(token_id) {
 		.then(data => {
 			var html = '<table class="noborder centpercent">';
 			html += '<tr class="liste_titre">';
-			html += '<th><?php echo dol_escape_js($langs->trans("Time")); ?></th>';
-			html += '<th><?php echo dol_escape_js($langs->trans("Method")); ?></th>';
-			html += '<th><?php echo dol_escape_js($langs->trans("Endpoint")); ?></th>';
+			html += '<th><?php echo dol_escape_js($langs->transnoentities("Time")); ?></th>';
+			html += '<th><?php echo dol_escape_js($langs->transnoentities("Method")); ?></th>';
+			html += '<th><?php echo dol_escape_js($langs->transnoentities("Endpoint")); ?></th>';
 			html += '<th><?php echo dol_escape_js($langs->trans("Status")); ?></th>';
 			html += '</tr>';
 
@@ -1604,7 +1604,7 @@ function viewHistory(token_id) {
 			document.getElementById('historyContent').innerHTML = html;
 		})
 		.catch(error => {
-			document.getElementById('historyContent').innerHTML = '<span style="color: #ef4444;"><?php echo dol_escape_js($langs->trans("ErrorLoadingHistory")); ?></span>';
+			document.getElementById('historyContent').innerHTML = '<span style="color: #ef4444;"><?php echo dol_escape_js($langs->transnoentities("ErrorLoadingHistory")); ?></span>';
 		});
 }
 

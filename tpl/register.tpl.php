@@ -51,7 +51,7 @@ $h = function ($value) {
         </div>
         <?php endif; ?>
 
-        <form method="POST" action="/register" class="login-form" autocomplete="on" novalidate>
+        <form method="POST" action="/register" class="login-form" autocomplete="on" novalidate data-submit-once>
             <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
             <input type="hidden" name="client_id" value="<?= $h($clientId) ?>">
             <input type="hidden" name="continue" value="<?= $h($continueUrl) ?>">

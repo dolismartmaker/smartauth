@@ -41,7 +41,7 @@ include __DIR__ . '/layout.tpl.php';
             Indiquez l'adresse email de votre compte. Si elle est connue, un lien de réinitialisation vous sera envoyé.
         </p>
 
-        <form method="POST" action="/forgot-password" class="login-form" novalidate>
+        <form method="POST" action="/forgot-password" class="login-form" novalidate data-submit-once>
             <div class="form-group">
                 <label for="email">Adresse email</label>
                 <input type="email"

@@ -36,7 +36,7 @@ include __DIR__ . '/layout.tpl.php';
         </div>
         <?php endif; ?>
 
-        <form method="POST" action="/login" class="login-form" autocomplete="on">
+        <form method="POST" action="/login" class="login-form" autocomplete="on" data-submit-once>
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="continue" value="<?= $continue ?>">
 

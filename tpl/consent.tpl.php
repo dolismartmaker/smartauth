@@ -93,7 +93,7 @@ include __DIR__ . '/layout.tpl.php';
             </ul>
         </div>
 
-        <form method="POST" action="/oauth/authorize" class="consent-form">
+        <form method="POST" action="/oauth/authorize" class="consent-form" data-submit-once>
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
 
             <?php if ($rememberConsent): ?>

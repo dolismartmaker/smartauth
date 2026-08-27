@@ -52,7 +52,7 @@ $errorMessages = [
             Choisissez un nouveau mot de passe pour votre compte.
         </p>
 
-        <form method="POST" action="/reset-password" class="login-form" novalidate>
+        <form method="POST" action="/reset-password" class="login-form" novalidate data-submit-once>
             <input type="hidden" name="token" value="<?= htmlspecialchars((string) ($token ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 
             <div class="form-group">

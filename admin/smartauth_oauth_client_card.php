@@ -599,7 +599,7 @@ if ($object->id > 0 && empty($action) || ($action != 'edit' && $action != 'creat
 	print '<tr><td class="titlefield">' . $langs->trans("ClientId") . '</td>';
 	print '<td>';
 	print '<code style="user-select: all;">' . dol_escape_htmltag($object->client_id) . '</code>';
-	print ' <button type="button" class="button small" onclick="navigator.clipboard.writeText(\'' . dol_escape_js($object->client_id) . '\'); alert(\'' . dol_escape_js($langs->trans("Copied")) . '\');">' . $langs->trans("Copy") . '</button>';
+	print ' <button type="button" class="button small" onclick="navigator.clipboard.writeText(\'' . dol_escape_js($object->client_id) . '\'); alert(\'' . dol_escape_js($langs->transnoentities("Copied")) . '\');">' . $langs->trans("Copy") . '</button>';
 	print '</td></tr>';
 
 	// Client Secret info (for confidential clients)

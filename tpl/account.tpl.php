@@ -48,7 +48,7 @@ $formatDate = function ($timestamp) {
         <!-- Identity section -->
         <section class="account-section">
             <h2>Mon identité</h2>
-            <form method="POST" action="/account" autocomplete="on">
+            <form method="POST" action="/account" autocomplete="on" data-submit-once>
                 <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
                 <input type="hidden" name="action" value="update_identity">
 
@@ -78,7 +78,7 @@ $formatDate = function ($timestamp) {
         <!-- Password section -->
         <section class="account-section">
             <h2>Changer mon mot de passe</h2>
-            <form method="POST" action="/account" autocomplete="off">
+            <form method="POST" action="/account" autocomplete="off" data-submit-once>
                 <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
                 <input type="hidden" name="action" value="change_password">
 
@@ -138,7 +138,7 @@ $formatDate = function ($timestamp) {
                                     <td><?= $h($formatDate($token['datec'])) ?></td>
                                     <td><?= $h($formatDate($token['expires_at'])) ?></td>
                                     <td>
-                                        <form method="POST" action="/account" style="display:inline">
+                                        <form method="POST" action="/account" style="display:inline" data-submit-once>
                                             <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
                                             <input type="hidden" name="action" value="revoke_session">
                                             <input type="hidden" name="token_rowid" value="<?= (int) $token['rowid'] ?>">
@@ -152,7 +152,7 @@ $formatDate = function ($timestamp) {
                     </div>
                 <?php endforeach; ?>
 
-                <form method="POST" action="/account" style="margin-top:16px">
+                <form method="POST" action="/account" style="margin-top:16px" data-submit-once>
                     <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
                     <input type="hidden" name="action" value="revoke_all">
                     <button type="submit" class="btn btn-danger"
@@ -203,7 +203,7 @@ $formatDate = function ($timestamp) {
                     Votre compte n'est pas encore lié à un contrat actif. Vous pouvez le
                     supprimer ici. Cette action est irréversible.
                 </p>
-                <form method="POST" action="/account">
+                <form method="POST" action="/account" data-submit-once>
                     <input type="hidden" name="csrf_token" value="<?= $h($csrfToken) ?>">
                     <input type="hidden" name="action" value="delete_account">
 

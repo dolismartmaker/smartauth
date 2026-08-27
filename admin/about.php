@@ -200,7 +200,7 @@ print '<div class="support-box">';
 print '<h2>'.$langs->trans('SmartauthDoYouLikeModule').'</h2>';
 print '<p class="support-intro">'.$langs->trans('SmartauthFeedbackIntro').'</p>';
 
-print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'">';
+print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'" data-submit-once>';
 print '<input type="hidden" name="token" value="'.newToken().'">';
 print '<input type="hidden" name="action" value="send_feedback">';
 
@@ -286,6 +286,18 @@ if (file_exists($changelog_path)) {
 	print '</table>';
 	print '</div>';
 }
+
+// Double-submit guard for the feedback form (mail sending). Same contract
+// as the portal layout footer: disable the submit button only after the
+// form actually submits.
+print '<script>';
+print 'document.querySelectorAll(\'form[data-submit-once]\').forEach(function(form) {';
+print '    form.addEventListener(\'submit\', function() {';
+print '        var btn = form.querySelector(\'[type="submit"]\');';
+print '        if (btn) { btn.disabled = true; btn.innerHTML = btn.textContent; }';
+print '    });';
+print '});';
+print '</script>';
 
 // Page end
 print dol_get_fiche_end();

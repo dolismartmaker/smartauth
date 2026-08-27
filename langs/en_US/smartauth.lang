@@ -144,8 +144,8 @@ SmartauthGeoIPSetupPage=GeoIP configuration page
 #
 # Password Reset
 #
-PasswordResetRequest=Password Reset Request
-PasswordResetEmailBody=You have requested a password reset. Click the link below to set a new password:
+PasswordResetRequest=Password reset request
+PasswordResetEmailBody=Hello %s, to reset your password, open the following link: %s If you did not request this, please ignore this message.
 
 #
 # OAuth Server

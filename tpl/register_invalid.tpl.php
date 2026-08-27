@@ -38,7 +38,7 @@ $h = function ($v) {
             Vous pouvez demander un nouveau lien en saisissant l'adresse utilisée à l'inscription :
         </p>
 
-        <form method="POST" action="/register/resend" class="login-form" autocomplete="off">
+        <form method="POST" action="/register/resend" class="login-form" autocomplete="off" data-submit-once>
             <input type="hidden" name="csrf_token" value="<?= $h($csrfToken ?? '') ?>">
 
             <div class="form-group">
