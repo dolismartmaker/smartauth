@@ -1,30 +1,35 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## unreleased
+## 2.0.40 -- 20260827
 
- - generic REST facade objects/{objtype}: Vague 2 types (order, invoice,
-   proposal, project, task, agenda_event, user)
+  (2026 summer sprint)
+
+ - generic REST facade objects/{objtype}
  - document line facade (add/update/delete/reorder) for order/invoice/proposal
  - document workflow actions (validate/setDraft/close/setPaid/...)
  - invoice payment facade (record/list payments)
- - facade Vague 3 types: warehouse, member, contract, ticket, intervention,
-   expensereport, supplier_order, supplier_invoice, supplier_proposal
  - CrudInvoker handles delete($rowid, $user) and classes without update()
- - supplier document lines/actions/payments (CommandeFournisseur,
-   FactureFournisseur, SupplierProposal, PaiementFourn)
- - facade derived types (read-mostly): shipment, reception, stock_movement,
-   subscription; registry has_entity flag for tables without an entity column
- - contract lines through the facade: add/update/delete, validate/close document
-   actions, and line-level actions (activate/close) on a new route
-   objects/{type}/{id}/lines/{lineid}/actions/{action}
- - fix contract line mapping: the four date keys named SQL columns Contrat::
-   fetch_lines never sets on the line object, so all four exported null
- - sync push writes the extrafields a mapper opens through $extrafieldsRW, with
-   the same tenant guard as the REST facade; the pull returns them
- - fix sync push erasing the extrafields a partial payload did not restate
-   (insertExtraFields rebuilds the row from array_options alone)
+ - supplier document lines/actions/payments
+ - contract lines through the facade
+ - extra update-side guards on the facade
+ - sync push writes the extrafields mapper
+ - fix sync push erasing the extrafields a partial payload
  - SMARTAUTH_FACADE_TYPES restricts which registry types objects/* serves on an
    instance (CSV, empty = every type); a closed type answers like an unknown one
+ - reject a JWT whose login claim now resolves to another user than its signed
+ - oauth logout (RP-initiated)
+ - sync register refuses (409)
+ - sync conflict detection
+ - sync delete: the tombstone is only created after a successful delete
+ - sync raw fallback
+ - sync push batches are capped (500 changes, SMARTAUTH_SYNC_PUSH_MAX_CHANGES)
+ - the admin "require PKCE" toggle is now enforced
+ - /refresh is rate limited per IP
+ - the English password reset email body carried no %s placeholders
+ - texts injected into JavaScript use transnoentities()
+ - duplicate keys removed from the French lang file
+ - double-submit guard (data-submit-once)
+ - web push spec aligned on the shipped constant
 
 ## 2.0.38 -- 20260724
 
