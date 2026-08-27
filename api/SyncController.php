@@ -29,6 +29,11 @@ use SmartAuth\Api\AuthController;
 
 class SyncController
 {
+    // Same tenant frontier as the synchronous facade: sync/push writes the same
+    // objects through the same mappers, so it must apply the same write-side
+    // foreign-key guard. See the trait's header for why there is only one copy.
+    use ForeignKeyGuardTrait;
+
     /**
      * @var \DoliDB Database connection
      */
@@ -89,11 +94,222 @@ class SyncController
         // Single source of truth: the built-in core-object definitions, the
         // smartmaker_registerSyncableObjects hook merge and the object_type
         // self-stamp now live in ObjectRegistry, shared with the synchronous
-        // REST facade (ObjectController). The 'allowed_fields' key whitelists
-        // which payload keys may be copied onto the Dolibarr object - any other
-        // key (and any key from the universal denylist) is rejected. See
-        // applyDataToObject() and CR-6 of TODO-SECURITY-01.
+        // REST facade (ObjectController). What may be copied onto the Dolibarr
+        // object is decided by the mapper's $writableFields, and for a
+        // hook-registered type that declares no mapper by its 'allowed_fields'
+        // key; any other key (and any key from the universal denylist) is
+        // rejected. See applyDataToObject() and CR-6 of TODO-SECURITY-01.
         $this->syncableObjects = ObjectRegistry::resolveWithHooks($hookmanager);
+    }
+
+    /**
+     * Primary key column of a syncable type's table.
+     *
+     * Most Dolibarr tables use 'rowid', a few use 'id' (llx_actioncomm is the
+     * canonical case). Assuming 'rowid' everywhere is not a cosmetic defect:
+     * the keyset cursor is built from that column, so a wrong name yields
+     * rowid=0 in the continuation token and the client re-reads page 1 forever.
+     *
+     * @param  array $config Syncable object config
+     * @return string        Column name, never empty
+     */
+    private function syncPk(array $config)
+    {
+        $pk = (string) ($config['pk'] ?? 'rowid');
+        return $pk !== '' ? $pk : 'rowid';
+    }
+
+    /**
+     * SQL table alias used by the pull queries. Taken from the registry so the
+     * fragment returned by a mapper's isolationWhereSql() lands on the same
+     * alias the facade uses.
+     *
+     * @param  array $config Syncable object config
+     * @return string
+     */
+    private function syncAlias(array $config)
+    {
+        $alias = (string) ($config['alias'] ?? 't');
+        return $alias !== '' ? $alias : 't';
+    }
+
+    /**
+     * Instantiate the dm* mapper of a syncable type, or null when the type
+     * declares none (hook-registered types may not).
+     *
+     * @param  string $object_type
+     * @return object|null
+     */
+    private function syncMapperInstance($object_type)
+    {
+        $mapperClass = $this->resolveMapperClass($object_type);
+        if ($mapperClass === null || !class_exists($mapperClass)) {
+            return null;
+        }
+        return new $mapperClass();
+    }
+
+    /**
+     * Element code fed to getEntity() for a syncable type.
+     *
+     * 'module' when the type belongs to one, else 'element': the 'user' type
+     * has no module key at all (it is core), and getEntity(null) emitted a PHP
+     * warning then scoped on nothing recognisable.
+     *
+     * @param  array $config Syncable object config
+     * @return string
+     */
+    private function syncEntityElement(array $config)
+    {
+        $element = (string) ($config['module'] ?? '');
+        if ($element === '') {
+            $element = (string) ($config['element'] ?? '');
+        }
+        return $element;
+    }
+
+    /**
+     * TENANT SCOPING of the pull queries, for ANY syncable type.
+     *
+     * Two shapes, decided by the registry:
+     * - table WITH an entity column (the common case): "AND t.entity IN (...)",
+     *   the historical behaviour, unchanged.
+     * - table WITHOUT one (llx_stock_mouvement, llx_subscription, llx_bank):
+     *   the entity predicate would be a SQL error, so the scoping comes from the
+     *   mapper's isolationWhereSql(), exactly as in the synchronous facade. A
+     *   type that declares neither is refused (" AND 1=0"), fail-closed --
+     *   serving it unscoped would hand every tenant's rows to any client.
+     *
+     * @param  array  $config      Syncable object config
+     * @param  string $object_type Sync object type key
+     * @param  string $alias       SQL alias of the main table
+     * @return string              Fragment starting with " AND ", or " AND 1=0"
+     */
+    private function syncScopeSql(array $config, $object_type, $alias)
+    {
+        $hasEntity = !(array_key_exists('has_entity', $config) && $config['has_entity'] === false);
+        if ($hasEntity) {
+            return " AND " . $alias . ".entity IN (" . getEntity($this->syncEntityElement($config)) . ")";
+        }
+
+        $mapper = $this->syncMapperInstance($object_type);
+        if ($mapper === null) {
+            dol_syslog(
+                "[SmartAuth] SyncController: type " . $object_type . " has no entity column "
+                . "and no mapper to isolate it - pulling nothing (fail-closed)",
+                LOG_ERR
+            );
+            return " AND 1=0";
+        }
+
+        // Shared with the facade: logs and falls back to " AND 1=0" when the
+        // mapper of an entity-less type declares no usable fragment.
+        return $this->isolationWhereFragment($mapper, $alias, $config + ['object_type' => $object_type]);
+    }
+
+    /**
+     * Row-level tenant check for the write paths, for ANY syncable type.
+     *
+     * processUpdate/processDelete used to test $row->entity and let anything
+     * without that property through. That is fail-OPEN precisely on the three
+     * types that have no entity column, i.e. the ones that need a check the
+     * most. This routes them to the same single-row isolation probe the facade
+     * uses, and keeps the plain entity comparison for everyone else.
+     *
+     * @param  array      $config      Syncable object config
+     * @param  string     $object_type Sync object type key
+     * @param  int        $id          Row primary key
+     * @param  mixed      $entityValue Row's entity column, null when absent
+     * @return bool                    True when access must be REFUSED
+     */
+    private function syncTenantDenies(array $config, $object_type, $id, $entityValue)
+    {
+        $hasEntity = !(array_key_exists('has_entity', $config) && $config['has_entity'] === false);
+
+        if ($hasEntity) {
+            if ($entityValue === null) {
+                // Registry says the column exists but the row does not carry it:
+                // a misconfigured hook type. Refuse rather than guess.
+                dol_syslog(
+                    "[SmartAuth] SyncController: no entity value on " . $object_type
+                    . " id=" . (int) $id . " while the config declares one - refusing (fail-closed)",
+                    LOG_WARNING
+                );
+                return true;
+            }
+            return !$this->entityIsReachable($entityValue, $config['element']);
+        }
+
+        $mapper = $this->syncMapperInstance($object_type);
+        if ($mapper === null) {
+            dol_syslog(
+                "[SmartAuth] SyncController: type " . $object_type . " has no entity column "
+                . "and no mapper to isolate it - refusing write (fail-closed)",
+                LOG_ERR
+            );
+            return true;
+        }
+
+        return $this->isolationDenies($config + ['object_type' => $object_type], $mapper, (int) $id);
+    }
+
+    /**
+     * @api {get} /sync/objects List syncable object types
+     * @apiName SyncObjects
+     * @apiGroup Sync
+     * @apiVersion 1.0.0
+     *
+     * @apiDescription Discovery endpoint: which object types this instance can
+     * synchronise, and for each one whether the caller actually holds the
+     * Dolibarr rights behind it. Without it a client had to hardcode the list to
+     * build its sync_scope, which is exactly how the engine stayed stuck on the
+     * four types of the first wave while the registry grew to cover them all.
+     *
+     * @apiHeader {String} Authorization Bearer access_token
+     *
+     * @apiSuccess {Object[]} objects           One entry per syncable type
+     * @apiSuccess {String}   objects.type      Type key to pass as object_type
+     * @apiSuccess {String}   objects.label     Human label
+     * @apiSuccess {String}   objects.priority  Sync hint (high/medium/low)
+     * @apiSuccess {Boolean}  objects.default_enabled Included in the default scope
+     * @apiSuccess {Boolean}  objects.module_enabled  Dolibarr module active
+     * @apiSuccess {Object}   objects.rights    Per-action permission of the caller
+     * @apiSuccess {String}   server_time       Current server timestamp
+     */
+    public function objects($payload)
+    {
+        global $user;
+        dol_syslog("[SmartAuth] SyncController::objects");
+
+        $list = [];
+        foreach ($this->syncableObjects as $type => $config) {
+            $moduleEnabled = true;
+            if (!empty($config['module'])) {
+                $moduleEnabled = (bool) isModEnabled($config['module']);
+            }
+
+            $rights = [];
+            foreach (['read', 'create', 'update', 'delete'] as $action) {
+                // Silent: this endpoint probes 4 actions on every type, so the
+                // denial log of the enforcement path would emit ~100 warnings
+                // per call and drown the real denials.
+                $rights[$action] = $moduleEnabled && $this->userHasSyncRight($config, $action, $user, false);
+            }
+
+            $list[] = [
+                'type' => $type,
+                'label' => $config['label'] ?? $type,
+                'priority' => $config['priority'] ?? 'low',
+                'default_enabled' => !empty($config['default_enabled']),
+                'module_enabled' => $moduleEnabled,
+                'rights' => $rights,
+            ];
+        }
+
+        return [[
+            'objects' => $list,
+            'server_time' => date('c'),
+        ], 200];
     }
 
     /**
@@ -352,28 +568,36 @@ class SyncController
             'server_time' => date('c'),
         ];
 
+        // Primary key and alias come from the registry: llx_actioncomm keys on
+        // 'id', and the entity-less tables need an alias for the isolation
+        // fragment. A module-declared pull_where references bare column names,
+        // which stay valid under an alias.
+        $pk = $this->syncPk($config);
+        $alias = $this->syncAlias($config);
+
         // Get updated records
-        $sql = "SELECT * FROM " . MAIN_DB_PREFIX . $table;
-        $sql .= " WHERE entity IN (" . getEntity($config['module']) . ")";
+        $sql = "SELECT " . $alias . ".* FROM " . MAIN_DB_PREFIX . $table . " as " . $alias;
+        $sql .= " WHERE 1 = 1";
+        $sql .= $this->syncScopeSql($config, $object_type, $alias);
         if ($last_sync_at) {
-            $sql .= " AND tms > '" . $this->db->escape($last_sync_at) . "'";
+            $sql .= " AND " . $alias . ".tms > '" . $this->db->escape($last_sync_at) . "'";
         }
         if ($cursor !== null) {
-            // Keyset predicate on the (tms, rowid) total order. rowid breaks
-            // ties when several rows share a tms, so no row is seen twice or
-            // skipped across pages. Values are validated/escaped in decode.
-            $sql .= " AND (tms > '" . $this->db->escape($cursor['tms']) . "'";
-            $sql .= " OR (tms = '" . $this->db->escape($cursor['tms']) . "'";
-            $sql .= " AND rowid > " . (int) $cursor['rowid'] . "))";
+            // Keyset predicate on the (tms, pk) total order. The primary key
+            // breaks ties when several rows share a tms, so no row is seen twice
+            // or skipped across pages. Values are validated/escaped in decode.
+            $sql .= " AND (" . $alias . ".tms > '" . $this->db->escape($cursor['tms']) . "'";
+            $sql .= " OR (" . $alias . ".tms = '" . $this->db->escape($cursor['tms']) . "'";
+            $sql .= " AND " . $alias . "." . $pk . " > " . (int) $cursor['rowid'] . "))";
         }
         if (!empty($config['pull_where'])) {
             // Trusted, module-declared SQL fragment (see loadSyncableObjects
             // PHPDoc). NEVER built from request input.
             $sql .= " AND (" . $config['pull_where'] . ")";
         }
-        // rowid tiebreaker gives a stable total order: required for keyset,
-        // and makes offset pages deterministic too.
-        $sql .= " ORDER BY tms ASC, rowid ASC";
+        // Primary-key tiebreaker gives a stable total order: required for
+        // keyset, and makes offset pages deterministic too.
+        $sql .= " ORDER BY " . $alias . ".tms ASC, " . $alias . "." . $pk . " ASC";
         // Fetch one extra row to detect a next page without a COUNT query.
         $sql .= " LIMIT " . ($limit + 1);
         // Keyset mode carries its position in the cursor, so no OFFSET.
@@ -402,9 +626,11 @@ class SyncController
             $result['has_more'] = true;
             array_pop($rows); // drop the probe row
             // Continuation token for keyset clients: position of the last
-            // delivered row. Additive - offset clients ignore it.
+            // delivered row. Additive - offset clients ignore it. Read through
+            // the registry's primary key: on llx_actioncomm ->rowid is null,
+            // which used to encode a cursor at id 0 and replay page 1 forever.
             $lastRow = end($rows);
-            $result['next_cursor'] = $this->encodeSyncCursor($lastRow->tms, (int) $lastRow->rowid);
+            $result['next_cursor'] = $this->encodeSyncCursor($lastRow->tms, (int) ($lastRow->{$pk} ?? 0));
         }
         foreach ($rows as $obj) {
             $result['updated'][] = $this->formatObjectForSync($obj, $object_type, $withFiles);
@@ -414,9 +640,14 @@ class SyncController
         // them on the first page only so a paginating client does not receive
         // N identical copies. First page = neither a cursor nor an offset.
         if ($cursor === null && $offset === 0) {
-            // Get tombstones (deleted records)
+            // Get tombstones (deleted records). Scoped to the entities the
+            // caller may reach: the object ids of another tenant's deletions
+            // have no business leaking here. Rows written before the entity
+            // column existed carry NULL and stay visible, otherwise an upgrade
+            // would silently hide past deletions from every client.
             $sql = "SELECT object_id, deleted_at FROM " . MAIN_DB_PREFIX . "smartauth_sync_tombstones";
             $sql .= " WHERE table_name = '" . $this->db->escape($table) . "'";
+            $sql .= " AND (entity IS NULL OR entity IN (" . getEntity($this->syncEntityElement($config)) . "))";
             if ($last_sync_at) {
                 $sql .= " AND deleted_at > '" . $this->db->escape($last_sync_at) . "'";
             }
@@ -442,9 +673,11 @@ class SyncController
             // clients prune them (eg a product flipped to tosell=0). Only
             // meaningful on delta pulls: a full sync simply omits them.
             if ($last_sync_at && !empty($config['pull_where'])) {
-                $sql = "SELECT rowid, tms FROM " . MAIN_DB_PREFIX . $table;
-                $sql .= " WHERE entity IN (" . getEntity($config['module']) . ")";
-                $sql .= " AND tms > '" . $this->db->escape($last_sync_at) . "'";
+                $sql = "SELECT " . $alias . "." . $pk . " as pkval, " . $alias . ".tms as tms";
+                $sql .= " FROM " . MAIN_DB_PREFIX . $table . " as " . $alias;
+                $sql .= " WHERE 1 = 1";
+                $sql .= $this->syncScopeSql($config, $object_type, $alias);
+                $sql .= " AND " . $alias . ".tms > '" . $this->db->escape($last_sync_at) . "'";
                 $sql .= " AND NOT (" . $config['pull_where'] . ")";
 
                 $resql = $this->db->query($sql);
@@ -458,7 +691,7 @@ class SyncController
                 }
                 while ($obj = $this->db->fetch_object($resql)) {
                     $result['deleted'][] = [
-                        'id' => (int) $obj->rowid,
+                        'id' => (int) $obj->pkval,
                         'deleted_at' => $obj->tms,
                     ];
                 }
@@ -599,7 +832,11 @@ class SyncController
                         $updateResult = $this->processUpdate($config, $id, $data, $base_tms, $client->rowid, $user);
                         if ($updateResult['success']) {
                             $result['success'][] = $id;
-                        } elseif ($updateResult['conflict']) {
+                        } elseif (!empty($updateResult['conflict'])) {
+                            // Guarded: every refusal path (permission, tenant,
+                            // missing row) returns success=false with no
+                            // 'conflict' key, and reading it raw turned a clean
+                            // "Object not found" into an undefined-key notice.
                             $result['conflicts'][] = $updateResult['conflict'];
                         } else {
                             $result['errors'][] = [
@@ -799,13 +1036,40 @@ class SyncController
             return [['error' => 'Invalid resolution. Must be: client, server, or merged'], 400];
         }
 
-        // Fetch the conflict
-        $sql = "SELECT * FROM " . MAIN_DB_PREFIX . "smartauth_sync_conflicts";
-        $sql .= " WHERE rowid = " . (int) $conflict_id;
-        $sql .= " AND status = 'pending'";
+        // Payload validation before touching the database: a merged resolution
+        // without data is a malformed request (400), whatever the conflict is.
+        // Checked here rather than inside the switch below so it is not masked
+        // by the 404 of the ownership lookup.
+        if ($resolution === 'merged' && empty($payload['data'])) {
+            return [['error' => 'Merged data is required for merged resolution'], 400];
+        }
+
+        // Fetch the conflict, scoped to the caller. A conflict id is a small
+        // integer: without the ownership join, enumerating them let any
+        // authenticated client resolve someone else's conflict -- and with
+        // resolution=merged, write arbitrary data into the underlying object.
+        // Same ownership chain as getClientByUUID (M-11): sync client -> device
+        // -> owning Dolibarr user.
+        $callerId = $this->payloadUserId($payload);
+        if ($callerId <= 0) {
+            dol_syslog('[SmartAuth] SyncController::resolveConflict - no authenticated user in payload', LOG_WARNING);
+            return [['error' => 'Conflict not found or already resolved'], 404];
+        }
+
+        $sql = "SELECT sco.* FROM " . MAIN_DB_PREFIX . "smartauth_sync_conflicts sco";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "smartauth_sync_clients sc ON sco.fk_client = sc.rowid";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "smartauth_devices sd ON sc.fk_device = sd.rowid";
+        $sql .= " WHERE sco.rowid = " . (int) $conflict_id;
+        $sql .= " AND sco.status = 'pending'";
+        $sql .= " AND sd.fk_user_creat = " . $callerId;
 
         $resql = $this->db->query($sql);
         if (!$resql || $this->db->num_rows($resql) == 0) {
+            dol_syslog(
+                '[SmartAuth] SyncController::resolveConflict - conflict ' . (int) $conflict_id
+                . ' not pending or not owned by user ' . $callerId,
+                LOG_WARNING
+            );
             return [['error' => 'Conflict not found or already resolved'], 404];
         }
 
@@ -821,10 +1085,8 @@ class SyncController
                 $final_data = json_decode($conflict->server_data, true);
                 break;
             case 'merged':
-                $final_data = $payload['data'] ?? null;
-                if (empty($final_data)) {
-                    return [['error' => 'Merged data is required for merged resolution'], 400];
-                }
+                // Presence already enforced above, before the DB lookup.
+                $final_data = $payload['data'];
                 break;
         }
 
@@ -835,6 +1097,13 @@ class SyncController
         }
 
         $config = $this->syncableObjects[$object_type];
+
+        // Resolving a conflict IS a write on the business object: same
+        // permission gate as push/update, which this path used to skip entirely.
+        if (!$this->userHasSyncRight($config, 'update', $user)) {
+            return [['error' => 'Permission denied'], 403];
+        }
+
         $applyResult = $this->applyResolvedData($config, (int) $conflict->object_id, $final_data, $user);
 
         if (!$applyResult['success']) {
@@ -976,7 +1245,11 @@ class SyncController
     private function formatObjectForSync($obj, $object_type, $withFiles = false)
     {
         $config = $this->syncableObjects[$object_type] ?? [];
-        $rowid = isset($obj->rowid) ? (int) $obj->rowid : 0;
+        // Read the id through the registry's primary key: llx_actioncomm has no
+        // 'rowid' column, so the old isset($obj->rowid) left $rowid at 0, which
+        // skipped the mapper entirely and served the raw SQL row instead.
+        $pk = $this->syncPk($config);
+        $rowid = isset($obj->{$pk}) ? (int) $obj->{$pk} : 0;
         $rawTms = $obj->tms ?? null;
 
         $data = $this->mapObjectThroughMapper($obj, $object_type, $config, $rowid);
@@ -1042,7 +1315,7 @@ class SyncController
                 . "for this type.",
                 LOG_WARNING
             );
-            return $this->rawCastFallback($obj);
+            return $this->rawCastFallback($obj, $this->syncPk($config));
         }
 
         $doliClass = $config['class'] ?? '';
@@ -1054,7 +1327,7 @@ class SyncController
                 . "'], falling back to raw cast.",
                 LOG_WARNING
             );
-            return $this->rawCastFallback($obj);
+            return $this->rawCastFallback($obj, $this->syncPk($config));
         }
 
         if (!class_exists($doliClass) && file_exists($doliFile)) {
@@ -1067,7 +1340,7 @@ class SyncController
                 . $doliFile . "), falling back to raw cast.",
                 LOG_WARNING
             );
-            return $this->rawCastFallback($obj);
+            return $this->rawCastFallback($obj, $this->syncPk($config));
         }
 
         $fresh = new $doliClass($this->db);
@@ -1080,7 +1353,16 @@ class SyncController
                 . "to raw cast.",
                 LOG_WARNING
             );
-            return $this->rawCastFallback($obj);
+            return $this->rawCastFallback($obj, $this->syncPk($config));
+        }
+
+        // Symmetry with the push door, which now writes the extrafields a
+        // mapper opens: a client that cannot READ them back could not do a
+        // round-trip. Several core fetch() load them already, a few do not, and
+        // insertExtraFields() upserts -- so ask explicitly, like the REST facade
+        // does on show() and on every list row.
+        if (method_exists($fresh, 'fetch_optionals')) {
+            $fresh->fetch_optionals();
         }
 
         $mapper = new $mapperClass();
@@ -1094,14 +1376,17 @@ class SyncController
      * missing, fetch failed). Each call site logs a LOG_WARNING.
      *
      * @param object $obj Raw row from SELECT *
+     * @param string $pk  Primary key column of the table (registry 'pk')
      * @return array     {id: int, ...other SQL columns}
      */
-    private function rawCastFallback($obj)
+    private function rawCastFallback($obj, $pk = 'rowid')
     {
         $data = (array) $obj;
-        if (isset($data['rowid'])) {
-            $data['id'] = (int) $data['rowid'];
-            unset($data['rowid']);
+        if ($pk !== 'id' && isset($data[$pk])) {
+            $data['id'] = (int) $data[$pk];
+            unset($data[$pk]);
+        } elseif (isset($data['id'])) {
+            $data['id'] = (int) $data['id'];
         }
         return $data;
     }
@@ -1190,8 +1475,9 @@ class SyncController
     /**
      * Universal denylist of property names that must never be writable
      * through /sync/push, regardless of object type. This is the second
-     * layer of CR-6 defence (the first being the per-type allowed_fields
-     * whitelist) and protects against:
+     * layer of CR-6 defence (the first being the write allowlist: the
+     * mapper's $writableFields, or 'allowed_fields' for a hook-registered
+     * type with no mapper) and protects against:
      *   - cross-tenant writes (entity, ms*)
      *   - admin escalation when an external module exposes the User class
      *   - audit-trail forgery (datec, fk_user_creat, fk_user_modif)
@@ -1271,26 +1557,131 @@ class SyncController
      *    we never store an orphan reference.
      *  - Legacy path: kept for hook-registered object_types that lack
      *    a mapper. Uses the per-type 'allowed_fields' whitelist plus
-     *    the universal denylist. Same behaviour as before the migration.
+     *    the universal denylist, and refuses everything when that
+     *    whitelist is missing too. Unreachable for the built-in types:
+     *    all 26 declare a mapper (see the ObjectRegistry docblock).
      *
      * In both paths the universal denylist is applied as defence in
      * depth (no silent failure -- every rejection is logged).
      *
+     * EXTRAFIELDS. A key the mapper opens through $extrafieldsRW arrives as
+     * 'options_<name>' and goes into $object->array_options, NOT into a
+     * property -- which is why $extrafieldsApplied comes back by reference:
+     * only the caller can persist them, with insertExtraFields(), and only
+     * after create()/update() has given the row its id.
+     *
      * @param object $object Dolibarr object
      * @param array $data Caller-provided data (api keys when mapper, else Dolibarr keys)
      * @param array $config Syncable object config (carries object_type stamped by loadSyncableObjects)
+     * @param bool $extrafieldsApplied Out: true when at least one extrafield was set on the object
      * @return string[] Names of rejected keys (for caller-side logging or push error reporting)
      */
-    private function applyDataToObject($object, array $data, array $config): array
+    private function applyDataToObject($object, array $data, array $config, &$extrafieldsApplied = false): array
     {
+        $extrafieldsApplied = false;
         $object_type = $config['object_type'] ?? null;
         $mapperClass = $object_type !== null ? $this->resolveMapperClass($object_type) : null;
 
         if ($mapperClass !== null && class_exists($mapperClass)) {
-            return $this->applyDataViaMapper($object, $data, $config, $mapperClass);
+            return $this->applyDataViaMapper($object, $data, $config, $mapperClass, $extrafieldsApplied);
         }
 
+        // The legacy path never sets one: it refuses extrafields outright.
         return $this->applyDataLegacy($object, $data, $config);
+    }
+
+    /**
+     * Route one already-vetted field onto the object: an 'options_*' key into
+     * array_options, anything else onto the property of the same name.
+     *
+     * The property branch keeps the push-specific `property_exists` guard: the
+     * sync contract is laxer than the facade's (skip what the class does not
+     * carry rather than reject the whole payload), and assigning blindly would
+     * create a dynamic property PHP 8.2 deprecates. That guard is exactly what
+     * used to swallow every extrafield, 'options_*' never being a property.
+     *
+     * @param  object $object
+     * @param  string $field  Dolibarr-side field name.
+     * @param  mixed  $value
+     * @return bool           True when the field was an extrafield.
+     */
+    private function assignFieldToObject($object, $field, $value)
+    {
+        if (strncmp((string) $field, 'options_', 8) === 0) {
+            if (!isset($object->array_options) || !is_array($object->array_options)) {
+                $object->array_options = [];
+            }
+            $object->array_options[$field] = $value;
+            return true;
+        }
+
+        if (property_exists($object, $field)) {
+            $object->$field = $value;
+        }
+
+        return false;
+    }
+
+    /**
+     * Persist the extrafields set on $object by applyDataToObject().
+     *
+     * PRECONDITION, and it is the whole reason this is a separate step: the
+     * caller must have loaded the EXISTING extrafields (fetch_optionals())
+     * before applying the payload. insertExtraFields() DELETEs the object's
+     * extrafield row and re-INSERTs it from array_options alone
+     * (commonobject.class.php), so a partial push against a half-filled
+     * array_options would silently wipe every custom field the payload did not
+     * restate.
+     *
+     * @param  object $object
+     * @param  array  $config
+     * @param  string $context  Caller name, for the log line.
+     * @return bool             False when persisting failed (already logged).
+     */
+    private function persistExtrafields($object, array $config, $context)
+    {
+        if (!method_exists($object, 'insertExtraFields')) {
+            dol_syslog(
+                '[SmartAuth] SyncController::' . $context . ': ' . ($config['class'] ?? '?')
+                . ' has no insertExtraFields() - extrafields not persisted',
+                LOG_ERR
+            );
+            return false;
+        }
+
+        if ($object->insertExtraFields() < 0) {
+            dol_syslog(
+                '[SmartAuth] SyncController::' . $context . ': insertExtraFields failed for '
+                . ($config['object_type'] ?? '?') . ' id=' . ((int) ($object->id ?? 0)) . ': ' . $object->error,
+                LOG_ERR
+            );
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Load the existing extrafields of a fetched object, so a partial push
+     * cannot erase the ones it does not restate (see persistExtrafields).
+     *
+     * @param  object $object
+     * @param  array  $config
+     * @param  string $context  Caller name, for the log line.
+     * @return void
+     */
+    private function loadExistingExtrafields($object, array $config, $context)
+    {
+        if (!method_exists($object, 'fetch_optionals')) {
+            dol_syslog(
+                '[SmartAuth] SyncController::' . $context . ': ' . ($config['class'] ?? '?')
+                . ' has no fetch_optionals() - existing extrafields cannot be preserved',
+                LOG_WARNING
+            );
+            return;
+        }
+
+        $object->fetch_optionals();
     }
 
     /**
@@ -1304,9 +1695,10 @@ class SyncController
      * keys BEFORE feeding the mapper, so importMappedData() never sees
      * a key it would reject.
      *
+     * @param bool $extrafieldsApplied Out: true when at least one extrafield was set
      * @return string[] Names of rejected keys
      */
-    private function applyDataViaMapper($object, array $data, array $config, $mapperClass): array
+    private function applyDataViaMapper($object, array $data, array $config, $mapperClass, &$extrafieldsApplied = false): array
     {
         $writableApiKeys = $this->getWritableApiKeys($mapperClass);
 
@@ -1343,6 +1735,38 @@ class SyncController
         $mapped = $mapper->importMappedData($clean);
 
         $fkErrors = [];
+
+        // Tenant guard on the VALUES, shared verbatim with the synchronous
+        // facade (ForeignKeyGuardTrait, driven by the mapper's declarative
+        // $foreignKeyGuards). processUpdate() already refuses to touch a row of
+        // another entity, but it says nothing about what the payload POINTS AT:
+        // a push carrying another tenant's socid was written as-is, exactly as
+        // it was on PATCH objects/{type}/{id} before the guard existed.
+        //
+        // $fkValidationMap below stays: it is an EXISTENCE check that also
+        // covers the dictionary tables (c_country, c_departements), which the
+        // tenant guard deliberately does not probe. The two are complementary,
+        // and the map alone was never enough -- it is keyed on SQL column names
+        // (fk_soc, fk_project) while the mappers write PHP property names, so
+        // `socid`, the key that spans 14 types, was never validated by it.
+        //
+        // A rejected field is dropped and reported, exactly like an $fkErrors
+        // one: the rest of the payload still applies. The loop terminates
+        // because each pass removes one field.
+        $guardRejected = [];
+        while (($badFk = $this->foreignKeyViolation($mapper, $mapped, $config, $object)) !== null) {
+            unset($mapped->{$badFk});
+            $guardRejected[] = $badFk;
+        }
+        if (!empty($guardRejected)) {
+            dol_syslog(
+                '[SmartAuth] SyncController::applyDataViaMapper: cross-tenant foreign key '
+                . 'refused for ' . ($config['object_type'] ?? '?') . ': '
+                . implode(',', $guardRejected),
+                LOG_WARNING
+            );
+            $fkErrors = $guardRejected;
+        }
         foreach ((array) $mapped as $field => $value) {
             if (isset(self::$fkValidationMap[$field]) && !empty($value)) {
                 if (!$this->validateForeignKeyExists($field, (int) $value)) {
@@ -1350,8 +1774,8 @@ class SyncController
                     continue;
                 }
             }
-            if (property_exists($object, $field)) {
-                $object->$field = $value;
+            if ($this->assignFieldToObject($object, $field, $value)) {
+                $extrafieldsApplied = true;
             }
         }
         if (!empty($fkErrors)) {
@@ -1384,9 +1808,26 @@ class SyncController
         $listOfPublishedFields = $defaults['listOfPublishedFields'] ?? [];
         $writableSet = array_flip($defaults['writableFields'] ?? []);
 
+        // Extrafields the mapper opens for write, read EXACTLY as
+        // dmTrait::importMappedData() reads them (an attribute name with or
+        // without the 'options_' prefix), because this filter runs upstream of
+        // it: a key missing here never reaches the mapper, and that alone is
+        // why the push door wrote no extrafield at all until now. The second
+        // declaration path -- an 'options_*' entry placed directly in
+        // $writableFields, cf dmBase::writableExtrafieldNames() -- already
+        // lands in $writableSet above and needs nothing here.
+        $writableExtraSet = [];
+        $extrafieldsRW = $defaults['extrafieldsRW'] ?? null;
+        if (is_array($extrafieldsRW)) {
+            foreach ($extrafieldsRW as $ef) {
+                $ef = (string) $ef;
+                $writableExtraSet[(strncmp($ef, 'options_', 8) === 0) ? $ef : ('options_' . $ef)] = true;
+            }
+        }
+
         $apiKeys = [];
         foreach ($listOfPublishedFields as $doliSide => $appSide) {
-            if (isset($writableSet[$doliSide])) {
+            if (isset($writableSet[$doliSide]) || isset($writableExtraSet[$doliSide])) {
                 $apiKeys[] = $appSide;
             }
         }
@@ -1399,12 +1840,37 @@ class SyncController
      * dm* mapper is registered for the object_type (typically the
      * hook-registered ones).
      *
+     * Fail-closed when the type declares no allowlist either: see the
+     * comment on the early return below.
+     *
+     * Extrafields are refused on this path, whatever the allowlist says: see
+     * the 'options_' branch below.
+     *
      * @return string[] Names of rejected keys
      */
     private function applyDataLegacy($object, array $data, array $config): array
     {
         $allowedFields = $config['allowed_fields'] ?? null;
         $rejected = [];
+
+        // No mapper AND no allowlist: nothing describes what may be written on
+        // this type, so nothing is. This used to fall back to "denylist only",
+        // which is fail-OPEN -- every property of the Dolibarr class was
+        // writable as long as its name dodged the denylist, on a type smartauth
+        // knows nothing about. Refusing is the same verdict the rest of the
+        // facade reaches when a scoping rule cannot be resolved
+        // (ForeignKeyGuardTrait::isolationDenies and friends).
+        if (!is_array($allowedFields)) {
+            dol_syslog(
+                '[SmartAuth] SyncController::applyDataLegacy: type ' . ($config['object_type'] ?? '?')
+                . ' (' . ($config['class'] ?? '?') . ') declares neither a mapper nor an allowed_fields'
+                . ' allowlist - refusing every incoming field (fail-closed). Declare a dm* mapper'
+                . ' (recommended) or an allowed_fields list in the smartmaker_registerSyncableObjects hook.',
+                LOG_ERR
+            );
+
+            return array_keys($data);
+        }
 
         foreach ($data as $key => $value) {
             if (in_array($key, self::$sensitiveFieldsDenylist, true)
@@ -1413,7 +1879,24 @@ class SyncController
                 continue;
             }
 
-            if (is_array($allowedFields) && !in_array($key, $allowedFields, true)) {
+            if (!in_array($key, $allowedFields, true)) {
+                $rejected[] = $key;
+                continue;
+            }
+
+            // Extrafields are NOT opened on this path, even allowlisted. The
+            // tenant guard that vets an extrafield of type 'link' is driven by
+            // dmBase::getExtrafieldWriteTargets(), which a type without mapper
+            // does not have -- writing one here would be the very fail-open the
+            // guard was added to close, on a type smartauth knows nothing about.
+            // Fail-closed and say so: declare a dm* mapper with $extrafieldsRW.
+            if (strncmp((string) $key, 'options_', 8) === 0) {
+                dol_syslog(
+                    '[SmartAuth] SyncController::applyDataLegacy: extrafield ' . $key . ' refused on '
+                    . ($config['object_type'] ?? '?') . ' - a type without a dm* mapper has no tenant guard'
+                    . ' for extrafield targets. Declare a mapper with $extrafieldsRW to write it.',
+                    LOG_WARNING
+                );
                 $rejected[] = $key;
                 continue;
             }
@@ -1425,9 +1908,6 @@ class SyncController
 
         if (!empty($rejected)) {
             dol_syslog('[SmartAuth] SyncController::applyDataLegacy: rejected mass-assignment keys for ' . ($config['class'] ?? '?') . ': ' . implode(',', $rejected), LOG_WARNING);
-        }
-        if (!is_array($allowedFields)) {
-            dol_syslog('[SmartAuth] SyncController::applyDataLegacy: no allowed_fields whitelist for ' . ($config['class'] ?? '?') . ' - denylist-only mode', LOG_WARNING);
         }
 
         return $rejected;
@@ -1602,26 +2082,30 @@ class SyncController
      * the action is refused. Hook-registered syncable objects must therefore
      * publish a 'rights' key to allow writes.
      *
-     * @param array  $config Syncable object config
-     * @param string $action Logical action
-     * @param \User  $user   Authenticated user
+     * @param array  $config    Syncable object config
+     * @param string $action    Logical action
+     * @param \User  $user      Authenticated user
+     * @param bool   $logDenial Emit the denial log (false for the discovery
+     *                          endpoint, which probes every type x action)
      * @return bool          True only when the right is granted
      */
-    private function userHasSyncRight($config, $action, $user)
+    private function userHasSyncRight($config, $action, $user, $logDenial = true)
     {
         $type = $config['object_type'] ?? '?';
         if (empty($config['rights'][$action]) || !is_array($config['rights'][$action])) {
-            dol_syslog(
-                '[SmartAuth] SyncController: no ' . $action . ' right mapping for '
-                . 'object_type ' . $type . ' - refusing write (fail-closed)',
-                LOG_WARNING
-            );
+            if ($logDenial) {
+                dol_syslog(
+                    '[SmartAuth] SyncController: no ' . $action . ' right mapping for '
+                    . 'object_type ' . $type . ' - refusing write (fail-closed)',
+                    LOG_WARNING
+                );
+            }
             return false;
         }
 
         $args = $config['rights'][$action];
         $granted = (bool) call_user_func_array([$user, 'hasRight'], $args);
-        if (!$granted) {
+        if (!$granted && $logDenial) {
             dol_syslog(
                 '[SmartAuth] SyncController: user ' . ((int) $user->id)
                 . ' lacks right ' . implode('->', $args) . ' for ' . $action
@@ -1630,22 +2114,6 @@ class SyncController
             );
         }
         return $granted;
-    }
-
-    /**
-     * Whether the given entity id is within the set the current user may
-     * access for $element (current entity + shared entities). getEntity()
-     * is safe-by-default: an unknown element falls back to the current
-     * entity only, never broader.
-     *
-     * @param int|string $entity  Entity id carried by the target row
-     * @param string     $element Dolibarr element code (eg 'societe')
-     * @return bool               True when the row is in scope
-     */
-    private function isEntityAllowed($entity, $element)
-    {
-        $allowed = array_map('intval', explode(',', getEntity($element, 1)));
-        return in_array((int) $entity, $allowed, true);
     }
 
     /**
@@ -1658,14 +2126,27 @@ class SyncController
         $object = new $classname($this->db);
 
         // Map data to object properties (whitelist + denylist gated, CR-6 fix)
-        $this->applyDataToObject($object, $data, $config);
+        $extrafieldsApplied = false;
+        $this->applyDataToObject($object, $data, $config, $extrafieldsApplied);
 
         $result = $object->create($user);
-        if ($result > 0) {
-            return ['success' => true, 'id' => $result];
+        if ($result <= 0) {
+            return ['success' => false, 'error' => $object->error ?: 'Create failed'];
         }
 
-        return ['success' => false, 'error' => $object->error ?: 'Create failed'];
+        // Extrafields need the row's id, so they are written after create().
+        // insertExtraFields() upserts, so a second call after a class whose
+        // create() already did it stays harmless. No fetch_optionals() to do
+        // here: a brand-new row has nothing to preserve.
+        if ($extrafieldsApplied && !$this->persistExtrafields($object, $config, 'processCreate')) {
+            return [
+                'success' => false,
+                'id' => $result,
+                'error' => 'Object created but failed to persist extrafields: ' . ($object->error ?: 'unknown error'),
+            ];
+        }
+
+        return ['success' => true, 'id' => $result];
     }
 
     /**
@@ -1680,8 +2161,9 @@ class SyncController
         // Fetch current object with lock
         $this->db->begin();
 
+        $pk = $this->syncPk($config);
         $sql = "SELECT * FROM " . MAIN_DB_PREFIX . $config['table'];
-        $sql .= " WHERE rowid = " . (int) $id;
+        $sql .= " WHERE " . $pk . " = " . (int) $id;
         $sql .= " FOR UPDATE";
 
         $resql = $this->db->query($sql);
@@ -1693,17 +2175,22 @@ class SyncController
         $server_obj = $this->db->fetch_object($resql);
         $server_tms = $server_obj->tms;
 
-        // Entity isolation: refuse to touch (or even leak via a conflict
+        // Tenant isolation: refuse to touch (or even leak via a conflict
         // record) a row that belongs to another entity than the token's.
         // Checked before detectRealConflict/createConflictRecord so a
         // cross-entity rowid never exfiltrates its full row.
-        if (isset($server_obj->entity)
-            && !$this->isEntityAllowed($server_obj->entity, $config['element'])) {
+        //
+        // Routed through syncTenantDenies so the three entity-less tables
+        // (llx_stock_mouvement, llx_subscription, llx_bank) are covered by their
+        // mapper's isolationWhereSql(). The previous isset($server_obj->entity)
+        // test simply skipped them: fail-OPEN on exactly the types that carry no
+        // column to check.
+        $objectTypeForLog = $config['object_type'] ?? '?';
+        if ($this->syncTenantDenies($config, $objectTypeForLog, (int) $id, $server_obj->entity ?? null)) {
             $this->db->rollback();
             dol_syslog(
                 '[SmartAuth] SyncController::processUpdate: cross-entity write '
-                . 'refused for ' . ($config['object_type'] ?? '?') . ' rowid=' . (int) $id
-                . ' (row entity ' . (int) $server_obj->entity . ')',
+                . 'refused for ' . $objectTypeForLog . ' id=' . (int) $id,
                 LOG_WARNING
             );
             // Generic message: do not reveal the row exists in another entity.
@@ -1741,20 +2228,32 @@ class SyncController
 
         // Apply update (whitelist + denylist gated, CR-6 fix)
         $object->fetch($id);
-        $this->applyDataToObject($object, $data, $config);
+        // BEFORE applying the payload: insertExtraFields() rebuilds the whole
+        // extrafield row from array_options, so the existing values have to be
+        // in there or a partial push erases the ones it does not restate.
+        $this->loadExistingExtrafields($object, $config, 'processUpdate');
+        $extrafieldsApplied = false;
+        $this->applyDataToObject($object, $data, $config, $extrafieldsApplied);
 
         // Dolibarr update() signatures differ (Societe/Product/Contact take
         // $id first, User/Facture take $user first). Use the reflection-based
         // dispatcher, same as applyResolvedData -- calling update($user)
         // directly puts the User object into $id on Societe et al.
         $result = $this->callUpdateMethod($object, $user);
-        if ($result > 0) {
-            $this->db->commit();
-            return ['success' => true];
+        if ($result <= 0) {
+            $this->db->rollback();
+            return ['success' => false, 'error' => $object->error ?: 'Update failed'];
         }
 
-        $this->db->rollback();
-        return ['success' => false, 'error' => $object->error ?: 'Update failed'];
+        // Inside the transaction on purpose: a failed extrafield write must
+        // take the header update down with it, not leave the row half-applied.
+        if ($extrafieldsApplied && !$this->persistExtrafields($object, $config, 'processUpdate')) {
+            $this->db->rollback();
+            return ['success' => false, 'error' => 'Failed to persist extrafields: ' . ($object->error ?: 'unknown error')];
+        }
+
+        $this->db->commit();
+        return ['success' => true];
     }
 
     /**
@@ -1897,20 +2396,22 @@ class SyncController
             return ['success' => false, 'error' => 'Object not found'];
         }
 
-        // Entity isolation: refuse deleting a row from another entity.
-        if (isset($object->entity)
-            && !$this->isEntityAllowed($object->entity, $config['element'])) {
+        // Tenant isolation: refuse deleting a row from another entity. Same
+        // routing as processUpdate, for the same fail-open reason on the tables
+        // that have no entity column.
+        $objectTypeForLog = $config['object_type'] ?? '?';
+        if ($this->syncTenantDenies($config, $objectTypeForLog, (int) $id, $object->entity ?? null)) {
             dol_syslog(
                 '[SmartAuth] SyncController::processDelete: cross-entity delete '
-                . 'refused for ' . ($config['object_type'] ?? '?') . ' rowid=' . (int) $id
-                . ' (row entity ' . (int) $object->entity . ')',
+                . 'refused for ' . $objectTypeForLog . ' id=' . (int) $id,
                 LOG_WARNING
             );
             return ['success' => false, 'error' => 'Object not found'];
         }
 
-        // Create tombstone before delete
-        $this->createTombstone($config['table'], $id, $user->id);
+        // Create tombstone before delete. The row's own entity is recorded so a
+        // client of another tenant is not told about this deletion.
+        $this->createTombstone($config['table'], $id, $user->id, $object->entity ?? null);
 
         $result = $object->delete($user);
         if ($result > 0) {
@@ -1921,19 +2422,40 @@ class SyncController
     }
 
     /**
-     * Create a tombstone record for a deleted object
+     * Create a tombstone record for a deleted object.
+     *
+     * @param string     $table      Business table name (no prefix)
+     * @param int        $object_id  Deleted row primary key
+     * @param int        $user_id    Author of the deletion
+     * @param mixed|null $entity     Entity of the deleted row. Null for a table
+     *                               with no entity column: the tombstone stays
+     *                               visible to every tenant, which is the safe
+     *                               side (a missed deletion leaves a ghost row
+     *                               in an offline cache).
+     * @return bool                  False when the insert failed
      */
-    private function createTombstone($table, $object_id, $user_id)
+    private function createTombstone($table, $object_id, $user_id, $entity = null)
     {
         $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_sync_tombstones";
-        $sql .= " (table_name, object_id, deleted_at, deleted_by)";
+        $sql .= " (table_name, object_id, deleted_at, deleted_by, entity)";
         $sql .= " VALUES (";
         $sql .= "'" . $this->db->escape($table) . "', ";
         $sql .= (int) $object_id . ", ";
         $sql .= "'" . $this->db->idate(dol_now()) . "', ";
-        $sql .= (int) $user_id . ")";
+        $sql .= (int) $user_id . ", ";
+        $sql .= ($entity === null ? "NULL" : (int) $entity) . ")";
 
-        $this->db->query($sql);
+        if (!$this->db->query($sql)) {
+            // A lost tombstone means the deletion never reaches offline clients:
+            // the row lives on in their cache for good. Never silent.
+            dol_syslog(
+                '[SmartAuth] SyncController::createTombstone: insert failed for '
+                . $table . ' id=' . (int) $object_id . ' - ' . $this->db->lasterror(),
+                LOG_ERR
+            );
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -1950,19 +2472,37 @@ class SyncController
             return ['success' => false, 'error' => 'Object not found'];
         }
 
+        // Same tenant frontier as processUpdate: a conflict row records a table
+        // name and an object id, nothing that proves the object is the caller's.
+        $objectTypeForLog = $config['object_type'] ?? '?';
+        if ($this->syncTenantDenies($config, $objectTypeForLog, (int) $id, $object->entity ?? null)) {
+            dol_syslog(
+                '[SmartAuth] SyncController::applyResolvedData: cross-entity write refused for '
+                . $objectTypeForLog . ' id=' . (int) $id,
+                LOG_WARNING
+            );
+            return ['success' => false, 'error' => 'Object not found'];
+        }
+
         // Whitelist + denylist gated (CR-6 fix)
-        $this->applyDataToObject($object, $data, $config);
+        $this->loadExistingExtrafields($object, $config, 'applyResolvedData');
+        $extrafieldsApplied = false;
+        $this->applyDataToObject($object, $data, $config, $extrafieldsApplied);
 
         // Dolibarr classes have different update() signatures:
         // - Societe, Product, Contact: update($id, $user, ...)
         // - User, Facture: update($user, ...)
         // Use reflection to detect the correct signature
         $result = $this->callUpdateMethod($object, $user);
-        if ($result > 0) {
-            return ['success' => true];
+        if ($result <= 0) {
+            return ['success' => false, 'error' => $object->error ?: 'Update failed'];
         }
 
-        return ['success' => false, 'error' => $object->error ?: 'Update failed'];
+        if ($extrafieldsApplied && !$this->persistExtrafields($object, $config, 'applyResolvedData')) {
+            return ['success' => false, 'error' => 'Failed to persist extrafields: ' . ($object->error ?: 'unknown error')];
+        }
+
+        return ['success' => true];
     }
 
     /**

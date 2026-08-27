@@ -160,6 +160,47 @@ if (!$permissiontoread) {
 	accessforbidden();
 }
 
+// TENANT AND OWNERSHIP GUARD.
+//
+// Everything above is fail-OPEN: $enablepermissioncheck is 0 (l.135), so
+// $permissiontoread/add/delete are all forced to 1 for every internal user, and
+// the three restrictive checks just above are commented out. fetchCommon() then
+// loads by rowid with NO entity clause. So any authenticated internal user
+// could open auth_card.php?id=<n> and read a token row of ANOTHER USER in
+// ANOTHER ENTITY -- salt column included -- then delete it or rewrite its
+// status / date_eol to resurrect a revoked token.
+//
+// Why not simply flip $enablepermissioncheck to 1: the finer-grained rights it
+// tests (smartauth->auth->read/write/delete) are DECLARED INSIDE A COMMENT in
+// core/modules/modSmartauth.class.php (l.277-291); only 'smartauth->read'
+// really exists. hasRight('smartauth','auth','read') is therefore always false
+// and the flag would lock every user out, admins included. Declaring those
+// rights is a module-descriptor change with a version bump and an upgrade path
+// for existing installs -- a separate commit, deliberately not made here.
+//
+// This guard is independent of that: it closes the cross-tenant and
+// cross-user access with what the runtime already knows.
+if ($user->socid > 0) {
+	// Portal / customer accounts have no business on token administration.
+	accessforbidden();
+}
+if (!empty($object->id)) {
+	$authEntity = isset($object->entity) ? (int) $object->entity : 0;
+	$allowedEntities = array_map('intval', explode(',', getEntity('smartauth', 1)));
+	if ($authEntity <= 0 || !in_array($authEntity, $allowedEntities, true)) {
+		dol_syslog('[SmartAuth] auth_card: cross-entity access refused on token ' . ((int) $object->id)
+			. ' (row entity ' . $authEntity . ', user ' . ((int) $user->id) . ')', LOG_WARNING);
+		accessforbidden();
+	}
+	// Inside the tenant, a token belongs to ONE user: its salt is a credential.
+	// Only its owner and an admin may see or act on it.
+	if (empty($user->admin) && (int) $object->fk_authid !== (int) $user->id) {
+		dol_syslog('[SmartAuth] auth_card: refused token ' . ((int) $object->id) . ' of user '
+			. ((int) $object->fk_authid) . ' to user ' . ((int) $user->id), LOG_WARNING);
+		accessforbidden();
+	}
+}
+
 
 /*
  * Actions

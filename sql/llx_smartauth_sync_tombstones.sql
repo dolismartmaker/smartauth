@@ -20,6 +20,7 @@ CREATE TABLE llx_smartauth_sync_tombstones (
     object_id INTEGER NOT NULL,
     deleted_at DATETIME NOT NULL,
     deleted_by INTEGER DEFAULT NULL COMMENT 'fk_user who deleted',
+    entity INTEGER DEFAULT NULL COMMENT 'Entity of the deleted row, NULL when its table has no entity column',
     parent_table VARCHAR(64) DEFAULT NULL COMMENT 'For cascade: parent table name',
     parent_id INTEGER DEFAULT NULL COMMENT 'For cascade: parent object id'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

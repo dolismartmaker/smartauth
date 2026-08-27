@@ -61,6 +61,15 @@ class dmContract extends dmBase
 		'note_public'       => 'public_note',
 		'note_private'      => 'private_note',
 		'statut'            => 'status',
+		// Read-only, and NOT columns of llx_contrat: Contrat::fetch_lines sums
+		// its lines into these properties ("global properties on contract not
+		// stored into database"). They are therefore only meaningful once the
+		// lines are loaded, which every read path of the facade now does
+		// (ObjectFacadeTrait::loadLines). Absent from $writableFields on
+		// purpose: writing a total that no column holds is meaningless.
+		'total_ht'          => 'total_excl_tax',
+		'total_tva'         => 'total_vat',
+		'total_ttc'         => 'total_incl_tax',
 	];
 
 	// Allowlist for importMappedData() (Dolibarr field names).

@@ -43,6 +43,9 @@ class UploadIdempotencyTest extends DolibarrRealTestCase
     /** @var string Another valid UUID v4 */
     private $key2 = '22223333-4444-4def-9abc-fedcba987654';
 
+    /** @var string[] Staging directories seeded by a test, removed in tearDown */
+    private $stagedDirs = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -63,6 +66,17 @@ class UploadIdempotencyTest extends DolibarrRealTestCase
     {
         unset($_SERVER['HTTP_IDEMPOTENCY_KEY']);
         $_FILES = [];
+
+        foreach ($this->stagedDirs as $dir) {
+            if (is_dir($dir)) {
+                foreach ((array) glob($dir . '/*') as $file) {
+                    @unlink($file);
+                }
+                @rmdir($dir);
+            }
+        }
+        $this->stagedDirs = [];
+
         parent::tearDown();
     }
 
@@ -281,12 +295,13 @@ class UploadIdempotencyTest extends DolibarrRealTestCase
 
     public function testStoreReplaysCompletedResponse(): void
     {
-        // Pre-seed a completed row pretending the file was uploaded
-        // previously. The controller must NOT touch processFiles (we leave
-        // $_FILES empty, which would normally return 400) and instead
-        // return the stored response verbatim.
+        // Pre-seed a completed row AND its staged file: a replay is only
+        // legitimate while the file it points at is still there.
+        $uploadId = 'upl_' . str_repeat('c', 60);
+        $this->seedStagedUpload($uploadId, 'photo.jpg', time() + 3600);
+
         $cannedResponse = [
-            'upload_id' => 'upl_' . str_repeat('c', 60),
+            'upload_id' => $uploadId,
             'filename'  => 'photo.jpg',
             'mime'      => 'image/jpeg',
             'size'      => 4242,
@@ -300,6 +315,78 @@ class UploadIdempotencyTest extends DolibarrRealTestCase
 
         $this->assertSame(201, $status);
         $this->assertSame($cannedResponse, $body);
+    }
+
+    /**
+     * Two clocks disagree: the idempotency row lives 24h, the staged file 1h.
+     * Between the two, replaying the stored response used to hand back an
+     * upload_id whose staging directory was gone -- consumeUpload() then found
+     * nothing and the photo was lost in silence, which is the worst outcome for
+     * an offline-first client that believes its retry succeeded.
+     */
+    public function testStoreDoesNotReplayWhenStagedFileHasExpired(): void
+    {
+        $uploadId = 'upl_' . str_repeat('e', 60);
+        // Staged, but past its TTL: SmartUpload::get() returns null (and
+        // prunes the directory), exactly like a file the cleanup already took.
+        $this->seedStagedUpload($uploadId, 'gone.jpg', time() - 60);
+
+        $cannedResponse = [
+            'upload_id' => $uploadId,
+            'filename'  => 'gone.jpg',
+            'mime'      => 'image/jpeg',
+            'size'      => 4242,
+            'sha256'    => str_repeat('f', 64),
+        ];
+        $this->assertTrue($this->repo->createProcessing($this->key1, (int) $this->testUser->id, 1));
+        $this->assertTrue($this->repo->markCompleted($this->key1, (int) $this->testUser->id, 1, $uploadId, $cannedResponse, 201));
+
+        $_SERVER['HTTP_IDEMPOTENCY_KEY'] = $this->key1;
+        list($body, $status) = $this->controller->store(['user' => $this->testUser, 'entity' => 1]);
+
+        // No replay: the request falls through to a real upload attempt, which
+        // with an empty $_FILES ends in the usual 400. The client is told to
+        // send the file again instead of being handed a dead upload_id.
+        $this->assertSame(400, $status);
+        $this->assertNotSame($cannedResponse, $body);
+
+        // And the stale row is gone, so the retry is not stuck on it.
+        $row = $this->repo->findExisting($this->key1, (int) $this->testUser->id, 1);
+        $this->assertTrue(
+            $row === null || $row['status'] === SmartAuthUploadIdempotency::STATUS_PROCESSING,
+            'the expired completed row must not survive as a replayable entry'
+        );
+    }
+
+    /**
+     * Build a staging directory the way SmartUpload::store would, so
+     * SmartUpload::get() finds it. A real store() cannot run here: it goes
+     * through is_uploaded_file()/move_uploaded_file(), which need a real SAPI
+     * upload pipeline.
+     */
+    private function seedStagedUpload(string $uploadId, string $filename, int $expires): void
+    {
+        global $conf;
+
+        $base = !empty($conf->smartauth->dir_output) ? $conf->smartauth->dir_output : sys_get_temp_dir();
+        $dir = $base . '/upload-staging/' . ((int) $this->testUser->id) . '/' . $uploadId;
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            $this->fail('could not create the staging directory ' . $dir);
+        }
+
+        file_put_contents($dir . '/' . $filename, 'staged-bytes');
+        file_put_contents($dir . '/meta.json', json_encode([
+            'upload_id' => $uploadId,
+            'user_id' => (int) $this->testUser->id,
+            'entity' => (int) ($conf->entity ?? 1),
+            'filename' => $filename,
+            'mime' => 'image/jpeg',
+            'size' => 12,
+            'sha256' => hash('sha256', 'staged-bytes'),
+            'expires' => $expires,
+        ]));
+
+        $this->stagedDirs[] = $dir;
     }
 
     public function testStoreReturns409OnProcessingRow(): void
@@ -322,15 +409,20 @@ class UploadIdempotencyTest extends DolibarrRealTestCase
         // other's response. user1 -> completed; user2 -> processing.
         $otherUser = $this->createTestUser(['login' => 'idem_scope_' . uniqid()]);
 
+        // A replayable response points at a live staged file (an upload_id is
+        // at least 32 chars, shorter ones are refused by SmartUpload::get).
+        $mineId = 'upl_' . str_repeat('m', 60);
+        $this->seedStagedUpload($mineId, 'mine.jpg', time() + 3600);
+
         $this->repo->createProcessing($this->key1, (int) $this->testUser->id, 1);
-        $this->repo->markCompleted($this->key1, (int) $this->testUser->id, 1, 'mine', ['upload_id' => 'mine'], 201);
+        $this->repo->markCompleted($this->key1, (int) $this->testUser->id, 1, $mineId, ['upload_id' => $mineId], 201);
         $this->repo->createProcessing($this->key1, (int) $otherUser->id, 1);
 
         // Replay for user1.
         $_SERVER['HTTP_IDEMPOTENCY_KEY'] = $this->key1;
         list($body1, $status1) = $this->controller->store(['user' => $this->testUser, 'entity' => 1]);
         $this->assertSame(201, $status1);
-        $this->assertSame('mine', $body1['upload_id']);
+        $this->assertSame($mineId, $body1['upload_id']);
 
         // 409 for user2 (separate processing row).
         list($body2, $status2) = $this->controller->store(['user' => $otherUser, 'entity' => 1]);

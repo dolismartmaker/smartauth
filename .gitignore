@@ -26,3 +26,8 @@
 .phpunit.cache
 coverage.xml
 coverage-output.txt
+documentation/*.md
+todo*.md
+dev*.md
+TODO*.md
+DEV*.md

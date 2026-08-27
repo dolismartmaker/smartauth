@@ -27,9 +27,13 @@ namespace SmartAuth\Api;
  *   PATCH  objects/{objtype}/{id}/lines/{lineid}   -> update   (update a line)
  *   DELETE objects/{objtype}/{id}/lines/{lineid}   -> destroy  (delete a line)
  *   POST   objects/{objtype}/{id}/lines/reorder    -> reorder  ({order:[ids]})
+ *   POST   objects/{objtype}/{id}/lines/{lineid}/actions/{action}
+ *                                                  -> invokeAction (line workflow)
  *
  * Contract:
- *   - only types whose registry config carries supports_lines=true are accepted.
+ *   - only types whose registry config carries supports_lines=true are accepted,
+ *     and a line action additionally requires the type to list it in
+ *     'line_actions' (default-deny, like the document-level 'actions').
  *   - the divergent Dolibarr addline/updateline/deleteline signatures are
  *     absorbed by DocumentLineInvoker (per-class positional dispatch).
  *   - every mutation is gated by the type's 'update' right (a line change is a
@@ -141,6 +145,17 @@ class ObjectLineController
             }
             $doliField = $apiToDoli[$apiKey];
             if (!isset($writable[$doliField])) {
+                // Dropped on purpose, and said out loud: these are fields the
+                // READ export publishes, so a client that echoes back a line it
+                // just received sends them without meaning to. Silence here
+                // would read as "accepted". Typical case: the contract line
+                // status and its real dates, which only active_line() and
+                // close_line() may write.
+                dol_syslog(
+                    "[SmartAuth] ObjectLineController: read-only line field '" . $apiKey
+                    . "' (Dolibarr '" . $doliField . "') ignored on write",
+                    LOG_NOTICE
+                );
                 continue;
             }
             if ($doliField === 'date_start' || $doliField === 'date_end') {
@@ -153,8 +168,56 @@ class ObjectLineController
     }
 
     /**
+     * Tenant guard on the product a line points at.
+     *
+     * The document itself is scoped by resolveDocument(); the fk_product the
+     * payload carries was not. This one is worse than a wrong reference: it is
+     * a DISCLOSURE. hydrateFromProduct() below copies the target's description,
+     * label, PRICE and VAT rate onto the line, and the route answers with that
+     * line -- so a caller could read another tenant's price list one rowid at a
+     * time. Product::fetch() cannot stop it: like Facture, Propal and Commande,
+     * it drops the entity clause as soon as it is given a rowid.
+     *
+     * Same rules as everywhere else in the facade (ForeignKeyGuardTrait): the
+     * value is narrowed to the integer that was probed, a value <= 0 is not a
+     * violation (no product = a free-text line, which is legitimate), and the
+     * refusal is a 404, never a 403.
+     *
+     * @param  array $d    Normalized line payload (mutated: fk_product narrowed).
+     * @param  array $cfg  Registry config of the DOCUMENT, for the log line.
+     * @return array|null  An error [body,code] tuple, or null when allowed.
+     */
+    private function productGuardError(array &$d, $cfg)
+    {
+        if (!array_key_exists('fk_product', $d) || $d['fk_product'] === null) {
+            return null;
+        }
+
+        $fkProduct = (int) $d['fk_product'];
+        $d['fk_product'] = $fkProduct;
+        if ($fkProduct <= 0) {
+            return null;
+        }
+
+        if ($this->foreignKeyTargetDenies('product', $fkProduct, $cfg, 'fk_product')) {
+            dol_syslog(
+                "[SmartAuth] ObjectLineController: cross-tenant product " . $fkProduct
+                . " refused on " . ($cfg['object_type'] ?? '?') . " line",
+                LOG_WARNING
+            );
+            return [['error' => 'Object not found'], 404];
+        }
+
+        return null;
+    }
+
+    /**
      * Fill missing pricing/description fields from the linked product, mirroring
      * the Dolibarr line-creation form. Only sets keys absent from $d.
+     *
+     * PRECONDITION: productGuardError() has already vetted $d['fk_product'].
+     * This method reads the target and copies its data onto the line, so it must
+     * never run on a product of another tenant.
      *
      * @param  array $d  Normalized line data (mutated).
      * @return void
@@ -273,6 +336,13 @@ class ObjectLineController
         }
 
         $d = $this->normalizeLinePayload(is_array($payload) ? $payload : [], $mapper);
+        // BEFORE hydration: hydrateFromProduct() copies the target's label and
+        // price onto the line, so a foreign product must be refused before it
+        // is ever read, not after.
+        $productErr = $this->productGuardError($d, $cfg);
+        if ($productErr !== null) {
+            return $productErr;
+        }
         $this->hydrateFromProduct($d);
 
         $newLineId = DocumentLineInvoker::add($o, $user, $d);
@@ -313,6 +383,13 @@ class ObjectLineController
         }
 
         $d = $this->normalizeLinePayload(is_array($payload) ? $payload : [], $mapper);
+        // Guard the CLIENT-SENT product before the merge below, so the check
+        // applies to what the caller asked for and never to a value the line
+        // already carried (which was guarded when it was written).
+        $productErr = $this->productGuardError($d, $cfg);
+        if ($productErr !== null) {
+            return $productErr;
+        }
         // Merge: any writable field the client did not send keeps the existing
         // line value (Dolibarr updateline() overwrites every column it receives).
         foreach (self::WRITABLE_LINE_FIELDS as $field) {
@@ -430,6 +507,84 @@ class ObjectLineController
         if ($res === false || (is_int($res) && $res < 0)) {
             dol_syslog("[SmartAuth] ObjectLineController::reorder line_ajaxorder failed for " . ($cfg['object_type'] ?? '?') . " id=" . ((int) $o->id) . ": " . $o->error, LOG_ERR);
             return [['error' => 'Failed to reorder lines: ' . $o->error], 400];
+        }
+
+        return [$this->exportWithLines($o, $mapper), 200];
+    }
+
+    /**
+     * POST objects/{objtype}/{id}/lines/{lineid}/actions/{action} -- run a
+     * workflow transition on ONE line.
+     *
+     * Distinct from the document actions of ObjectActionController: what opens
+     * and closes a contract line ("this rental starts", "this one is
+     * terminated") carries the business meaning, writes the status and the real
+     * dates, and fires the LINECONTRACT_* triggers. A PATCH of line fields does
+     * not replace it -- and is refused on those fields for exactly that reason.
+     *
+     * Gated by the type's 'update' right and the entity scope, like every other
+     * line mutation: acting on a line is editing the document.
+     *
+     * @param  array|null $payload
+     * @return array  [body, httpCode]
+     */
+    public function invokeAction($payload = null)
+    {
+        global $user;
+
+        list($cfg, $mapper, $o, $err) = $this->resolveDocument($payload, 'update');
+        if ($err !== null) {
+            return $err;
+        }
+
+        // Default-deny, same contract as the document actions: a type that
+        // declares no line_actions has none, whatever the invoker could do.
+        $allowed = (isset($cfg['line_actions']) && is_array($cfg['line_actions'])) ? $cfg['line_actions'] : [];
+        if (empty($allowed)) {
+            dol_syslog("[SmartAuth] ObjectLineController: type '" . ($cfg['object_type'] ?? '?') . "' declares no line actions", LOG_WARNING);
+            return [['error' => 'This object type has no line actions'], 400];
+        }
+
+        $action = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '', (string) ($payload['action'] ?? '')));
+        if ($action === '') {
+            return [['error' => 'Action is required'], 400];
+        }
+        if (!in_array($action, $allowed, true)) {
+            dol_syslog("[SmartAuth] ObjectLineController: line action '" . $action . "' not allowed for type '" . ($cfg['object_type'] ?? '?') . "'", LOG_WARNING);
+            return [['error' => "Unsupported line action '" . $action . "' for this object type"], 400];
+        }
+
+        $lineId = (int) ($payload['lineid'] ?? 0);
+        if ($lineId <= 0) {
+            return [['error' => 'Line id is required'], 400];
+        }
+
+        // Loading the lines is BOTH the ownership check (a line id belonging to
+        // another document is a 404, not a silent no-op) and a precondition of
+        // the invoker: Contrat::active_line/close_line reach their line through
+        // the lines_id_index_mapper that fetch_lines() builds.
+        if (method_exists($o, 'fetch_lines')) {
+            $o->fetch_lines();
+        }
+        if ($this->findLine($o, $lineId) === null) {
+            return [['error' => 'Line not found'], 404];
+        }
+
+        if (!DocumentLineActionInvoker::supports($o)) {
+            dol_syslog("[SmartAuth] ObjectLineController: DocumentLineActionInvoker cannot drive line actions on " . get_class($o), LOG_ERR);
+            return [['error' => 'Line actions not supported for this object'], 400];
+        }
+
+        $params = is_array($payload) ? $payload : [];
+        $res = DocumentLineActionInvoker::run($o, $user, $lineId, $action, $params);
+
+        if ($res === DocumentLineActionInvoker::UNKNOWN) {
+            dol_syslog("[SmartAuth] ObjectLineController: no invoker mapping for " . get_class($o) . " line action " . $action, LOG_ERR);
+            return [['error' => "Line action '" . $action . "' is not implemented for this object"], 400];
+        }
+        if ($res <= 0) {
+            dol_syslog("[SmartAuth] ObjectLineController::invokeAction '" . $action . "' failed for " . ($cfg['object_type'] ?? '?') . " line=" . $lineId . ": " . $o->error, LOG_ERR);
+            return [['error' => "Failed to run line action '" . $action . "': " . $o->error], 400];
         }
 
         return [$this->exportWithLines($o, $mapper), 200];

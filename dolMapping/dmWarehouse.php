@@ -50,7 +50,11 @@ class dmWarehouse extends dmBase
 		'phone'             => 'phone',
 		'fax'               => 'fax',
 		'fk_parent'         => 'parent_warehouse',
-		// Entrepot reads the PHP property $fk_project (SQL column fk_projet).
+		// Entrepot reads the PHP property $fk_project, and here the SQL column is
+		// named fk_project too (llx_entrepot.sql l.28) -- unlike llx_facture,
+		// llx_commande and llx_propal, which spell it fk_projet. Do NOT "align"
+		// this one on its siblings: a filter or sort map pointing at fk_projet
+		// would produce an Unknown column on this table.
 		'fk_project'        => 'project',
 		'statut'            => 'status',
 	];

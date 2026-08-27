@@ -428,14 +428,42 @@ class DmLinesTraitTest extends DolibarrRealTestCase
         $this->assertArrayHasKey('fk_contrat', $mapping);
         $this->assertEquals('contract_id', $mapping['fk_contrat']);
 
-        $this->assertArrayHasKey('date_ouverture_prevue', $mapping);
-        $this->assertEquals('date_start_planned', $mapping['date_ouverture_prevue']);
+        // Keyed by the PHP PROPERTY, not the SQL column: Contrat::fetch_lines
+        // aliases date_ouverture_prevue/date_ouverture/date_fin_validite/
+        // date_cloture onto date_start/date_start_real/date_end/date_end_real
+        // and never sets the column names, so keying them exported null.
+        $this->assertEquals('date_start_planned', $mapping['date_start']);
+        $this->assertEquals('date_start_real', $mapping['date_start_real']);
+        $this->assertEquals('date_end_planned', $mapping['date_end']);
+        $this->assertEquals('date_end_real', $mapping['date_end_real']);
 
-        $this->assertArrayHasKey('date_fin_validite', $mapping);
-        $this->assertEquals('date_end_planned', $mapping['date_fin_validite']);
+        $this->assertArrayNotHasKey('date_ouverture_prevue', $mapping);
+        $this->assertArrayNotHasKey('date_ouverture', $mapping);
+        $this->assertArrayNotHasKey('date_fin_validite', $mapping);
+        $this->assertArrayNotHasKey('date_cloture', $mapping);
 
         $this->assertArrayHasKey('statut', $mapping);
         $this->assertEquals('status', $mapping['statut']);
+    }
+
+    /**
+     * The four contract-line date keys must name properties ContratLigne really
+     * carries -- the regression that made all four export null.
+     */
+    public function testContractLinesMappingKeysAreRealLineProperties(): void
+    {
+        require_once DOL_DOCUMENT_ROOT . '/contrat/class/contrat.class.php';
+
+        $mapping = $this->mapper->testGetContractLinesMapping();
+        $line = new \ContratLigne($this->db);
+
+        foreach (['date_start', 'date_start_real', 'date_end', 'date_end_real', 'statut'] as $property) {
+            $this->assertTrue(
+                property_exists($line, $property),
+                'ContratLigne must carry $' . $property . ', otherwise the mapping exports null'
+            );
+            $this->assertArrayHasKey($property, $mapping);
+        }
     }
 
     /**

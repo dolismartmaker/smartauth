@@ -165,6 +165,49 @@ abstract class dmBase
     protected $listOfForeignKeyLabels;
 
     /**
+     * API key of the localized status label companion, or null to opt out.
+     *
+     * Consumed by dmTrait::_resolveStatusLabel(), which fills it from
+     * getLibStatut(1) while the object is loaded, and preserved by
+     * exportMappedDataFiltered() like the FK-label companions. Only emitted for
+     * mappers that publish a status field, on objects that implement
+     * getLibStatut().
+     *
+     * Defaults ON: the missing status label is what forced consumers to fetch
+     * every row a second time, so opting IN mapper by mapper would have left
+     * the problem in place for the twenty-odd types nobody thought to update.
+     *
+     * @var string|null
+     */
+    protected $statusLabelKey = 'status_label';
+
+    /**
+     * ?include= keys of the export currently running, or null when the caller
+     * wants everything. Published by exportMappedDataFiltered() and read by
+     * dmTrait::_exportWants() so the per-row companions that cost a query
+     * (categories, linked-file count) are only computed when asked for.
+     *
+     * Request-scoped, always restored by the caller.
+     *
+     * @var array<int,string>|null
+     */
+    protected $_exportIncludeKeys = null;
+
+    /**
+     * Whether this mapper may serve a list from the list query alone, without
+     * fetching each row through its Dolibarr class (see
+     * supportsCompactProjection and documentation/facade-list-performance.md).
+     *
+     * Off by default: turning it on is a claim that this type's export is
+     * identical either way, and that claim is only worth what
+     * CompactProjectionParityTest proves. Flip it, run the suite, keep it if
+     * green.
+     *
+     * @var bool
+     */
+    protected $compactProjectionAllowed = false;
+
+    /**
      * Tenant guard for the writable foreign keys of this mapper (write side).
      *
      * WHY. The facade validates the NAMES of the incoming fields
@@ -300,6 +343,355 @@ abstract class dmBase
             : [];
 
         return array_merge(self::$GLOBAL_FK_GUARD_EXEMPTIONS, $local);
+    }
+
+    /**
+     * Memoised extrafield write targets, keyed by the NORMALISED parent element.
+     *
+     * fetch_name_optionals_label() has no cache of its own and ignores its
+     * $forceload argument (extrafields.class.php l.833, l.852-853): it runs one
+     * SELECT per call. Resolving a 'link' target costs more still (a
+     * dol_include_once plus a constructor, to read table_element). Without this
+     * cache a list of 200 rows would pay both 200 times.
+     *
+     * @var array<string,array<string,array<string,mixed>>>|null
+     */
+    private static $EXTRAFIELD_WRITE_TARGETS = [];
+
+    /**
+     * TENANT-BEARING TARGETS of the extrafields this mapper opens for WRITE.
+     *
+     * WHY THIS EXISTS. $writableFields closes the native columns, and
+     * $foreignKeyGuards makes each of their foreign keys tenant-checked. The
+     * extrafields opened by $extrafieldsRW went through NEITHER: they travel as
+     * 'options_*' keys straight into $object->array_options, and a Dolibarr
+     * extrafield of type 'link' holds exactly what a native fk_ column holds --
+     * the rowid of another object. A PATCH could therefore point a custom field
+     * at another tenant's company through the very door $foreignKeyGuards was
+     * built to close. The spec anticipated it (TODO section 9.3: "extend the
+     * foreign-key guards to link-typed extrafields BEFORE opening the write");
+     * the write was opened first, so this closes it after the fact.
+     *
+     * Deliberately NOT merged into $foreignKeyGuards, for two verified reasons:
+     *   a) ForeignKeyGuardTrait casts every guarded key with (int) -- correct for
+     *      a 'link' (int(11) column) and destructive for a 'sellist' or a
+     *      'chkbxlst' (varchar(255), possibly a comma-separated list);
+     *   b) ForeignKeyGuardContractTest::testNoGuardIsDeclaredOnANonWritableField
+     *      would flag every entry as an orphan, since its writableFieldsOf()
+     *      helper does not read $extrafieldsRW.
+     *
+     * SHAPE. 'options_<name>' => ['mode' => ..., 'target' => ..., 'reason' => ...]
+     *   mode 'int'       : type 'link'. Value is a rowid in an int column.
+     *   mode 'id'        : type 'sellist' whose key field is rowid. Value is a
+     *                      rowid in a varchar column -- probed, never cast.
+     *   mode 'csv'       : type 'chkbxlst' whose key field is rowid. Value is a
+     *                      comma-separated list of rowids.
+     *   mode 'unguarded' : nothing to check (plain scalar type, a target outside
+     *                      the registry, or a list keyed by a CODE rather than a
+     *                      rowid). Carries 'reason' for the log line.
+     *   mode 'refuse'    : the declaration itself is broken (extrafield absent
+     *                      from llx_extrafields, unusable param, link class that
+     *                      cannot be loaded). Fail-closed: the mapper opened this
+     *                      field on purpose, so a broken setup must break loudly
+     *                      rather than write unchecked. Carries 'reason'.
+     *
+     * 'target' is a registry type KEY, so pk / element / has_entity come from the
+     * single registry entry (see ObjectRegistry::typeForTable).
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public function getExtrafieldWriteTargets()
+    {
+        $parentElement = (string) ($this->parentTableElementToUseForExtraFields ?? '');
+        $writableExtras = $this->writableExtrafieldNames();
+
+        if ($parentElement === '' || empty($writableExtras)) {
+            return [];
+        }
+
+        // Dolibarr normalises a handful of element types before storing them in
+        // llx_extrafields.elementtype (extrafields.class.php l.842-850). Index
+        // the cache on the normalised value or every lookup misses.
+        $normalised = $parentElement;
+        if ($normalised === 'thirdparty') {
+            $normalised = 'societe';
+        } elseif ($normalised === 'contact') {
+            $normalised = 'socpeople';
+        } elseif ($normalised === 'order_supplier') {
+            $normalised = 'commande_fournisseur';
+        }
+
+        $cacheKey = $normalised . '|' . implode(',', $writableExtras);
+        if (isset(self::$EXTRAFIELD_WRITE_TARGETS[$cacheKey])) {
+            return self::$EXTRAFIELD_WRITE_TARGETS[$cacheKey];
+        }
+
+        $attributes = $this->loadExtrafieldAttributes($normalised);
+        $targets = [];
+        foreach ($writableExtras as $name) {
+            $spec = $this->resolveExtrafieldTarget($normalised, $name, $attributes);
+
+            // Announce every field left unguarded, ONCE per process thanks to
+            // the memoisation below -- not once per request, which would drown
+            // the log. Silence here would be the worst outcome: an extrafield
+            // that references another object and is not tenant-checked has to be
+            // visible to whoever reads the logs, exactly as
+            // ForeignKeyGuardTrait::resolvePolymorphicTarget announces its own
+            // unguarded case.
+            if (($spec['mode'] ?? '') === 'unguarded' && !empty($spec['reason'])) {
+                dol_syslog(
+                    "[SmartAuth] " . static::class . ": " . (string) $spec['reason'] . " - left unguarded",
+                    LOG_WARNING
+                );
+            }
+
+            $targets['options_' . $name] = $spec;
+        }
+
+        self::$EXTRAFIELD_WRITE_TARGETS[$cacheKey] = $targets;
+
+        return $targets;
+    }
+
+    /**
+     * Extrafield attribute names this mapper accepts on write.
+     *
+     * Reads BOTH declaration paths, because both work today: $extrafieldsRW is
+     * the documented one, but dmTrait::importMappedData() builds its reverse map
+     * with an OR (l.491-496), so an 'options_xxx' key placed directly in
+     * $writableFields opens the very same door -- and a guard that only walked
+     * $extrafieldsRW would leave that second door unwatched.
+     *
+     * @return array<int,string>  Attribute names, without the 'options_' prefix.
+     */
+    private function writableExtrafieldNames()
+    {
+        $names = [];
+
+        if (isset($this->extrafieldsRW) && is_array($this->extrafieldsRW)) {
+            foreach ($this->extrafieldsRW as $ef) {
+                $ef = (string) $ef;
+                $names[] = (strncmp($ef, 'options_', 8) === 0) ? substr($ef, 8) : $ef;
+            }
+        }
+
+        if (isset($this->writableFields) && is_array($this->writableFields)) {
+            foreach ($this->writableFields as $field) {
+                $field = (string) $field;
+                if (strncmp($field, 'options_', 8) === 0) {
+                    $names[] = substr($field, 8);
+                }
+            }
+        }
+
+        $names = array_values(array_unique(array_filter($names, 'strlen')));
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * Load the Dolibarr extrafield descriptors of an element.
+     *
+     * Through ExtraFields::fetch_name_optionals_label(), NOT through a hand-made
+     * SELECT on llx_extrafields: that table's entity filtering is done in PHP by
+     * Dolibarr (extrafields.class.php l.861 shows the SQL clause deliberately
+     * commented out, l.872 does the filtering), so a home-made query would see
+     * the other entities' definitions. Reusing the core loader is what keeps this
+     * multi-entity safe.
+     *
+     * @param  string $element  Normalised element type.
+     * @return array<string,array<string,mixed>>  ['type' => [...], 'param' => [...]]
+     */
+    private function loadExtrafieldAttributes($element)
+    {
+        global $db;
+
+        try {
+            require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+            $ef = new \ExtraFields($db);
+            $ef->fetch_name_optionals_label($element);
+
+            return is_array($ef->attributes[$element] ?? null) ? $ef->attributes[$element] : [];
+        } catch (\Throwable $e) {
+            dol_syslog(
+                "[SmartAuth] dmBase::getExtrafieldWriteTargets could not load extrafields for " . $element . ": " . $e->getMessage(),
+                LOG_ERR
+            );
+
+            return [];
+        }
+    }
+
+    /**
+     * Classify ONE writable extrafield: does its value reference another
+     * object, and if so which registry type?
+     *
+     * @param  string $element     Normalised element type (log only).
+     * @param  string $name        Extrafield attribute name.
+     * @param  array  $attributes  Output of loadExtrafieldAttributes().
+     * @return array<string,mixed>  Entry of getExtrafieldWriteTargets().
+     */
+    private function resolveExtrafieldTarget($element, $name, $attributes)
+    {
+        $type = (string) ($attributes['type'][$name] ?? '');
+        if ($type === '') {
+            return [
+                'mode' => 'refuse',
+                'reason' => 'extrafield "' . $name . '" is opened for write by ' . static::class
+                    . ' but has no definition in llx_extrafields for element ' . $element,
+            ];
+        }
+
+        // Every other type (varchar, int, date, select, radio, checkbox...)
+        // holds a scalar of its own: no target, nothing to guard.
+        if ($type !== 'link' && $type !== 'sellist' && $type !== 'chkbxlst') {
+            return ['mode' => 'unguarded', 'reason' => 'type ' . $type . ' holds no object reference'];
+        }
+
+        $param = $attributes['param'][$name] ?? null;
+        // jsonOrUnserialize() (functions.lib.php) returns '' or false on a
+        // malformed param, and the admin screen accepts a raw string, so this is
+        // never guaranteed to be an array.
+        if (!is_array($param) || empty($param['options']) || !is_array($param['options'])) {
+            return [
+                'mode' => 'refuse',
+                'reason' => 'extrafield "' . $name . '" is of type ' . $type . ' but carries no usable param.options',
+            ];
+        }
+
+        $descriptor = (string) key($param['options']);
+        if ($descriptor === '') {
+            return [
+                'mode' => 'refuse',
+                'reason' => 'extrafield "' . $name . '" of type ' . $type . ' has an empty target descriptor',
+            ];
+        }
+
+        if ($type === 'link') {
+            return $this->resolveLinkExtrafieldTarget($name, $descriptor);
+        }
+
+        return $this->resolveListExtrafieldTarget($name, $type, $descriptor);
+    }
+
+    /**
+     * Target of a 'link' extrafield, whose descriptor names a PHP class:
+     * "Societe:societe/class/societe.class.php". The table is read from the
+     * instantiated class (table_element), never guessed from the class name.
+     *
+     * @param  string $name
+     * @param  string $descriptor
+     * @return array<string,mixed>
+     */
+    private function resolveLinkExtrafieldTarget($name, $descriptor)
+    {
+        global $db, $hookmanager;
+
+        $parts = explode(':', $descriptor);
+        $className = (string) ($parts[0] ?? '');
+        $classPath = (string) ($parts[1] ?? '');
+
+        if ($className === '' || $classPath === '') {
+            return [
+                'mode' => 'refuse',
+                'reason' => 'link extrafield "' . $name . '" has a malformed descriptor "' . $descriptor . '"',
+            ];
+        }
+
+        if (!class_exists($className)) {
+            dol_include_once($classPath);
+        }
+        if (!class_exists($className)) {
+            // Dolibarr itself refuses to render such a field
+            // (extrafields.class.php l.1908-1911). A field whose class cannot be
+            // loaded -- a disabled module, a typo -- must not be written blind.
+            return [
+                'mode' => 'refuse',
+                'reason' => 'link extrafield "' . $name . '" targets class ' . $className . ' which cannot be loaded from ' . $classPath,
+            ];
+        }
+
+        try {
+            $target = new $className($db);
+            $table = (string) ($target->table_element ?? '');
+        } catch (\Throwable $e) {
+            return [
+                'mode' => 'refuse',
+                'reason' => 'link extrafield "' . $name . '" targets class ' . $className . ' which cannot be instantiated: ' . $e->getMessage(),
+            ];
+        }
+
+        if ($table === '') {
+            return [
+                'mode' => 'refuse',
+                'reason' => 'link extrafield "' . $name . '" targets class ' . $className . ' which declares no table_element',
+            ];
+        }
+
+        $registryType = \SmartAuth\Api\ObjectRegistry::typeForTable($table, is_object($hookmanager) ? $hookmanager : null);
+        if ($registryType === null) {
+            // Same verdict as an unregistered polymorphic element
+            // (ForeignKeyGuardTrait::resolvePolymorphicTarget): smartauth knows
+            // neither this table's entity column nor its isolation predicate, and
+            // refusing would break every module linking its OWN objects.
+            return [
+                'mode' => 'unguarded',
+                'reason' => 'link extrafield "' . $name . '" targets llx_' . $table . ', which backs no registry type',
+            ];
+        }
+
+        return ['mode' => 'int', 'target' => $registryType];
+    }
+
+    /**
+     * Target of a 'sellist' / 'chkbxlst' extrafield, whose descriptor names a
+     * TABLE: "societe:nom:rowid::filter" (table, label field, key field...).
+     *
+     * The key field decides whether there is anything to guard at all: Dolibarr
+     * defaults it to rowid (extrafields.class.php l.1195), in which case the
+     * stored value IS a row id; when it names another column the stored value is
+     * a CODE, which references nothing tenant-borne.
+     *
+     * @param  string $name
+     * @param  string $type        'sellist' or 'chkbxlst'
+     * @param  string $descriptor
+     * @return array<string,mixed>
+     */
+    private function resolveListExtrafieldTarget($name, $type, $descriptor)
+    {
+        global $hookmanager;
+
+        $parts = explode(':', $descriptor);
+        $table = (string) ($parts[0] ?? '');
+        if ($table === '') {
+            return [
+                'mode' => 'refuse',
+                'reason' => $type . ' extrafield "' . $name . '" has a malformed descriptor "' . $descriptor . '"',
+            ];
+        }
+
+        $keyField = empty($parts[2]) ? 'rowid' : (string) $parts[2];
+        if ($keyField !== 'rowid') {
+            return [
+                'mode' => 'unguarded',
+                'reason' => $type . ' extrafield "' . $name . '" is keyed on ' . $keyField . ', so it stores a code and not a row id',
+            ];
+        }
+
+        $registryType = \SmartAuth\Api\ObjectRegistry::typeForTable($table, is_object($hookmanager) ? $hookmanager : null);
+        if ($registryType === null) {
+            // The common case by far: a dictionary (llx_c_*) or a module's own
+            // table. Dictionaries are shipped seeded with a hardcoded entity 1
+            // (see $GLOBAL_FK_GUARD_EXEMPTIONS above), so guarding them would
+            // refuse legitimate values on every tenant that is not entity 1.
+            return [
+                'mode' => 'unguarded',
+                'reason' => $type . ' extrafield "' . $name . '" targets llx_' . $table . ', which backs no registry type',
+            ];
+        }
+
+        return ['mode' => ($type === 'chkbxlst' ? 'csv' : 'id'), 'target' => $registryType];
     }
 
     /**
@@ -987,7 +1379,17 @@ abstract class dmBase
      */
     public function exportMappedDataFiltered($obj, $includeKeys = null)
     {
-        $full = $this->exportMappedData($obj);
+        // Publish the requested keys BEFORE the export so the companions that
+        // cost a query per row (categories, linked-file count) can skip
+        // themselves when nobody asked. Restored right after: the mapper
+        // instance is reused across the rows of a page and across requests.
+        $previousInclude = $this->_exportIncludeKeys;
+        $this->_exportIncludeKeys = $includeKeys;
+        try {
+            $full = $this->exportMappedData($obj);
+        } finally {
+            $this->_exportIncludeKeys = $previousInclude;
+        }
 
         if ($includeKeys === null) {
             return $full;
@@ -998,6 +1400,11 @@ abstract class dmBase
         }
 
         $structuralKeys = ['lines', 'categories', 'nb_linked_files', 'linked_files'];
+        // status_label is NOT structural: it is only produced when ?include=
+        // names it (see dmTrait::_resolveStatusLabel), so it is already in the
+        // allowed set when present. Listing it here would be harmless but
+        // misleading -- it would suggest the label rides along unrequested,
+        // which is exactly what the compact list path cannot guarantee.
         // Preserve FK-label companion fields (socname, socEmail, ...) regardless
         // of ?include=: they are derived from a FK and the catalog never lists
         // them as standalone columns.
@@ -1021,6 +1428,133 @@ abstract class dmBase
             }
         }
         return $out;
+    }
+
+    /**
+     * Can this list be served from the list query alone, without fetching every
+     * row through its Dolibarr class?
+     *
+     * WHY. The facade builds ONE efficient list query, then reloads each row in
+     * full: 1 + 2N queries for a page of N. Measured at x276 against a compact
+     * SELECT (50 companies, SQLite in memory, the case most favourable to the
+     * facade). That price buys mapped objects complete with foreign-key labels,
+     * extrafields and computed fields -- but it is paid even when the consumer
+     * asked for three columns. See documentation/facade-list-performance.md.
+     *
+     * The intent is already expressed by ?include=; this reads it.
+     *
+     * FAIL-CLOSED, and deliberately narrow. A key qualifies only when its
+     * Dolibarr-side name is a REAL column of the object's $fields, which is the
+     * same test the catalog uses for `filterable` and guarantees the PHP
+     * property carries the column name (dmThirdparty publishes `name` for the
+     * SQL column `nom`: not a real column, so it disqualifies the whole page).
+     * Any doubt -> null -> the full path. A slow list beats a wrong one.
+     *
+     * @param  array<int,string>|null $includeKeys  Keys from ?include=, null = all
+     * @return bool  true when the compact path is safe for this exact request
+     */
+    public function supportsCompactProjection($includeKeys)
+    {
+        global $db;
+
+        // OPT-IN PER MAPPER, and it is not timidity. Building the object from a
+        // raw row instead of fetch() diverges wherever a class does more than
+        // read its columns, and those places are not predictable from the
+        // outside: MouvementStock::fetch() returns price as a float where the
+        // raw row yields an int, Contact keeps socid rather than the fk_soc
+        // column, Product reads $status but stores `tosell`. Every one of those
+        // was found by CompactProjectionParityTest, none by reading the code.
+        // So a type joins the fast path when its parity is DEMONSTRATED, not
+        // when it looks safe: flip $compactProjectionAllowed, run the parity
+        // suite, keep it only if green.
+        if (empty($this->compactProjectionAllowed)) {
+            return false;
+        }
+
+        // "Everything" means extrafields, FK nesting, computed fields: full path.
+        if ($includeKeys === null || !is_array($includeKeys) || empty($includeKeys)) {
+            return false;
+        }
+        if (empty($this->listOfPublishedFields) || !is_array($this->listOfPublishedFields)) {
+            return false;
+        }
+
+        // Documents with lines: fetch() loads $obj->lines and the export emits
+        // them as a structural key. The list query knows nothing about lines, so
+        // the compact path would silently serve line-less documents. Refuse
+        // outright rather than invent a second shape for the same type.
+        if (!empty($this->listOfPublishedFieldsForLines) && is_array($this->listOfPublishedFieldsForLines)) {
+            return false;
+        }
+
+        // FK-label companions (thirdpartyName, ...) are emitted unconditionally
+        // and read the PHP property fetch() fills -- Contact carries socid, not
+        // the fk_soc column, so a row-hydrated object resolves no label and the
+        // companion would come back empty. Refuse: the label is part of what
+        // consumers already receive, and a silently empty one is worse than a
+        // slower list.
+        if (!empty($this->listOfForeignKeyLabels) && is_array($this->listOfForeignKeyLabels)) {
+            return false;
+        }
+
+        $dolibarrClassName = $this->dolibarrClassName ?? null;
+        if (empty($dolibarrClassName) || !class_exists($dolibarrClassName)) {
+            return false;
+        }
+
+        // The compact path hydrates through CommonObject::setVarsFromFetchObj,
+        // which is what applies the declared type conversions (dates through
+        // jdate, ints, floats). Without it we would be inventing a second,
+        // divergent hydration.
+        try {
+            $probe = new $dolibarrClassName($db);
+        } catch (\Throwable $e) {
+            return false;
+        }
+        if (!method_exists($probe, 'setVarsFromFetchObj')) {
+            return false;
+        }
+        $rawFields = (property_exists($probe, 'fields') && is_array($probe->fields)) ? $probe->fields : [];
+        if (empty($rawFields)) {
+            return false;
+        }
+
+        // appside -> doliside, to read the request in the mapper's own terms.
+        $bySide = [];
+        foreach ($this->listOfPublishedFields as $doliside => $appside) {
+            $bySide[(string) $appside] = (string) $doliside;
+        }
+
+        foreach ($includeKeys as $key) {
+            $key = (string) $key;
+            if ($key === 'id') {
+                continue;   // always carried, always the primary key
+            }
+            if (!isset($bySide[$key])) {
+                // Unknown key, or a derived / companion field: the full export
+                // is the only thing that knows how to produce it.
+                return false;
+            }
+            $doliside = $bySide[$key];
+
+            if (strncmp($doliside, 'options_', 8) === 0) {
+                return false;   // extrafield: needs fetch_optionals()
+            }
+            if (!empty($this->listOfForeignKeys) && array_key_exists($doliside, (array) $this->listOfForeignKeys)) {
+                return false;   // nested FK object: needs the related fetch
+            }
+            // A per-field export filter may read anything on the object, not
+            // just the column, so a partially hydrated object could feed it
+            // different input.
+            if (is_callable([$this, 'fieldFilterValue' . ucfirst($doliside)])) {
+                return false;
+            }
+            if (!isset($rawFields[$doliside])) {
+                return false;   // not a real column of the table
+            }
+        }
+
+        return true;
     }
 
     /**

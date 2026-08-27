@@ -379,15 +379,25 @@ if ($qrpairAction === 'qrpairgenerate' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') 
 	$qrEntity = (int) ($conf->entity ?? 1);
 	$qrRepo = new SmartAuthQrPairing($db);
 
-	// Cancel any pending/claimed pairing the user already has on file
-	// (multi-tab / earlier "Générer" click) so only one QR can be valid
-	// at any given time.
+	// Cancel any pairing the user already has in flight (multi-tab, earlier
+	// "Générer" click) so only one QR can be valid at any given time.
+	//
+	// CONFIRMED is part of that list, and it is the one that mattered: a
+	// pairing the user had already authorised but whose mobile had not polled
+	// yet stayed alive across a regeneration. Generating a new QR is an
+	// explicit statement that the previous one is void -- if the old row
+	// survived, a mobile that scanned it minutes earlier could still collect a
+	// session afterwards.
 	$cleanupSql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_qr_pairings"
 		. " SET status = '" . $db->escape(SmartAuthQrPairing::STATUS_CANCELLED) . "'"
 		. " WHERE fk_user = " . ((int) $user->id)
 		. " AND entity = " . $qrEntity
-		. " AND status IN ('" . SmartAuthQrPairing::STATUS_PENDING . "','" . SmartAuthQrPairing::STATUS_CLAIMED . "')";
-	$db->query($cleanupSql);
+		. " AND status IN ('" . SmartAuthQrPairing::STATUS_PENDING
+		. "','" . SmartAuthQrPairing::STATUS_CLAIMED
+		. "','" . SmartAuthQrPairing::STATUS_CONFIRMED . "')";
+	if (!$db->query($cleanupSql)) {
+		dol_syslog('[SmartAuth] user_tab: could not cancel the previous pairings of user ' . ((int) $user->id) . ': ' . $db->lasterror(), LOG_ERR);
+	}
 
 	$qrNewPairingId = SmartAuthQrPairing::generatePairingId();
 	$qrInitiatorIp = \SmartAuth\Api\RouteController::get_client_ip();

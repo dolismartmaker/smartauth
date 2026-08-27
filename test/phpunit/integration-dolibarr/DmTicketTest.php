@@ -158,20 +158,27 @@ class DmTicketTest extends DolibarrRealTestCase
     }
 
     /**
-     * The registry entry documents itself as mirroring the mapper allowlist.
-     * Kept in step here so the two never drift again.
+     * The registry entry must keep delegating its write allowlist to the
+     * mapper. It used to carry a second one ('allowed_fields') that nothing
+     * kept in step: this test used to pin the two together, and now pins the
+     * absence of the second, which is the only way they cannot drift.
      */
-    public function testRegistryAllowedFieldsMirrorWritableFields(): void
+    public function testRegistryEntryDelegatesItsWriteAllowlistToTheMapper(): void
     {
         $builtins = ObjectRegistry::builtins();
         $this->assertArrayHasKey('ticket', $builtins);
 
-        $allowed = $builtins['ticket']['allowed_fields'];
-        sort($allowed);
-        $writable = $this->writableFields();
-        sort($writable);
-
-        $this->assertSame($writable, $allowed);
+        $this->assertArrayNotHasKey(
+            'allowed_fields',
+            $builtins['ticket'],
+            'a second write allowlist is back on the registry entry: it governs nothing and will drift from the mapper'
+        );
+        $this->assertSame(
+            '\\SmartAuth\\DolibarrMapping\\dmTicket',
+            $builtins['ticket']['mapper'] ?? null,
+            'without a resolvable mapper the sync push falls back to the legacy path, which now refuses everything'
+        );
+        $this->assertNotEmpty($this->writableFields(), 'the mapper allowlist is the only write contract left');
     }
 
     /* -----------------------------------------------------------------

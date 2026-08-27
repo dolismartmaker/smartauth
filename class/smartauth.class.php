@@ -57,8 +57,15 @@ class SmartAuth extends CommonObject
 	/**
 	 * @var int  Does this object support multicompany module ?
 	 * 0=No test on entity, 1=Test with field entity, 'field@table'=Test with link by field@table
+	 *
+	 * 1, not 0: llx_smartauth_auth HAS an entity column and every token is
+	 * written with the entity it was issued for. Declaring 0 told the Dolibarr
+	 * CRUD to skip the entity clause entirely, so the token list and card of one
+	 * entity showed -- and acted on -- the sessions of all the others. The
+	 * generic fetch/fetchAll of CommonObject now scope themselves like every
+	 * other object of the module.
 	 */
-	public $ismultientitymanaged = 0;
+	public $ismultientitymanaged = 1;
 
 	/**
 	 * @var int  Does object support extrafields ? 0=No, 1=Yes
@@ -934,12 +941,22 @@ class SmartAuth extends CommonObject
 		//note : do not delete old keys -- used by logs !
 		$max = (int) getDolGlobalString('SMARTAUTH_TOKEN_EOL_DAYS');
 		if ($max > 0) {
-			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth SET status='" . self::STATUS_CANCELED . "', token='outdated' WHERE date_eol < '" . $this->db->idate($now) . "'";
+			// llx_smartauth_auth has NO `token` column (the JWT is never stored,
+			// only its salt). Writing to it made the statement fail outright, so
+			// this sweep has never expired a single token since it was written --
+			// silently, because the error branch only logged a generic message.
+			// The salt is the field that carries the revocation reason elsewhere
+			// in this module (see AuthController::_revokeTokenFamily), so use it.
+			$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
+			$sql .= " SET status = " . ((int) self::STATUS_CANCELED) . ", salt = 'outdated'";
+			$sql .= " WHERE date_eol < '" . $this->db->idate($now) . "'";
+			$sql .= " AND status <> " . ((int) self::STATUS_CANCELED);
 			$resql = $this->db->query($sql);
 			if ($resql) {
-				dol_syslog("[SmartAuth] doScheduledJob Update status success");
+				$eolCount = (int) $this->db->affected_rows($resql);
+				dol_syslog("[SmartAuth] doScheduledJob token EOL sweep canceled $eolCount rows");
 			} else {
-				dol_syslog("[SmartAuth] doScheduledJob Update status error", LOG_ERR);
+				dol_syslog("[SmartAuth] doScheduledJob token EOL sweep error: " . $this->db->lasterror(), LOG_ERR);
 			}
 		}
 
@@ -1054,6 +1071,26 @@ class SmartAuth extends CommonObject
 			}
 		} else {
 			dol_syslog("[SmartAuth] doScheduledJob push_logs cleanup skipped: SmartAuthPushLog class not found", LOG_WARNING);
+		}
+
+		// Sync tombstones: one row per object deleted through sync/push, read
+		// by pull() so offline clients prune their cache. Retention is what
+		// spec_sync_offline.md (NF04) requires: 30 days, configurable. A client
+		// that has been offline longer than that must do a full resync anyway,
+		// so keeping older markers buys nothing and the table only grows.
+		$tombstoneRetentionDays = (int) getDolGlobalString('SMARTAUTH_SYNC_TOMBSTONE_RETENTION_DAYS');
+		if ($tombstoneRetentionDays <= 0) {
+			$tombstoneRetentionDays = 30;
+		}
+		$tombstoneCutoff = $this->db->idate(dol_now() - $tombstoneRetentionDays * 24 * 3600);
+		$sql = "DELETE FROM ".MAIN_DB_PREFIX."smartauth_sync_tombstones";
+		$sql .= " WHERE deleted_at < '".$this->db->escape($tombstoneCutoff)."'";
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			$tombstonesDeleted = (int) $this->db->affected_rows($resql);
+			dol_syslog("[SmartAuth] doScheduledJob sync_tombstones cleanup deleted $tombstonesDeleted rows");
+		} else {
+			dol_syslog("[SmartAuth] doScheduledJob sync_tombstones cleanup error: ".$this->db->lasterror(), LOG_ERR);
 		}
 
 		$this->db->commit();

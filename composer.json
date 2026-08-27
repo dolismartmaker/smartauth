@@ -28,6 +28,9 @@
         }
     },
     "scripts": {
+        "post-install-cmd": ["@link-local-sqlite-driver"],
+        "post-update-cmd": ["@link-local-sqlite-driver"],
+        "link-local-sqlite-driver": "php test/link-local-sqlite-driver.php",
         "test": "phpunit",
         "test:unit": "phpunit --testsuite unit",
         "test:integration": "php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c phpunit-integration.xml",

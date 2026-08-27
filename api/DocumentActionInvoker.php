@@ -44,7 +44,7 @@ class DocumentActionInvoker
         return [
             'Commande', 'Facture', 'Propal',
             'CommandeFournisseur', 'FactureFournisseur', 'SupplierProposal',
-            'Expedition', 'Reception',
+            'Expedition', 'Reception', 'Contrat',
         ];
     }
 
@@ -205,6 +205,17 @@ class DocumentActionInvoker
                 return self::zeroIsNoop((int) $object->reOpen());
             case 'Reception:setdraft':
                 return self::zeroIsNoop((int) $object->setDraft($user));
+
+            // ----- Contrat -----
+            // No setdraft: Contrat has no such transition. 'close' is closeAll(),
+            // which walks every line through close_line() -- so it is the whole
+            // contract that ends, not one service. Closing a single line is a
+            // LINE action (DocumentLineActionInvoker).
+            case 'Contrat:validate':
+                return (int) $object->validate($user);
+            case 'Contrat:close':
+                // closeAll($user, $notrigger, $comment).
+                return (int) $object->closeAll($user, 0, $closeNote);
         }
 
         return self::UNKNOWN;

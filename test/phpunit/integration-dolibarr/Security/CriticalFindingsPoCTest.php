@@ -648,7 +648,8 @@ class CriticalFindingsPoCTest extends OAuthTestCase
         ];
 
         $controller = new SyncController();
-        // Re-use the built-in 'thirdparty' config (with allowed_fields)
+        // Re-use the built-in 'thirdparty' config, whose write allowlist is its
+        // mapper's $writableFields (the registry carries none).
         $reflection = new \ReflectionClass($controller);
         $prop = $reflection->getProperty('syncableObjects');
         $prop->setAccessible(true);
@@ -677,11 +678,23 @@ class CriticalFindingsPoCTest extends OAuthTestCase
     }
 
     /**
-     * Regression test for CR-6 variant B : even when an external module
-     * registers the User class via smartmaker_registerSyncableObjects, the
-     * universal denylist must still drop admin / pass* / entity / statut.
+     * Regression test for CR-6 variant B : an external module that registers the
+     * User class via smartmaker_registerSyncableObjects with NEITHER a mapper
+     * NOR an allowed_fields list.
+     *
+     * This test used to assert the weaker property: that the write went through
+     * and that the universal denylist had stripped admin / pass* / entity /
+     * statut on the way. That was fail-OPEN by construction -- every field whose
+     * name dodged the denylist was written onto a class smartauth knows nothing
+     * about, and the denylist is a list of names, so it can only ever refuse
+     * what someone thought to name. applyDataLegacy() now refuses the whole
+     * payload instead, which is what the assertions below check.
+     *
+     * The denylist is still tested, on the path where it is a SECOND layer
+     * rather than the only one: testCR6a, on a type whose allowlist is its
+     * mapper's.
      */
-    public function testCR6b_ProcessCreateDropsAdminAndPasswordOnUserClass(): void
+    public function testCR6b_ProcessCreateRefusesATypeRegisteredWithNoWriteContract(): void
     {
         global $db, $user;
 
@@ -689,13 +702,12 @@ class CriticalFindingsPoCTest extends OAuthTestCase
             $this->markTestSkipped('User class not available in this Dolibarr install');
         }
 
-        // Mimic an external module that registered User WITHOUT a whitelist:
-        // we rely entirely on the universal denylist for the dangerous fields.
         $config = [
             'class' => 'User',
             'file' => DOL_DOCUMENT_ROOT . '/user/class/user.class.php',
             'table' => 'user',
             'element' => 'user',
+            'object_type' => 'cr6b_unregistered_user',
         ];
 
         $login = 'cr6pwn_' . uniqid();
@@ -704,42 +716,53 @@ class CriticalFindingsPoCTest extends OAuthTestCase
             'lastname' => 'Owned',
             'firstname' => 'Attacker',
             'email' => $login . '@evil.example',
-            'admin' => 1,         // must be dropped
-            'employee' => 1,      // employee is on denylist too (sensitive flag)
-            'statut' => 1,        // must be dropped
-            'pass_crypted' => 'evil', // must be dropped (regex)
-            'entity' => 1,        // dropped, server uses default
+            'admin' => 1,
+            'employee' => 1,
+            'statut' => 1,
+            'pass_crypted' => 'evil',
+            'entity' => 1,
         ];
+
+        $before = (int) $this->countUsersNamed($login);
 
         $controller = new SyncController();
         $result = $this->invokePrivate($controller, 'processCreate', [$config, $data, $user]);
 
-        $this->assertTrue(
-            $result['success'],
-            'processCreate failed on User: ' . ($result['error'] ?? 'unknown')
+        $this->assertFalse(
+            $result['success'] ?? false,
+            'a type with no write contract must be refused, not written with a denylist as its only filter'
+        );
+        $this->assertSame(
+            $before,
+            (int) $this->countUsersNamed($login),
+            'CR-6b fix: nothing may be inserted for a type that declares neither mapper nor allowlist'
         );
 
+        // Belt and braces: even the innocuous fields must have been refused, so
+        // the refusal is total rather than a lucky failure of the SQL layer.
+        $rejected = $this->invokePrivate($controller, 'applyDataLegacy', [new \User($db), $data, $config]);
+        sort($rejected);
+        $expected = array_keys($data);
+        sort($expected);
+        $this->assertSame($expected, $rejected, 'every incoming field must be reported as rejected');
+    }
+
+    /**
+     * @param  string $login
+     * @return int
+     */
+    private function countUsersNamed(string $login): int
+    {
+        global $db;
+
         $resql = $db->query(
-            "SELECT admin, login, pass_crypted FROM " . MAIN_DB_PREFIX . "user "
-            . "WHERE rowid = " . (int) $result['id']
+            "SELECT COUNT(*) as nb FROM " . MAIN_DB_PREFIX . "user WHERE login = '" . $db->escape($login) . "'"
         );
         $this->assertNotFalse($resql);
         $row = $db->fetch_object($resql);
+        $db->free($resql);
 
-        $this->assertSame($login, $row->login);
-        $this->assertNotSame(
-            1,
-            (int) $row->admin,
-            'CR-6b fix: admin field must not be mass-assigned (no escalation)'
-        );
-        $this->assertNotSame(
-            'evil',
-            $row->pass_crypted,
-            'CR-6b fix: pass_crypted must not be mass-assigned'
-        );
-
-        // Cleanup
-        $db->query("DELETE FROM " . MAIN_DB_PREFIX . "user WHERE rowid = " . (int) $result['id']);
+        return (int) $row->nb;
     }
 
     /**

@@ -323,7 +323,15 @@ $sql .= $hookmanager->resPrint;
 if ($object->ismultientitymanaged == 1) {
 	$sql .= " WHERE t.entity IN (" . getEntity($object->element, (GETPOST('search_current_entity', 'int') ? 0 : 1)) . ")";
 } else {
-	$sql .= " WHERE 1 = 1";
+	// llx_smartauth_auth HAS an entity column, but SmartAuth::$ismultientitymanaged
+	// is 0 (class/smartauth.class.php l.61), so the branch above never runs and
+	// the list used to degrade to "WHERE 1 = 1" -- every tenant's tokens.
+	// The owner filter below limits an ordinary user to their own rows, so the
+	// leak was an ADMIN one: a tenant admin saw the token rows of every other
+	// entity, salt column included. Scope explicitly rather than flip
+	// $ismultientitymanaged, which would change fetch()/fetchAll() for the whole
+	// API surface that uses this class.
+	$sql .= " WHERE t.entity IN (" . getEntity('smartauth', 1) . ")";
 }
 
 if (! $user->admin) {

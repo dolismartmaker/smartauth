@@ -22,6 +22,9 @@ class RegistrationServiceFlowTest extends TestCase
         global $conf;
         $conf = new \stdClass();
         $conf->global = new \stdClass();
+        // The email lookups are entity-scoped (getEntity reads $conf->entity),
+        // so a Dolibarr-shaped conf needs it even in a unit test.
+        $conf->entity = 1;
         $conf->global->SMARTAUTH_OAUTH_ISSUER = 'https://auth.example.com';
         $conf->global->SMARTAUTH_REGISTER_TOKEN_TTL = 86400;
         $conf->global->SMARTAUTH_REGISTER_RESEND_COOLDOWN = 300;

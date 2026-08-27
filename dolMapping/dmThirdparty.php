@@ -34,6 +34,13 @@ class dmThirdparty extends dmBase
 	protected $dolibarrClassName = 'Societe';
 	protected $parentTableElementToUseForExtraFields = 'societe';
 
+	// Compact list path allowed: parity between the row-hydrated and the
+	// fetched export is proven by CompactProjectionParityTest. This is the type
+	// the optimisation exists for -- thirdparty autocomplete and the offline
+	// pre-cache are the two endpoints that could not be migrated to the facade
+	// because of the per-row fetch (documentation/facade-list-performance.md).
+	protected $compactProjectionAllowed = true;
+
 	// Dolibarr PHP property name => Front API key
 	// See documentation/api-naming-convention.md.
 	//
@@ -279,6 +286,60 @@ class dmThirdparty extends dmBase
 	public function getSearchFields()
 	{
 		return ['nom', 'name_alias', 'email', 'town', 'code_client', 'code_fournisseur', 'phone'];
+	}
+
+	/**
+	 * Explicit filter kinds for objects/thirdparty.
+	 *
+	 * `client` and `fournisseur` are not plain flags: Dolibarr encodes a
+	 * CATEGORY in them (client: 0 none, 1 customer, 2 prospect, 3 both;
+	 * fournisseur: 0/1). "Every company a salesperson can quote" is therefore
+	 * `client IN (1, 2, 3)`, which the catalog-derived `select` kind can only
+	 * express one value at a time -- forcing a consumer into three requests
+	 * and a client-side merge, or into dropping prospects.
+	 *
+	 * Declaring them as `in` is backward compatible: a single value still
+	 * produces `IN (1)`, which is `= 1`.
+	 *
+	 * @return array<string,array{column:string,kind:string}>
+	 */
+	public function getFilterableColumns()
+	{
+		return [
+			'is_customer' => ['column' => 'client', 'kind' => 'in'],
+			'is_supplier' => ['column' => 'fournisseur', 'kind' => 'in'],
+		];
+	}
+
+	/**
+	 * Extra sortable keys for objects/thirdparty.
+	 *
+	 * `last_activity` orders by the most recent agenda event linked to the
+	 * company, falling back to its own modification date so a company with no
+	 * event is ranked rather than dropped. It answers a real need that no
+	 * stored column covers: pre-caching "the customers this technician deals
+	 * with most" on a device with limited storage, upcoming appointments
+	 * first.
+	 *
+	 * Written as a scalar correlated subquery on purpose: the list query keeps
+	 * its shape (no JOIN, no GROUP BY), so its COUNT stays exact and every
+	 * other filter still composes with it.
+	 *
+	 * The expression hardcodes the `s` alias, which is the one ObjectRegistry
+	 * declares for this type (same convention as its `default_sort`, which
+	 * already spells `s.nom ASC`). Renaming the alias there means renaming it
+	 * here.
+	 *
+	 * @return array<string,string|array{expression:string}>
+	 */
+	public function getSortableColumns()
+	{
+		return [
+			'last_activity' => [
+				'expression' => 'COALESCE((SELECT MAX(sa_act.datep) FROM '.MAIN_DB_PREFIX.'actioncomm as sa_act'
+					.' WHERE sa_act.fk_soc = s.rowid AND sa_act.entity IN ('.getEntity('agenda').')), s.tms)',
+			],
+		];
 	}
 }
 

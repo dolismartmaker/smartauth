@@ -172,6 +172,29 @@ class UploadController
         }
 
         if ($existing['status'] === \SmartAuthUploadIdempotency::STATUS_COMPLETED) {
+            // Two clocks disagree here: the idempotency row is kept 24h, the
+            // staged file only 1h. Replaying the stored response past that hour
+            // hands the client an upload_id whose staging directory is gone --
+            // consumeUpload() then finds nothing and the photo is lost in
+            // silence, which is the worst possible outcome for an offline-first
+            // client that believes its retry succeeded.
+            $stagedId = (string) ($existing['upload_id'] ?? '');
+            if ($stagedId !== '' && SmartUpload::get($stagedId, $userId) === null) {
+                dol_syslog(
+                    "[SmartAuth] UploadController: idempotent replay refused, staged upload " . $stagedId
+                    . " has expired (key=" . substr($key, 0, 8) . "...). Dropping the row and storing again.",
+                    LOG_WARNING
+                );
+                $repo->deleteRow($key, $userId, $entity);
+                // Re-take the slot so the fresh store is itself protected. If
+                // that fails (a concurrent retry got there first), fall through
+                // to the legacy path rather than block the user.
+                if (!$repo->createProcessing($key, $userId, $entity)) {
+                    dol_syslog("[SmartAuth] UploadController: could not re-take the idempotency slot after expiry, falling through", LOG_WARNING);
+                }
+                return null;
+            }
+
             $body = $existing['response_body'] !== null ? json_decode($existing['response_body'], true) : null;
             if (!is_array($body)) {
                 $body = ['upload_id' => $existing['upload_id']];
@@ -243,7 +266,7 @@ class UploadController
                 dol_syslog("[SmartAuth] UploadController::processFiles - Rejected file $index: $err", LOG_WARNING);
                 $errors[] = [
                     'index' => $index,
-                    'filename' => $file['name'] ?? null,
+                    'filename' => isset($file['name']) ? SmartUpload::safeDisplayName($file['name']) : null,
                     'error' => $err,
                 ];
                 continue;
@@ -255,7 +278,7 @@ class UploadController
                 dol_syslog("[SmartAuth] UploadController::processFiles - Storage failure: " . $e->getMessage(), LOG_ERR);
                 $errors[] = [
                     'index' => $index,
-                    'filename' => $file['name'] ?? null,
+                    'filename' => isset($file['name']) ? SmartUpload::safeDisplayName($file['name']) : null,
                     'error' => 'Storage failure',
                 ];
                 continue;

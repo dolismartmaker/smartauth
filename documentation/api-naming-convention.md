@@ -228,6 +228,161 @@ Pour les extrafields avec préfixes spéciaux :
 
 ---
 
+## Media URLs (binary streams)
+
+À partir de smartauth 2.1.0, les médias attachés aux objets Dolibarr (logo de thirdparty, photo de produit, avatar utilisateur, ...) ne sont plus transportés inline en base64 dans le JSON du mapper. À la place, le mapper expose une **URL relative** vers une route binaire JWT-protégée que la PWA consomme avec son token.
+
+### Pourquoi
+
+| Problème du transport base64 inline | Solution route binaire |
+|--------------------------------------|------------------------|
+| Gonfle le JSON x4/3 (plusieurs MB sur une liste de 100 thirdparties avec logos) -> plantages PWA documentés | Le JSON ne contient qu'une URL (~40 octets) |
+| Pas de cache disque côté PWA (chaque GET re-transmet l'image) | Cache HTTP long + cache IndexedDB via `useAuthenticatedImage` |
+| Lecture serveur en RAM complète + base64_encode avant envoi | Stream serveur via `readfileLowMemory()` |
+| Pas de revalidation cheap | ETag + `If-None-Match` -> `304 Not Modified` |
+
+### Convention d'URL
+
+```
+media/{object_type}/{id}/{variant}[/{sub_variant}]
+```
+
+- `{object_type}` : type d'objet snake_case (`thirdparty`, `product`, `user`, `contact`, ...)
+- `{id}` : rowid Dolibarr de l'objet
+- `{variant}` : type de média (`logo`, `photo`, `avatar`, ...)
+- `{sub_variant}` (optionnel) : taille ou format (`mini`, `large`, ...)
+
+Le préfixe `media/` réserve l'espace de nom pour tous les types de médias binaires que smartauth pourra servir à l'avenir. Chaque type d'objet a son propre controller pour que les règles d'autorisation Dolibarr restent localisées.
+
+### Routes existantes
+
+| Route | Variant | Description |
+|-------|---------|-------------|
+| `GET media/thirdparty/{id}/logo` | full | Logo full size de la Societe |
+| `GET media/thirdparty/{id}/logo/mini` | mini | Logo miniature (thumbnail Dolibarr) |
+
+### Routes futures (réservées, non encore implémentées)
+
+```
+GET media/product/{id}/photo[/mini]
+GET media/user/{id}/avatar
+GET media/contact/{id}/photo
+```
+
+### Authentification et autorisation
+
+- **JWT obligatoire** : toutes les routes `media/*` sont déclarées `protected = true`. Le token doit être valide (header `Authorization: Bearer ...` ou query `?token=...`).
+- **Droits Dolibarr** : chaque controller vérifie le droit applicable (`societe->lire` pour le logo de thirdparty, `produit->lire` pour les photos produit à venir, etc.).
+- **Entity isolation** : la requête est refusée (403) si l'objet appartient à une autre entité que celle du token (sauf `entity = 0` qui est partagée).
+
+### Headers de réponse
+
+#### Cas 200 OK (premier GET ou cache navigateur expiré)
+
+```
+Content-Type: image/png | image/jpeg | image/gif | image/webp
+Content-Length: <octets>
+Cache-Control: private, max-age=86400, stale-while-revalidate=2592000
+ETag: "<filesize_hex>-<mtime_hex>"
+```
+
+Body : binaire du fichier streamé via `readfileLowMemory()` (pas de chargement complet en RAM).
+
+#### Cas 304 Not Modified (revalidation via `If-None-Match`)
+
+```
+ETag: "<filesize_hex>-<mtime_hex>"
+Cache-Control: private, max-age=86400, stale-while-revalidate=2592000
+```
+
+Body vide.
+
+### Politique de cache
+
+| Directive | Valeur | Raison |
+|-----------|--------|--------|
+| `private` | toujours | Route JWT-protégée, jamais en cache partagé (CDN/proxy) |
+| `max-age` | `86400` (1 jour) | Un logo d'entreprise ne change quasi jamais |
+| `stale-while-revalidate` | `2592000` (30 jours) | Affichage instantané pendant que la revalidation s'effectue en arrière-plan |
+
+L'`ETag` est calculé en `dechex(filesize) + '-' + dechex(filemtime)`. Coût d'un 304 : un `stat()` + 2 headers. Si le fichier change sur disque, l'`ETag` change automatiquement -> revalidation forcée au prochain GET.
+
+### Comportement quand le média n'existe pas
+
+| Cas | Status | Body |
+|-----|--------|------|
+| Objet sans média configuré (`$soc->logo` vide) | 404 | `{"error":"No logo configured"}` |
+| Objet existe, fichier manquant sur disque | 404 | `{"error":"Logo file missing"}` |
+| Extension non supportée (ex: `.bmp`, `.svg`) | 415 | `{"error":"Unsupported logo format"}` |
+| Objet inexistant | 404 | `{"error":"Not Found"}` |
+| Path traversal détecté | 403 | `{"error":"Forbidden"}` + syslog `LOG_ERR` |
+
+Le serveur ne renvoie **jamais** un placeholder par défaut. C'est à la PWA de câbler son propre fallback (`useAuthenticatedImage` accepte un paramètre `placeholder`).
+
+### Exposition côté mapper
+
+Pour le logo de thirdparty, `dmThirdparty` expose **trois champs** (cf section "Migration depuis le base64 inline" plus bas) :
+
+```json
+{
+  "id": 42,
+  "name": "ACME Corp",
+  "logo": "media/thirdparty/42/logo",
+  "logo_mini": "media/thirdparty/42/logo/mini",
+  "logo_data_url": "data:image/png;base64,..."
+}
+```
+
+| Champ | Type | Usage |
+|-------|------|-------|
+| `logo` | URL relative ou `null` | Affichage detail / fiche |
+| `logo_mini` | URL relative ou `null` | **OBLIGATOIRE** en contexte liste (>= 10 items) |
+| `logo_data_url` | data URI base64 ou `null` | **DEPRECATED**, retiré en smartauth 2.2.0 |
+
+### Pattern PWA recommandé
+
+Utiliser le hook `useAuthenticatedImage` de smartcommon, qui :
+- préfixe automatiquement l'URL relative avec le `prefixUrl` de l'`ApiProvider`
+- injecte le token JWT dans le header `Authorization`
+- met en cache dans IndexedDB pour les visites ultérieures
+- supporte un `placeholder` pendant le chargement et en cas de 404
+
+```jsx
+import { useAuthenticatedImage } from '@cap-rel/smartcommon';
+
+function CustomerCard({ customer }) {
+  const { src } = useAuthenticatedImage({
+    db,
+    url: customer.logo,          // ou customer.logo_mini en liste
+    token,
+    placeholder: defaultAvatar,
+  });
+  return <img src={src} className="size-12" />;
+}
+```
+
+### Règle anti-saturation : `logo_mini` obligatoire sur les listes
+
+Le navigateur limite à 6 connexions parallèles par host. Une liste de 100 thirdparties affichant chacune leur `logo` full size sature immédiatement le browser. **Tous les composants PWA qui affichent une liste de thirdparties (>= 10 items) DOIVENT tirer `logo_mini` (~10 KB) plutôt que `logo` (~200 KB-2 MB).** La bande passante est divisée par 20-50 et le rendu reste fluide même sur connexion mobile.
+
+### Migration depuis le base64 inline (smartauth < 2.1.0)
+
+Avant 2.1.0, le champ `logo` contenait directement la chaîne `data:image/<ext>;base64,<...>`. Depuis 2.1.0 il contient une URL relative. **Le contrat a changé.**
+
+Pour ne casser aucun consumer pendant la migration, smartauth 2.1.0 expose en parallèle un champ `logo_data_url` (deprecated) qui sert encore le base64 inline comme avant. Chaque appel émet un syslog `LOG_WARNING` permettant de tracer en production les consumers qui n'ont pas encore migré.
+
+Plan de transition :
+
+1. **2.1.0** : ajoute la route binaire + le champ `logo` (URL) + `logo_mini` + garde `logo_data_url` deprecated. Aucun consumer ne casse.
+2. **2.2.0** : retire `logo_data_url`. À tagger seulement quand les syslogs WARNING ont disparu en prod (zero appel pendant 1-2 semaines).
+
+Côté consumer, la migration consiste à :
+- remplacer `<img src={customer.logo}>` par le pattern `useAuthenticatedImage` ci-dessus
+- s'assurer que les listes utilisent `logo_mini` et pas `logo`
+- supprimer toute référence à `logo_data_url`
+
+---
+
 ## Nommage des classes de mapping
 
 Les noms des classes de mapping suivent la convention de l'API officielle Dolibarr (en anglais).
@@ -262,6 +417,12 @@ Les noms des classes de mapping suivent la convention de l'API officielle Doliba
 | `Categorie` | `dmCategory` | `dmCategorie` |
 | `Subscription` | `dmSubscription` | - |
 | `MultiCurrency` | `dmMulticurrency` | - |
+| `Fournisseur` | `dmSupplier` | `dmFournisseur` |
+| `Account` | `dmBankAccount` | `dmAccount` |
+| `CompanyBankAccount` | `dmCompanyBankAccount` | - |
+| `MouvementStock` | `dmStockMovement` | `dmMouvementStock` |
+| `Delivery` | `dmDeliveryNote` | `dmLivraison` |
+| `AccountLine` | `dmBank` | `dmAccountLine` |
 
 > **Note** : Les alias sont définis via `class_alias()` pour assurer la rétrocompatibilité avec le code existant qui utilise les noms français.
 
@@ -360,13 +521,24 @@ Les documents commerciaux (factures, devis, commandes) contiennent des lignes. C
 
 #### Contrat (ContratLigne)
 
-| Dolibarr | Front | Description |
-|----------|-------|-------------|
-| `date_ouverture_prevue` | `date_start_planned` | Date début prévue |
-| `date_ouverture` | `date_start_real` | Date début réelle |
-| `date_fin_validite` | `date_end_planned` | Date fin prévue |
-| `date_cloture` | `date_end_real` | Date fin réelle |
-| `statut` | `status` | Statut de la ligne |
+La colonne Dolibarr est ici la **propriété PHP** de `ContratLigne`, pas le nom de
+colonne SQL : `Contrat::fetch_lines()` renomme les quatre dates au passage
+(`d.date_ouverture_prevue as date_start`, etc.) et ne pose jamais les noms de
+colonnes sur l'objet ligne. Le mapper lit `$line->$doliside` : mapper la colonne
+exporterait `null`.
+
+| Dolibarr (propriété) | Colonne SQL | Front | Description |
+|----------|-------|-------|-------------|
+| `date_start` | `date_ouverture_prevue` | `date_start_planned` | Date début prévue |
+| `date_start_real` | `date_ouverture` | `date_start_real` | Date début réelle (lecture seule) |
+| `date_end` | `date_fin_validite` | `date_end_planned` | Date fin prévue |
+| `date_end_real` | `date_cloture` | `date_end_real` | Date fin réelle (lecture seule) |
+| `statut` | `statut` | `status` | Statut de la ligne (lecture seule) |
+
+Les trois champs en lecture seule ne s'écrivent que par les actions de ligne
+`activate` / `close` (`POST objects/contract/{id}/lines/{lineid}/actions/{action}`),
+qui déclenchent les triggers `LINECONTRACT_ACTIVATE` / `LINECONTRACT_CLOSE`. Un
+`PATCH` qui les porte les ignore et le journalise.
 
 #### Intervention (FichinterLigne)
 

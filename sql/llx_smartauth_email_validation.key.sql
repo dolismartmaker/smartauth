@@ -20,4 +20,10 @@ ALTER TABLE llx_smartauth_email_validation ADD INDEX idx_token_hash (token_hash)
 ALTER TABLE llx_smartauth_email_validation ADD INDEX idx_fk_user (fk_user);
 ALTER TABLE llx_smartauth_email_validation ADD INDEX idx_purpose (purpose);
 ALTER TABLE llx_smartauth_email_validation ADD INDEX idx_expires_at (expires_at);
-ALTER TABLE llx_smartauth_email_validation ADD CONSTRAINT fk_email_validation_user FOREIGN KEY (fk_user) REFERENCES llx_user(rowid) ON DELETE CASCADE;
+-- NO foreign key on fk_user, deliberately. An external subject (account /
+-- member) stores its id in fk_societe_account / fk_adherent and writes the
+-- SENTINEL 0 here, the column being NOT NULL. On InnoDB, 0 is not NULL: the
+-- constraint required a llx_user row of rowid 0, which never exists, so every
+-- acc:/mbr: insert failed with error 1452. Dropped for existing installs by
+-- sql/update_016.sql. Do not restore it without first making fk_user nullable
+-- and writing NULL instead of 0 for external subjects.

@@ -36,9 +36,9 @@ require_once DOL_DOCUMENT_ROOT . '/ticket/class/ticket.class.php';
  *    28 columns and neither note_public nor note_private is among them;
  *    update() (l.985-1006) never writes them either. Both used to be published
  *    AND writable here, which made a note write a silent no-op: the request
- *    answered 200 and the value vanished. They are gone, and the ObjectRegistry
- *    'ticket' entry was aligned (its allowed_fields is documented as mirroring
- *    $writableFields). The same reasoning removed `email_from`: it IS a
+ *    answered 200 and the value vanished. They are gone from this allowlist,
+ *    which is the only one: the ObjectRegistry 'ticket' entry declares no
+ *    write allowlist of its own. The same reasoning removed `email_from`: it IS a
  *    declared property (l.169) but no column, and fetch() (l.604-720) never
  *    hydrates it -- ticket/card.php (l.234) only fills it in memory just before
  *    createTicketMessage() so the message row carries the sender address.

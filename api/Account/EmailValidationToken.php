@@ -82,6 +82,29 @@ class EmailValidationToken
      * @param int|null    $fkAdherent       llx_adherent.rowid when subject_type=member
      * @return int Row id, or -1 on error
      */
+    /**
+     * Entity a token belongs to: the caller's when it says, the CURRENT one
+     * otherwise.
+     *
+     * The default used to be the literal 1. On a mono-entity install that is
+     * invisible; on entity 2 it wrote every registration token into entity 1 and
+     * read it back from there. The rows were then mis-attributed, and any
+     * consumer that scoped its lookup properly (PasswordResetController already
+     * passes $conf->entity) simply never found them.
+     *
+     * @param  int|null $entity
+     * @return int
+     */
+    private function resolveEntity(?int $entity): int
+    {
+        global $conf;
+
+        if ($entity !== null) {
+            return (int) $entity;
+        }
+        return (int) ($conf->entity ?? 1);
+    }
+
     public function create(
         int $fkUser,
         string $purpose,
@@ -89,11 +112,12 @@ class EmailValidationToken
         int $ttl,
         ?string $ip = null,
         ?array $context = null,
-        int $entity = 1,
+        ?int $entity = null,
         string $subjectType = 'user',
         ?int $fkSocieteAccount = null,
         ?int $fkAdherent = null
     ): int {
+        $entity = $this->resolveEntity($entity);
         $now = dol_now();
         $expiresAt = $now + max(60, $ttl);
 
@@ -129,8 +153,9 @@ class EmailValidationToken
      * @param int    $entity
      * @return array|null Row as associative array or null if not found / expired / consumed
      */
-    public function findActive(string $tokenHash, string $purpose, int $entity = 1): ?array
+    public function findActive(string $tokenHash, string $purpose, ?int $entity = null): ?array
     {
+        $entity = $this->resolveEntity($entity);
         $sql = "SELECT rowid, token_hash, fk_user, subject_type, fk_societe_account, fk_adherent, purpose, expires_at, used_at, context, entity";
         $sql .= " FROM " . MAIN_DB_PREFIX . self::TABLE;
         $sql .= " WHERE token_hash = '" . $this->db->escape($tokenHash) . "'";

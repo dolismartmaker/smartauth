@@ -201,10 +201,42 @@ class dmAgendaEvent extends dmBase
 			}
 		}
 
-		// Changing the type by code must clear the cached numeric id so the core
-		// re-resolves it (setting type_code alone otherwise keeps the old type_id).
+		// Changing the type by code. The two verbs need OPPOSITE treatments, and
+		// treating them alike corrupted every update.
+		//
+		// create() resolves the numeric type from the code by itself
+		// (actioncomm.class.php l.493-511: "if (!$this->type_id ||
+		// !$this->type_code) { ... $cactioncomm->fetch($key); $this->type_id =
+		// $cactioncomm->id; }"), so clearing the cached id is precisely what
+		// triggers that branch. Keep doing it.
+		//
+		// update() has NO such branch. It only walks the other way, filling
+		// type_code FROM type_id (l.1161-1169, and only when type_id > 0), then
+		// persists "fk_action = ".(int) $this->type_id (l.1181). Clearing the id
+		// there wrote fk_action = 0: the event lost its numeric type, and every
+		// screen joining llx_c_actioncomm on fk_action then showed nothing.
+		// It also kept the OLD `code` column, because update() only refreshes it
+		// when $oldcopy is set (l.1174-1177) and the facade never sets one -- so
+		// the type change did not take at all. Resolve both here.
 		if (property_exists($sanitized, 'type_code')) {
-			$object->type_id = 0;
+			if (empty($object->id)) {
+				$object->type_id = 0;
+			} else {
+				$resolvedId = $this->resolveActionTypeId((string) $object->type_code);
+				if ($resolvedId > 0) {
+					$object->type_id = $resolvedId;
+					$object->code = (string) $object->type_code;
+				} else {
+					// Unknown code: keep the stored type rather than wiping it.
+					// Writing 0 would be the same corruption by another route.
+					dol_syslog(
+						'[SmartAuth] dmAgendaEvent: unknown action type code "'
+							. (string) $object->type_code . '" on event ' . ((int) $object->id)
+							. ' - keeping the stored type',
+						LOG_WARNING
+					);
+				}
+			}
 		}
 
 		$isNew = empty($object->id);
@@ -319,6 +351,35 @@ class dmAgendaEvent extends dmBase
 		$row = $db->fetch_object($resql);
 		$db->free($resql);
 		return $row !== null && (int) $row->nb > 0;
+	}
+
+	/**
+	 * Numeric id of an action type, from its dictionary code.
+	 *
+	 * Used on the UPDATE path only: ActionComm::update() never resolves it (see
+	 * applyImportedFields), so the mapper must. CActionComm::fetch() accepts
+	 * either an id or a code -- it branches on is_numeric (cactioncomm.class.php
+	 * l.111-120) -- which is exactly how ActionComm::create() resolves it too.
+	 *
+	 * @param  string $code  Dictionary code, e.g. 'AC_TEL'.
+	 * @return int           The id, or 0 when the code is unknown.
+	 */
+	private function resolveActionTypeId($code)
+	{
+		global $db;
+
+		$code = trim((string) $code);
+		if ($code === '') {
+			return 0;
+		}
+
+		require_once DOL_DOCUMENT_ROOT . '/comm/action/class/cactioncomm.class.php';
+		$dict = new \CActionComm($db);
+		if ($dict->fetch($code) <= 0) {
+			return 0;
+		}
+
+		return (int) $dict->id;
 	}
 
 	/**

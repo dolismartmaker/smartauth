@@ -318,13 +318,31 @@ trait dmLinesTrait
 	 */
 	protected function getContractLinesMapping(): array
 	{
+		// Contrat::fetch_lines ALIASES the four date columns onto shorter PHP
+		// properties (contrat.class.php: "d.date_ouverture_prevue as date_start",
+		// "d.date_ouverture as date_start_real", "d.date_fin_validite as
+		// date_end", "d.date_cloture as date_end_real"), and the commented-out
+		// block right below the assignments shows the SQL names are NOT set on
+		// the line object. The export reads $line->$doliside, so mapping the
+		// column names yielded null on all four. The keys here are therefore the
+		// PROPERTY names; the API names stay the ones of
+		// api-naming-convention.md.
+		//
+		// date_start/date_end override the common mapping on purpose: on a
+		// contract line those two carry the PLANNED dates, and the real ones
+		// need their own names next to them.
+		//
+		// The two *_real fields are read-only by construction: they are absent
+		// from ObjectLineController::WRITABLE_LINE_FIELDS, because only
+		// active_line()/close_line() may write them (they fire the
+		// LINECONTRACT_* triggers). Same for 'statut'.
 		return array_merge($this->getCommonLinesMapping(), [
-			'fk_contrat'            => 'contract_id',
-			'date_ouverture_prevue' => 'date_start_planned',
-			'date_ouverture'        => 'date_start_real',
-			'date_fin_validite'     => 'date_end_planned',
-			'date_cloture'          => 'date_end_real',
-			'statut'                => 'status',
+			'fk_contrat'      => 'contract_id',
+			'date_start'      => 'date_start_planned',
+			'date_start_real' => 'date_start_real',
+			'date_end'        => 'date_end_planned',
+			'date_end_real'   => 'date_end_real',
+			'statut'          => 'status',
 		]);
 	}
 

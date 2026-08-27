@@ -236,6 +236,15 @@ class SyncMapperInvariantTest extends DolibarrRealTestCase
             }
         }
 
+        // Status label companion: same rationale as the FK labels above. It is
+        // derived from the published status field, computed by
+        // dmTrait::_resolveStatusLabel() while the object is loaded, and its key
+        // is declared by the mapper ($statusLabelKey, defaulting to
+        // 'status_label' on dmBase). Part of the declared surface, not a leak.
+        if (array_key_exists('statusLabelKey', $defaults) && !empty($defaults['statusLabelKey'])) {
+            $allowed[] = $defaults['statusLabelKey'];
+        }
+
         // Sync metadata is universal for /sync/pull events.
         $allowed = array_merge($allowed, self::SYNC_METADATA_FIELDS);
 

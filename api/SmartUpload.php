@@ -308,16 +308,31 @@ class SmartUpload
         $now = time();
         $cleaned = 0;
 
+        // A directory whose meta.json is missing or unreadable used to be
+        // skipped for ever: a process killed between mkdir and the metadata
+        // write, or a truncated file, left bytes on disk that nothing would
+        // ever remove. Such a directory is collected once it is clearly older
+        // than any legitimate staging window.
+        $orphanCutoff = $now - (self::MAX_TTL * 2);
+
         foreach (glob($base . '/*', GLOB_ONLYDIR) ?: [] as $userDir) {
             foreach (glob($userDir . '/*', GLOB_ONLYDIR) ?: [] as $uploadDir) {
                 $metaPath = $uploadDir . '/meta.json';
-                if (!is_file($metaPath)) {
-                    continue;
-                }
-                $metadata = json_decode(@file_get_contents($metaPath), true);
+                $metadata = is_file($metaPath) ? json_decode(@file_get_contents($metaPath), true) : null;
+
                 if (!is_array($metadata) || !isset($metadata['expires'])) {
+                    $mtime = @filemtime($uploadDir);
+                    if ($mtime !== false && $mtime < $orphanCutoff) {
+                        dol_syslog("[SmartAuth] SmartUpload::cleanup - removing orphan staging dir " . basename($uploadDir) . " (no usable meta.json)", LOG_WARNING);
+                        foreach (glob($uploadDir . '/*') ?: [] as $f) {
+                            @unlink($f);
+                        }
+                        @rmdir($uploadDir);
+                        $cleaned++;
+                    }
                     continue;
                 }
+
                 if ($now > (int) $metadata['expires']) {
                     foreach (glob($uploadDir . '/*') ?: [] as $f) {
                         @unlink($f);
@@ -455,6 +470,20 @@ class SmartUpload
     /**
      * Sanitize a filename to a safe ASCII-ish form.
      */
+    /**
+     * Public so the controller can echo a SAFE name in its error payloads.
+     * A rejected file is precisely the case where the raw client-supplied name
+     * used to be sent straight back, and a consumer that renders it verbatim
+     * turns "&lt;img onerror=...&gt;.jpg" into markup on its own page.
+     *
+     * @param  string $name
+     * @return string
+     */
+    public static function safeDisplayName($name)
+    {
+        return self::sanitizeFilename($name);
+    }
+
     private static function sanitizeFilename($name)
     {
         if (function_exists('dol_sanitizeFileName')) {

@@ -19,6 +19,9 @@
 | Détection conflits tms | Dans SyncController | Implémenté | Comparaison tms + données champ par champ |
 | Verrouillage optimiste | Dans SyncController | Implémenté | SELECT FOR UPDATE avec retry |
 | Objets simples | Config SyncController | Implémenté | thirdparty, contact, product |
+| **F05 - tous les objets dolMapping** | `api/ObjectRegistry.php` + `api/SyncController.php` | Implémenté (2026-08-24) | Le moteur sert les 26 types du registre partagé avec la façade REST. Trois hypothèses du MVP levées : clé primaire lue dans le registre (`llx_actioncomm` porte `id`, pas `rowid`), cloisonnement des tables sans colonne `entity` via `isolationWhereSql()` du mapper (`llx_stock_mouvement`, `llx_subscription`, `llx_bank`), tombstones cloisonnés par entité. Test : `test/phpunit/integration-dolibarr/SyncAllObjectTypesTest.php` |
+| Découverte des types | `GET /sync/objects` | Implémenté (2026-08-24) | Liste les types syncables avec, pour chacun, les droits effectifs de l'appelant. Un client construit son `sync_scope` au lieu de le coder en dur |
+| Rétention tombstones (NF04) | `SmartAuth::doScheduledJob()` | Implémenté (2026-08-24) | Purge > 30 jours, réglable par `SMARTAUTH_SYNC_TOMBSTONE_RETENTION_DAYS` |
 | **Documents/Blobs** | `api/ObjectDocumentController.php` | Implémenté | List + download docs pour product, thirdparty, project, intervention, category. Intégration ECM avec share hash |
 | Hooks objets sync | - | Prévu Phase 2 | smartmaker_registerSyncableObjects |
 | Objets composites | - | Prévu Phase 2 | Factures, commandes avec lignes |
@@ -33,6 +36,7 @@
    require_once __DIR__ . '/api/sync_routes.php';
    ```
 3. **Endpoints disponibles** :
+   - `GET /sync/objects` - Lister les types syncables et les droits de l'appelant
    - `POST /sync/register` - Enregistrer un client
    - `GET /sync/pull?client_uuid=...&object_type=...` - Récupérer les changements
    - `POST /sync/push` - Envoyer les modifications
@@ -654,8 +658,8 @@ utilise un `temp_id` préfixé. Le serveur résout ces références dans l'ordre
 
 ```
 Exemple : Création d'un tiers + contact dans le même batch
-- thirdparty créé avec temp_id="local_soc_1" → server_id=42
-- contact créé avec fk_soc="local_soc_1" → résolu en fk_soc=42 avant insertion
+- thirdparty créé avec temp_id="local_soc_1" -> server_id=42
+- contact créé avec fk_soc="local_soc_1" -> résolu en fk_soc=42 avant insertion
 ```
 
 **Request**
@@ -837,20 +841,20 @@ Lors du PUSH, pour chaque modification client :
 1. Comparer base_tms (client) avec tms actuel (serveur)
 
 2. Si base_tms == server_tms :
-   → Pas de conflit, appliquer la modification
+   -> Pas de conflit, appliquer la modification
 
 3. Si base_tms != server_tms :
-   → Conflit potentiel détecté
-   → Comparer les données champ par champ (syncableFields)
+   -> Conflit potentiel détecté
+   -> Comparer les données champ par champ (syncableFields)
 
    3a. Si données identiques :
-       → Faux conflit (modification concurrente identique)
-       → Appliquer sans demander résolution
+       -> Faux conflit (modification concurrente identique)
+       -> Appliquer sans demander résolution
 
    3b. Si données différentes :
-       → Conflit réel
-       → Stocker dans llx_sync_conflicts
-       → Retourner au client pour résolution manuelle
+       -> Conflit réel
+       -> Stocker dans llx_sync_conflicts
+       -> Retourner au client pour résolution manuelle
 ```
 
 **Implémentation serveur :**
@@ -1006,7 +1010,7 @@ public function applyChange(string $table, array $clientChange): array
 
 **Comportement :**
 - Le `FOR UPDATE` verrouille la ligne le temps de la transaction
-- Si le `tms` a changé entre la lecture et le verrouillage → retry automatique
+- Si le `tms` a changé entre la lecture et le verrouillage -> retry automatique
 - Maximum 3 tentatives avant échec
 - Les transactions sont courtes pour minimiser les contentions
 
@@ -1831,7 +1835,7 @@ Liste les documents attachés à un objet. Retourne les métadonnées (pas le co
 enrichies avec les informations ECM Dolibarr (`ecm_id`, `share` hash).
 
 Si une entrée `llx_ecm_files` n'existe pas pour un fichier, elle est automatiquement
-créée avec un share hash généré. Cela permet de « guérir » la base ECM Dolibarr
+créée avec un share hash généré. Cela permet de "guérir" la base ECM Dolibarr
 au fur et à mesure.
 
 **Paramètres URL :**
@@ -2006,7 +2010,7 @@ sont déjà compressés.
 ```
 1. PULL des métadonnées documents
    GET /object/product/{id}/documents?since={last_sync}
-   → Réponse inclut ecm_id et share hash pour chaque document
+   -> Réponse inclut ecm_id et share hash pour chaque document
 
 2. Comparaison avec IndexedDB local
    - Nouveaux documents : à télécharger
@@ -2016,10 +2020,10 @@ sont déjà compressés.
 3. Téléchargement des documents
    Option A (groupé, recommandé) :
      POST /object/documents/bundle  { shares: [...] }
-     → Dézipper, stocker chaque fichier dans IndexedDB
+     -> Dézipper, stocker chaque fichier dans IndexedDB
    Option B (individuel, fallback pour fichiers > 5 Mo) :
      GET /object/product/{id}/document?q={share_hash}
-     → Stocker le Blob dans IndexedDB
+     -> Stocker le Blob dans IndexedDB
 
 4. Mise à jour de last_sync pour les documents
 ```

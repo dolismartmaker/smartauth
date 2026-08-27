@@ -30,6 +30,7 @@ namespace SmartAuth\Api\Account;
 use SmartAuth\Api\OAuth2\HookHelper;
 use SmartAuth\Api\OAuth2\OAuthConfig;
 use SmartAuth\Api\OAuth2\SessionManager;
+use SmartAuth\Api\OAuth2\TokenSubject;
 
 dol_include_once('/smartauth/api/OAuth2/SessionManager.php');
 dol_include_once('/smartauth/api/OAuth2/HookHelper.php');
@@ -87,10 +88,34 @@ class AccountController
         // SameSite=Lax / HttpOnly / Secure on the cookie (H-9).
         $this->ensureSecureSession();
 
-        $userId = $this->requireSession();
-        if ($userId === null) {
+        $subject = $this->requireSession();
+        if ($subject === null) {
             return;
         }
+
+        // SILO GATE. Everything below this line addresses a llx_user rowid:
+        // AccountService is entirely user-based (int $fkUser, fetchUser():
+        // ?\User). Handing it the id of an acc:/mbr: subject would change the
+        // password, the identity or the sessions of the INTERNAL user that
+        // happens to carry the same rowid -- a silo crossing, and the worst
+        // possible outcome on this page.
+        //
+        // Until AccountService speaks the three subject types, an external
+        // subject is refused here, explicitly and with a log. That is a
+        // deliberate functional gap, not an oversight: the SSO door admits
+        // acc:/mbr: (LoginController l.260), so this page currently serves the
+        // internal users only, i.e. those reaching it with
+        // SMARTAUTH_SSO_ALLOW_INTERNAL_USER=1.
+        if (!$subject->isUser()) {
+            dol_syslog(
+                '[SmartAuth] AccountController: subject type "' . $subject->getType()
+                . '" is not served by the self-service page yet (AccountService is llx_user only)',
+                LOG_WARNING
+            );
+            $this->renderUnsupportedSubject();
+            return;
+        }
+        $userId = (int) $subject->getId();
 
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
         if ($method === 'POST') {
@@ -98,6 +123,21 @@ class AccountController
             return;
         }
         $this->renderPage($userId);
+    }
+
+    /**
+     * Tell an external subject, plainly, that this page cannot serve it.
+     *
+     * Answers 200 rather than an error status on purpose: nothing failed, the
+     * feature simply does not cover this account type yet. The alternative --
+     * letting the TypeError of the old signature bubble up -- produced a bare
+     * 500 "server_error" that gave the user nothing and the operator no reason.
+     */
+    private function renderUnsupportedSubject(): void
+    {
+        header('Content-Type: text/html; charset=UTF-8');
+        echo '<!doctype html><meta charset="utf-8"><title>Compte</title>';
+        echo '<p>La gestion de compte en ligne n\'est pas encore disponible pour ce type de compte.</p>';
     }
 
     /**
@@ -131,20 +171,35 @@ class AccountController
     }
 
     /**
-     * Validate that the user has an active SmartAuth session, redirecting
-     * to /login otherwise. Returns the user id or null after the redirect.
+     * Validate that the caller has an active SmartAuth session, redirecting to
+     * /login otherwise. Returns the SUBJECT, or null after the redirect.
      *
-     * @return int|null
+     * The return type used to be ?int while validateSession() has returned a
+     * TokenSubject since the subject refactor. PHP never coerces an object to
+     * int, so every authenticated hit on /account died with
+     * "TypeError: requireSession(): Return value must be of type ?int" and the
+     * exception handler of public/index.php answered 500 server_error. Only the
+     * ANONYMOUS path worked (the redirect exits before the return), which is
+     * exactly the one case the smoke test covered -- hence a page broken for
+     * every logged-in user while the suite stayed green.
+     *
+     * Do NOT "fix" this by returning $subject->getId(): the callers treat the
+     * value as a llx_user rowid, so an acc:/mbr: subject would land on the
+     * internal user carrying the same id. The TypeError was, by accident, the
+     * only thing standing between this page and a silo crossing. The gate now
+     * lives in handle(), explicitly.
+     *
+     * @return \SmartAuth\Api\OAuth2\TokenSubject|null
      */
-    private function requireSession(): ?int
+    private function requireSession(): ?TokenSubject
     {
-        $userId = $this->sessionManager->validateSession();
-        if ($userId === null) {
+        $subject = $this->sessionManager->validateSession();
+        if ($subject === null) {
             $continue = '/account';
             header('Location: /login?continue=' . urlencode($continue));
             exit;
         }
-        return $userId;
+        return $subject;
     }
 
     /**

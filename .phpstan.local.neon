@@ -2,9 +2,9 @@ includes:
 	- .phpstan.dist.neon
 parameters:
 	scanDirectories:
-		- /home/erics/dev/dolibarr/dolibarr-git/htdocs/
+		- %env.HOME%/dev/stubs/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
 	excludePaths:
 		analyse:
-			- /home/erics/dev/dolibarr/dolibarr-git/htdocs/
+			- %env.HOME%/dev/stubs/dolibarr-stubs-all/dolibarr-%env.DOLIBARR_VERSION%/
 	bootstrapFiles:
 		- .phpstan-bootstrap.php

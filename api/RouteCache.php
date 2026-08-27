@@ -347,6 +347,15 @@ class RouteCache
         foreach (self::discoverLocalRoutesFiles() as $localRoutesFile) {
             $files[$localRoutesFile] = filemtime($localRoutesFile);
         }
+
+        // smartauth's own route file. discoverLocalRoutesFiles() only returns
+        // the CONSUMER modules, so editing a core route went unnoticed in dev
+        // mode too -- the very file a developer working on smartauth edits.
+        $ownRoutes = __DIR__ . '/LocalRoutes.php';
+        if (is_file($ownRoutes)) {
+            $files[$ownRoutes] = filemtime($ownRoutes);
+        }
+
         return $files;
     }
 
@@ -453,6 +462,15 @@ class RouteCache
         foreach (ModulePathHelper::activeRouteModules() as $module) {
             $sig[$module] = getDolGlobalString(strtoupper($module) . '_VERSION', '');
         }
+
+        // smartauth itself is NOT in activeRouteModules() -- that list holds the
+        // consumer modules that declare routes. Its own api/LocalRoutes.php was
+        // therefore absent from the signature: upgrading smartauth (which is
+        // exactly when core routes appear or change) left the compiled cache in
+        // place, and the new routes 404'd until an unrelated module happened to
+        // bump its version. Its version belongs in the signature like any other.
+        $sig['smartauth'] = getDolGlobalString('SMARTAUTH_VERSION', '');
+
         ksort($sig);
         return md5(serialize($sig));
     }

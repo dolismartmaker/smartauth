@@ -270,11 +270,26 @@ class AuthController
 		$jti = $decoded->jti ?? null;
 		if (!empty($jti)) {
 			if (!$this->_markJtiAsUsed($jti)) {
-				// jti already used = replay attack detected
+				// jti already used. Two very different situations land here, and
+				// treating them alike is what made the mechanism unusable: a
+				// stolen token being replayed, and the SAME client firing twice
+				// (a retry on a flaky network, a double tap, two tabs). The
+				// second is common and legitimate, and revoking the family for
+				// it logs the rightful user out of their own device.
+				//
+				// The discriminator is time: a race resolves within seconds, a
+				// replay comes later. Inside the grace window the request is
+				// still refused -- the token IS single-use -- but the family
+				// survives.
+				if (self::_isConcurrentRefreshRace($jti)) {
+					dol_syslog("[SmartAuth] refresh: concurrent use of jti=" . substr($jti, 0, 8) . "... within the race window, refusing without revoking", LOG_WARNING);
+					return [['error' => 'Refresh already in progress, please retry.'], 409];
+				}
+
 				dol_syslog("[SmartAuth] REPLAY ATTACK DETECTED on refresh token", LOG_ERR);
 				$replayFamilyId = $decoded->family_id ?? '';
 				if (!empty($replayFamilyId)) {
-					$this->_revokeTokenFamily($replayFamilyId, 'replay_attack_detected');
+					self::_revokeTokenFamily($replayFamilyId, 'replay_attack_detected');
 				}
 				return [['error' => 'Security violation detected. Token reuse is not allowed.'], 401];
 			}
@@ -303,8 +318,16 @@ class AuthController
 		if (!$family_check['valid']) {
 			dol_syslog("[SmartAuth] Token family check failed: " . $family_check['reason'], LOG_WARNING);
 			// SECURITY: Revoke entire token family on suspicious activity
-			$this->_revokeTokenFamily($family_id, 'suspicious activity');
+			self::_revokeTokenFamily($family_id, 'suspicious activity');
 			return [['error' => 'Security violation detected. All sessions revoked.'], 401];
+		}
+
+		// RE-VALIDATE THE SUBJECT. Without this, a disabled account renewed its
+		// pair here every time and stayed alive for another full lifetime, over
+		// and over: disabling a user never expired their access.
+		if (!$this->_refreshSubjectStillActive($decoded->user_id, $login, $entity)) {
+			self::_revokeTokenFamily($family_id, 'subject_disabled');
+			return [['error' => 'Authentication failed'], 401];
 		}
 
 		// Check max refresh count
@@ -529,22 +552,35 @@ class AuthController
 			json_reply($genericAuthError, 401);
 		}
 
+		// Load the user IN THE ENTITY THE CREDENTIALS WERE CHECKED AGAINST.
+		// checkLoginPassEntity() above verified the password inside $entity;
+		// fetching without an entity then loaded whichever row matched the login
+		// first, so on a multi-entity install two accounts sharing a login meant
+		// authenticating against one and issuing a token for the other.
 		$tmpuser = new User($db);
-		$resuser = $tmpuser->fetch(0, $login);
-		if ($resuser < 0) {
+		$resuser = $tmpuser->fetch(0, $login, '', 0, (int) $entity);
+		if ($resuser <= 0) {
 			SmartAuthLogger::debug("smartauth : AuthController::login : fetch by login failed, trying email");
-			$resuser = $tmpuser->fetch(0, '', '', 0, -1, $login);
-			if ($resuser < 0) {
-				dol_syslog("[SmartAuth] AuthController::login : fetch by email also failed", LOG_WARNING);
+			$resuser = $tmpuser->fetch(0, '', '', 0, (int) $entity, $login);
+			if ($resuser <= 0) {
+				dol_syslog("[SmartAuth] AuthController::login : fetch by email also failed in entity " . (int) $entity, LOG_WARNING);
 			}
 		}
 
-		// SUCCESS: Reset rate limits
-		$rateLimiter->reset($ip, 'login_ip');
+		// SUCCESS: clear the bucket of the identity that just proved itself.
+		//
+		// The IP bucket is deliberately NOT reset. It counts attempts from a
+		// source, not from an account: resetting it let anyone holding one valid
+		// account wipe the counter between salvos and brute-force every other
+		// login from the same address, at full speed, forever.
 		$rateLimiter->reset($rateLimitKey, 'login_username');
 
-		// Record successful attempt
-		$rateLimiter->recordAttempt($ip, 'login_ip', true);
+		// A SUCCESS IS NOT RECORDED IN THE IP BUCKET either, and that is the
+		// other half of the same fix. checkLimit() counts rows, not failures:
+		// now that the bucket is no longer wiped on success, recording successes
+		// in it would lock out a legitimate user after N normal logins from the
+		// same address. The IP bucket therefore holds failures only (recorded on
+		// the refusal paths above), which is what it is meant to bound.
 		$rateLimiter->recordAttempt($rateLimitKey, 'login_username', true);
 
 		if (!is_object($tmpuser) || empty($tmpuser->id)) {
@@ -683,7 +719,18 @@ class AuthController
 		$familyId = $payload['jwt_family_id'] ?? $payload['family_id'] ?? '';
 		if (!empty($familyId)) {
 			dol_syslog("[SmartAuth] AuthController : logout for " . $user->id . ", tokenFamily id=" . $familyId);
-			$this->_revokeTokenFamily($familyId, 'logout');
+			// A failed revocation must NOT be answered with 200: the client
+			// would drop its tokens believing the session is dead while the
+			// refresh token still works server-side. Surfacing the failure lets
+			// the caller retry, which is the only way out of that state.
+			if (!self::_revokeTokenFamily($familyId, 'logout')) {
+				dol_syslog(
+					"[SmartAuth] AuthController::logout: revocation FAILED for family " . $familyId
+					. " (user " . $user->id . ") - answering 500 so the client retries",
+					LOG_ERR
+				);
+				return [['error' => 'Logout failed, session may still be active. Please retry.'], 500];
+			}
 		} else {
 			dol_syslog("[SmartAuth] AuthController::logout: no jwt_family_id in payload, nothing revoked", LOG_WARNING);
 		}
@@ -842,7 +889,7 @@ class AuthController
 			$user = $payload['user'];
 
 			//revoke temporary tokens - sorry for them
-			$this->_revokeTokenFamily($decoded->family_id, 'choice an other existing device');
+			self::_revokeTokenFamily($decoded->family_id, 'choice an other existing device');
 
 			// Create token family (for tracking refresh chain)
 			$family_id = $this->_createTokenFamily($user->id);
@@ -1602,7 +1649,7 @@ class AuthController
 		}
 
 		foreach ($families as $fid) {
-			$this->_revokeTokenFamily($fid, 'replaced_by_new_session');
+			self::_revokeTokenFamily($fid, 'replaced_by_new_session');
 		}
 
 		if (count($families) > 0) {
@@ -1698,7 +1745,7 @@ class AuthController
 				$families[] = (int) $obj->family_id;
 			}
 			foreach ($families as $fid) {
-				$this->_revokeTokenFamily($fid, 'duplicate_label_device_collapsed');
+				self::_revokeTokenFamily($fid, 'duplicate_label_device_collapsed');
 			}
 			if (count($families) > 0) {
 				dol_syslog("[SmartAuth] _collapseDuplicateLabelDevices revoked " . count($families) . " cross-app families on sibling device=$sid for user=$user_id", LOG_INFO);
@@ -1729,28 +1776,220 @@ class AuthController
 	/**
 	 * Revoke entire token family, example of reason: security breach detected)
 	 *
-	 * @param   [type]          $family_id  id of family token
-	 * @param   [type]          $reason     reason of revocation
+	 * Both UPDATE results are tested and the outcome is returned. This is not
+	 * defensive style: every caller here is a security decision (replay
+	 * detected, suspicious family, logout, disabled subject). Logging an
+	 * unconditional success while an UPDATE failed on a lock timeout meant a
+	 * revocation that never happened was traced as done, /logout answered 200,
+	 * and the token kept passing until its own expiry.
 	 *
+	 * @param   string|int  $family_id  id of family token
+	 * @param   string      $reason     reason of revocation
+	 * @return  bool                    true when BOTH updates went through
 	 */
-	private function _revokeTokenFamily($family_id, $reason = 'family_revoked')
+	/**
+	 * Was this jti consumed just now, i.e. is this a concurrent use rather than
+	 * a replay?
+	 *
+	 * Window configurable through SMARTAUTH_REFRESH_RACE_WINDOW (seconds,
+	 * default 10). Short on purpose: it must cover a client retry, not a token
+	 * that resurfaces later. Unknown or unreadable jti -> false, so anything the
+	 * database cannot vouch for is treated as a replay (fail-closed).
+	 *
+	 * @param  string $jti
+	 * @return bool
+	 */
+	private static function _isConcurrentRefreshRace($jti)
 	{
 		global $db;
+
+		$window = getDolGlobalInt('SMARTAUTH_REFRESH_RACE_WINDOW', 10);
+		if ($window <= 0) {
+			return false;
+		}
+
+		$sql = "SELECT used_at FROM " . MAIN_DB_PREFIX . "smartauth_jti_used";
+		$sql .= " WHERE jti = '" . $db->escape($jti) . "'";
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog("[SmartAuth] _isConcurrentRefreshRace: lookup failed: " . $db->lasterror(), LOG_ERR);
+			return false;
+		}
+		$row = $db->fetch_object($resql);
+		if (!is_object($row)) {
+			return false;
+		}
+
+		return (time() - (int) $row->used_at) <= $window;
+	}
+
+	/**
+	 * Is the subject behind a refresh still allowed to hold a session?
+	 *
+	 * The refresh path only ever verified the TOKEN (signature, status, family,
+	 * counter), never the account behind it. So disabling a user in Dolibarr
+	 * had no effect on a live session: every rotation minted a fresh pair and
+	 * pushed the expiry another full lifetime away, forever. The check runs on
+	 * the account as it stands NOW, which is the whole point.
+	 *
+	 * Resolution by id first (the signed payload carries user_id), falling back
+	 * to the login when the payload predates it.
+	 *
+	 * @param  int|string $userId  user id from the refresh payload
+	 * @param  string     $login   login from the refresh payload
+	 * @param  int|string $entity  entity from the refresh payload
+	 * @return bool                false when the session must not be renewed
+	 */
+	private static function _refreshSubjectStillActive($userId, $login, $entity)
+	{
+		global $db;
+
+		$user = new User($db);
+		$res = 0;
+		if ((int) $userId > 0) {
+			$res = $user->fetch((int) $userId);
+		}
+		if ($res <= 0 && $login !== '') {
+			$res = $user->fetch(0, $login, 0, 0, (int) $entity);
+		}
+
+		if ($res <= 0) {
+			dol_syslog(
+				"[SmartAuth] refresh rejected: subject no longer exists (user_id=" . (int) $userId
+				. ", login=" . $login . ", entity=" . (int) $entity . ")",
+				LOG_WARNING
+			);
+			return false;
+		}
+
+		if ((int) ($user->statut ?? 0) !== 1) {
+			dol_syslog(
+				"[SmartAuth] refresh rejected: subject disabled (user_id=" . $user->id
+				. ", login=" . $login . ", statut=" . var_export($user->statut ?? null, true) . ")",
+				LOG_WARNING
+			);
+			return false;
+		}
+
+		if (method_exists($user, 'isNotIntoValidityDateRange') && $user->isNotIntoValidityDateRange()) {
+			dol_syslog(
+				"[SmartAuth] refresh rejected: subject outside its validity window (user_id=" . $user->id
+				. ", login=" . $login . ")",
+				LOG_WARNING
+			);
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Detect the reuse of an already-rotated refresh token and revoke its
+	 * whole family.
+	 *
+	 * Called from the one place that can see it: the lookup that filters on
+	 * status = VALID and finds nothing. Re-reading the row WITHOUT that filter
+	 * tells the two cases apart:
+	 *   - status LOGOUT + salt 'refresh_used' -> the token was spent by a
+	 *     legitimate rotation and is being presented again: reuse, revoke.
+	 *   - anything else (unknown id, cancelled, expired, already revoked by an
+	 *     admin) -> nothing to conclude, leave the family alone.
+	 *
+	 * Deliberately narrow: revoking on any unknown token id would let anyone
+	 * kill a session by guessing an integer.
+	 *
+	 * @param  int $token_id
+	 * @return bool  true when a reuse was detected AND the family revoked
+	 */
+	private static function _revokeFamilyOnRefreshReuse($token_id)
+	{
+		global $db;
+
+		if ($token_id <= 0) {
+			return false;
+		}
+
+		$sql = "SELECT status, salt, family_id, tms FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " WHERE rowid = " . (int) $token_id;
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog("[SmartAuth] _revokeFamilyOnRefreshReuse: lookup failed for token_id=$token_id: " . $db->lasterror(), LOG_ERR);
+			return false;
+		}
+		$row = $db->fetch_object($resql);
+		if (!is_object($row)) {
+			return false;
+		}
+
+		if ((int) $row->status !== self::STATUS_LOGOUT || $row->salt !== 'refresh_used') {
+			return false;
+		}
+
+		// Same grace window as the jti path: the row was flipped to
+		// 'refresh_used' by the rotation itself, so a client that fired twice
+		// arrives here a fraction of a second later. Revoking then would log the
+		// rightful user out for retrying a request.
+		$window = getDolGlobalInt('SMARTAUTH_REFRESH_RACE_WINDOW', 10);
+		$rotatedAt = !empty($row->tms) ? (int) $db->jdate($row->tms) : 0;
+		if ($window > 0 && $rotatedAt > 0 && (dol_now() - $rotatedAt) <= $window) {
+			dol_syslog(
+				"[SmartAuth] _revokeFamilyOnRefreshReuse: token_id=$token_id was rotated " . (dol_now() - $rotatedAt)
+				. "s ago, treating as a concurrent refresh - family kept",
+				LOG_WARNING
+			);
+			return false;
+		}
+
+		$familyId = (int) ($row->family_id ?? 0);
+		if ($familyId <= 0) {
+			dol_syslog("[SmartAuth] REFRESH TOKEN REUSE detected on token_id=$token_id but the row carries no family - nothing to revoke", LOG_WARNING);
+			return false;
+		}
+
+		dol_syslog("[SmartAuth] REFRESH TOKEN REUSE detected on token_id=$token_id - revoking family $familyId", LOG_ERR);
+		return self::_revokeTokenFamily($familyId, 'refresh_token_reuse');
+	}
+
+	private static function _revokeTokenFamily($family_id, $reason = 'family_revoked')
+	{
+		global $db;
+
+		$ok = true;
 
 		// Mark family as revoked
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_token_family";
 		$sql .= " SET revoked = 1";
 		$sql .= " WHERE rowid = '" . $db->escape($family_id) . "'";
-		$db->query($sql);
+		if (!$db->query($sql)) {
+			dol_syslog(
+				"[SmartAuth] _revokeTokenFamily: family flag UPDATE failed for family $family_id"
+				. " (reason=$reason): " . $db->lasterror(),
+				LOG_ERR
+			);
+			$ok = false;
+		}
 
 		// Revoke all tokens in this family
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
 		$sql .= " SET status = " . self::STATUS_LOGOUT;
 		$sql .= ", salt = '" . $db->escape($reason) . "'";
 		$sql .= " WHERE family_id = " . (int) $family_id;
-		$db->query($sql);
+		if (!$db->query($sql)) {
+			dol_syslog(
+				"[SmartAuth] _revokeTokenFamily: token UPDATE failed for family $family_id"
+				. " (reason=$reason): " . $db->lasterror(),
+				LOG_ERR
+			);
+			$ok = false;
+		}
 
-		dol_syslog("[SmartAuth] Token family $family_id revoked", LOG_INFO);
+		if ($ok) {
+			dol_syslog("[SmartAuth] Token family $family_id revoked (reason=$reason)", LOG_INFO);
+		} else {
+			dol_syslog("[SmartAuth] Token family $family_id NOT fully revoked (reason=$reason)", LOG_ERR);
+		}
+
+		return $ok;
 	}
 
 	/**
@@ -2122,6 +2361,17 @@ class AuthController
 
 			if (!$resql || $db->num_rows($resql) == 0) {
 				dol_syslog("[SmartAuth] token rejected: no VALID row for token_id=$token_id (unknown, cancelled or revoked)", LOG_WARNING);
+				// REFRESH TOKEN REUSE. A pair that rotated left its old row in
+				// STATUS_LOGOUT with salt='refresh_used'. Seeing it come back is
+				// the textbook signal that a refresh token leaked: the rightful
+				// device already spent it, so whoever presents it now holds a
+				// copy. The jti check further down never got the chance to say
+				// so -- this very query rejected the token first -- which left
+				// the family untouched and the thief free to keep using the
+				// pair they may have obtained in parallel.
+				if ($checktype === SmartTokenConfig::TYPE_REFRESH) {
+					self::_revokeFamilyOnRefreshReuse((int) $token_id);
+				}
 				json_reply('Invalid or revoked token', 401);
 			}
 
@@ -2271,12 +2521,28 @@ class AuthController
 		// Create token family
 		$family_id = $this->_createTokenFamily($user->id);
 
-		// Hash the device_uuid for database storage (max 64 chars)
-		// but keep original for _generateTokenPair which passes it to _getSalt2
-		$device_uuid_for_db = hash('sha256', $device_uuid);
+		// SAME DEVICE IDENTITY AS /login. This path used to store
+		// sha256($device_uuid) unconditionally while _createDeviceIdIfNeeded
+		// stores the raw UUID, so one physical device ended up with TWO rows in
+		// llx_smartauth_devices depending on how it signed in: it showed twice
+		// in the device list, revoking it killed only half its sessions, and the
+		// new-login alert fired on a device the user had already approved.
+		//
+		// The hash only ever existed to squeeze the User-Agent fallback into the
+		// 64-char column, so it is now applied to that fallback alone.
+		$isRealUuid = InputSanitizer::sanitizeUUID($device_uuid) !== null;
+		$device_uuid_for_db = $isRealUuid ? $device_uuid : hash('sha256', $device_uuid);
 
 		// Create/get device directly (bypass _createDeviceIdIfNeeded which requires HTTP_X_DEVICEID)
 		$device_id = self::getDeviceIDFromUUID($device_uuid_for_db);
+		if ($device_id <= 0 && $isRealUuid) {
+			// Backward compatibility: rows written before the unification carry
+			// the hash. Reuse them instead of creating a duplicate.
+			$device_id = self::getDeviceIDFromUUID(hash('sha256', $device_uuid));
+			if ($device_id > 0) {
+				dol_syslog('[SmartAuth] generateTokenForAuthenticatedUser: reusing the legacy hashed device row for this UUID', LOG_INFO);
+			}
+		}
 		if ($device_id <= 0) {
 			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
 			$sql .= " (uuid, fk_user_creat, label, date_creation, status, entity)";

@@ -153,14 +153,23 @@ class SmartAuthQrPairing
      *
      * @return array<string,mixed>|null
      */
-    public function findByPairingId(string $pairingId, int $entity = 1): ?array
+    public function findByPairingId(string $pairingId, ?int $entity = null): ?array
     {
         $sql = "SELECT rowid, pairing_id, claim_token_hash, fk_user, status,";
         $sql .= " device_label, device_uuid_hash, initiator_ip, claim_ip,";
         $sql .= " claim_user_agent, expires_at, datec, confirmed_at, consumed_at, entity";
         $sql .= " FROM " . MAIN_DB_PREFIX . self::TABLE;
         $sql .= " WHERE pairing_id = '" . $this->db->escape($pairingId) . "'";
-        $sql .= " AND entity = " . ((int) $entity);
+        // $entity = null: look the row up ACROSS entities, on the pairing id
+        // alone. The mobile side of the QR flow is unauthenticated, so its
+        // $conf->entity is always 1 -- scoping the lookup on it made every
+        // pairing created from an entity other than 1 impossible to claim, i.e.
+        // the whole feature was mono-entity by accident. The pairing id is 32
+        // random hex characters minted by an authenticated desk, it carries its
+        // own entity, and the caller adopts it (see QrPairController).
+        if ($entity !== null) {
+            $sql .= " AND entity = " . ((int) $entity);
+        }
 
         $resql = $this->db->query($sql);
         if (!$resql) {

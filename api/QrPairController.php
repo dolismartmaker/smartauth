@@ -116,7 +116,7 @@ class QrPairController
             return [['error' => 'rate_limited', 'retry_after' => (int) ($rateCheck['retry_after'] ?? 60)], 429];
         }
 
-        $row = $repo->findByPairingId($pairingId, $this->currentEntity());
+        $row = $repo->findByPairingId($pairingId);
         if ($row === null) {
             return $this->recordAndReturn($rateLimiter, $clientIp, self::RATE_ACTION_CLAIM, [['error' => 'pairing_not_found'], 404]);
         }
@@ -154,7 +154,7 @@ class QrPairController
         );
         if (!$ok) {
             // The row changed status under our feet (race) - re-fetch and respond.
-            $fresh = $repo->findByPairingId($pairingId, $this->currentEntity());
+            $fresh = $repo->findByPairingId($pairingId);
             return $this->recordAndReturn($rateLimiter, $clientIp, self::RATE_ACTION_CLAIM, [['error' => 'pairing_not_claimable', 'status' => $fresh['status'] ?? 'unknown'], 409]);
         }
 
@@ -216,7 +216,7 @@ class QrPairController
             return [['error' => 'rate_limited', 'retry_after' => (int) ($rateCheck['retry_after'] ?? 60)], 429];
         }
 
-        $row = $repo->findByPairingId($pairingId, $this->currentEntity());
+        $row = $repo->findByPairingId($pairingId);
         if ($row === null) {
             return $this->recordAndReturn($rateLimiter, $clientIp, self::RATE_ACTION_POLL, [['error' => 'pairing_not_found'], 404]);
         }
@@ -285,6 +285,23 @@ class QrPairController
      */
     private function issueTokensAndConsume($db, SmartAuthQrPairing $repo, array $row): array
     {
+        global $conf;
+
+        // Adopt the entity the pairing was created in. The mobile side is
+        // unauthenticated, so it arrives with $conf->entity = 1; issuing the
+        // token in that context would mint a session for the wrong entity (or
+        // for a user that does not exist there). The pairing row is the
+        // authority: it was written by an authenticated desk.
+        $pairingEntity = (int) ($row['entity'] ?? 0);
+        if ($pairingEntity > 0 && $pairingEntity !== (int) ($conf->entity ?? 1)) {
+            dol_syslog('[SmartAuth] QrPairController: adopting entity ' . $pairingEntity . ' from the pairing row', LOG_INFO);
+            $conf->entity = $pairingEntity;
+            $_SESSION['dol_entity'] = $pairingEntity;
+            if (method_exists($conf, 'setValues')) {
+                $conf->setValues($db);
+            }
+        }
+
         $userId = (int) $row['fk_user'];
         if (!class_exists('User')) {
             require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';

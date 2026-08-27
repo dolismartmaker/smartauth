@@ -94,6 +94,11 @@ Route::delete('upload/{upload_id}', UploadController::class, 'destroy', true);
 
 // ========== Sync Routes ========== //
 
+// Syncable object types available on this instance, with the caller's rights.
+// Declared before sync/register: a client builds its sync_scope from this list
+// instead of hardcoding one.
+Route::get('sync/objects', SyncController::class, 'objects', true);
+
 // Sync client registration
 Route::post('sync/register', SyncController::class, 'register', true);
 
@@ -172,6 +177,12 @@ Route::post('objects/{objtype}/{id}/lines/reorder', ObjectLineController::class,
 Route::post('objects/{objtype}/{id}/lines', ObjectLineController::class, 'store', true);
 Route::patch('objects/{objtype}/{id}/lines/{lineid}', ObjectLineController::class, 'update', true);
 Route::delete('objects/{objtype}/{id}/lines/{lineid}', ObjectLineController::class, 'destroy', true);
+
+// ----- Line workflow actions (contract line activate/close) -----
+// 7 segments, so no other pattern can match it: RouteCache compiles each route
+// to an anchored regex where a {placeholder} is ([^/]+), which never crosses a
+// slash. Scoped to ONE line, unlike the document actions below.
+Route::post('objects/{objtype}/{id}/lines/{lineid}/actions/{action}', ObjectLineController::class, 'invokeAction', true);
 
 // ----- Document workflow actions (validate/setDraft/close/setPaid/...) -----
 // 5-segment POST like lines/reorder, but the 4th segment is the literal

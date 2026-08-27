@@ -45,6 +45,8 @@ class SmartAuthUserTokenAdmin
 
     private const AUTH_TABLE = 'smartauth_auth';
 
+    private const FAMILY_TABLE = 'smartauth_token_family';
+
     /**
      * @var \DoliDB
      */
@@ -75,8 +77,65 @@ class SmartAuthUserTokenAdmin
     }
 
     /**
+     * Family id of a token row, or 0 when the row carries none (legacy tokens
+     * predate the family mechanism).
+     */
+    private function familyOfToken(int $tokenId): int
+    {
+        $sql = "SELECT family_id FROM " . MAIN_DB_PREFIX . self::AUTH_TABLE;
+        $sql .= " WHERE rowid = " . (int) $tokenId;
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog('[SmartAuth] SmartAuthUserTokenAdmin: family lookup failed on token #' . $tokenId . ' : ' . $this->db->lasterror(), LOG_ERR);
+            return 0;
+        }
+        $obj = $this->db->fetch_object($resql);
+        return is_object($obj) ? (int) $obj->family_id : 0;
+    }
+
+    /**
+     * Revoke a whole token family: the family flag plus every token of the
+     * family, in two flat UPDATEs.
+     *
+     * Revoking the single access-token row is NOT enough, and that gap is what
+     * the user card promised to close: the matching refresh token stays valid,
+     * so the device mints a new access token on its next /refresh and the
+     * session the admin believes killed simply carries on. Same cascade as
+     * SmartAuthUserDevice::revoke on the logical-device side.
+     *
+     * @return bool true when both updates went through
+     */
+    private function revokeFamily(int $familyId, int $fkUser): bool
+    {
+        $ok = true;
+
+        $sql = "UPDATE " . MAIN_DB_PREFIX . self::FAMILY_TABLE;
+        $sql .= " SET revoked = 1";
+        $sql .= " WHERE rowid = " . (int) $familyId;
+        if (!$this->db->query($sql)) {
+            dol_syslog('[SmartAuth] SmartAuthUserTokenAdmin: family flag update failed for family #' . $familyId . ' : ' . $this->db->lasterror(), LOG_ERR);
+            $ok = false;
+        }
+
+        // fk_authid scopes the cascade to the user whose card is open: a family
+        // is per-user by construction, but a corrupted row must not let this
+        // action reach another user's session.
+        $sql = "UPDATE " . MAIN_DB_PREFIX . self::AUTH_TABLE;
+        $sql .= " SET status = " . self::STATUS_REVOKED . ", salt = '" . self::SALT_REVOKED . "'";
+        $sql .= " WHERE family_id = " . (int) $familyId;
+        $sql .= " AND fk_authid = " . (int) $fkUser;
+        if (!$this->db->query($sql)) {
+            dol_syslog('[SmartAuth] SmartAuthUserTokenAdmin: family token update failed for family #' . $familyId . ' : ' . $this->db->lasterror(), LOG_ERR);
+            $ok = false;
+        }
+
+        return $ok;
+    }
+
+    /**
      * Revoke a single token (disable it: status = STATUS_REVOKED), keeping the
-     * row. Ownership-checked.
+     * row. When the token belongs to a family, the whole family goes with it --
+     * otherwise the session survives through /refresh. Ownership-checked.
      *
      * @return int RES_OK | RES_NOT_FOUND | RES_DB_ERROR
      */
@@ -86,6 +145,17 @@ class SmartAuthUserTokenAdmin
             dol_syslog('[SmartAuth] SmartAuthUserTokenAdmin: revoke skipped, token #' . $tokenId . ' not owned by user ' . $fkUser, LOG_WARNING);
             return self::RES_NOT_FOUND;
         }
+
+        $familyId = $this->familyOfToken($tokenId);
+        if ($familyId > 0) {
+            if (!$this->revokeFamily($familyId, $fkUser)) {
+                return self::RES_DB_ERROR;
+            }
+            dol_syslog('[SmartAuth] SmartAuthUserTokenAdmin: token #' . $tokenId . ' revoked with its family #' . $familyId . ' (user ' . $fkUser . ')', LOG_INFO);
+            return self::RES_OK;
+        }
+
+        // Legacy token with no family: revoke the row alone.
         $sql = "UPDATE " . MAIN_DB_PREFIX . self::AUTH_TABLE;
         $sql .= " SET status = " . self::STATUS_REVOKED . ", salt = '" . self::SALT_REVOKED . "'";
         $sql .= " WHERE rowid = " . (int) $tokenId;
@@ -158,6 +228,19 @@ class SmartAuthUserTokenAdmin
                 dol_syslog('[SmartAuth] SmartAuthUserTokenAdmin: mass action skipped, token #' . $one . ' not owned by user ' . $fkUser, LOG_WARNING);
                 continue;
             }
+            if (!$hardDelete) {
+                // Same family cascade as revoke(): a mass revocation that left
+                // the refresh tokens alive would be even more misleading, since
+                // it is the action an admin uses to cut off a lost device.
+                $familyId = $this->familyOfToken($one);
+                if ($familyId > 0) {
+                    if ($this->revokeFamily($familyId, $fkUser)) {
+                        $done++;
+                    }
+                    continue;
+                }
+            }
+
             if ($hardDelete) {
                 $sql = "DELETE FROM " . MAIN_DB_PREFIX . self::AUTH_TABLE . " WHERE rowid = " . $one;
             } else {

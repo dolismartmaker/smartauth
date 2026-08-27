@@ -458,6 +458,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // Resolve with server version
         $result = $this->controller->resolveConflict([
+            'user_id' => $this->testUser->id,
             'id' => $conflictId,
             'resolution' => 'server'
         ]);
@@ -502,6 +503,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // Resolve with client version
         $result = $this->controller->resolveConflict([
+            'user_id' => $this->testUser->id,
             'id' => $conflictId,
             'resolution' => 'client'
         ]);
@@ -544,6 +546,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // Resolve with merged data
         $result = $this->controller->resolveConflict([
+            'user_id' => $this->testUser->id,
             'id' => $conflictId,
             'resolution' => 'merged',
             'data' => [
@@ -1573,6 +1576,7 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
 
         // The resolution workflow now has a row to act on.
         $resolve = $this->controller->resolveConflict([
+            'user_id'    => $this->testUser->id,
             'id'         => $conflictId,
             'resolution' => 'client',
         ]);

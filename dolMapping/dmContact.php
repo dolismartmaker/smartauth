@@ -118,11 +118,15 @@ class dmContact extends dmBase
 	// See documentation/SPEC_A_WRITABLEFIELDS.md.
 	// Tenant guard on the VALUES written into these foreign keys
 	// (cf dmBase::$foreignKeyGuards): the allowlist below only vets names.
-	// Both spellings are guarded: `socid` is the property Contact::update()
-	// reads, `fk_soc` the SQL column, and the registry allowlist carries both.
+	// `socid` alone: it is the property Contact::update() reads, and the only
+	// spelling that can be written. The SQL column name `fk_soc` used to be
+	// guarded as well, because the registry's own allowlist accepted it -- that
+	// second allowlist is gone (see the ObjectRegistry docblock), so a guard on
+	// `fk_soc` would now be dead code, which
+	// ForeignKeyGuardContractTest::testNoGuardIsDeclaredOnANonWritableField
+	// refuses on the grounds that it makes a mapper LOOK covered.
 	protected $foreignKeyGuards = [
-		'socid'  => 'thirdparty',
-		'fk_soc' => 'thirdparty',
+		'socid' => 'thirdparty',
 	];
 
 	protected $writableFields = [
@@ -187,5 +191,44 @@ class dmContact extends dmBase
 	public function getSearchFields()
 	{
 		return ['lastname', 'firstname', 'email', 'phone', 'phone_mobile', 'phone_perso'];
+	}
+
+	/**
+	 * Explicit filterable columns for objects/contact.
+	 *
+	 * Same reason as getSearchFields() above: the catalog only marks a field
+	 * filterable when its `doliside` is a real SQL column, and this mapper
+	 * addresses the company through the PHP property `socid` while the column
+	 * is `fk_soc`. Without this override, "the contacts of company X" -- the
+	 * single most common query on this object -- is simply not expressible.
+	 *
+	 * `statut` is declared too so a caller can ask for active contacts only,
+	 * which is what every picker wants.
+	 *
+	 * @return array<string,array{column:string,kind:string}>
+	 */
+	public function getFilterableColumns()
+	{
+		return [
+			'thirdparty' => ['column' => 'fk_soc', 'kind' => 'select'],
+			'statut' => ['column' => 'statut', 'kind' => 'in'],
+		];
+	}
+
+	/**
+	 * Extra sortable keys for objects/contact.
+	 *
+	 * A contact picker is read by a human, so it is sorted by name. Both keys
+	 * address PHP properties that ARE real columns here, but the catalog only
+	 * derives sortability for fields it recognises, so they are declared.
+	 *
+	 * @return array<string,string>
+	 */
+	public function getSortableColumns()
+	{
+		return [
+			'lastname' => 'lastname',
+			'firstname' => 'firstname',
+		];
 	}
 }

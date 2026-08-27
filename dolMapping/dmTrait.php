@@ -53,6 +53,13 @@ trait dmTrait
 	private static $fkLabelCache = [];
 
 	/**
+	 * Whether the language files getLibStatut() needs have been loaded in this
+	 * process (see _loadStatusTranslations).
+	 * @var bool
+	 */
+	private static $statusLangsLoaded = false;
+
+	/**
 	 * Mapping from Dolibarr element to category type(s)
 	 * Some elements can have multiple category types (e.g. societe can be customer and/or supplier)
 	 */
@@ -662,6 +669,11 @@ trait dmTrait
 		// existing mappers are unaffected.
 		$this->_resolveForeignKeyLabels($obj, $mapped);
 
+		// Localized status label next to the raw status integer. Free here (the
+		// object is loaded), and it is what stopped consumers from migrating
+		// their human-facing lists to the facade.
+		$this->_resolveStatusLabel($obj, $mapped);
+
 		// Derived fields: computed from the object but not backed by a Dolibarr
 		// column. fieldFilterValueXxx() is invoked unconditionally (no source
 		// value check). Opt-in: only mappers that declare $listOfDerivedFields
@@ -702,16 +714,24 @@ trait dmTrait
 			// $mapped->rawlines = $obj->lines;
 		}
 
-		// Automatically add categories if the object supports them
-		$categories = $this->getCategoriesForObject($obj);
-		if ($categories !== null) {
-			$mapped->categories = $categories;
+		// Categories and the linked-file count each cost ONE query per row. They
+		// were computed unconditionally, so a list asking for four columns still
+		// paid 2N queries for two companions nobody requested -- the bulk of what
+		// remained of the N+1 once the per-row fetch() was gone. When the caller
+		// expressed its intent through ?include=, honour it: same decision on the
+		// compact and the full path, so the two stay indistinguishable. Without
+		// ?include= nothing changes.
+		if ($this->_exportWants('categories')) {
+			$categories = $this->getCategoriesForObject($obj);
+			if ($categories !== null) {
+				$mapped->categories = $categories;
+			}
 		}
 
 		// Automatically add linked files count (and full list if requested)
 		$linkedObjId = $obj->id ?? $obj->rowid ?? 0;
 		$linkedElement = $obj->table_element ?? $obj->element ?? '';
-		if (!empty($linkedObjId) && !empty($linkedElement)) {
+		if (!empty($linkedObjId) && !empty($linkedElement) && $this->_exportWants('nb_linked_files')) {
 			if ($this->withFiles) {
 				$linkedFiles = $this->getLinkedFilesList($obj);
 				$mapped->nb_linked_files = count($linkedFiles);
@@ -1081,9 +1101,13 @@ trait dmTrait
 			if (!is_array($spec) || empty($spec['class']) || empty($spec['labels']) || !is_array($spec['labels'])) {
 				continue;
 			}
-			// fk_soc carries the dual socid/fk_soc convention; other FKs read
-			// straight from the published doliside property.
-			if ($doliside === 'fk_soc') {
+			// The thirdparty link is dual by Dolibarr convention: the SQL column
+			// is fk_soc, the PHP property fetch() fills is socid, and mappers
+			// key on either one. Read both ways round -- an object hydrated from
+			// a raw row carries fk_soc and no socid, so keying on socid alone
+			// returned an empty label there while the fetched object gave the
+			// real name (caught by CompactProjectionParityTest on contacts).
+			if ($doliside === 'fk_soc' || $doliside === 'socid') {
 				$fkId = !empty($obj->socid) ? $obj->socid : ($obj->fk_soc ?? null);
 			} else {
 				$fkId = $obj->$doliside ?? null;
@@ -1121,6 +1145,148 @@ trait dmTrait
 			foreach ($labels as $appsideKey => $prop) {
 				$mapped->$appsideKey = ($resolved !== null && isset($resolved->$prop)) ? $resolved->$prop : '';
 			}
+		}
+	}
+
+	/**
+	 * Whether a per-row companion must be computed for the export in progress.
+	 *
+	 * Reads the ?include= list that exportMappedDataFiltered published for the
+	 * current call. null (no filter) keeps the historical behaviour: everything
+	 * is computed.
+	 *
+	 * @param  string $companion  'categories', 'nb_linked_files', 'status_label'
+	 * @return bool
+	 */
+	protected function _exportWants($companion)
+	{
+		$keys = $this->_exportIncludeKeys;
+		if ($keys === null || !is_array($keys)) {
+			return true;
+		}
+		if (in_array($companion, $keys, true)) {
+			return true;
+		}
+		// linked_files implies its count.
+		return $companion === 'nb_linked_files' && in_array('linked_files', $keys, true);
+	}
+
+	/**
+	 * Localized status label companion, computed while the object is loaded.
+	 *
+	 * WHY. Every mapper that carries a status publishes the INTEGER
+	 * (`statut => status`). Every list shown to a human displays "Brouillon",
+	 * "Validee", "Payee" -- which Dolibarr computes with getLibStatut(), an
+	 * INSTANCE method whose logic depends on the document type, on how much has
+	 * already been paid, and so on. A consumer migrating a list to the facade
+	 * therefore got integers, had to re-fetch every row to get its label, and
+	 * ended up with TWO fetches per row instead of one: the facade cost him more
+	 * than the SELECT it replaced. That is the precise reason two endpoints of
+	 * smartInterventions stayed on raw SQL.
+	 *
+	 * Computing it HERE is free: the object is already fetched and hydrated.
+	 *
+	 * Same shape as the FK-label companions ($listOfForeignKeyLabels): the
+	 * scalar `status` is untouched, `status_label` is ADDED next to it, so no
+	 * consumer breaks. A mapper opts out by setting $statusLabelKey to null.
+	 *
+	 * @param object    $obj    The fetched Dolibarr object being exported.
+	 * @param \stdClass $mapped The mapped output to enrich (mutated in place).
+	 * @return void
+	 */
+	protected function _resolveStatusLabel($obj, $mapped)
+	{
+		$key = property_exists($this, 'statusLabelKey') ? $this->statusLabelKey : 'status_label';
+		if ($key === null || $key === '' || !is_object($obj)) {
+			return;
+		}
+		// Only when asked for, and that is not just about cost. getLibStatut()
+		// reads whatever property the class decided on (Product reads $status,
+		// filled by fetch() from the column `tosell`; User reads $statut, absent
+		// from $fields), so it is only trustworthy on a fully fetched object.
+		// Requiring the key in ?include= is what keeps the two list paths
+		// identical: asking for the label disqualifies the compact projection
+		// (an unknown-to-the-catalog key fails closed), so the label is always
+		// computed on a fetched object. Without ?include= nothing changes.
+		if (!$this->_exportWants($key)) {
+			return;
+		}
+		// Only for objects that can actually tell their status, and only when
+		// this mapper publishes a status field: adding a label next to a field
+		// nobody exposes would be noise.
+		if (!method_exists($obj, 'getLibStatut') || !$this->_publishesStatusField()) {
+			return;
+		}
+
+		self::_loadStatusTranslations();
+
+		try {
+			// Mode 1 = short label, plain text. Modes 2 and above embed a picto
+			// (HTML), which has no place in an API payload.
+			$label = $obj->getLibStatut(1);
+		} catch (\Throwable $e) {
+			// Some getLibStatut() implementations dereference data that a
+			// partially loaded object does not carry. A missing label must never
+			// cost the whole row.
+			dol_syslog('[SmartAuth] _resolveStatusLabel failed on ' . get_class($obj) . ': ' . $e->getMessage(), LOG_WARNING);
+			return;
+		}
+
+		$label = (string) $label;
+		if ($label !== '' && function_exists('dol_string_nohtmltag')) {
+			$label = dol_string_nohtmltag($label);
+		}
+		$label = trim($label);
+		if ($label === '') {
+			return;
+		}
+
+		$mapped->{$key} = $label;
+	}
+
+	/**
+	 * Whether this mapper publishes a status field, i.e. whether a status label
+	 * companion has anything to sit next to.
+	 *
+	 * @return bool
+	 */
+	protected function _publishesStatusField()
+	{
+		if (empty($this->listOfPublishedFields) || !is_array($this->listOfPublishedFields)) {
+			return false;
+		}
+		foreach (['statut', 'status', 'fk_statut', 'fk_status'] as $candidate) {
+			if (array_key_exists($candidate, $this->listOfPublishedFields)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Load the language files getLibStatut() translates against.
+	 *
+	 * Without them $langs->trans() hands back the raw key ("Draft" stays
+	 * "BillStatusDraft"), which would make the companion worse than useless.
+	 * Loaded once per process; $langs->load() is itself idempotent.
+	 *
+	 * @return void
+	 */
+	private static function _loadStatusTranslations()
+	{
+		global $langs;
+
+		if (self::$statusLangsLoaded || !is_object($langs)) {
+			return;
+		}
+		self::$statusLangsLoaded = true;
+
+		foreach ([
+			'main', 'other', 'companies', 'bills', 'orders', 'propal', 'projects',
+			'members', 'contracts', 'ticket', 'interventions', 'stocks', 'sendings',
+			'receptions', 'trips', 'banks', 'agenda', 'users', 'suppliers',
+		] as $domain) {
+			$langs->load($domain);
 		}
 	}
 

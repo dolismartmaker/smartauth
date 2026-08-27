@@ -167,9 +167,9 @@ trait PaginatedListTrait
      * The returned fragment starts with " AND ..." (or '' if no condition) and
      * is meant to be appended to a query that already has a base WHERE clause.
      *
-     * Filter kinds: text (LIKE), select (equality), daterange (col_from/col_to),
-     * numberrange (col_min/col_max), boolean (0/1). Filters absent from
-     * $filterMap are ignored and logged at LOG_INFO.
+     * Filter kinds: text (LIKE), select (equality), in (set membership),
+     * daterange (col_from/col_to), numberrange (col_min/col_max), boolean
+     * (0/1). Filters absent from $filterMap are ignored and logged at LOG_INFO.
      *
      * @param array<string,mixed>                              $params      Output of parseListParams().
      * @param array<string,array{column:string,kind:string}>  $filterMap   Filter whitelist.
@@ -260,6 +260,13 @@ trait PaginatedListTrait
                     }
                     break;
 
+                case 'in':
+                    $inSql = $this->buildInClause($sqlCol, isset($filters[$apiCol]) ? $filters[$apiCol] : null, (string) $apiCol);
+                    if ($inSql !== '') {
+                        $where .= $inSql;
+                    }
+                    break;
+
                 case 'daterange':
                     $from = isset($filters[$apiCol.'_from']) ? (string) $filters[$apiCol.'_from'] : '';
                     $to = isset($filters[$apiCol.'_to']) ? (string) $filters[$apiCol.'_to'] : '';
@@ -305,6 +312,104 @@ trait PaginatedListTrait
         }
 
         return [$where, $sqlParams];
+    }
+
+    /**
+     * Maximum number of values accepted in a single `in` filter.
+     *
+     * A set filter is meant to express a business category ("customers and
+     * prospects"), not to smuggle a thousand ids through the query string.
+     * The cap matches the one the facade already applies to bulk delete.
+     */
+    const MAX_IN_VALUES = 100;
+
+    /**
+     * Build an " AND col IN (...)" fragment for an `in` filter.
+     *
+     * Two input shapes are accepted, because both occur naturally in a query
+     * string: a real array (`filter[client][]=1&filter[client][]=2`) and a
+     * comma-separated string (`filter[client]=1,2,3`), which is what a hand
+     * written URL looks like.
+     *
+     * Typing follows the `select` kind: an all-numeric set is emitted
+     * unquoted, anything else is escaped and quoted. Mixing the two would let
+     * a numeric column be compared against a string, so a set containing a
+     * single non-numeric value is quoted as a whole.
+     *
+     * Returns '' (no clause at all) when nothing usable is left, and says so
+     * in the log: emitting `IN ()` is a SQL error on every backend, and
+     * silently dropping a filter the caller asked for is exactly the kind of
+     * widening that must not happen quietly.
+     *
+     * @param  string $sqlCol Real SQL column (developer-controlled).
+     * @param  mixed  $raw    Raw filter value.
+     * @param  string $apiCol API key, for logs.
+     * @return string         " AND col IN (...)" or ''.
+     */
+    protected function buildInClause($sqlCol, $raw, $apiCol)
+    {
+        global $db;
+
+        if ($raw === null || $raw === '' || $raw === []) {
+            // Same convention as the other kinds: an empty filter is no filter.
+            return '';
+        }
+
+        $values = is_array($raw) ? $raw : explode(',', (string) $raw);
+
+        $clean = [];
+        foreach ($values as $value) {
+            if (is_array($value) || is_object($value)) {
+                dol_syslog(
+                    "[SmartAuth] PaginatedListTrait::buildInClause ignoring non-scalar value in filter '".$apiCol."'",
+                    LOG_INFO
+                );
+                continue;
+            }
+            $value = trim((string) $value);
+            if ($value === '') {
+                continue;
+            }
+            $clean[] = $value;
+        }
+
+        $clean = array_values(array_unique($clean));
+
+        if (count($clean) === 0) {
+            dol_syslog(
+                "[SmartAuth] PaginatedListTrait::buildInClause filter '".$apiCol."' held no usable value, no condition applied",
+                LOG_INFO
+            );
+            return '';
+        }
+
+        if (count($clean) > self::MAX_IN_VALUES) {
+            dol_syslog(
+                "[SmartAuth] PaginatedListTrait::buildInClause filter '".$apiCol."' carried ".count($clean)
+                    ." values, truncated to ".self::MAX_IN_VALUES,
+                LOG_WARNING
+            );
+            $clean = array_slice($clean, 0, self::MAX_IN_VALUES);
+        }
+
+        $allNumeric = true;
+        foreach ($clean as $value) {
+            if (!is_numeric($value)) {
+                $allNumeric = false;
+                break;
+            }
+        }
+
+        $parts = [];
+        foreach ($clean as $value) {
+            if ($allNumeric) {
+                $parts[] = (strpos($value, '.') !== false) ? (string) (float) $value : (string) (int) $value;
+            } else {
+                $parts[] = "'".$db->escape($value)."'";
+            }
+        }
+
+        return " AND ".$sqlCol." IN (".implode(', ', $parts).")";
     }
 
     /**
@@ -439,8 +544,32 @@ trait PaginatedListTrait
         // Mechanism 3.5: explicit sortable columns declared by the mapper (same
         // rationale as getFilterableColumns above -- empty $fields / property
         // != SQL column). apiKey => 'sql_col'.
+        //
+        // An entry may also be apiKey => ['expression' => '<sql>'] when the
+        // ordering is COMPUTED rather than stored: "most recently active
+        // customer" is a MAX() over another table, not a column. The
+        // expression is used verbatim, WITHOUT the alias prefix (it carries
+        // its own qualified names), and it must be a scalar correlated
+        // subquery so the list query keeps its shape -- no JOIN, no GROUP BY,
+        // and above all a COUNT that stays exact.
+        //
+        // Like column names, an expression is developer-controlled: it comes
+        // from a mapper in this repository, never from the request.
         if (method_exists($mapper, 'getSortableColumns')) {
             foreach ((array) $mapper->getSortableColumns() as $key => $col) {
+                if (is_array($col)) {
+                    $expression = isset($col['expression']) ? trim((string) $col['expression']) : '';
+                    if ($expression === '') {
+                        dol_syslog(
+                            "[SmartAuth] PaginatedListTrait::buildSortClauseFromCatalog skipping sortable entry '"
+                                .(string) $key."' declared as an array without a usable 'expression'",
+                            LOG_WARNING
+                        );
+                        continue;
+                    }
+                    $sortableMap[(string) $key] = $expression;
+                    continue;
+                }
                 if ((string) $col === '') {
                     continue;
                 }

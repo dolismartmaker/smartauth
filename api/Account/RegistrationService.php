@@ -260,6 +260,21 @@ class RegistrationService
             return ['error' => self::ERR_USER_NOT_FOUND];
         }
 
+        // Defence in depth on the activation itself. fetchUserByEmail now
+        // refuses to issue a token for an internal user, but a token minted
+        // before that fix is still sitting in llx_smartauth_email_validation
+        // and would activate a staff account on redemption. An internal user
+        // (fk_soc = 0) is never a self-service subject: refuse, and say the
+        // same thing an unknown token says.
+        if ((int) ($user->socid ?? 0) === 0) {
+            dol_syslog(
+                '[SmartAuth] RegistrationService: confirmRegistration refused, user ' . $userId
+                . ' is an internal user (fk_soc = 0), not a self-service subject',
+                LOG_WARNING
+            );
+            return ['error' => self::ERR_TOKEN_INVALID];
+        }
+
         $admin = $this->getSystemUser();
         if ($admin === null) {
             return ['error' => self::ERR_INTERNAL];
@@ -449,9 +464,23 @@ class RegistrationService
      */
     private function fetchUserByEmail(string $email, int $statut): ?array
     {
+        // Two clauses that are NOT hygiene, they are the frontier of this
+        // endpoint. /register/resend and /register/confirm are public and
+        // unauthenticated: matching on the email and statut alone let anyone
+        // knowing (or guessing) the address of a DISABLED Dolibarr account
+        // trigger its reactivation mail, across entities, including an
+        // internal staff account that never went through self-service.
+        //
+        // - entity: a public registration flow stays inside the entity it is
+        //   served from (plus the entities shared with it).
+        // - fk_soc != 0: an internal user (fkSoc = 0, cf TokenSubject::
+        //   isInternalUser and the two-silo decision) is never a self-service
+        //   subject. Only an external, company-attached account is.
         $sql = "SELECT rowid, login, firstname, lastname FROM " . MAIN_DB_PREFIX . "user";
         $sql .= " WHERE LOWER(email) = '" . $this->db->escape($email) . "'";
         $sql .= " AND statut = " . ((int) $statut);
+        $sql .= " AND entity IN (" . getEntity('user') . ")";
+        $sql .= " AND fk_soc IS NOT NULL AND fk_soc <> 0";
         $sql .= " LIMIT 1";
 
         $resql = $this->db->query($sql);

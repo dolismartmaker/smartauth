@@ -32,7 +32,9 @@ ALTER TABLE llx_smartauth_oauth_codes ADD INDEX idx_fk_client (fk_client);
 ALTER TABLE llx_smartauth_oauth_codes ADD INDEX idx_fk_user (fk_user);
 ALTER TABLE llx_smartauth_oauth_codes ADD INDEX idx_expires (expires_at);
 ALTER TABLE llx_smartauth_oauth_codes ADD CONSTRAINT fk_oauth_code_client FOREIGN KEY (fk_client) REFERENCES llx_smartauth_oauth_clients(rowid) ON DELETE CASCADE;
-ALTER TABLE llx_smartauth_oauth_codes ADD CONSTRAINT fk_oauth_code_user FOREIGN KEY (fk_user) REFERENCES llx_user(rowid) ON DELETE CASCADE;
+-- NO foreign key on fk_user: an external subject writes the sentinel 0 there
+-- (see llx_smartauth_email_validation.key.sql for the full rationale, and
+-- sql/update_016.sql for the migration of existing installs).
 
 -- -----------------------------------------------------------------------------
 -- llx_smartauth_oauth_tokens
@@ -44,7 +46,7 @@ ALTER TABLE llx_smartauth_oauth_tokens ADD INDEX idx_token_type (token_type);
 ALTER TABLE llx_smartauth_oauth_tokens ADD INDEX idx_expires (expires_at);
 ALTER TABLE llx_smartauth_oauth_tokens ADD INDEX idx_jti (jti);
 ALTER TABLE llx_smartauth_oauth_tokens ADD CONSTRAINT fk_oauth_token_client FOREIGN KEY (fk_client) REFERENCES llx_smartauth_oauth_clients(rowid) ON DELETE CASCADE;
-ALTER TABLE llx_smartauth_oauth_tokens ADD CONSTRAINT fk_oauth_token_user FOREIGN KEY (fk_user) REFERENCES llx_user(rowid) ON DELETE CASCADE;
+-- NO foreign key on fk_user: sentinel 0 for external subjects, cf update_016.sql.
 
 -- -----------------------------------------------------------------------------
 -- llx_smartauth_oauth_consents
@@ -52,4 +54,4 @@ ALTER TABLE llx_smartauth_oauth_tokens ADD CONSTRAINT fk_oauth_token_user FOREIG
 ALTER TABLE llx_smartauth_oauth_consents ADD UNIQUE INDEX uk_client_user (fk_client, fk_user, entity);
 ALTER TABLE llx_smartauth_oauth_consents ADD INDEX idx_fk_user (fk_user);
 ALTER TABLE llx_smartauth_oauth_consents ADD CONSTRAINT fk_oauth_consent_client FOREIGN KEY (fk_client) REFERENCES llx_smartauth_oauth_clients(rowid) ON DELETE CASCADE;
-ALTER TABLE llx_smartauth_oauth_consents ADD CONSTRAINT fk_oauth_consent_user FOREIGN KEY (fk_user) REFERENCES llx_user(rowid) ON DELETE CASCADE;
+-- NO foreign key on fk_user: sentinel 0 for external subjects, cf update_016.sql.

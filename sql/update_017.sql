@@ -1,0 +1,15 @@
+-- Migration: scope sync tombstones to the entity of the deleted row.
+--
+-- THE DEFECT. GET /sync/pull returns the tombstones of a table filtered on the
+-- table name alone. The updated rows next to them ARE entity-scoped, so a client
+-- of entity 2 was told "object 41 of llx_societe was deleted" about a company it
+-- could never read in the first place. It leaks the ids and the deletion pace of
+-- another tenant, and makes a client prune a local id that may legitimately
+-- exist on its own side.
+--
+-- The column is nullable on purpose. Rows written before this migration carry
+-- NULL, and pull() keeps serving them to everyone: hiding a past deletion would
+-- leave a ghost row in every offline cache, which is worse than the leak this
+-- fixes. Tables with no entity column (llx_stock_mouvement, llx_subscription,
+-- llx_bank) also write NULL, for the same reason.
+ALTER TABLE llx_smartauth_sync_tombstones ADD COLUMN entity INTEGER DEFAULT NULL;

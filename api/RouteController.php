@@ -725,6 +725,41 @@ class RouteController
 			SmartAuthLogger::debug("SmartAuth User found: login=$login, entity=$entity, id=" . $user->id);
 		}
 
+		// RE-VALIDATE THE SUBJECT AT EVERY USE, not only at issuance.
+		//
+		// Disabling a user in Dolibarr did nothing to the tokens already out
+		// there: the JWT still verified, this fetch still succeeded, and the
+		// account kept the whole API. Worse, /refresh renewed the pair, so the
+		// access survived 30 more days at each rotation, indefinitely. The
+		// admin who disables an account has every reason to believe it is cut
+		// off; it is the whole point of the action.
+		//
+		// Same check as Dolibarr's own login: statut plus the validity window.
+		$subjectDisabled = ((int) ($user->statut ?? 0) !== 1);
+		if (!$subjectDisabled && method_exists($user, 'isNotIntoValidityDateRange') && $user->isNotIntoValidityDateRange()) {
+			$subjectDisabled = true;
+		}
+		if ($subjectDisabled) {
+			dol_syslog(
+				"[SmartAuth] handleAuthentication: subject no longer active -> 401."
+				. " login=" . $login
+				. ", user_id=" . $user->id
+				. ", statut=" . var_export($user->statut ?? null, true)
+				. ", entity=" . var_export($entity, true)
+				. ", token_id=" . var_export($token_id, true)
+				. ", family_id=" . var_export($family_id, true),
+				LOG_WARNING
+			);
+			// Kill the family too: leaving the refresh token alive would let
+			// the device mint a fresh access token and come straight back.
+			if (!empty($family_id)) {
+				self::revokeFamilyForDisabledSubject($db, $family_id);
+			}
+			self::insertLogs($token_id, 401, 'Subject disabled', $entity);
+			\json_reply('Authentication failed', 401);
+			return false;
+		}
+
 		// Set user entity
 		$user->entity = $entity;
 		$_SESSION["dol_entity"] = $entity;
@@ -763,6 +798,47 @@ class RouteController
 		SmartAuthLogger::debug("SmartAuth handleAuthentication return entity=$entity, token_id=$token_id");
 		return [$user, $entity, $token_id, $buyer, $family_id, $device_id, null];
 	}
+	/**
+	 * Revoke the token family of a subject that turned out to be disabled at
+	 * use time.
+	 *
+	 * Written here rather than reused from AuthController because the family
+	 * revocation there is private to the auth flow; this is the same two flat
+	 * UPDATEs (family flag + every token of the family). Failures are logged,
+	 * never swallowed: a revocation that did not happen must be visible in the
+	 * journal, since the caller answers 401 either way.
+	 *
+	 * @param  \DoliDB   $db
+	 * @param  string|int $familyId
+	 * @return bool
+	 */
+	private static function revokeFamilyForDisabledSubject($db, $familyId)
+	{
+		$ok = true;
+
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_token_family";
+		$sql .= " SET revoked = 1";
+		$sql .= " WHERE rowid = " . (int) $familyId;
+		if (!$db->query($sql)) {
+			dol_syslog("[SmartAuth] revokeFamilyForDisabledSubject: family flag update failed for family " . (int) $familyId . ": " . $db->lasterror(), LOG_ERR);
+			$ok = false;
+		}
+
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
+		$sql .= " SET status = 9, salt = 'subject_disabled'";
+		$sql .= " WHERE family_id = " . (int) $familyId;
+		if (!$db->query($sql)) {
+			dol_syslog("[SmartAuth] revokeFamilyForDisabledSubject: token update failed for family " . (int) $familyId . ": " . $db->lasterror(), LOG_ERR);
+			$ok = false;
+		}
+
+		if ($ok) {
+			dol_syslog("[SmartAuth] Token family " . (int) $familyId . " revoked (subject disabled)", LOG_INFO);
+		}
+
+		return $ok;
+	}
+
 	/**
 	 * Handle OAuth2 Bearer token authentication
 	 *
@@ -1184,6 +1260,14 @@ class RouteController
 			);
 		}
 
+		// Hard opt-out: SMARTAUTH_TRUST_PROXY_HEADERS=0 makes the TCP peer the
+		// only source of truth, whatever the headers say. The right setting when
+		// smartauth is exposed directly, or when the front proxy is not known to
+		// overwrite X-Real-IP / X-Forwarded-For.
+		if (getDolGlobalInt('SMARTAUTH_TRUST_PROXY_HEADERS', 1) !== 1) {
+			$trustForwardedHeaders = false;
+		}
+
 		// Only use forwarded headers if we trust the source
 		if ($trustForwardedHeaders) {
 			$headers = function_exists('apache_request_headers')
@@ -1193,8 +1277,12 @@ class RouteController
 			$xRealIp = $headers['X-Real-IP'] ?? ($_SERVER['HTTP_X_REAL_IP'] ?? '');
 			$xff = $headers['X-Forwarded-For'] ?? ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
 
-			if (!empty($xRealIp)) {
-				// Single value set by the trusted proxy.
+			if (!empty($xRealIp) && filter_var(trim($xRealIp), FILTER_VALIDATE_IP) !== false) {
+				// Single value set by the trusted proxy. Only taken when it IS
+				// an IP: a garbage value used to be carried all the way down,
+				// fail the final format check and collapse to '0.0.0.0' -- which
+				// put every caller in one shared bucket, so one malformed header
+				// was enough to rate-limit the whole instance.
 				$remoteAddr = trim($xRealIp);
 			} elseif (!empty($xff)) {
 				// The client controls the LEFT of the X-Forwarded-For chain (it
@@ -1224,8 +1312,16 @@ class RouteController
 			}
 		}
 
-		// Validate IP format - return safe fallback if invalid
+		// Validate IP format. Falling back to the TCP peer rather than to a
+		// constant: '0.0.0.0' is a single shared bucket, so returning it for
+		// every malformed input turns a bad header into an instance-wide rate
+		// limit. The peer address is always attributable.
 		if (filter_var($remoteAddr, FILTER_VALIDATE_IP) === false) {
+			$peer = $_SERVER['REMOTE_ADDR'] ?? '';
+			if (filter_var($peer, FILTER_VALIDATE_IP) !== false) {
+				dol_syslog("[SmartAuth] get_client_ip: unusable forwarded address, falling back to the peer", LOG_WARNING);
+				return $peer;
+			}
 			return '0.0.0.0';
 		}
 

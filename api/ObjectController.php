@@ -146,7 +146,25 @@ class ObjectController
 
         $defaultSort = (string) ($cfg['default_sort'] ?? ($alias . '.' . $pk . ' ASC'));
         $orderBy = $this->buildSortClauseFromCatalog($params, $mapper, $alias, $defaultSort);
-        $sql = "SELECT " . $alias . "." . $pk . " as rowid" . $baseFrom . $where . $orderBy;
+
+        // COMPACT PATH. When ?include= names only real columns, the page can be
+        // served from the list query alone: no fetch() and no fetch_optionals()
+        // per row, i.e. 1 query instead of 1 + 2N. The mapper decides, and it
+        // fails closed on anything it cannot guarantee -- see
+        // dmBase::supportsCompactProjection and
+        // documentation/facade-list-performance.md for the measurement that
+        // motivates this (x276 on a 50-row page).
+        // SMARTAUTH_FACADE_COMPACT_LIST=0 forces every list back onto the full
+        // path: an escape hatch if a mapper ever turns out to need the complete
+        // fetch, without waiting for a release.
+        $compact = getDolGlobalInt('SMARTAUTH_FACADE_COMPACT_LIST', 1) === 1
+            && method_exists($mapper, 'supportsCompactProjection')
+            && $mapper->supportsCompactProjection($includeKeys);
+
+        $selectList = $compact
+            ? $alias . ".*, " . $alias . "." . $pk . " as rowid"
+            : $alias . "." . $pk . " as rowid";
+        $sql = "SELECT " . $selectList . $baseFrom . $where . $orderBy;
         $sql .= $db->plimit((int) $params['limit'], (int) $params['offset']);
 
         $resql = $db->query($sql);
@@ -159,10 +177,29 @@ class ObjectController
         $items = [];
         while ($obj = $db->fetch_object($resql)) {
             $o = new $classname($db);
+
+            if ($compact) {
+                // setVarsFromFetchObj applies the type conversions declared in
+                // $fields (dates through jdate, ints, floats), which is exactly
+                // what fetch() would have done for those columns.
+                $o->setVarsFromFetchObj($obj);
+                if (empty($o->id)) {
+                    $o->id = (int) $obj->rowid;
+                }
+                $items[] = $mapper->exportMappedDataFiltered($o, $includeKeys);
+                continue;
+            }
+
             if ($o->fetch((int) $obj->rowid) > 0) {
                 if (method_exists($o, 'fetch_optionals')) {
                     $o->fetch_optionals();
                 }
+                // Same shape as show() for a line-bearing type. Free for the
+                // classes whose fetch() already loaded them (invoice, order,
+                // proposal): only Contrat actually pays a query here, and it is
+                // the query that makes its rows carry lines and totals like the
+                // others already do.
+                $this->loadLines($o, $cfg);
                 $items[] = $mapper->exportMappedDataFiltered($o, $includeKeys);
             }
         }
@@ -309,6 +346,8 @@ class ObjectController
         if (method_exists($o, 'fetch_optionals')) {
             $o->fetch_optionals();
         }
+        // Contrat::fetch() reads the header only, unlike Facture/Commande/Propal.
+        $this->loadLines($o, $cfg);
 
         return [$mapper->exportMappedData($o), 200];
     }

@@ -317,34 +317,28 @@ class ForeignKeyGuardContractTest extends DolibarrRealTestCase
     }
 
     /**
-     * Union of the mapper allowlist ($writableFields, the synchronous facade
-     * path) and the registry allowlist (allowed_fields, the offline sync path).
+     * The mapper allowlist, $writableFields -- now the ONLY write allowlist of a
+     * built-in type, read by both doors (the facade through importMappedData(),
+     * the sync push through getWritableApiKeys()).
      *
-     * Both are audited: a field writable through only one of the two paths is
-     * still a way in, and the two lists have drifted apart before (dmCategory
-     * accepts socid, the registry entry does not; dmContract accepts the two
-     * commercial_* ids, the registry entry does not).
+     * This helper used to take the union with the registry's 'allowed_fields'
+     * because a field writable through either path was still a way in. That
+     * second list is gone from the built-ins: it was never reached at runtime
+     * (all 26 declare a mapper) and had drifted from the mapper on 9 of them.
+     * RegistryWriteContractTest keeps it from coming back.
      *
      * @param  object $mapper
-     * @param  array  $cfg
+     * @param  array  $cfg     Kept for the signature's sake: callers pass the
+     *                         registry entry, and a later contract may need it.
      * @return array<int,string>
      */
     private function writableFieldsOf($mapper, $cfg)
     {
-        $fields = [];
-
         $prop = new ReflectionProperty(get_class($mapper), 'writableFields');
         $prop->setAccessible(true);
         $declared = $prop->getValue($mapper);
-        if (is_array($declared)) {
-            $fields = array_map('strval', $declared);
-        }
 
-        if (isset($cfg['allowed_fields']) && is_array($cfg['allowed_fields'])) {
-            $fields = array_merge($fields, array_map('strval', $cfg['allowed_fields']));
-        }
-
-        return array_values(array_unique($fields));
+        return is_array($declared) ? array_values(array_unique(array_map('strval', $declared))) : [];
     }
 
     /**

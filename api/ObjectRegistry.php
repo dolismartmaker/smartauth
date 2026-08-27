@@ -25,7 +25,7 @@ namespace SmartAuth\Api;
  * (ObjectController / objects/{type}).
  *
  * Before this class the per-type configuration (Dolibarr class, table, element,
- * write-permission map, allowed_fields, mapper class) was duplicated in three
+ * write-permission map, write allowlist, mapper class) was duplicated in three
  * divergent places: SyncController::loadSyncableObjects(),
  * SyncController::resolveMapperClass() and, for documents only,
  * ObjectDocumentController::$objectTypeConfig. The first two now delegate here.
@@ -43,7 +43,6 @@ namespace SmartAuth\Api;
  *   - priority         : sync hint (high/medium/low)
  *   - default_enabled  : whether sync enables the type by default
  *   - rights           : per-action Dolibarr right args passed to User::hasRight()
- *   - allowed_fields   : sync-side write allowlist (payload keys)
  *   - mapper           : fully qualified SmartAuth\DolibarrMapping\dm* class
  *   - alias            : SQL table alias used by the facade list query
  *   - default_sort     : facade default ORDER BY clause (without "ORDER BY ")
@@ -62,6 +61,29 @@ namespace SmartAuth\Api;
  * The 'mapper', 'alias' and 'default_sort' keys are additive: sync ignores keys
  * it does not read, so seeding syncableObjects from this registry keeps the
  * sync engine byte-compatible with its previous inline definitions.
+ *
+ * ONE WRITE ALLOWLIST, NOT TWO -- why no built-in carries 'allowed_fields'
+ * -------------------------------------------------------------------------
+ * Every built-in used to declare an 'allowed_fields' list alongside its mapper.
+ * It read as a second line of defence; it was dead code. applyDataToObject()
+ * only reaches applyDataLegacy() -- the sole runtime reader of the key -- when
+ * no mapper resolves, and all 26 built-ins declare one that loads. So the
+ * effective allowlist was the mapper's $writableFields, always, on both doors.
+ *
+ * Two allowlists that nothing keeps in step do not add defence, they subtract
+ * trust: 10 of the 26 had already drifted, in BOTH directions. The registry
+ * listed 35 writable fields for thirdparty where the mapper opens 25; it listed
+ * 8 for project where the mapper opens 16; not one of the 12 it listed for order
+ * was even a valid API key. A reader checking "what can be written on this type"
+ * got an answer wrong by a factor of two, and a reviewer adding a field had one
+ * chance in two of putting it in the list that governs nothing.
+ *
+ * So the key is GONE from the built-ins and stays SUPPORTED for hook-registered
+ * types that declare no mapper -- the only case where applyDataLegacy() is
+ * reachable and where the key still governs something real. Such a type without
+ * it is refused outright (fail-closed) rather than filtered by the denylist
+ * alone. Pinned by RegistryWriteContractTest; declaring a mapper is the
+ * recommended path either way (see documentation/hooks.md).
  */
 class ObjectRegistry
 {
@@ -100,22 +122,6 @@ class ObjectRegistry
                     'update' => ['societe', 'creer'],
                     'delete' => ['societe', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'name', 'name_alias',
-                    'email', 'phone', 'fax', 'url',
-                    'address', 'zip', 'town', 'country_id', 'state_id',
-                    'client', 'fournisseur',
-                    'code_client', 'code_fournisseur',
-                    'note_public', 'note_private',
-                    'siren', 'siret', 'ape',
-                    'idprof4', 'idprof5', 'idprof6',
-                    'capital', 'tva_assuj', 'tva_intra',
-                    'gencod', 'barcode',
-                    'effectif_id', 'forme_juridique_code', 'typent_id',
-                    'outstanding_limit',
-                    'mode_reglement_id', 'cond_reglement_id',
-                    'status',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmThirdparty',
                 'alias' => 's',
                 'default_sort' => 's.nom ASC, s.rowid ASC',
@@ -136,20 +142,9 @@ class ObjectRegistry
                     'update' => ['societe', 'contact', 'creer'],
                     'delete' => ['societe', 'contact', 'supprimer'],
                 ],
-                // Mirrors dmContact::$writableFields (defence in depth for the
-                // async SyncController path; the synchronous ObjectController
-                // relies on the mapper allowlist directly). civility_code (not
-                // civility_id) + state_id + statut/priv/default_lang track the
+                // The write allowlist lives on the mapper: civility_code (not
+                // civility_id) + state_id + statut/priv/default_lang are the
                 // mapper's property-is-source-of-truth write keys.
-                'allowed_fields' => [
-                    'lastname', 'firstname', 'civility_code',
-                    'address', 'zip', 'town', 'state_id',
-                    'email', 'phone_pro', 'phone_mobile', 'phone_perso', 'fax',
-                    'fk_soc', 'socid',
-                    'statut', 'priv', 'default_lang',
-                    'note_public', 'note_private',
-                    'poste',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmContact',
                 'alias' => 'sp',
                 'default_sort' => 'sp.lastname ASC, sp.firstname ASC, sp.rowid ASC',
@@ -170,21 +165,6 @@ class ObjectRegistry
                     'update' => ['produit', 'creer'],
                     'delete' => ['produit', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'ref', 'label', 'description',
-                    'status', 'status_buy', 'status_batch',
-                    'finished', 'type',
-                    'customcode', 'country_id',
-                    'weight', 'weight_units',
-                    'length', 'length_units',
-                    'surface', 'surface_units',
-                    'volume', 'volume_units',
-                    'price', 'price_ttc',
-                    'price_min', 'price_min_ttc',
-                    'price_label',
-                    'tva_tx', 'barcode',
-                    'note_public', 'note_private',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmProduct',
                 'alias' => 'p',
                 'default_sort' => 'p.ref ASC, p.rowid ASC',
@@ -193,7 +173,17 @@ class ObjectRegistry
                 'class' => 'Categorie',
                 'file' => DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php',
                 'table' => 'categorie',
-                'element' => 'categorie',
+                // 'category', not 'categorie': this is the element code, and
+                // Categorie::$element is 'category' (categorie.class.php l.196).
+                // getEntity() translates a few French element names to English
+                // (projet, contrat) but NOT this one, so the wrong spelling was
+                // only ever rescued by Multicompany's own compatibility table.
+                // It stopped being cosmetic when dmCategory started guarding
+                // fk_parent: ObjectFacadeTrait::foreignKeyTargetDenies() reads
+                // this very key to call getEntity(). Harmless to change --
+                // neither spelling is in the $addzero list of getEntity(), so
+                // without Multicompany both resolve to the current entity.
+                'element' => 'category',
                 'label' => 'Categories',
                 'module' => 'categorie',
                 'priority' => 'low',
@@ -204,9 +194,6 @@ class ObjectRegistry
                     'update' => ['categorie', 'creer'],
                     'delete' => ['categorie', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'label', 'description', 'color', 'type', 'fk_parent',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmCategory',
                 'alias' => 'c',
                 'default_sort' => 'c.label ASC, c.rowid ASC',
@@ -215,8 +202,8 @@ class ObjectRegistry
             // ===== Vague 2: documents a lignes + gestion projet =====
             // These are NOT enabled for offline sync by default (default_enabled
             // false): the synchronous REST facade is their online access path.
-            // allowed_fields mirrors each mapper's $writableFields (defence in
-            // depth for the sync legacy path; the mapper path is primary).
+            // Their write allowlist is the mapper's $writableFields, and only
+            // that -- see the class docblock on why the registry carries none.
             'order' => [
                 'class' => 'Commande',
                 'file' => DOL_DOCUMENT_ROOT . '/commande/class/commande.class.php',
@@ -231,11 +218,6 @@ class ObjectRegistry
                     'create' => ['commande', 'creer'],
                     'update' => ['commande', 'creer'],
                     'delete' => ['commande', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'ref_customer', 'socid', 'fk_project', 'date', 'date_livraison',
-                    'fk_cond_reglement', 'fk_mode_reglement', 'fk_availability',
-                    'fk_shipping_method', 'fk_input_reason', 'note_public', 'note_private',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmOrder',
                 'alias' => 'c',
@@ -262,11 +244,6 @@ class ObjectRegistry
                     'create' => ['facture', 'creer'],
                     'update' => ['facture', 'creer'],
                     'delete' => ['facture', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'ref_client', 'type', 'socid', 'fk_project', 'date', 'date_lim_reglement',
-                    'delivery_date', 'fk_cond_reglement', 'fk_mode_reglement',
-                    'note_public', 'note_private',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmInvoice',
                 'alias' => 'f',
@@ -304,12 +281,6 @@ class ObjectRegistry
                     'update' => ['propal', 'creer'],
                     'delete' => ['propal', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'ref_client', 'socid', 'fk_project', 'date', 'fin_validite',
-                    'delivery_date', 'fk_cond_reglement', 'fk_mode_reglement',
-                    'fk_availability', 'fk_shipping_method', 'fk_input_reason',
-                    'note_public', 'note_private',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmProposal',
                 'alias' => 'p',
                 'default_sort' => 'p.rowid DESC',
@@ -331,10 +302,6 @@ class ObjectRegistry
                     'update' => ['projet', 'creer'],
                     'delete' => ['projet', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'ref', 'title', 'description', 'dateo', 'datee', 'socid',
-                    'note_public', 'note_private',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmProject',
                 'alias' => 'proj',
                 'default_sort' => 'proj.rowid DESC',
@@ -353,10 +320,6 @@ class ObjectRegistry
                     'create' => ['projet', 'creer'],
                     'update' => ['projet', 'creer'],
                     'delete' => ['projet', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'ref', 'label', 'description', 'fk_project', 'fk_task_parent',
-                    'date_start', 'date_end', 'planned_workload', 'progress', 'priority',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmTask',
                 'alias' => 'pt',
@@ -380,17 +343,10 @@ class ObjectRegistry
                     'update' => ['agenda', 'myactions', 'create'],
                     'delete' => ['agenda', 'myactions', 'delete'],
                 ],
-                // Mirrors dmAgendaEvent::$writableFields (Dolibarr-side PROPERTY
-                // names, not SQL columns: percentage not percent, socid not
-                // fk_soc, contact_id not fk_contact, fk_project not fk_projet,
-                // userownerid not fk_user_action). Defence in depth for the
-                // sync-side write path.
-                'allowed_fields' => [
-                    'label', 'type_code', 'datep', 'datef', 'percentage',
-                    'location', 'fulldayevent', 'note_private', 'userownerid',
-                    'socid', 'contact_id', 'fk_project', 'fk_element',
-                    'elementtype', 'priority', 'status',
-                ],
+                // dmAgendaEvent::$writableFields addresses Dolibarr-side
+                // PROPERTY names, not SQL columns: percentage not percent, socid
+                // not fk_soc, contact_id not fk_contact, fk_project not
+                // fk_projet, userownerid not fk_user_action.
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmAgendaEvent',
                 'alias' => 'a',
                 'default_sort' => 'a.datep DESC, a.id DESC',
@@ -414,11 +370,6 @@ class ObjectRegistry
                     'update' => ['user', 'user', 'creer'],
                     'delete' => ['user', 'user', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'civility_code', 'lastname', 'firstname', 'gender', 'email',
-                    'office_phone', 'user_mobile', 'job', 'address', 'zip', 'town',
-                    'state_id', 'country_id',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmUser',
                 'alias' => 'u',
                 'default_sort' => 'u.lastname ASC, u.firstname ASC, u.rowid ASC',
@@ -440,10 +391,6 @@ class ObjectRegistry
                     'update' => ['stock', 'creer'],
                     'delete' => ['stock', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'ref', 'label', 'description', 'lieu', 'address', 'zip', 'town',
-                    'fk_departement', 'fk_pays', 'phone', 'fax', 'fk_parent', 'fk_project',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmWarehouse',
                 'alias' => 'e',
                 'default_sort' => 'e.ref ASC, e.rowid ASC',
@@ -463,19 +410,13 @@ class ObjectRegistry
                     'update' => ['adherent', 'creer'],
                     'delete' => ['adherent', 'supprimer'],
                 ],
-                // Mirrors dmMember::$writableFields verbatim. phone_pro was
-                // dropped from both: llx_adherent has NO such column
+                // phone_pro is absent from dmMember::$writableFields on purpose:
+                // llx_adherent has NO such column
                 // (install/mysql/tables/llx_adherent.sql l.66-68 ships phone,
                 // phone_perso and phone_mobile only) and Adherent::update()
                 // (l.834-836) never writes it, so it was a silent no-op
                 // answering 200. Same story for the read-only `fax`, removed
                 // from the published fields of the mapper.
-                'allowed_fields' => [
-                    'civility_id', 'lastname', 'firstname', 'gender', 'birth', 'company',
-                    'address', 'zip', 'town', 'state_id', 'country_id', 'email', 'url',
-                    'phone', 'phone_perso', 'phone_mobile', 'login', 'morphy',
-                    'typeid', 'socid', 'note_public', 'note_private',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmMember',
                 'alias' => 'a',
                 'default_sort' => 'a.rowid DESC',
@@ -494,9 +435,6 @@ class ObjectRegistry
                     'create' => ['expensereport', 'creer'],
                     'update' => ['expensereport', 'creer'],
                     'delete' => ['expensereport', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'date_debut', 'date_fin', 'fk_c_paiement', 'note_public', 'note_private',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmExpenseReport',
                 'alias' => 'er',
@@ -517,13 +455,25 @@ class ObjectRegistry
                     'update' => ['contrat', 'creer'],
                     'delete' => ['contrat', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'ref_customer', 'ref_supplier', 'date_contrat', 'socid', 'fk_project',
-                    'commercial_signature_id', 'commercial_suivi_id', 'note_public', 'note_private',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmContract',
                 'alias' => 'ct',
                 'default_sort' => 'ct.rowid DESC',
+                // Contract lines are the subscription grain of the consumer
+                // modules: one line per rented item, opened when the lease
+                // starts and closed when it ends. Contrat::fetch() does NOT
+                // load them (unlike Facture/Commande/Propal), so the read paths
+                // ask for them explicitly -- see ObjectFacadeTrait::loadLines().
+                'supports_lines' => true,
+                'actions' => ['validate', 'close'],
+                // LINE-level actions, a scope the other types do not have: a
+                // contract line has its own lifecycle (0 inactive, 4 active,
+                // 5 closed) driven by active_line()/close_line(), which fire the
+                // LINECONTRACT_ACTIVATE / LINECONTRACT_CLOSE triggers. A PATCH
+                // on the line fields cannot express that transition, so it is
+                // exposed as
+                // POST objects/contract/{id}/lines/{lineid}/actions/{action}
+                // and dispatched by DocumentLineActionInvoker.
+                'line_actions' => ['activate', 'close'],
             ],
             'ticket' => [
                 'class' => 'Ticket',
@@ -560,16 +510,11 @@ class ObjectRegistry
                 // siblings and so a future pre-create mechanism needs no
                 // registry change.
                 //
-                // Mirrors dmTicket::$writableFields verbatim. note_public and
-                // note_private were dropped from both: llx_ticket has NO such
+                // note_public and note_private are absent from
+                // dmTicket::$writableFields on purpose: llx_ticket has NO such
                 // columns (install/mysql/tables/llx_ticket-ticket.sql l.17-46)
                 // and Ticket::update() (l.985-1006) never writes them, so they
                 // were a silent no-op answering 200.
-                'allowed_fields' => [
-                    'subject', 'message', 'fk_soc', 'fk_project', 'fk_user_assign',
-                    'type_code', 'category_code', 'severity_code', 'resolution',
-                    'progress',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmTicket',
                 'alias' => 'tk',
                 'default_sort' => 'tk.rowid DESC',
@@ -589,17 +534,12 @@ class ObjectRegistry
                     'update' => ['ficheinter', 'creer'],
                     'delete' => ['ficheinter', 'supprimer'],
                 ],
-                // Mirrors dmIntervention::$writableFields verbatim, as the
-                // Vague 2 comment above requires. datei / dateo / datee / duree
-                // were dropped from the mapper because no Fichinter SQL verb
+                // datei / dateo / datee / duree are absent from
+                // dmIntervention::$writableFields because no Fichinter SQL verb
                 // writes them (dateo and datee are recomputed from the lines by
                 // FichinterLigne::update_total(), datei only by
                 // set_date_delivery()), and `duree` was renamed `duration`
                 // because update() reads the PHP property $this->duration.
-                'allowed_fields' => [
-                    'ref_client', 'socid', 'fk_project', 'fk_contrat', 'duration',
-                    'description', 'note_public', 'note_private',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmIntervention',
                 'alias' => 'fi',
                 'default_sort' => 'fi.rowid DESC',
@@ -623,11 +563,6 @@ class ObjectRegistry
                     'update' => ['fournisseur', 'commande', 'creer'],
                     'delete' => ['fournisseur', 'commande', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'ref_supplier', 'socid', 'fk_project', 'date', 'date_commande',
-                    'delivery_date', 'cond_reglement_id', 'mode_reglement_id',
-                    'fk_account', 'note_public', 'note_private',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmSupplierOrder',
                 'alias' => 'cf',
                 'default_sort' => 'cf.rowid DESC',
@@ -648,11 +583,6 @@ class ObjectRegistry
                     'create' => ['fournisseur', 'facture', 'creer'],
                     'update' => ['fournisseur', 'facture', 'creer'],
                     'delete' => ['fournisseur', 'facture', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'ref_supplier', 'label', 'type', 'socid', 'fk_project', 'date', 'date_echeance',
-                    'cond_reglement_id', 'mode_reglement_id', 'fk_account',
-                    'note_public', 'note_private',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmSupplierInvoice',
                 'alias' => 'ff',
@@ -683,10 +613,6 @@ class ObjectRegistry
                     'update' => ['supplier_proposal', 'creer'],
                     'delete' => ['supplier_proposal', 'supprimer'],
                 ],
-                'allowed_fields' => [
-                    'socid', 'fk_project', 'date', 'delivery_date', 'cond_reglement_id',
-                    'mode_reglement_id', 'note_public', 'note_private',
-                ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmSupplierProposal',
                 'alias' => 'sp',
                 'default_sort' => 'sp.rowid DESC',
@@ -710,12 +636,6 @@ class ObjectRegistry
                     'create' => ['expedition', 'creer'],
                     'update' => ['expedition', 'creer'],
                     'delete' => ['expedition', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'ref_customer', 'socid', 'fk_project', 'date_expedition', 'date_delivery',
-                    'entrepot_id', 'fk_shipping_method', 'tracking_number', 'tracking_url',
-                    'weight_units', 'width_units', 'height_units', 'depth_units',
-                    'note_public', 'note_private',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmShipment',
                 'alias' => 'exp',
@@ -745,12 +665,6 @@ class ObjectRegistry
                     'create' => ['reception', 'creer'],
                     'update' => ['reception', 'creer'],
                     'delete' => ['reception', 'supprimer'],
-                ],
-                'allowed_fields' => [
-                    'ref_supplier', 'socid', 'fk_project', 'date_reception', 'date_delivery',
-                    'entrepot_id', 'fk_shipping_method', 'tracking_number', 'tracking_url',
-                    'weight_units', 'width_units', 'height_units', 'depth_units',
-                    'note_public', 'note_private',
                 ],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmReception',
                 'alias' => 'rec',
@@ -786,7 +700,6 @@ class ObjectRegistry
                     'update' => ['stock', 'mouvement', 'creer'],
                     'delete' => ['stock', 'mouvement', 'creer'],
                 ],
-                'allowed_fields' => [],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmStockMovement',
                 'alias' => 'sm',
                 // Audit trail: newest movement first (matches the module's own
@@ -812,23 +725,18 @@ class ObjectRegistry
                     'update' => ['adherent', 'cotisation', 'creer'],
                     'delete' => ['adherent', 'cotisation', 'creer'],
                 ],
-                // Mirrors dmSubscription::$writableFields verbatim. fk_bank is
-                // honoured on PATCH only: Subscription::create() (l.159) does
-                // not list it among its INSERT columns while update() (l.284)
-                // writes it. Documented on the mapper, pinned by
-                // DmMemberMapperTest.
+                // In dmSubscription::$writableFields, fk_bank is honoured on
+                // PATCH only: Subscription::create() (l.159) does not list it
+                // among its INSERT columns while update() (l.284) writes it.
+                // Documented on the mapper, pinned by DmMemberMapperTest.
                 // fk_adherent is ABSENT on purpose: llx_subscription has no
                 // entity column, so the parent member IS the tenant boundary
                 // (dmSubscription::isolationWhereSql). Leaving it writable let a
                 // PATCH move a local fee onto another tenant's member, and a
                 // POST file one directly there. Full rationale on the mapper;
                 // the fee routes that need a parent are the local, URL-scoped
-                // member/{id}/subscription ones. This list is also the sync
-                // write allowlist (SyncController::applyDataLegacy l.1416), so
-                // the removal closes that second write path too.
-                'allowed_fields' => [
-                    'fk_type', 'dateh', 'datef', 'amount', 'fk_bank', 'note',
-                ],
+                // member/{id}/subscription ones. Both write doors read that one
+                // list, so the removal closes them both.
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmSubscription',
                 'alias' => 'sub',
                 'default_sort' => 'sub.rowid DESC',
@@ -865,16 +773,7 @@ class ObjectRegistry
                     'update' => ['banque', 'configurer'],
                     'delete' => ['banque', 'configurer'],
                 ],
-                // Mirrors dmBankAccount::$writableFields verbatim, minus 'clos'
-                // (state machine) which the mapper already excludes.
-                'allowed_fields' => [
-                    'ref', 'label', 'bank', 'courant', 'type',
-                    'iban', 'bic', 'number', 'code_banque', 'code_guichet', 'cle_rib',
-                    'currency_code', 'country_id', 'rappro', 'url', 'comment',
-                    'account_number', 'fk_accountancy_journal',
-                    'proprio', 'owner_address', 'owner_zip', 'owner_town', 'owner_country_id',
-                    'min_allowed', 'min_desired',
-                ],
+                // dmBankAccount::$writableFields excludes 'clos' (state machine).
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmBankAccount',
                 'alias' => 'ba',
                 'default_sort' => 'ba.clos ASC, ba.label ASC, ba.rowid ASC',
@@ -905,7 +804,6 @@ class ObjectRegistry
                     'update' => ['banque', 'modifier'],
                     'delete' => ['banque', 'modifier'],
                 ],
-                'allowed_fields' => [],
                 'mapper' => '\\SmartAuth\\DolibarrMapping\\dmBank',
                 'alias' => 'b',
                 // Statement order: most recent operation first, then the
@@ -995,5 +893,41 @@ class ObjectRegistry
     public static function types($hookmanager = null)
     {
         return array_keys(self::resolveWithHooks($hookmanager));
+    }
+
+    /**
+     * Reverse lookup: the registry type backed by a given llx_ table.
+     *
+     * Needed by the extrafield tenant guard, which starts from a Dolibarr
+     * extrafield descriptor -- and a descriptor names a TABLE ('sellist' :
+     * "societe:nom:rowid") or a CLASS whose table_element is then read ('link' :
+     * "Societe:societe/class/societe.class.php"). Neither names a registry key.
+     *
+     * Returning the KEY rather than a hand-built ['table' => ...] spec is the
+     * point: the caller then inherits pk, element (load-bearing for getEntity())
+     * and has_entity from the single registry entry, so the guard can never
+     * drift from the rest of the facade.
+     *
+     * A table backing several types (none today) resolves to the first one
+     * declared, which is deterministic since builtins() is an ordered literal.
+     *
+     * @param  string      $table        llx_ table suffix, no prefix.
+     * @param  object|null $hookmanager
+     * @return string|null  Registry type key, or null when no type backs it.
+     */
+    public static function typeForTable($table, $hookmanager = null)
+    {
+        $table = (string) $table;
+        if ($table === '') {
+            return null;
+        }
+
+        foreach (self::resolveWithHooks($hookmanager) as $type => $cfg) {
+            if (is_array($cfg) && (string) ($cfg['table'] ?? '') === $table) {
+                return (string) $type;
+            }
+        }
+
+        return null;
     }
 }

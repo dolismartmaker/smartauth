@@ -308,7 +308,18 @@ final class TokenSubject
         if ($this->isUser()) {
             $user = new \User($db);
             $res = $user->fetch($this->id);
-            return $res > 0 && (int) $user->statut === 1;
+            if ($res <= 0 || (int) $user->statut !== 1) {
+                return false;
+            }
+            // A Dolibarr user also carries a validity window
+            // (datestartvalidity / dateendvalidity). An account outside it is
+            // refused at login by the core, so a token must not keep it alive
+            // either. method_exists: the helper appeared in recent Dolibarr
+            // versions and this module supports 10 to 21.
+            if (method_exists($user, 'isNotIntoValidityDateRange') && $user->isNotIntoValidityDateRange()) {
+                return false;
+            }
+            return true;
         }
 
         if ($this->isMember()) {

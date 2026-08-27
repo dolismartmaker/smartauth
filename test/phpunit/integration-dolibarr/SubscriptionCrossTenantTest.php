@@ -22,10 +22,11 @@
  *   2. POST objects/subscription {"member": <victim>, ...} -- create() inserts
  *      fk_adherent verbatim (:170), filing the fee in the victim's record.
  *
- * The fix removes the field from dmSubscription::$writableFields and from the
- * registry allowed_fields, and closes the create route with canCreate(). This
- * test proves both holes are shut AND that nothing moved in SQL, which is the
- * only assertion that distinguishes "refused" from "refused after writing".
+ * The fix removes the field from dmSubscription::$writableFields -- the one
+ * allowlist both write doors read -- and closes the create route with
+ * canCreate(). This test proves both holes are shut AND that nothing moved in
+ * SQL, which is the only assertion that distinguishes "refused" from "refused
+ * after writing".
  *
  * Copyright (c) 2026 Eric Seigne <eric.seigne@cap-rel.fr>
  *
@@ -228,10 +229,9 @@ class SubscriptionCrossTenantTest extends DolibarrRealTestCase
      * --------------------------------------------------------------- */
 
     /**
-     * The parent must be unwritable in BOTH declarations. The registry list is
-     * not decorative: it is the sync-side write allowlist
-     * (SyncController::applyDataLegacy l.1416), a second write path onto the
-     * same column.
+     * The parent must be unwritable in the mapper allowlist, which is what BOTH
+     * write doors read -- the REST facade through importMappedData() and the
+     * sync push through getWritableApiKeys().
      */
     public function testTheParentIsWritableNowhereInTheWriteContract(): void
     {
@@ -242,18 +242,22 @@ class SubscriptionCrossTenantTest extends DolibarrRealTestCase
             'fk_adherent is writable again: the facade can move a fee across tenants'
         );
 
+        // Both write doors -- the REST facade and the sync push -- read that one
+        // mapper list, because the registry entry carries no allowlist of its
+        // own. Pinned here: reintroducing one would create a second way in that
+        // this test's assertion above would not cover.
         $builtins = ObjectRegistry::builtins();
         $this->assertArrayHasKey('subscription', $builtins);
-        $allowed = $builtins['subscription']['allowed_fields'];
-        $this->assertNotContains(
-            'fk_adherent',
-            $allowed,
-            'fk_adherent is allowed again on the sync write path'
+        $this->assertArrayNotHasKey(
+            'allowed_fields',
+            $builtins['subscription'],
+            'a registry-side write allowlist is back: fk_adherent could be opened there without this test noticing'
         );
-
-        sort($writable);
-        sort($allowed);
-        $this->assertSame($writable, $allowed, 'the registry entry must keep mirroring the mapper allowlist');
+        $this->assertSame(
+            '\\SmartAuth\\DolibarrMapping\\dmSubscription',
+            $builtins['subscription']['mapper'] ?? null,
+            'without a resolvable mapper the sync push falls back to the legacy path'
+        );
     }
 
     /**

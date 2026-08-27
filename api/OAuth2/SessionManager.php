@@ -150,6 +150,20 @@ class SessionManager
                 return null;
             }
 
+            // A password reset must end the sessions opened with the OLD
+            // password. The cookie is a self-contained JWT with no server-side
+            // state, so revoking the API tokens (which the reset already does)
+            // left the portal session itself untouched: whoever held the cookie
+            // stayed signed in, which is precisely the person a reset is meant
+            // to lock out. Compare the cookie's issuance date with the last
+            // consumed reset for this subject.
+            $credentialsChangedAt = $this->credentialsChangedAt($subject);
+            if ($credentialsChangedAt > 0 && (int) ($payload['iat'] ?? 0) < $credentialsChangedAt) {
+                dol_syslog('[SmartAuth] SessionManager: session predates the last credential change for ' . $sub . ', forcing re-login', LOG_WARNING);
+                $this->clearSession();
+                return null;
+            }
+
             // Cache payload for getAuthTime()
             $this->cachedPayload = $payload;
 
@@ -159,6 +173,57 @@ class SessionManager
             $this->clearSession();
             return null;
         }
+    }
+
+    /**
+     * When did this subject last complete a password reset?
+     *
+     * Read from llx_smartauth_email_validation, where confirmReset() marks the
+     * token consumed: no new table, and the row is written by the very act we
+     * want to react to. 0 when the subject never reset (the common case), so
+     * the caller keeps the session.
+     *
+     * Known limit: an authenticated password CHANGE (/account, changePassword)
+     * writes no such row, so it does not end the other sessions. Ending them
+     * would need the same marker written on that path.
+     *
+     * @param  TokenSubject $subject
+     * @return int Unix timestamp, 0 when unknown
+     */
+    private function credentialsChangedAt(TokenSubject $subject): int
+    {
+        $subjectId = (int) $subject->getId();
+        if ($subjectId <= 0) {
+            return 0;
+        }
+
+        if ($subject->isAccount()) {
+            $column = 'fk_societe_account';
+        } elseif ($subject->isMember()) {
+            $column = 'fk_adherent';
+        } else {
+            $column = 'fk_user';
+        }
+
+        $sql = "SELECT MAX(used_at) as last_reset FROM " . MAIN_DB_PREFIX . "smartauth_email_validation";
+        $sql .= " WHERE purpose = 'password_reset'";
+        $sql .= " AND used_at IS NOT NULL";
+        $sql .= " AND " . $column . " = " . $subjectId;
+
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            // Fail OPEN here, deliberately: a lookup failure must not sign
+            // every user out of the portal. The token revocation performed by
+            // the reset itself remains in force either way.
+            dol_syslog('[SmartAuth] SessionManager::credentialsChangedAt: lookup failed: ' . $this->db->lasterror(), LOG_ERR);
+            return 0;
+        }
+        $row = $this->db->fetch_object($resql);
+        if (!is_object($row) || empty($row->last_reset)) {
+            return 0;
+        }
+
+        return (int) $this->db->jdate($row->last_reset);
     }
 
     /**

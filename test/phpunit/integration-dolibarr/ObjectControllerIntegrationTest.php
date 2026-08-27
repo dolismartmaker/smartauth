@@ -147,6 +147,251 @@ class ObjectControllerIntegrationTest extends DolibarrRealTestCase
         $this->assertSame((int) $soc->id, (int) $body['items'][0]->id);
     }
 
+    // ------------------------------------------------------- `in` filter
+
+    /**
+     * `client` encodes a CATEGORY (1 customer, 2 prospect, 3 both), so
+     * "every company a salesperson can quote" is client IN (1,2,3). With the
+     * equality-only `select` kind a consumer had to issue three requests and
+     * merge them client-side, or drop prospects; dmThirdparty declares the
+     * column as `in` for that reason.
+     */
+    public function testIndexInFilterMatchesASetOfValues(): void
+    {
+        $tag = 'inset' . uniqid();
+        $customer = $this->createTestSociete(['name' => 'Customer ' . $tag, 'email' => 'c-' . $tag . '@in.test', 'client' => 1]);
+        $prospect = $this->createTestSociete(['name' => 'Prospect ' . $tag, 'email' => 'p-' . $tag . '@in.test', 'client' => 2]);
+        $supplier = $this->createTestSociete(['name' => 'Supplier ' . $tag, 'email' => 's-' . $tag . '@in.test', 'client' => 0]);
+        foreach ([$customer, $prospect, $supplier] as $soc) {
+            $this->track('societe', (int) $soc->id);
+        }
+
+        list($body, $code) = $this->controller->index([
+            'objtype' => 'thirdparty',
+            'search' => $tag . '@in.test',
+            'filter' => ['is_customer' => '1,2,3'],
+            'limit' => 100,
+        ]);
+
+        $this->assertSame(200, $code);
+        $ids = array_map(static function ($item) {
+            return (int) $item->id;
+        }, $body['items']);
+
+        $this->assertContains((int) $customer->id, $ids, 'a customer is in the set');
+        $this->assertContains((int) $prospect->id, $ids, 'a prospect is in the set too');
+        $this->assertNotContains((int) $supplier->id, $ids, 'a non-customer stays out');
+    }
+
+    /**
+     * Backward compatibility: a single value must behave exactly like the
+     * equality filter it replaces.
+     */
+    public function testIndexInFilterWithASingleValueBehavesLikeEquality(): void
+    {
+        $tag = 'inone' . uniqid();
+        $customer = $this->createTestSociete(['name' => 'Customer ' . $tag, 'email' => 'c-' . $tag . '@in.test', 'client' => 1]);
+        $prospect = $this->createTestSociete(['name' => 'Prospect ' . $tag, 'email' => 'p-' . $tag . '@in.test', 'client' => 2]);
+        foreach ([$customer, $prospect] as $soc) {
+            $this->track('societe', (int) $soc->id);
+        }
+
+        list($body, $code) = $this->controller->index([
+            'objtype' => 'thirdparty',
+            'search' => $tag . '@in.test',
+            'filter' => ['is_customer' => '1'],
+            'limit' => 100,
+        ]);
+
+        $this->assertSame(200, $code);
+        $ids = array_map(static function ($item) {
+            return (int) $item->id;
+        }, $body['items']);
+
+        $this->assertContains((int) $customer->id, $ids);
+        $this->assertNotContains((int) $prospect->id, $ids);
+    }
+
+    /**
+     * An empty set must not emit `IN ()`, which is a syntax error: the query
+     * has to keep working, simply without that condition.
+     */
+    public function testIndexInFilterWithAnEmptySetStillReturnsAList(): void
+    {
+        $tag = 'inempty' . uniqid();
+        $soc = $this->createTestSociete(['name' => 'Any ' . $tag, 'email' => 'a-' . $tag . '@in.test', 'client' => 1]);
+        $this->track('societe', (int) $soc->id);
+
+        list($body, $code) = $this->controller->index([
+            'objtype' => 'thirdparty',
+            'search' => $tag . '@in.test',
+            'filter' => ['is_customer' => ''],
+            'limit' => 100,
+        ]);
+
+        $this->assertSame(200, $code, 'an empty set must not break the SQL');
+        $this->assertContains((int) $soc->id, array_map(static function ($item) {
+            return (int) $item->id;
+        }, $body['items']));
+    }
+
+    // -------------------------------------------------- computed sorting
+
+    /**
+     * `last_activity` orders by the most recent linked agenda event, falling
+     * back to the company's own modification date. It is a correlated
+     * subquery, so this test also proves the list query keeps its shape: the
+     * COUNT must stay exact and the other filters must still compose.
+     */
+    public function testIndexSortsByComputedLastActivity(): void
+    {
+        global $db, $user;
+
+        $tag = 'lastact' . uniqid();
+        $stale = $this->createTestSociete(['name' => 'Stale ' . $tag, 'email' => 'stale-' . $tag . '@sort.test', 'client' => 1]);
+        $active = $this->createTestSociete(['name' => 'Active ' . $tag, 'email' => 'active-' . $tag . '@sort.test', 'client' => 1]);
+        foreach ([$stale, $active] as $soc) {
+            $this->track('societe', (int) $soc->id);
+        }
+
+        // One agenda event, far in the future, on the "active" company only.
+        require_once DOL_DOCUMENT_ROOT . '/comm/action/class/actioncomm.class.php';
+        $event = new \ActionComm($db);
+        $event->type_code = 'AC_OTH';
+        $event->label = 'Rendez-vous ' . $tag;
+        $event->datep = dol_now() + 86400 * 30;
+        $event->datef = $event->datep + 3600;
+        $event->socid = (int) $active->id;
+        $event->userownerid = (int) $user->id;
+        $eventId = $event->create($user);
+        $this->assertGreaterThan(0, $eventId, 'agenda event creation must succeed: ' . $event->error);
+        $this->track('actioncomm', (int) $eventId);
+
+        list($body, $code) = $this->controller->index([
+            'objtype' => 'thirdparty',
+            'search' => $tag . '@sort.test',
+            'sort' => 'last_activity',
+            'order' => 'desc',
+            'limit' => 100,
+        ]);
+
+        $this->assertSame(200, $code);
+        $this->assertSame(2, (int) $body['total'], 'the correlated subquery must not duplicate rows in the COUNT');
+
+        $ids = array_map(static function ($item) {
+            return (int) $item->id;
+        }, $body['items']);
+        $this->assertSame(
+            [(int) $active->id, (int) $stale->id],
+            $ids,
+            'the company with a recent event must come first'
+        );
+
+        // Reversing the order must reverse the list: proof the expression is
+        // really what drives the sort.
+        list($body, ) = $this->controller->index([
+            'objtype' => 'thirdparty',
+            'search' => $tag . '@sort.test',
+            'sort' => 'last_activity',
+            'order' => 'asc',
+            'limit' => 100,
+        ]);
+        $ids = array_map(static function ($item) {
+            return (int) $item->id;
+        }, $body['items']);
+        $this->assertSame([(int) $stale->id, (int) $active->id], $ids);
+    }
+
+    /**
+     * The computed sort must compose with the `in` filter, since the real
+     * consumer needs both at once ("recently active customers AND prospects").
+     */
+    public function testComputedSortComposesWithTheInFilter(): void
+    {
+        $tag = 'compose' . uniqid();
+        $customer = $this->createTestSociete(['name' => 'C ' . $tag, 'email' => 'c-' . $tag . '@sort.test', 'client' => 1]);
+        $prospect = $this->createTestSociete(['name' => 'P ' . $tag, 'email' => 'p-' . $tag . '@sort.test', 'client' => 2]);
+        $neither = $this->createTestSociete(['name' => 'N ' . $tag, 'email' => 'n-' . $tag . '@sort.test', 'client' => 0]);
+        foreach ([$customer, $prospect, $neither] as $soc) {
+            $this->track('societe', (int) $soc->id);
+        }
+
+        list($body, $code) = $this->controller->index([
+            'objtype' => 'thirdparty',
+            'search' => $tag . '@sort.test',
+            'filter' => ['is_customer' => '1,2,3'],
+            'sort' => 'last_activity',
+            'order' => 'desc',
+            'limit' => 100,
+        ]);
+
+        $this->assertSame(200, $code);
+        $this->assertSame(2, (int) $body['total'], 'the filter still applies under the computed sort');
+
+        $ids = array_map(static function ($item) {
+            return (int) $item->id;
+        }, $body['items']);
+        $this->assertNotContains((int) $neither->id, $ids);
+    }
+
+    // ------------------------------------------- contacts of a company
+
+    /**
+     * "The contacts of company X" is the single most common query on
+     * objects/contact, and it was NOT expressible: the mapper addresses the
+     * company through the PHP property `socid` while the SQL column is
+     * `fk_soc`, so the catalog never marked it filterable. dmContact now
+     * declares it explicitly.
+     */
+    public function testIndexFiltersContactsByThirdpartyAndStatus(): void
+    {
+        global $db, $user;
+
+        require_once DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php';
+
+        $tag = 'ctc' . uniqid();
+        $socA = $this->createTestSociete(['name' => 'A ' . $tag]);
+        $socB = $this->createTestSociete(['name' => 'B ' . $tag]);
+        $this->track('societe', (int) $socA->id);
+        $this->track('societe', (int) $socB->id);
+
+        $make = function ($soc, $last, $status) use ($db, $user, $tag) {
+            $c = new \Contact($db);
+            $c->lastname = $last;
+            $c->firstname = 'Test';
+            $c->socid = (int) $soc->id;
+            $c->email = strtolower($last) . '-' . $tag . '@ctc.test';
+            $c->statut = $status;
+            $id = $c->create($user);
+            $this->assertGreaterThan(0, $id, 'contact creation must succeed: ' . $c->error);
+            $this->track('socpeople', (int) $id);
+
+            return (int) $id;
+        };
+
+        $activeA = $make($socA, 'Zulu', 1);
+        $inactiveA = $make($socA, 'Alpha', 0);
+        $activeB = $make($socB, 'Bravo', 1);
+
+        list($body, $code) = $this->controller->index([
+            'objtype' => 'contact',
+            'filter' => ['thirdparty' => (string) $socA->id, 'statut' => '1'],
+            'sort' => 'lastname',
+            'order' => 'asc',
+            'limit' => 100,
+        ]);
+
+        $this->assertSame(200, $code);
+        $ids = array_map(static function ($item) {
+            return (int) $item->id;
+        }, $body['items']);
+
+        $this->assertContains($activeA, $ids, 'the active contact of A is listed');
+        $this->assertNotContains($inactiveA, $ids, 'an inactive contact is filtered out');
+        $this->assertNotContains($activeB, $ids, 'a contact of another company is filtered out');
+        $this->assertSame(1, (int) $body['total']);
+    }
+
     // ------------------------------------------------------------------ show
 
     public function testShowReturnsMappedObject(): void

@@ -30,6 +30,11 @@ class dmProduct extends dmBase
 	protected $dolibarrClassName = 'Product';
 	protected $parentTableElementToUseForExtraFields = 'product';
 
+	// Compact list path allowed: parity proven by CompactProjectionParityTest.
+	// Catalogue pages and offline product pre-caches are the second heaviest
+	// list of the ecosystem after thirdparties.
+	protected $compactProjectionAllowed = true;
+
 	// Dolibarr field => Front field
 	// See documentation/api-naming-convention.md
 	protected $listOfPublishedFields = [

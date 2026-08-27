@@ -32,6 +32,11 @@ class PaginatedListTraitProbe
         return $this->buildSqlFilters($p, $map, $search);
     }
 
+    public function callSortFromCatalog(array $p, $mapper, $alias, $default)
+    {
+        return $this->buildSortClauseFromCatalog($p, $mapper, $alias, $default);
+    }
+
     public function callFormat(array $items, $total, $page, $limit)
     {
         return $this->formatPaginatedResponse($items, $total, $page, $limit);
@@ -49,6 +54,30 @@ class PaginatedListTraitProbe
  *
  * @covers \SmartAuth\Api\PaginatedListTrait
  */
+/**
+ * Minimal mapper stub for the computed-sort tests: one plain column (which
+ * must be alias-prefixed), one expression (which must not be), and one
+ * malformed entry (which must be skipped).
+ */
+class SortableExpressionMapperStub
+{
+    public function getColumnCatalog()
+    {
+        return [];
+    }
+
+    public function getSortableColumns()
+    {
+        return [
+            'name' => 'nom',
+            'last_activity' => [
+                'expression' => 'COALESCE((SELECT MAX(a.datep) FROM llx_actioncomm a WHERE a.fk_soc = s.rowid), s.tms)',
+            ],
+            'broken' => ['expression' => '   '],
+        ];
+    }
+}
+
 class PaginatedListTraitTest extends TestCase
 {
     /** @var PaginatedListTraitProbe */
@@ -161,6 +190,166 @@ class PaginatedListTraitTest extends TestCase
         $map = ['active' => ['column' => 's.status', 'kind' => 'boolean']];
         list($where, ) = $this->probe->callFilters(['filter' => ['active' => 'maybe']], $map, []);
         $this->assertStringNotContainsString('s.status', $where);
+    }
+
+    // -----------------------------------------------------------------
+    // `in` kind: set membership. Added so a consumer can express a
+    // business category ("customers AND prospects" = client IN (1,2,3))
+    // that `select` could only approximate with several requests.
+    // -----------------------------------------------------------------
+
+    public function testBuildSqlFiltersInAcceptsACommaSeparatedString(): void
+    {
+        $map = ['client' => ['column' => 's.client', 'kind' => 'in']];
+        list($where, ) = $this->probe->callFilters(['filter' => ['client' => '1,2,3']], $map, []);
+
+        $this->assertStringContainsString('s.client IN (1, 2, 3)', $where);
+    }
+
+    public function testBuildSqlFiltersInAcceptsAnArray(): void
+    {
+        $map = ['client' => ['column' => 's.client', 'kind' => 'in']];
+        list($where, ) = $this->probe->callFilters(['filter' => ['client' => [1, 2, 3]]], $map, []);
+
+        $this->assertStringContainsString('s.client IN (1, 2, 3)', $where);
+    }
+
+    public function testBuildSqlFiltersInTrimsAndDeduplicates(): void
+    {
+        $map = ['client' => ['column' => 's.client', 'kind' => 'in']];
+        list($where, ) = $this->probe->callFilters(['filter' => ['client' => ' 1 , 2,1, ,2 ']], $map, []);
+
+        $this->assertStringContainsString('s.client IN (1, 2)', $where);
+    }
+
+    public function testBuildSqlFiltersInQuotesAndEscapesNonNumericSets(): void
+    {
+        $map = ['code' => ['column' => 's.code_client', 'kind' => 'in']];
+        list($where, ) = $this->probe->callFilters(['filter' => ['code' => "CU01,x' OR '1'='1"]], $map, []);
+
+        // The injection attempt must stay a single quoted literal.
+        $this->assertStringContainsString("s.code_client IN ('CU01', 'x\\' OR \\'1\\'=\\'1')", $where);
+    }
+
+    /**
+     * A single non-numeric value makes the whole set quoted: emitting a mix
+     * would compare a numeric column against a string.
+     */
+    public function testBuildSqlFiltersInQuotesTheWholeSetWhenOneValueIsNotNumeric(): void
+    {
+        $map = ['code' => ['column' => 's.code_client', 'kind' => 'in']];
+        list($where, ) = $this->probe->callFilters(['filter' => ['code' => '1,ABC,3']], $map, []);
+
+        $this->assertStringContainsString("s.code_client IN ('1', 'ABC', '3')", $where);
+    }
+
+    public function testBuildSqlFiltersInKeepsDecimals(): void
+    {
+        $map = ['rate' => ['column' => 's.tva_tx', 'kind' => 'in']];
+        list($where, ) = $this->probe->callFilters(['filter' => ['rate' => '5.5,20']], $map, []);
+
+        $this->assertStringContainsString('s.tva_tx IN (5.5, 20)', $where);
+    }
+
+    /**
+     * `IN ()` is a syntax error on every backend, so an empty set must emit
+     * no clause at all rather than a broken one.
+     */
+    public function testBuildSqlFiltersInEmitsNothingForAnEmptySet(): void
+    {
+        $map = ['client' => ['column' => 's.client', 'kind' => 'in']];
+
+        foreach (['', ' , , ', null] as $value) {
+            list($where, ) = $this->probe->callFilters(['filter' => ['client' => $value]], $map, []);
+            $this->assertStringNotContainsString('IN (', $where, 'no IN () may be emitted');
+            $this->assertStringNotContainsString('s.client', $where);
+        }
+
+        list($where, ) = $this->probe->callFilters(['filter' => ['client' => []]], $map, []);
+        $this->assertStringNotContainsString('IN (', $where);
+    }
+
+    public function testBuildSqlFiltersInSkipsNonScalarMembers(): void
+    {
+        $map = ['client' => ['column' => 's.client', 'kind' => 'in']];
+        list($where, ) = $this->probe->callFilters(['filter' => ['client' => [1, ['nested'], 2]]], $map, []);
+
+        $this->assertStringContainsString('s.client IN (1, 2)', $where);
+    }
+
+    /**
+     * A set filter expresses a category, not a smuggled id dump.
+     */
+    public function testBuildSqlFiltersInIsCappedAtOneHundredValues(): void
+    {
+        $map = ['id' => ['column' => 's.rowid', 'kind' => 'in']];
+        $values = range(1, 150);
+        list($where, ) = $this->probe->callFilters(['filter' => ['id' => $values]], $map, []);
+
+        preg_match('/IN \(([^)]*)\)/', $where, $m);
+        $this->assertNotEmpty($m, 'an IN clause must still be emitted');
+        $this->assertCount(100, explode(',', $m[1]), 'the set is capped at 100 values');
+    }
+
+    public function testBuildSqlFiltersInIsAbsentWhenTheFilterIsNotSent(): void
+    {
+        $map = ['client' => ['column' => 's.client', 'kind' => 'in']];
+        list($where, ) = $this->probe->callFilters(['filter' => []], $map, []);
+
+        $this->assertSame('', $where);
+    }
+
+    // -----------------------------------------------------------------
+    // Computed sort: an ordering that is not a stored column (e.g. "most
+    // recently active"), declared by a mapper as a scalar expression.
+    // -----------------------------------------------------------------
+
+    public function testBuildSortClauseAcceptsAComputedExpression(): void
+    {
+        $expression = 'COALESCE((SELECT MAX(a.datep) FROM llx_actioncomm a WHERE a.fk_soc = s.rowid), s.tms)';
+        $map = ['last_activity' => $expression];
+
+        $out = $this->probe->callSort(['sort' => 'last_activity', 'order' => 'desc'], $map, 's.rowid ASC');
+
+        $this->assertSame(' ORDER BY '.$expression.' DESC', $out);
+    }
+
+    /**
+     * The expression must NOT be alias-prefixed: it carries its own qualified
+     * names, and "s.COALESCE(...)" would be a syntax error.
+     */
+    public function testComputedExpressionIsNotAliasPrefixed(): void
+    {
+        $probe = new PaginatedListTraitProbe();
+        $mapper = new SortableExpressionMapperStub();
+
+        $out = $probe->callSortFromCatalog(['sort' => 'last_activity', 'order' => 'desc'], $mapper, 's', 's.rowid ASC');
+
+        $this->assertStringContainsString('COALESCE(', $out);
+        $this->assertStringNotContainsString('s.COALESCE', $out);
+    }
+
+    public function testPlainColumnEntriesAreStillAliasPrefixed(): void
+    {
+        $probe = new PaginatedListTraitProbe();
+        $mapper = new SortableExpressionMapperStub();
+
+        $out = $probe->callSortFromCatalog(['sort' => 'name', 'order' => 'asc'], $mapper, 's', 's.rowid ASC');
+
+        $this->assertSame(' ORDER BY s.nom ASC', $out);
+    }
+
+    /**
+     * A malformed entry must be skipped, not turned into a broken ORDER BY.
+     */
+    public function testEmptyExpressionEntryIsSkipped(): void
+    {
+        $probe = new PaginatedListTraitProbe();
+        $mapper = new SortableExpressionMapperStub();
+
+        $out = $probe->callSortFromCatalog(['sort' => 'broken', 'order' => 'asc'], $mapper, 's', 's.rowid ASC');
+
+        $this->assertSame(' ORDER BY s.rowid ASC', $out, 'falls back to the default sort');
     }
 
     public function testFormatPaginatedResponseShapeAndCasts(): void

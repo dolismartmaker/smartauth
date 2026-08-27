@@ -105,27 +105,39 @@ class TokenController
             return;
         }
 
-        // Per-client_id rate limiting on /oauth/token.
-        // Each client_id gets a bucket so a single misbehaving / compromised
-        // client cannot brute-force its way through; failed attempts are
-        // recorded BEFORE authentication so an unauthenticated attacker
-        // probing client_secret gets rate-limited too.
-        $candidateClientId = trim((string) ($params['client_id'] ?? $_SERVER['PHP_AUTH_USER'] ?? ''));
-        $rateKey = $candidateClientId !== '' ? $candidateClientId : (\SmartAuth\Api\RouteController::get_client_ip());
-        if (class_exists('\\SmartAuth\\Api\\RateLimiter')) {
-            $rateLimiter = new \SmartAuth\Api\RateLimiter($this->db);
-            $rl = $rateLimiter->checkLimit(
-                $rateKey,
-                'oauth_token',
-                getDolGlobalInt('SMARTAUTH_OAUTH_TOKEN_RATELIMIT_MAX', 30),
-                getDolGlobalInt('SMARTAUTH_OAUTH_TOKEN_RATELIMIT_WINDOW', 300)
+        // Rate limiting on /oauth/token, in TWO buckets, and the order matters.
+        //
+        // The bucket used to be keyed on the client_id read from the request
+        // body, filled BEFORE authentication. But a client_id is public - it
+        // appears in every /oauth/authorize URL. Thirty anonymous POSTs
+        // carrying a victim's client_id, with no secret at all, therefore put
+        // that client's SSO out of service for the whole window, and repeating
+        // it kept the outage going. Denial of service with zero credential.
+        //
+        // So: an unauthenticated caller may only ever fill ITS OWN IP bucket.
+        // The client_id bucket is checked and filled once the client has
+        // actually proven who it is, which is what makes it attributable.
+        $rateLimiter = class_exists('\\SmartAuth\\Api\\RateLimiter')
+            ? new \SmartAuth\Api\RateLimiter($this->db)
+            : null;
+        $window = getDolGlobalInt('SMARTAUTH_OAUTH_TOKEN_RATELIMIT_WINDOW', 300);
+
+        if ($rateLimiter !== null) {
+            $clientIp = \SmartAuth\Api\RouteController::get_client_ip();
+            $ipLimit = $rateLimiter->checkLimit(
+                $clientIp,
+                'oauth_token_ip',
+                getDolGlobalInt('SMARTAUTH_OAUTH_TOKEN_RATELIMIT_IP_MAX', 60),
+                $window
             );
-            if (empty($rl['allowed'])) {
-                dol_syslog('[SmartAuth] TokenController: /oauth/token rate-limit hit for ' . \SmartAuth\Api\RateLimiter::maskIdentifier($rateKey), LOG_WARNING);
+            if (empty($ipLimit['allowed'])) {
+                dol_syslog('[SmartAuth] TokenController: /oauth/token IP rate-limit hit for ' . \SmartAuth\Api\RateLimiter::maskIdentifier($clientIp), LOG_WARNING);
                 $this->sendError('temporarily_unavailable', 'Too many requests', 429);
                 return;
             }
-            $rateLimiter->recordAttempt($rateKey, 'oauth_token');
+            // Recorded before authentication on purpose: this is the bucket
+            // that bounds secret-guessing, and it can only hurt the caller.
+            $rateLimiter->recordAttempt($clientIp, 'oauth_token_ip');
         }
 
         // Authenticate client
@@ -133,6 +145,24 @@ class TokenController
         if ($this->client === null) {
             $this->sendError('invalid_client', 'Client authentication failed', 401);
             return;
+        }
+
+        // Now that the client is authenticated, its own bucket is safe to use:
+        // only someone holding the secret can fill it.
+        if ($rateLimiter !== null) {
+            $clientKey = (string) $this->client->client_id;
+            $clientLimit = $rateLimiter->checkLimit(
+                $clientKey,
+                'oauth_token',
+                getDolGlobalInt('SMARTAUTH_OAUTH_TOKEN_RATELIMIT_MAX', 30),
+                $window
+            );
+            if (empty($clientLimit['allowed'])) {
+                dol_syslog('[SmartAuth] TokenController: /oauth/token rate-limit hit for client ' . \SmartAuth\Api\RateLimiter::maskIdentifier($clientKey), LOG_WARNING);
+                $this->sendError('temporarily_unavailable', 'Too many requests', 429);
+                return;
+            }
+            $rateLimiter->recordAttempt($clientKey, 'oauth_token');
         }
 
         // Check client is enabled
@@ -303,6 +333,20 @@ class TokenController
             $authCode->fk_adherent !== null ? (int) $authCode->fk_adherent : null
         );
 
+        // Same re-validation as the refresh grant: an account can be disabled
+        // between the authorize step and the exchange, and the code alone says
+        // nothing about that. Cheap here, and it keeps the two token-issuing
+        // paths under one rule.
+        if (!$subject->isActive($this->db)) {
+            dol_syslog(
+                '[SmartAuth] TokenController: code exchange refused, subject ' . $subject->toSub()
+                . ' is no longer active',
+                LOG_WARNING
+            );
+            $this->sendError('invalid_grant', 'Subject is no longer active', 400);
+            return;
+        }
+
         // Pre-token hook: external modules may re-evaluate access right
         // and inject extra claims (PERFS.md §3.3).
         $hookResult = $this->runPreTokenHook($subject, $scopes, 'authorization_code');
@@ -358,8 +402,35 @@ class TokenController
             return;
         }
 
-        // Get original scopes
-        $originalScopes = $tokenRecord->getScopesArray();
+        // Get original scopes, INTERSECTED with what the client is still
+        // allowed to ask for. A refresh token carries the scopes granted when it
+        // was minted; taking them at face value meant an administrator removing
+        // a scope from the client had no effect until every live refresh token
+        // expired -- which, with rotation, is never. The grant can only ever
+        // shrink here, so a client that legitimately gained scopes still has to
+        // go through a new authorization to use them.
+        $grantedScopes = $tokenRecord->getScopesArray();
+        $allowedScopes = $this->client->getAllowedScopesArray();
+        $originalScopes = array_values(array_intersect($grantedScopes, $allowedScopes));
+
+        $droppedScopes = array_values(array_diff($grantedScopes, $allowedScopes));
+        if (!empty($droppedScopes)) {
+            dol_syslog(
+                '[SmartAuth] TokenController: refresh dropped scope(s) no longer allowed for client '
+                . $this->client->client_id . ': ' . implode(' ', $droppedScopes),
+                LOG_WARNING
+            );
+        }
+
+        if (empty($originalScopes)) {
+            dol_syslog(
+                '[SmartAuth] TokenController: refresh refused, no granted scope survives the client allow-list ('
+                . $this->client->client_id . ')',
+                LOG_WARNING
+            );
+            $this->sendError('invalid_scope', 'No granted scope is still allowed for this client', 400);
+            return;
+        }
 
         // Optional: check for scope reduction
         $requestedScope = trim($params['scope'] ?? '');
@@ -386,6 +457,33 @@ class TokenController
             $tokenRecord->fk_adherent !== null ? (int) $tokenRecord->fk_adherent : null
         );
         $legacyUserId = $subject->isUser() ? $subject->getId() : 0;
+
+        // RE-VALIDATE THE SUBJECT before renewing anything. The refresh token
+        // proves what was true at issuance; it says nothing about the account
+        // today. Without this, disabling an account (llx_user.statut,
+        // societe_account.status, adherent.statut) left every OAuth2 session
+        // alive and self-renewing for as long as the client kept refreshing.
+        if (!$subject->isActive($this->db)) {
+            dol_syslog(
+                '[SmartAuth] TokenController: refresh refused, subject ' . $subject->toSub()
+                . ' is no longer active - revoking its tokens for client ' . $this->client->client_id,
+                LOG_WARNING
+            );
+            // Revoke this subject's tokens on this client: leaving the refresh
+            // token usable would just replay the same refusal at every attempt
+            // while the access token already out there keeps working until it
+            // expires. Subject-aware on purpose (an external subject carries
+            // fk_user = 0, so a fk_user-keyed revocation would hit every
+            // external subject of the client).
+            \SmartAuthOAuthToken::revokeAllForSubjectAndClient(
+                $this->db,
+                $subject->getType(),
+                $subject->getId(),
+                $this->client->id
+            );
+            $this->sendError('invalid_grant', 'Subject is no longer active', 400);
+            return;
+        }
 
         // Pre-token hook: external modules may re-evaluate access right
         // (e.g. contract closed since last refresh) and inject extra claims.
