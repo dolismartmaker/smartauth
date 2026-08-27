@@ -162,7 +162,7 @@ print load_fiche_titre($langs->trans("OAuthClientsList"), $linkback, 'title_setu
 
 // Configuration header
 $head = smartauthAdminPrepareHead();
-print dol_get_fiche_head($head, 'oauth', $langs->trans("SmartAuthOAuthSetup"), -1, "smartauth@smartauth");
+print dol_get_fiche_head($head, 'oauthclients', $langs->trans("OAuthClients"), -1, "smartauth@smartauth");
 
 // Check if OAuth is enabled
 $oauthEnabled = getDolGlobalInt('SMARTAUTH_OAUTH_ENABLED', 0);
