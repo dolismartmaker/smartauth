@@ -725,6 +725,36 @@ class RouteController
 			SmartAuthLogger::debug("SmartAuth User found: login=$login, entity=$entity, id=" . $user->id);
 		}
 
+		// The signed user_id claim must match the user the login now resolves
+		// to. A login is not immutable: rename a departed account and hand the
+		// login to the replacement, and an access token minted for the old
+		// owner would resolve to - and operate as - the new one. Enforced only
+		// when the claim is present and positive: tokens minted before the
+		// claim existed stay accepted until they rotate, and non-user-bound
+		// tokens never reach this JWT path (OAuth2/M2M bearers are handled by
+		// handleOAuth2Authentication()).
+		$claimUserId = isset($decoded->user_id) ? (int) $decoded->user_id : 0;
+		if ($claimUserId > 0 && $claimUserId !== (int) $user->id) {
+			dol_syslog(
+				"[SmartAuth] handleAuthentication: token subject mismatch -> 401."
+				. " login=" . $login
+				. ", claim user_id=" . $claimUserId
+				. ", resolved user_id=" . (int) $user->id
+				. " (login reassigned since issuance?)"
+				. ", token_id=" . var_export($token_id, true)
+				. ", family_id=" . var_export($family_id, true),
+				LOG_WARNING
+			);
+			// Kill the family too: the refresh token would keep rotating pairs
+			// that resolve to the wrong subject.
+			if (!empty($family_id)) {
+				self::revokeTokenFamily($db, $family_id, 'subject_mismatch');
+			}
+			self::insertLogs($token_id, 401, 'Subject mismatch', $entity);
+			\json_reply('Authentication failed', 401);
+			return false;
+		}
+
 		// RE-VALIDATE THE SUBJECT AT EVERY USE, not only at issuance.
 		//
 		// Disabling a user in Dolibarr did nothing to the tokens already out
@@ -753,7 +783,7 @@ class RouteController
 			// Kill the family too: leaving the refresh token alive would let
 			// the device mint a fresh access token and come straight back.
 			if (!empty($family_id)) {
-				self::revokeFamilyForDisabledSubject($db, $family_id);
+				self::revokeTokenFamily($db, $family_id, 'subject_disabled');
 			}
 			self::insertLogs($token_id, 401, 'Subject disabled', $entity);
 			\json_reply('Authentication failed', 401);
@@ -812,7 +842,7 @@ class RouteController
 	 * @param  string|int $familyId
 	 * @return bool
 	 */
-	private static function revokeFamilyForDisabledSubject($db, $familyId)
+	private static function revokeTokenFamily($db, $familyId, $saltMarker = 'subject_disabled')
 	{
 		$ok = true;
 
@@ -820,20 +850,20 @@ class RouteController
 		$sql .= " SET revoked = 1";
 		$sql .= " WHERE rowid = " . (int) $familyId;
 		if (!$db->query($sql)) {
-			dol_syslog("[SmartAuth] revokeFamilyForDisabledSubject: family flag update failed for family " . (int) $familyId . ": " . $db->lasterror(), LOG_ERR);
+			dol_syslog("[SmartAuth] revokeTokenFamily: family flag update failed for family " . (int) $familyId . ": " . $db->lasterror(), LOG_ERR);
 			$ok = false;
 		}
 
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "smartauth_auth";
-		$sql .= " SET status = 9, salt = 'subject_disabled'";
+		$sql .= " SET status = 9, salt = '" . $db->escape($saltMarker) . "'";
 		$sql .= " WHERE family_id = " . (int) $familyId;
 		if (!$db->query($sql)) {
-			dol_syslog("[SmartAuth] revokeFamilyForDisabledSubject: token update failed for family " . (int) $familyId . ": " . $db->lasterror(), LOG_ERR);
+			dol_syslog("[SmartAuth] revokeTokenFamily: token update failed for family " . (int) $familyId . ": " . $db->lasterror(), LOG_ERR);
 			$ok = false;
 		}
 
 		if ($ok) {
-			dol_syslog("[SmartAuth] Token family " . (int) $familyId . " revoked (subject disabled)", LOG_INFO);
+			dol_syslog("[SmartAuth] Token family " . (int) $familyId . " revoked (" . $saltMarker . ")", LOG_INFO);
 		}
 
 		return $ok;
