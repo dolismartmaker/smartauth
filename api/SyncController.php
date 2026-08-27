@@ -65,6 +65,15 @@ class SyncController
      */
     const PULL_MAX_CURSOR_LENGTH = 128;
 
+    /**
+     * Upper bound on the number of changes accepted in a single push.
+     * Each change takes a row lock, a fetch() and an update() with
+     * triggers, so an unbounded batch monopolises a DB connection and
+     * its row locks for the whole duration. Overridable via
+     * SMARTAUTH_SYNC_PUSH_MAX_CHANGES (0 disables the cap).
+     */
+    const PUSH_MAX_CHANGES = 500;
+
     public function __construct()
     {
         global $db;
@@ -779,6 +788,28 @@ class SyncController
         $changes = $payload['changes'] ?? [];
         if (!is_array($changes) || empty($changes)) {
             return [['error' => 'changes array is required and must not be empty'], 400];
+        }
+
+        // Bound the batch: every change takes a row lock, a Dolibarr fetch()
+        // and an update() with triggers, so a single multi-megabyte push must
+        // not monopolise a connection for minutes (pull, deleteBulk and
+        // bundle are already capped; push was the only unbounded door).
+        // Configurable via SMARTAUTH_SYNC_PUSH_MAX_CHANGES, 0 disables.
+        $maxChanges = max(0, getDolGlobalInt('SMARTAUTH_SYNC_PUSH_MAX_CHANGES', self::PUSH_MAX_CHANGES));
+        if ($maxChanges > 0 && count($changes) > $maxChanges) {
+            dol_syslog(
+                '[SmartAuth] SyncController::push - refused ' . count($changes)
+                . ' changes for client ' . $client_uuid . ' (max ' . $maxChanges . ')',
+                LOG_WARNING
+            );
+            return [
+                [
+                    'error' => 'Too many changes in one push',
+                    'max_changes' => $maxChanges,
+                    'received' => count($changes),
+                ],
+                413
+            ];
         }
 
         // Get client info

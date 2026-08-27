@@ -1803,6 +1803,36 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
     }
 
     /**
+     * A push carrying more changes than the batch cap is refused upfront
+     * with 413 instead of holding row locks for minutes (audit S-9).
+     */
+    public function testPushRefusesOversizedChangeBatch(): void
+    {
+        global $user;
+        $user = $this->testUser;
+
+        $deviceId = $this->createSyncTestDevice();
+        $this->registerSyncClient($deviceId);
+
+        $maxChanges = \SmartAuth\Api\SyncController::PUSH_MAX_CHANGES;
+        $changes = [];
+        for ($i = 0; $i <= $maxChanges; $i++) {
+            $changes[] = ['action' => 'update', 'id' => 1, 'data' => []];
+        }
+
+        $push = $this->controller->push([
+            'user_id'     => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'object_type' => 'thirdparty',
+            'changes'     => $changes,
+        ]);
+
+        $this->assertEquals(413, $push[1], 'an oversized batch must be refused');
+        $this->assertSame('Too many changes in one push', $push[0]['error']);
+        $this->assertEquals($maxChanges, $push[0]['max_changes']);
+    }
+
+    /**
      * Offline-first clients retry the same push after a lost 2xx. A replayed
      * conflicting update must refresh the SAME pending conflict row, never pile
      * up duplicates in sync/conflicts / sync/status.
