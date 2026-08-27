@@ -166,7 +166,9 @@ class ApiAudience
      * both close the gate, and the row left behind is what shows an operator
      * the setting exists at all.
      *
-     * @param \DoliDB $db Database handler
+     * @param \DoliDB|null $db Database handler; null writes the in-memory
+     *                         $conf->global value only (unit harness / CLI
+     *                         probe - no persistence layer to talk to)
      * @param string[] $ids Client identifiers to store
      * @param int $entity Entity the constant is written on
      * @return bool True on success
@@ -174,6 +176,21 @@ class ApiAudience
     private static function write($db, array $ids, int $entity): bool
     {
         $value = implode(',', $ids);
+
+        if ($db === null) {
+            // Same semantics as the unit bootstrap's dolibarr_set_const
+            // stub: the read side (listed()) works off $conf->global, so a
+            // memory-only write keeps grant/revoke coherent without a
+            // database handle.
+            global $conf;
+            if (!isset($conf->global) || !is_object($conf->global)) {
+                dol_syslog('[SmartAuth] ApiAudience::write has neither a db handler nor a shaped $conf->global', LOG_ERR);
+                return false;
+            }
+            $conf->global->{self::CONSTANT} = $value;
+            return true;
+        }
+
         $result = dolibarr_set_const($db, self::CONSTANT, $value, 'chaine', 0, '', $entity);
 
         if ($result <= 0) {
