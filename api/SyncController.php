@@ -1343,7 +1343,7 @@ class SyncController
                 . "for this type.",
                 LOG_WARNING
             );
-            return $this->rawCastFallback($obj, $this->syncPk($config));
+            return $this->rawCastFallback($obj, $this->syncPk($config), $config);
         }
 
         $doliClass = $config['class'] ?? '';
@@ -1355,7 +1355,7 @@ class SyncController
                 . "'], falling back to raw cast.",
                 LOG_WARNING
             );
-            return $this->rawCastFallback($obj, $this->syncPk($config));
+            return $this->rawCastFallback($obj, $this->syncPk($config), $config);
         }
 
         if (!class_exists($doliClass) && file_exists($doliFile)) {
@@ -1368,7 +1368,7 @@ class SyncController
                 . $doliFile . "), falling back to raw cast.",
                 LOG_WARNING
             );
-            return $this->rawCastFallback($obj, $this->syncPk($config));
+            return $this->rawCastFallback($obj, $this->syncPk($config), $config);
         }
 
         $fresh = new $doliClass($this->db);
@@ -1381,7 +1381,7 @@ class SyncController
                 . "to raw cast.",
                 LOG_WARNING
             );
-            return $this->rawCastFallback($obj, $this->syncPk($config));
+            return $this->rawCastFallback($obj, $this->syncPk($config), $config);
         }
 
         // Symmetry with the push door, which now writes the extrafields a
@@ -1399,24 +1399,59 @@ class SyncController
     }
 
     /**
-     * Legacy raw cast path: leaks Dolibarr internal fields. Used only
-     * when the mapper path cannot run (no mapper registered, class
-     * missing, fetch failed). Each call site logs a LOG_WARNING.
+     * Legacy raw cast path, used only when the mapper path cannot run (no
+     * mapper registered, class missing, fetch failed). Each call site logs
+     * a LOG_WARNING.
      *
-     * @param object $obj Raw row from SELECT *
-     * @param string $pk  Primary key column of the table (registry 'pk')
-     * @return array     {id: int, ...other SQL columns}
+     * Bounded projection (audit S-8): the raw SELECT * row used to leave
+     * here in full -- every column of the table, including columns the
+     * registering module never meant to publish. Now:
+     *  - a type that declares 'allowed_fields' (hook-registered types)
+     *    serves exactly those columns, plus the identity keys;
+     *  - a type that declares nothing serves only {id, tms}: cursors and
+     *    pagination keep working, but no business column leaks. That
+     *    mirrors the write side, where applyDataLegacy() already refuses
+     *    every payload for a type without an allowlist.
+     *
+     * @param object $obj    Raw row from SELECT *
+     * @param string $pk     Primary key column of the table (registry 'pk')
+     * @param array  $config Entry from $this->syncableObjects
+     * @return array         Bounded projection of the row
      */
-    private function rawCastFallback($obj, $pk = 'rowid')
+    private function rawCastFallback($obj, $pk = 'rowid', array $config = [])
     {
         $data = (array) $obj;
+
+        $out = [];
         if ($pk !== 'id' && isset($data[$pk])) {
-            $data['id'] = (int) $data[$pk];
-            unset($data[$pk]);
+            $out['id'] = (int) $data[$pk];
         } elseif (isset($data['id'])) {
-            $data['id'] = (int) $data['id'];
+            $out['id'] = (int) $data['id'];
         }
-        return $data;
+        if (isset($data['tms'])) {
+            // Injected in ISO form by formatObjectForSync(); kept raw here
+            // so the caller knows a tms exists at all.
+            $out['tms'] = $data['tms'];
+        }
+
+        $allowed = $config['allowed_fields'] ?? null;
+        if (is_array($allowed) && $allowed !== []) {
+            foreach ($allowed as $field) {
+                $field = (string) $field;
+                if ($field !== '' && $field !== $pk && isset($data[$field])) {
+                    $out[$field] = $data[$field];
+                }
+            }
+        } else {
+            dol_syslog(
+                '[SmartAuth] SyncController::rawCastFallback: type declares '
+                . 'neither a mapper nor allowed_fields, serving identity keys '
+                . 'only (write side is fail-closed for such types too).',
+                LOG_NOTICE
+            );
+        }
+
+        return $out;
     }
 
     /**

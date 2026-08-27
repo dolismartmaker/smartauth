@@ -633,8 +633,11 @@ class SyncControllerTest extends TestCase
      * Test formatObjectForSync raw-cast fallback path: when the
      * object_type is not registered (no entry in $syncableObjects), no
      * mapper resolves and the controller logs LOG_WARNING then falls
-     * back to a (array) cast. The fallback must still: rename rowid to
-     * id, normalise tms to ISO 8601, and return an array.
+     * back to the bounded raw cast. The fallback must: rename rowid to
+     * id, normalise tms to ISO 8601, and leak NO business column -- an
+     * unregistered type declares neither a mapper nor an allowed_fields
+     * list, and the write side is fail-closed for exactly that case
+     * (audit S-8).
      *
      * The nominal mapper path (thirdparty / contact / product) is
      * covered by SyncMapperInvariantTest in integration-dolibarr, where
@@ -661,14 +664,41 @@ class SyncControllerTest extends TestCase
         $this->assertIsArray($result);
         $this->assertEquals(123, $result['id']);
         $this->assertArrayNotHasKey('rowid', $result);
-        // Raw cast preserves Dolibarr-side column names (drift).
-        // Acceptable here because this is the fallback path, not the
-        // nominal one.
-        $this->assertEquals('Test Company', $result['nom']);
+        // Bounded projection: identity keys only, no business column.
+        $this->assertArrayNotHasKey('nom', $result, 'unregistered type must not leak table columns');
+        $this->assertArrayNotHasKey('email', $result, 'unregistered type must not leak table columns');
         $this->assertMatchesRegularExpression(
             '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/',
             $result['tms']
         );
+    }
+
+    /**
+     * A hook-registered type WITHOUT a mapper but WITH an allowed_fields
+     * list serves exactly those columns (plus identity), not the whole
+     * SELECT * row.
+     */
+    public function testRawCastFallbackServesOnlyAllowedFields(): void
+    {
+        $method = $this->getPrivateMethod('rawCastFallback');
+
+        $obj = (object) [
+            'rowid' => 42,
+            'ref' => 'SO-2026-001',
+            'note_private' => 'internal secret',
+            'total_ht' => '1234.5',
+            'tms' => '2025-01-19 10:00:00',
+        ];
+
+        $config = ['allowed_fields' => ['ref', 'total_ht']];
+
+        $result = $method->invoke($this->controller, $obj, 'rowid', $config);
+
+        $this->assertSame(42, $result['id']);
+        $this->assertSame('SO-2026-001', $result['ref']);
+        $this->assertSame('1234.5', $result['total_ht']);
+        $this->assertArrayNotHasKey('note_private', $result, 'columns outside allowed_fields must not leak');
+        $this->assertArrayNotHasKey('rowid', $result);
     }
 
     /**
