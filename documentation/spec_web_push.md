@@ -2460,17 +2460,20 @@ if ($resql) {
     dol_syslog('SmartAuth::doScheduledJob push purge failed: '.$this->db->lasterror(), LOG_ERR);
 }
 
-// Purge optionnelle des logs push (RGPD) si la table d'audit est activée.
-// Rétention via constante (défaut 30j), même logique de borne calculée en PHP.
-if (getDolGlobalInt('SMARTAUTH_PUSH_LOGS_RETENTION_DAYS', 0) > 0) {
-    $days = getDolGlobalInt('SMARTAUTH_PUSH_LOGS_RETENTION_DAYS', 30);
-    $logCutoff = $this->db->idate(dol_now() - $days * 24 * 3600);
-    $sql = "DELETE FROM ".MAIN_DB_PREFIX."smartauth_push_logs";
-    $sql .= " WHERE date_creation < '".$this->db->escape($logCutoff)."'";
-    $resql = $this->db->query($sql);
-    if (!$resql) {
-        dol_syslog('SmartAuth::doScheduledJob push_logs purge failed: '.$this->db->lasterror(), LOG_ERR);
-    }
+// Purge des logs push (RGPD) : systématique (pas d'opt-in), rétention via
+// SMARTAUTH_PUSH_LOG_RETENTION_DAYS (défaut 90j), même logique de borne
+// calculée en PHP. NB : le nom de la constante est PUSH_LOG (singulier),
+// aligné sur les règles de codage du module et l'implémentation de smartauth.class.php.
+$pushLogRetentionDays = (int) getDolGlobalString('SMARTAUTH_PUSH_LOG_RETENTION_DAYS');
+if ($pushLogRetentionDays <= 0) {
+    $pushLogRetentionDays = 90;
+}
+$logCutoff = $this->db->idate(dol_now() - $pushLogRetentionDays * 24 * 3600);
+$sql = "DELETE FROM ".MAIN_DB_PREFIX."smartauth_push_logs";
+$sql .= " WHERE date_creation < '".$this->db->escape($logCutoff)."'";
+$resql = $this->db->query($sql);
+if (!$resql) {
+    dol_syslog('SmartAuth::doScheduledJob push_logs purge failed: '.$this->db->lasterror(), LOG_ERR);
 }
 ```
 
