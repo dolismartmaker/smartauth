@@ -72,7 +72,7 @@ class modSmartauth extends DolibarrModules
 		$this->editor_url = 'https://cap-rel.fr/';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.0.38';
+		$this->version = '2.0.39';
 		// Url to the file with your last numberversion of this module
 		$this->url_last_version = "https://cap-rel.fr/dolibarr/ver.php?m=" . $this->rights_class . "&v=" . $this->version . "&d=" . DOL_VERSION . "&h=" . md5(DOL_DATA_ROOT);
 
@@ -147,7 +147,7 @@ class modSmartauth extends DolibarrModules
 		$this->langfiles = array("smartauth@smartauth");
 
 		// Prerequisites
-		$this->phpmin = array(7, 0); // Minimum version of PHP required by module
+		$this->phpmin = array(7, 4); // Minimum version of PHP required by module (aligned with composer.json)
 		$this->need_dolibarr_version = array(17, -3); // Minimum version of Dolibarr required by module
 		$this->need_javascript_ajax = 0;
 
@@ -392,6 +392,11 @@ class modSmartauth extends DolibarrModules
 	{
 		global $conf, $langs;
 
+		// Version last activated: drives the replayable-migration blocks
+		// below (versioncompare). Empty on a fresh install, which makes
+		// every block fire once - they are written to be no-ops there.
+		$installedVersion = explode('.', getDolGlobalString('SMARTAUTH_MODULE_VERSION', ''));
+
 		//$result = $this->_load_tables('/install/mysql/', 'smartauth');
 		$result = $this->_load_tables('/smartauth/sql/');
 		if ($result < 0) {
@@ -449,6 +454,27 @@ class modSmartauth extends DolibarrModules
 				/* Invalidate all items in 1 second */
 				$m->flush(1);
 			}
+		}
+
+		// Replayable migrations by activation-version bounds. The bound is
+		// the version that introduced the fix; the block stays inert once
+		// SMARTAUTH_MODULE_VERSION has reached it.
+		$fixon = explode('.', '2.0.39');
+		if (versioncompare($installedVersion, $fixon) < 0) {
+			dol_syslog('SmartAuth init: applying migrations for versions < 2.0.39', LOG_NOTICE);
+			// Security hardening batch (audit 2026-08): the route cache
+			// signature changed with the new auth gates, drop any stale
+			// compiled routes so a re-activation rebuilds from source.
+			if (class_exists('\SmartAuth\Api\RouteCache')) {
+				\SmartAuth\Api\RouteCache::flushAll();
+			}
+		}
+
+		// Check if a more recent version is available (best-effort, non-blocking on failure)
+		$langs->load("smartauth@smartauth");
+		$checkRes = $this->checkForUpdate();
+		if ($checkRes > 0) {
+			setEventMessages($langs->trans('SmartAuthNewVersionAvailable', $this->version, $this->lastVersion), null, 'warnings');
 		}
 
 		// Publish running version so SmartAuthApp::smartauthVersion() (and any

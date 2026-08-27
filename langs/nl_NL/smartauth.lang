@@ -150,3 +150,4 @@ NewLoginUnknownDevice=onbekend apparaat
 NewLoginReasonNewIp=Nieuw IP-adres gebruikt
 NewLoginReasonNewDevice=Nieuw apparaat gebruikt
 NewLoginReasonNewBoth=Nieuw IP-adres en nieuw apparaat
+SmartAuthNewVersionAvailable = SmartAuth: er is een nieuwere versie beschikbaar (geïnstalleerd %s, beschikbaar %s). Overweeg een update.

@@ -376,3 +376,4 @@ PushLogAccepted=Accepted
 PushLogFailed=Failed
 PushLogError=Error
 PushLogSubscription=Subscription
+SmartAuthNewVersionAvailable = SmartAuth: a newer version is available (installed %s, available %s). Please consider updating.

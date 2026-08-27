@@ -150,3 +150,4 @@ NewLoginUnknownDevice=dispositivo desconhecido
 NewLoginReasonNewIp=Novo endereco IP utilizado
 NewLoginReasonNewDevice=Novo dispositivo utilizado
 NewLoginReasonNewBoth=Novo endereco IP e novo dispositivo
+SmartAuthNewVersionAvailable = SmartAuth: está disponível uma versão mais recente (instalada %s, disponível %s). Considere atualizar.
