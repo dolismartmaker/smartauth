@@ -127,9 +127,10 @@ class SyncControllerTest extends TestCase
      */
     public function testRegisterCreatesNewClient(): void
     {
-        // Setup: no existing client, insert succeeds
+        // Setup: uuid free for everyone, insert succeeds
         $this->mockDb
-            ->setQueryResult(true, [], 0)  // SELECT - no existing client
+            ->setQueryResult(true, [], 0)  // SELECT - uuid not taken at all
+            ->setQueryResult(true, [], 0)  // SELECT - no owned client for caller
             ->setQueryResult(true)          // INSERT
             ->setLastInsertId(123)
             ->setQueryResult(true);         // INSERT event log
@@ -153,14 +154,15 @@ class SyncControllerTest extends TestCase
      */
     public function testRegisterUpdatesExistingClient(): void
     {
-        // Setup: existing client found
+        // Setup: existing client found, owned by the caller
         $existingClient = (object) [
             'rowid' => 456,
             'status' => 1
         ];
 
         $this->mockDb
-            ->setQueryResult(true, [(array) $existingClient], 1)  // SELECT - existing client
+            ->setQueryResult(true, [(array) $existingClient], 1)  // SELECT - uuid taken (any owner)
+            ->setQueryResult(true, [(array) $existingClient], 1)  // SELECT - owned by caller
             ->setQueryResult(true)   // UPDATE
             ->setQueryResult(true);  // INSERT event log
 
@@ -173,6 +175,29 @@ class SyncControllerTest extends TestCase
         $this->assertIsArray($result);
         $this->assertEquals(200, $result[1]);
         $this->assertEquals(456, $result[0]['client_id']);
+    }
+
+    /**
+     * Test register with a client_uuid owned by ANOTHER user is refused
+     * with 409 instead of silently re-binding the row to the caller.
+     */
+    public function testRegisterRefusesClientUuidOwnedByOtherUser(): void
+    {
+        // Setup: uuid exists (any owner) but the caller-ownership join
+        // finds nothing.
+        $this->mockDb
+            ->setQueryResult(true, [['rowid' => 456]], 1)  // SELECT - uuid taken
+            ->setQueryResult(true, [], 0);                 // SELECT - not owned by caller
+
+        $result = $this->controller->register([
+            'user_id' => 42, 'client_uuid' => '550e8400-e29b-41d4-a716-446655440000',
+            'jwt_device_id' => 42,
+            'app_version' => '2.0.0'
+        ]);
+
+        $this->assertIsArray($result);
+        $this->assertEquals(409, $result[1]);
+        $this->assertArrayHasKey('error', $result[0]);
     }
 
     // =========================================================================
@@ -896,7 +921,8 @@ class SyncControllerTest extends TestCase
     public function testRegisterInsertFailureReturns500(): void
     {
         $this->mockDb
-            ->setQueryResult(true, [], 0)  // No existing client
+            ->setQueryResult(true, [], 0)  // SELECT - uuid not taken
+            ->setQueryResult(true, [], 0)  // SELECT - no owned client
             ->setQueryResult(false);        // INSERT fails
 
         $result = $this->controller->register([

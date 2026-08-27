@@ -174,6 +174,92 @@ class SyncControllerIntegrationTest extends DolibarrRealTestCase
         $this->assertEquals(1, $count);
     }
 
+    /**
+     * A client_uuid owned by ANOTHER user must not be re-bindable at
+     * registration time: the attacker gets a 409, the victim's row keeps
+     * its device and the attacker inherits nothing (audit S-5).
+     */
+    public function testRegisterRefusesForeignClientUuid(): void
+    {
+        $victimDeviceId = $this->createSyncTestDevice();
+        $clientId = $this->registerSyncClient($victimDeviceId);
+
+        $attacker = $this->createTestUser(['login' => 'syncattacker_' . uniqid()]);
+        $attackerDeviceId = $this->createSyncTestDeviceForUser((int) $attacker->id);
+
+        $result = $this->controller->register([
+            'user_id' => (int) $attacker->id,
+            'client_uuid' => $this->testClientUUID,
+            'jwt_device_id' => $attackerDeviceId,
+            'app_version' => '1.0.0',
+        ]);
+
+        $this->assertEquals(409, $result[1], 'registering another user client_uuid must be refused');
+        $this->assertArrayHasKey('error', $result[0]);
+
+        // The victim's row is untouched: same client, same device binding.
+        $sql = "SELECT fk_device, status FROM " . MAIN_DB_PREFIX . "smartauth_sync_clients"
+            . " WHERE rowid = " . (int) $clientId;
+        $resql = $this->db->query($sql);
+        $this->assertNotFalse($resql);
+        $row = $this->db->fetch_object($resql);
+        $this->assertEquals($victimDeviceId, (int) $row->fk_device, 'victim device binding must not be stolen');
+        $this->assertEquals(1, (int) $row->status);
+    }
+
+    /**
+     * Re-registering one's OWN client from a NEW device of the same user
+     * stays allowed (device upgrade flow): the row follows the user's new
+     * device.
+     */
+    public function testRegisterRebindsOwnClientToNewOwnDevice(): void
+    {
+        $oldDeviceId = $this->createSyncTestDevice();
+        $clientId = $this->registerSyncClient($oldDeviceId);
+
+        $newDeviceId = $this->createSyncTestDevice();
+
+        $result = $this->controller->register([
+            'user_id' => $this->testUser->id,
+            'client_uuid' => $this->testClientUUID,
+            'jwt_device_id' => $newDeviceId,
+            'app_version' => '2.0.0',
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertEquals($clientId, $result[0]['client_id']);
+
+        $sql = "SELECT fk_device FROM " . MAIN_DB_PREFIX . "smartauth_sync_clients"
+            . " WHERE rowid = " . (int) $clientId;
+        $resql = $this->db->query($sql);
+        $this->assertNotFalse($resql);
+        $this->assertEquals($newDeviceId, (int) $this->db->fetch_object($resql)->fk_device);
+    }
+
+    /**
+     * Create a smartauth_devices row owned by an arbitrary user (the shared
+     * helper is hardwired to the test admin).
+     */
+    private function createSyncTestDeviceForUser(int $userId): int
+    {
+        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_devices";
+        $sql .= " (ref, fk_user_creat, uuid, label, date_creation, status, entity)";
+        $sql .= " VALUES (";
+        $sql .= "'TEST-DEV-" . uniqid() . "', ";
+        $sql .= (int) $userId . ", ";
+        $sql .= "'" . $this->db->escape($this->generateUUID()) . "', ";
+        $sql .= "'Attacker Device', ";
+        $sql .= "'" . $this->db->idate(time()) . "', ";
+        $sql .= "1, ";
+        $sql .= "1)";
+
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            throw new \RuntimeException('Failed to insert sync test device: ' . $this->db->lasterror());
+        }
+        return (int) $this->db->last_insert_id(MAIN_DB_PREFIX . 'smartauth_devices');
+    }
+
     // =========================================================================
     // Push endpoint tests
     // =========================================================================

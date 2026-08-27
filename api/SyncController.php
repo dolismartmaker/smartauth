@@ -366,9 +366,30 @@ class SyncController
         // Determine sync scope
         $sync_scope = $this->determineSyncScope($payload['sync_scope'] ?? null);
 
-        // Check if client already exists
-        $sql = "SELECT rowid, status FROM " . MAIN_DB_PREFIX . "smartauth_sync_clients";
-        $sql .= " WHERE client_uuid = '" . $this->db->escape($client_uuid) . "'";
+        // Resolve the caller: re-pointing an existing sync client at another
+        // device is an ownership change, so the lookup carries the same
+        // device-owner scope as getClientByUUID() (M-11). Without it, anyone
+        // holding another user's client_uuid (it travels in every pull/push
+        // query string, so it lands in server and proxy logs) could hijack
+        // that client at registration time: the victim's pulls would 404 and
+        // the attacker would inherit their pending sync conflicts.
+        $userId = $this->payloadUserId($payload);
+        $ownerJoin = ""
+            . " INNER JOIN " . MAIN_DB_PREFIX . "smartauth_devices sd"
+            . " ON sc.fk_device = sd.rowid AND sd.fk_user_creat = " . (int) $userId;
+
+        // A row with this UUID that belongs to someone else must not be
+        // visible here (no oracle) and must not be updatable: detect it so
+        // the INSERT below fails with a clear error instead of relying on
+        // the unique index alone.
+        $sql = "SELECT sc.rowid FROM " . MAIN_DB_PREFIX . "smartauth_sync_clients sc";
+        $sql .= " WHERE sc.client_uuid = '" . $this->db->escape($client_uuid) . "'";
+        $resql = $this->db->query($sql);
+        $uuidTakenByOther = ($resql && $this->db->num_rows($resql) > 0);
+
+        // Check if client already exists AND is owned by the caller
+        $sql = "SELECT sc.rowid, sc.status FROM " . MAIN_DB_PREFIX . "smartauth_sync_clients sc" . $ownerJoin;
+        $sql .= " WHERE sc.client_uuid = '" . $this->db->escape($client_uuid) . "'";
 
         $resql = $this->db->query($sql);
         if ($resql && $this->db->num_rows($resql) > 0) {
@@ -385,6 +406,13 @@ class SyncController
 
             $this->db->query($sql);
         } else {
+            if ($uuidTakenByOther) {
+                // Generic-enough refusal: the caller cannot hijack the row,
+                // and a legitimate collision (restored device profile reusing
+                // a UUID) gets a clear signal to generate a fresh UUID.
+                dol_syslog('[SmartAuth] SyncController::register - client_uuid already owned by another user, refused', LOG_WARNING);
+                return [['error' => 'client_uuid is already registered by another user'], 409];
+            }
             // Create new client
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartauth_sync_clients";
             $sql .= " (fk_device, client_uuid, app_version, sync_scope, date_creation, status)";
