@@ -468,8 +468,11 @@ class AuthorizationController
      */
     private function validatePKCE(\SmartAuthOAuthClient $client, ?string $challenge, ?string $method): bool
     {
-        // Check if PKCE is required for this client
-        if ($client->requiresPkce()) {
+        // PKCE is required when the client asks for it OR when the instance
+        // enforces it globally (SMARTAUTH_OAUTH_REQUIRE_PKCE). The global
+        // toggle used to be written by the admin screen but never read
+        // here, so checking the box enforced nothing (audit S-10).
+        if ($client->requiresPkce() || OAuthConfig::requirePkce()) {
             // PKCE is required - challenge must be provided
             if (empty($challenge)) {
                 dol_syslog('[SmartAuth] AuthorizationController: PKCE required but not provided', LOG_WARNING);
