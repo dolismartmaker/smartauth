@@ -1,5 +1,18 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.42 -- 20260907
+
+ - user tab: scope both lists to the displayed user
+ - an admin was served every token of every user
+ - user tab: entity filter on tokens and logs
+ - user tab: keep the user id on ?userid= entry
+ - user tab: token activity history endpoint was missing
+ - user tab: fix ambiguous ORDER BY hiding both lists
+ - RSA key generation no longer depends on host openssl.cnf
+ - broken host openssl.cnf took the whole IdP down
+ - test harness: HTTP suite for server-rendered Dolibarr pages
+ - test harness: per-user temp document directory
+
 ## 2.0.40 -- 20260827
 
   (2026 summer sprint)
