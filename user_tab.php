@@ -146,6 +146,13 @@ if ($user->id <> $id && !$canreaduser) {
 	accessforbidden();
 }
 
+// Id of the user whose card is being displayed. $id is reassigned further down
+// (the page swaps $object from User to SmartAuth and re-reads GETPOST('id')),
+// so every query that must be scoped to the displayed user reads this variable
+// instead. It also survives the ?userid= entry point, which GETPOST('id') does
+// not.
+$targetUserId = (int) $id;
+
 // Get parameters
 $sortfield = GETPOST('sortfield', 'aZ09comma');
 $sortorder = GETPOST('sortorder', 'aZ09comma');
@@ -160,7 +167,13 @@ if (!$sortorder) {
 	$sortorder = "DESC";
 }
 if (!$sortfield) {
-	$sortfield = "rowid";
+	// Must stay table-qualified: both list queries below LEFT JOIN
+	// llx_smartauth_devices, which also has a rowid, so a bare "rowid" is
+	// ambiguous and the ORDER BY makes the whole query fail (SQLite:
+	// "ambiguous column name", MySQL: error 1052) -- the list then rendered
+	// nothing but a Dolibarr technical error. The column headers already
+	// build their sort links as "t.<field>".
+	$sortfield = "t.rowid";
 }
 
 $object = new User($db);
@@ -356,6 +369,63 @@ if (in_array($qrpairAction, array('qrpairstatus', 'qrpairconfirm', 'qrpaircancel
 		'claim_ip' => $qrRow['claim_ip'] !== null ? (string) $qrRow['claim_ip'] : '',
 		'claim_user_agent' => $qrRow['claim_user_agent'] !== null ? (string) $qrRow['claim_user_agent'] : '',
 	));
+	exit;
+}
+
+// =====================================================================
+// Token activity history (AJAX, read-only). Feeds the modal opened by the
+// history icon of the token list, which had no server side at all until
+// now: the fetch() landed on the full HTML page, json() threw, and the
+// modal always ended on "ErrorLoadingHistory".
+// The JS expects a flat array of {time, method, url, status} and renders
+// "no history" on an empty one.
+// Authorisation: who may open this card is settled by restrictedArea()
+// above; the INNER JOIN on smartauth_auth then scopes the rows to the
+// displayed user, so a forged token_id belonging to somebody else matches
+// nothing instead of leaking their traffic.
+// =====================================================================
+if ($action === 'viewhistory') {
+	header('Content-Type: application/json; charset=utf-8');
+	header('Cache-Control: no-store');
+
+	$histTokenId = (int) GETPOST('token_id', 'int');
+	if ($histTokenId <= 0) {
+		dol_syslog('[SmartAuth] user_tab.php: viewhistory called without a valid token_id by user_id=' . $user->id, LOG_WARNING);
+		http_response_code(400);
+		echo json_encode(array('error' => 'invalid_token_id'));
+		exit;
+	}
+
+	$histSql = "SELECT l.tms, l.method, l.url_requested, l.http_status";
+	$histSql .= " FROM " . MAIN_DB_PREFIX . "smartauth_logs AS l";
+	$histSql .= " INNER JOIN " . MAIN_DB_PREFIX . "smartauth_auth AS a ON a.rowid = l.fk_key";
+	$histSql .= " WHERE l.fk_key = " . $histTokenId;
+	$histSql .= " AND a.fk_authid = " . $targetUserId;
+	$histSql .= " AND a.entity IN (" . getEntity('smartauth') . ")";
+	$histSql .= " ORDER BY l.tms DESC";
+	$histSql .= $db->plimit(50, 0);
+
+	$histResql = $db->query($histSql);
+	if (!$histResql) {
+		dol_syslog('[SmartAuth] user_tab.php: viewhistory query failed for token #' . $histTokenId . ': ' . $db->lasterror(), LOG_ERR);
+		http_response_code(500);
+		echo json_encode(array('error' => 'db_error'));
+		exit;
+	}
+
+	$histRows = array();
+	while ($histObj = $db->fetch_object($histResql)) {
+		$histRows[] = array(
+			// The JS builds a Date from time * 1000, so seconds here.
+			'time' => (int) $db->jdate($histObj->tms),
+			'method' => (string) $histObj->method,
+			'url' => (string) $histObj->url_requested,
+			'status' => (int) $histObj->http_status,
+		);
+	}
+	$db->free($histResql);
+
+	echo json_encode($histRows);
 	exit;
 }
 
@@ -760,7 +830,10 @@ if ($object->id) {
 
 	// ------------------------------------------------------------------------------------------------------------ API KEYS
 	//note eric attention truandage, object était user et passe maintenant Auth ...
-	$id = GETPOST('id', 'int');
+	// Was GETPOST('id', 'int'), which dropped the ?userid= entry point handled
+	// at the top of the page and left $id at 0 there -- the action links built
+	// below (revoke, delete, rename) then pointed at id=0.
+	$id = $targetUserId;
 	// Initialize technical objects
 	$object = new SmartAuth($db);
 	$object->fields['fk_authid']['visible'] = 0;
@@ -825,9 +898,16 @@ if ($object->id) {
 	$sql .= $hookmanager->resPrint;
 	$sql .= " WHERE 1 = 1";
 
-	if (! $user->admin) {
-		$sql .= " AND t.fk_authid=" . (int) $user->id;
-	}
+	// This tab is the SmartAuth view OF THE DISPLAYED USER, so the scope is
+	// $targetUserId, never $user->id (the one browsing). The previous
+	// "if (!$user->admin)" guard got both cases wrong: an admin saw every
+	// token of every user on any card, and a non-admin with user->user->read
+	// saw HIS OWN tokens presented as a colleague's. It also disagreed with
+	// the actions on the very same rows, which SmartAuthUserTokenAdmin scopes
+	// to $id (so an admin got "TokenNotFound" when revoking what he was shown).
+	// Who may open the card at all is settled above by restrictedArea().
+	$sql .= " AND t.fk_authid = " . $targetUserId;
+	$sql .= " AND t.entity IN (" . getEntity('smartauth') . ")";
 
 	// Add where from hooks
 	$parameters = array();
@@ -1257,9 +1337,15 @@ if ($object->id) {
 	$sql .= $hookmanager->resPrint;
 	$sql .= " WHERE 1 = 1";
 
-	if (! $user->admin) {
-		$sql .= " AND t.fk_key IN ( SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_auth WHERE fk_authid = " . (int) $user->id . ")";
-	}
+	// Same scoping fix as the token list above: the logs shown here are those
+	// of the displayed user, whoever is browsing.
+	// Multi-entity is carried by the subquery rather than by a t.entity clause
+	// on llx_smartauth_logs: a log row belongs to the entity of the token it
+	// points at, and llx_smartauth_logs.entity is nullable (rows written before
+	// the column was systematically filled would disappear from the list).
+	$sql .= " AND t.fk_key IN (SELECT rowid FROM " . MAIN_DB_PREFIX . "smartauth_auth";
+	$sql .= " WHERE fk_authid = " . $targetUserId;
+	$sql .= " AND entity IN (" . getEntity('smartauth') . "))";
 
 	// Add where from hooks
 	$parameters = array();

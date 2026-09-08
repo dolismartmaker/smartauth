@@ -471,4 +471,64 @@ class JwtKeyHelperTest extends DolibarrRealTestCase
         $this->db->query("DELETE FROM " . MAIN_DB_PREFIX . "const WHERE name = '" . $this->db->escape($configKey) . "'");
         unset($conf->global->$configKey);
     }
+
+    /**
+     * RSA generation must not depend on the host openssl.cnf.
+     *
+     * Some machines ship that file templated or broken (unresolved
+     * @Placeholder@ values, missing section); openssl_pkey_new() then fails for
+     * reasons unrelated to SmartAuth and the whole IdP goes down with it: no
+     * token can be signed and /jwks.json answers 500. generateRsaKeyPair()
+     * retries with a minimal config it writes itself, which is what this test
+     * exercises directly.
+     */
+    public function testMinimalOpensslConfCanGenerateAnRsaKey(): void
+    {
+        $method = new \ReflectionMethod(JwtKeyHelper::class, 'writeMinimalOpensslConf');
+        $method->setAccessible(true);
+
+        $confFile = $method->invoke(null);
+        $this->assertNotSame('', $confFile, 'The fallback OpenSSL config must be written');
+        $this->assertFileExists($confFile);
+
+        try {
+            $key = openssl_pkey_new([
+                'private_key_bits' => 2048,
+                'private_key_type' => OPENSSL_KEYTYPE_RSA,
+                'config' => $confFile,
+            ]);
+            $this->assertNotFalse($key, 'The fallback config must be enough to generate an RSA key');
+
+            $details = openssl_pkey_get_details($key);
+            $this->assertIsArray($details);
+            $this->assertSame(2048, $details['bits']);
+        } finally {
+            @unlink($confFile);
+            while (openssl_error_string() !== false) {
+                // Drain, so a queued error does not surface in another test.
+            }
+        }
+    }
+
+    /**
+     * End to end: a fresh install with no key must end up with a usable pair,
+     * whatever the state of the host openssl.cnf.
+     */
+    public function testGenerateRsaKeyPairSucceedsOnThisHost(): void
+    {
+        $this->assertTrue(
+            JwtKeyHelper::generateRsaKeyPair(),
+            'RSA key pair generation must succeed even with an unusable host OpenSSL config'
+        );
+
+        $private = JwtKeyHelper::getRsaPrivateKey();
+        $public = JwtKeyHelper::getRsaPublicKey();
+        $this->assertStringContainsString('PRIVATE KEY', $private);
+        $this->assertStringContainsString('PUBLIC KEY', $public);
+
+        // The pair must actually work for the RS256 signatures it is meant for.
+        $signature = '';
+        $this->assertTrue(openssl_sign('smartauth', $signature, $private, OPENSSL_ALGO_SHA256));
+        $this->assertSame(1, openssl_verify('smartauth', $signature, $public, OPENSSL_ALGO_SHA256));
+    }
 }

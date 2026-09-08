@@ -51,6 +51,19 @@ abstract class DolibarrRealTestCase extends TestCase
     }
 
     /**
+     * Identifier of the account running the suite, used to keep the temp
+     * directories of two users on the same machine apart.
+     */
+    private static function currentUserSuffix(): string
+    {
+        if (function_exists('posix_geteuid')) {
+            return (string) posix_geteuid();
+        }
+        $uid = getmyuid();
+        return $uid === false ? 'default' : (string) $uid;
+    }
+
+    /**
      * Set up before each test
      */
     protected function setUp(): void
@@ -130,7 +143,15 @@ abstract class DolibarrRealTestCase extends TestCase
         // so delete() would fatal on an undefined property. Point every document
         // module at a temp output dir for both entity 1 and the active entity.
         $entity = (int) ($conf->entity ?? 1);
-        $docRoot = sys_get_temp_dir() . '/smartauth_test_docs';
+        // Scoped to the current user: sys_get_temp_dir() is shared on a
+        // multi-user machine, so a fixed name means the first account to run
+        // the suite owns the directory (mode 771) and every other account then
+        // fails deep inside Dolibarr's document layer with an opaque
+        // "Cannot create dir /tmp/smartauth_test_docs/facture/FA...".
+        $docRoot = sys_get_temp_dir() . '/smartauth_test_docs_' . self::currentUserSuffix();
+        if (!is_dir($docRoot) && !@mkdir($docRoot, 0700, true) && !is_dir($docRoot)) {
+            throw new \RuntimeException('Cannot create the test document directory ' . $docRoot);
+        }
         // Note: the project module stores its conf under $conf->project (English
         // key), while its enable flag / rights use 'projet'. Task::delete reads
         // $conf->project->dir_output, so both keys must be seeded.

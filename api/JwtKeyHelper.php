@@ -509,26 +509,60 @@ class JwtKeyHelper
             'private_key_type' => OPENSSL_KEYTYPE_RSA,
         ];
 
-        $keyResource = openssl_pkey_new($config);
+        // A host whose openssl.cnf is broken or left templated (unresolved
+        // @Placeholder@ values, missing section) makes openssl_pkey_new() fail
+        // for reasons that have nothing to do with us, and that takes the whole
+        // IdP down: no token can be signed and /jwks.json answers 500. So the
+        // failure is retried with a minimal config we ship ourselves, exactly
+        // like VapidKeyHelper::generateKeys does for the EC keys.
+        // The call is silenced because the OpenSSL warning is not actionable
+        // here: the reason is logged below and the retry usually succeeds.
+        $fallbackConfFile = '';
+        $keyResource = @openssl_pkey_new($config);
         if ($keyResource === false) {
-            dol_syslog('[SmartAuth] JwtKeyHelper: Failed to generate RSA key pair: ' . openssl_error_string(), LOG_ERR);
-            return false;
+            dol_syslog('[SmartAuth] JwtKeyHelper: RSA generation failed with the host OpenSSL config ('
+                . openssl_error_string() . '), retrying with a minimal one', LOG_WARNING);
+            $fallbackConfFile = self::writeMinimalOpensslConf();
+            if ($fallbackConfFile === '') {
+                dol_syslog('[SmartAuth] JwtKeyHelper: cannot write a temporary OpenSSL config for RSA generation', LOG_ERR);
+                return false;
+            }
+            // Keep it in $config: openssl_pkey_export() needs the same config,
+            // otherwise the export hits the broken host file again.
+            $config['config'] = $fallbackConfFile;
+            $keyResource = @openssl_pkey_new($config);
         }
 
-        // Extract private key
-        $privateKeyPem = '';
-        if (!openssl_pkey_export($keyResource, $privateKeyPem)) {
-            dol_syslog('[SmartAuth] JwtKeyHelper: Failed to export RSA private key: ' . openssl_error_string(), LOG_ERR);
-            return false;
-        }
+        try {
+            if ($keyResource === false) {
+                dol_syslog('[SmartAuth] JwtKeyHelper: Failed to generate RSA key pair: ' . openssl_error_string(), LOG_ERR);
+                return false;
+            }
 
-        // Extract public key
-        $keyDetails = openssl_pkey_get_details($keyResource);
-        if ($keyDetails === false) {
-            dol_syslog('[SmartAuth] JwtKeyHelper: Failed to get RSA key details: ' . openssl_error_string(), LOG_ERR);
-            return false;
+            // Extract private key
+            $privateKeyPem = '';
+            if (!openssl_pkey_export($keyResource, $privateKeyPem, null, $config)) {
+                dol_syslog('[SmartAuth] JwtKeyHelper: Failed to export RSA private key: ' . openssl_error_string(), LOG_ERR);
+                return false;
+            }
+
+            // Extract public key
+            $keyDetails = openssl_pkey_get_details($keyResource);
+            if ($keyDetails === false) {
+                dol_syslog('[SmartAuth] JwtKeyHelper: Failed to get RSA key details: ' . openssl_error_string(), LOG_ERR);
+                return false;
+            }
+            $publicKeyPem = $keyDetails['key'];
+        } finally {
+            if ($fallbackConfFile !== '') {
+                @unlink($fallbackConfFile);
+                // Drain the queued OpenSSL errors of the first attempt so they
+                // do not surface in an unrelated later call.
+                while (openssl_error_string() !== false) {
+                    // no-op
+                }
+            }
         }
-        $publicKeyPem = $keyDetails['key'];
 
         // Generate Key ID based on public key hash
         $kid = 'smartauth-' . substr(hash('sha256', $publicKeyPem), 0, 8);
@@ -573,6 +607,31 @@ class JwtKeyHelper
         }
 
         return $success;
+    }
+
+    /**
+     * Write a minimal, self-contained openssl.cnf in the temp directory.
+     *
+     * Only used as a fallback: OpenSSL 3.x reads its config once per process,
+     * so a late putenv('OPENSSL_CONF=...') has no effect (Dolibarr has already
+     * used OpenSSL by then). The per-call 'config' argument is the reliable
+     * lever, and it needs a real file.
+     *
+     * @return string Path of the file, or '' when it could not be written
+     */
+    private static function writeMinimalOpensslConf(): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'satjwtssl_');
+        if ($tmp === false) {
+            return '';
+        }
+        // Just enough for key generation, independent of the host file.
+        $written = file_put_contents($tmp, "[req]\ndefault_bits = 2048\ndistinguished_name = req_dn\n[req_dn]\n");
+        if ($written === false) {
+            @unlink($tmp);
+            return '';
+        }
+        return $tmp;
     }
 
     /**
