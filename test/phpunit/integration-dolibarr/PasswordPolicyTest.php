@@ -26,10 +26,35 @@ use SmartAuth\Api\PasswordPolicy;
  */
 class PasswordPolicyTest extends DolibarrRealTestCase
 {
+    /** @var string|null Generator configured before a test overrode it */
+    private $previousGenerator;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        global $conf;
+        $this->previousGenerator = isset($conf->global->USER_PASSWORD_GENERATED)
+            ? $conf->global->USER_PASSWORD_GENERATED
+            : null;
+    }
+
+    /**
+     * Restore the generator instead of dropping it: unsetting it leaves every
+     * later test running under the stricter baseline (which demands an
+     * uppercase char), so a fixture password such as 'newpassword123' starts
+     * being refused and unrelated suites fail depending on execution order.
+     */
     protected function tearDown(): void
     {
         global $conf;
-        unset($conf->global->USER_PASSWORD_GENERATED);
+
+        if ($this->previousGenerator === null) {
+            unset($conf->global->USER_PASSWORD_GENERATED);
+        } else {
+            $conf->global->USER_PASSWORD_GENERATED = $this->previousGenerator;
+        }
+
         parent::tearDown();
     }
 
@@ -80,6 +105,40 @@ class PasswordPolicyTest extends DolibarrRealTestCase
 
         // Long enough and mixed: accepted by the baseline.
         $this->assertTrue(PasswordPolicy::validate('SuperLong1Pass')['valid']);
+    }
+
+    /**
+     * The rejection message is shown as PLAIN TEXT by API consumers (PWA toast,
+     * alert). Dolibarr builds it with $langs->trans(), which HTML-encodes the
+     * accents ("caract&egrave;res") and keeps markup ("<strong> 12 </strong>"):
+     * displayed raw, the user reads entities and tags. The policy must hand out
+     * readable text.
+     */
+    public function testGeneratorMessageIsPlainReadableText(): void
+    {
+        global $conf, $langs;
+
+        $conf->global->USER_PASSWORD_GENERATED = 'standard';
+
+        $previousLang = $langs;
+        $langs = new \Translate('', $conf);
+        $langs->setDefaultLang('fr_FR');
+        $langs->loadLangs(array('main', 'other'));
+
+        try {
+            $result = PasswordPolicy::validate('court');
+
+            $this->assertFalse($result['valid'], 'a 5-char password must be rejected');
+            $this->assertStringNotContainsString('&', $result['message'], 'no HTML entity may reach the user');
+            $this->assertStringNotContainsString('<', $result['message'], 'no HTML tag may reach the user');
+            $this->assertStringContainsString(
+                'caractères',
+                $result['message'],
+                'accents must be restored as real characters'
+            );
+        } finally {
+            $langs = $previousLang;
+        }
     }
 
     /**

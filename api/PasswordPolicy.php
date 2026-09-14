@@ -109,11 +109,31 @@ class PasswordPolicy
             return ['valid' => true, 'message' => ''];
         }
 
+        // $gen->error comes from $langs->trans(), which returns HTML entities
+        // ("12 caract&egrave;res minimum"). API consumers render it as plain
+        // text (PWA toast, alert), where the entity shows up literally. Decode
+        // it here so every caller gets readable text.
         $message = !empty($gen->error)
-            ? $gen->error
+            ? self::toPlainText($gen->error)
             : 'Password does not meet the security requirements';
 
         return ['valid' => false, 'message' => $message];
+    }
+
+    /**
+     * Turn a translated Dolibarr message into plain text: decode HTML entities
+     * and drop any markup, so the result is safe to show in a toast, an alert
+     * or any non-HTML surface.
+     *
+     * @param string $message Message possibly holding entities (&eacute;, &#039;)
+     * @return string Plain UTF-8 text
+     */
+    private static function toPlainText(string $message): string
+    {
+        $decoded = html_entity_decode($message, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $decoded = strip_tags(str_replace(['<br>', '<br/>', '<br />'], ' ', $decoded));
+
+        return trim(preg_replace('/\s+/u', ' ', $decoded));
     }
 
     /**
