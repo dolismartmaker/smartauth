@@ -30,6 +30,8 @@ dol_include_once('/smartauth/api/Account/EmailValidationToken.php');
 // there is no composer autoload, so the class must be wired explicitly or the
 // reset-password POST path fatals with "Class PasswordPolicy not found".
 dol_include_once('/smartauth/api/PasswordPolicy.php');
+// Same reason: clearing the forced-change marker must not depend on autoload.
+dol_include_once('/smartauth/api/PasswordChangeFlag.php');
 
 use User;
 use SmartAuth\Api\RateLimiter;
@@ -521,6 +523,11 @@ class PasswordResetController
         // Consume the single-use token.
         $tokens->markUsed((int) $row['rowid']);
 
+        // The password is now one the user chose: stop forcing a change at login.
+        if (!empty($row['fk_user'])) {
+            PasswordChangeFlag::clear($db, (int) $row['fk_user'], (int) $conf->entity);
+        }
+
         // Invalidate every existing token of THIS subject. Without this, an
         // attacker who held valid tokens before the password change would keep
         // them. Subject-aware so an external subject (fk_user = 0) does not
@@ -658,7 +665,7 @@ class PasswordResetController
      */
     public function changePassword($arr = null)
     {
-        global $db;
+        global $db, $conf;
 
         SmartAuthLogger::debug("PasswordResetController::changePassword - Start");
 
@@ -723,6 +730,11 @@ class PasswordResetController
                 500
             ];
         }
+
+        // The password is now one the user chose: stop forcing a change at
+        // login, otherwise the PWA keeps routing them to /change-password.
+        $entity = isset($arr['entity']) ? (int) $arr['entity'] : (int) $conf->entity;
+        PasswordChangeFlag::clear($db, (int) $user->id, $entity);
 
         SmartAuthLogger::debug("PasswordResetController::changePassword - Password changed for user ID: " . $user->id);
 

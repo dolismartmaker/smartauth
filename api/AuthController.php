@@ -22,6 +22,10 @@
 namespace SmartAuth\Api;
 
 dol_include_once('/smartauth/api/tools.php');
+// Loaded explicitly: in production the composer autoloader is not always
+// registered, and login() would then fatal with "Class PasswordChangeFlag not
+// found" (same reason PasswordResetController includes PasswordPolicy).
+dol_include_once('/smartauth/api/PasswordChangeFlag.php');
 dol_include_once('/smartauth/class/smartauthdevices.class.php');
 dol_include_once('/smartauth/class/smartauthuserdevice.class.php');
 
@@ -672,12 +676,35 @@ class AuthController
 		// Check if user must change password
 		$mustChangePassword = false;
 
-		// First login (datepreviouslogin is null) forces a password change, unless
-		// the host instance opted out via SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE.
-		// Default 0 keeps the historical behaviour for every other setup.
-		if (empty($tmpuser->datepreviouslogin) && !getDolGlobalInt('SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE')) {
-			$mustChangePassword = true;
-			SmartAuthLogger::debug("smartauth : first login detected for user " . $tmpuser->id . ", password change required");
+		// A first login forces a password change, unless the host instance
+		// opted out via SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE. Default 0
+		// keeps the historical behaviour for every other setup.
+		//
+		// A date alone cannot carry the requirement: it is only refreshed by the
+		// Dolibarr WEB interface, so an account used exclusively from a PWA was
+		// sent to /change-password at EVERY login, forever. The first login
+		// therefore raises a persistent marker, cleared only when the password
+		// is actually changed, and the login is now recorded below like the web
+		// interface does.
+		//
+		// "Never logged in" is datelastlogin, NOT datepreviouslogin:
+		// update_last_login_date() shifts datelastlogin into datepreviouslogin,
+		// so the latter is still NULL right after a first login and would raise
+		// the marker again on the second one.
+		if (!getDolGlobalInt('SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE')) {
+			if (empty($tmpuser->datelastlogin)) {
+				PasswordChangeFlag::markRequired($db, (int) $tmpuser->id, (int) $entity);
+				SmartAuthLogger::debug("smartauth : first login detected for user " . $tmpuser->id . ", password change required");
+			}
+
+			$mustChangePassword = PasswordChangeFlag::isRequired($db, (int) $tmpuser->id, (int) $entity);
+		}
+
+		// Record this login the way the web interface does. Without it
+		// datelastlogin/datepreviouslogin stay empty for API-only accounts, so
+		// the user card never shows a connection date.
+		if ($tmpuser->update_last_login_date() < 0) {
+			dol_syslog("[SmartAuth] AuthController::login - could not record login date for user " . $tmpuser->id . ": " . $tmpuser->error, LOG_ERR);
 		}
 
 		$ret = [

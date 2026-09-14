@@ -25,7 +25,12 @@
 
 namespace SmartAuth\Api\Account;
 
+// Explicit include: production has no composer autoload, and changePassword()
+// would fatal on the class below.
+dol_include_once('/smartauth/api/PasswordChangeFlag.php');
+
 use SmartAuth\Api\OAuth2\TokenService;
+use SmartAuth\Api\PasswordChangeFlag;
 
 class AccountService
 {
@@ -128,6 +133,11 @@ class AccountService
             dol_syslog('[SmartAuth] AccountService: setPassword failed for user ' . $fkUser . ': ' . ($user->error ?? ''), LOG_ERR);
             return self::ERR_INTERNAL;
         }
+
+        // The password is now one the user chose: stop forcing a change at the
+        // next login, exactly like the API path does.
+        global $conf;
+        PasswordChangeFlag::clear($this->db, $fkUser, (int) $conf->entity);
 
         dol_syslog('[SmartAuth] AccountService: password changed for user ' . $fkUser, LOG_INFO);
         return $fkUser;

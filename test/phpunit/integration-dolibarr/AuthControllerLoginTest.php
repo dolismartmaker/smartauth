@@ -154,6 +154,155 @@ class AuthControllerLoginTest extends DolibarrRealTestCase
     }
 
     /**
+     * Changing the password is what ends the requirement. Nothing outside the
+     * web UI used to refresh llx_user.datepreviouslogin, so a PWA-only account
+     * was sent to /change-password at EVERY login, even right after changing
+     * its password - an endless loop.
+     */
+    public function testPasswordChangeStopsTheForcedChangeLoop(): void
+    {
+        global $conf;
+        unset($conf->global->SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE);
+
+        $user = $this->createTestUser([
+            'login' => 'relogin_' . uniqid(),
+            'email' => 'relogin_' . uniqid() . '@example.com',
+            'pass' => 'TestPass123!@#',
+            'statut' => 1,
+        ]);
+
+        $credentials = [
+            'email' => $user->email,
+            'password' => 'TestPass123!@#',
+            'entity' => 1,
+            'rememberMe' => 0,
+        ];
+
+        $first = $this->authController->login($credentials);
+        $this->assertEquals(200, $first[1]);
+        $this->assertTrue($first[0]['must_change_password'], 'first login must ask for a password change');
+
+        $reset = new \SmartAuth\Api\PasswordResetController();
+        $changed = $reset->changePassword([
+            'user' => $user,
+            'user_id' => (int) $user->id,
+            'entity' => 1,
+            'current_password' => 'TestPass123!@#',
+            'new_password' => 'BrandNewPass456!@#',
+        ]);
+        $this->assertEquals(200, $changed[1], 'the password change must succeed: ' . json_encode($changed[0]));
+
+        $second = $this->authController->login([
+            'email' => $user->email,
+            'password' => 'BrandNewPass456!@#',
+            'entity' => 1,
+            'rememberMe' => 0,
+        ]);
+        $this->assertEquals(200, $second[1]);
+        $this->assertFalse(
+            $second[0]['must_change_password'],
+            'once the password is changed the user must not be sent to /change-password again'
+        );
+    }
+
+    /**
+     * The requirement is not dodgeable: logging out and back in without ever
+     * changing the password keeps asking.
+     */
+    public function testForcedChangeSurvivesAReconnectionWithoutChange(): void
+    {
+        global $conf;
+        unset($conf->global->SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE);
+
+        $user = $this->createTestUser([
+            'login' => 'stubborn_' . uniqid(),
+            'email' => 'stubborn_' . uniqid() . '@example.com',
+            'pass' => 'TestPass123!@#',
+            'statut' => 1,
+        ]);
+
+        $credentials = [
+            'email' => $user->email,
+            'password' => 'TestPass123!@#',
+            'entity' => 1,
+            'rememberMe' => 0,
+        ];
+
+        $this->assertTrue($this->authController->login($credentials)[0]['must_change_password']);
+        $this->assertTrue(
+            $this->authController->login($credentials)[0]['must_change_password'],
+            'reconnecting without changing the password must not clear the requirement'
+        );
+    }
+
+    /**
+     * An account that already logged in before this mechanism existed carries
+     * no marker and must never be bothered: no mass "change your password" on
+     * an existing user base.
+     */
+    public function testExistingUserWithPreviousLoginIsNeverAsked(): void
+    {
+        global $conf, $db;
+        unset($conf->global->SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE);
+
+        $user = $this->createTestUser([
+            'login' => 'veteran_' . uniqid(),
+            'email' => 'veteran_' . uniqid() . '@example.com',
+            'pass' => 'TestPass123!@#',
+            'statut' => 1,
+        ]);
+
+        // Simulate a user who already logged in through the web interface.
+        $past = $db->idate(dol_now() - 86400);
+        $sql = "UPDATE " . MAIN_DB_PREFIX . "user SET datepreviouslogin = '" . $past . "',";
+        $sql .= " datelastlogin = '" . $past . "' WHERE rowid = " . ((int) $user->id);
+        $this->assertNotFalse($db->query($sql), 'seeding a previous login must succeed');
+
+        $result = $this->authController->login([
+            'email' => $user->email,
+            'password' => 'TestPass123!@#',
+            'entity' => 1,
+            'rememberMe' => 0,
+        ]);
+
+        $this->assertEquals(200, $result[1]);
+        $this->assertFalse(
+            $result[0]['must_change_password'],
+            'an account that already logged in must not be forced to change its password'
+        );
+    }
+
+    /**
+     * The API login must record the connection like the web interface does,
+     * otherwise the user card never shows a date for PWA-only accounts.
+     */
+    public function testLoginRecordsTheConnectionDate(): void
+    {
+        global $db;
+
+        $user = $this->createTestUser([
+            'login' => 'dated_' . uniqid(),
+            'email' => 'dated_' . uniqid() . '@example.com',
+            'pass' => 'TestPass123!@#',
+            'statut' => 1,
+        ]);
+
+        $result = $this->authController->login([
+            'email' => $user->email,
+            'password' => 'TestPass123!@#',
+            'entity' => 1,
+            'rememberMe' => 0,
+        ]);
+        $this->assertEquals(200, $result[1]);
+
+        $sql = "SELECT datelastlogin FROM " . MAIN_DB_PREFIX . "user WHERE rowid = " . ((int) $user->id);
+        $resql = $db->query($sql);
+        $this->assertNotFalse($resql);
+        $obj = $db->fetch_object($resql);
+        $this->assertNotEmpty($obj->datelastlogin, 'the API login must fill datelastlogin');
+    }
+
+    /**
      * SMARTAUTH_DISABLE_FORCED_PASSWORD_CHANGE = 1 opts the instance out: even a
      * first login no longer requires a password change.
      */
