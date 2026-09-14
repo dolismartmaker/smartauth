@@ -28,6 +28,17 @@ use SmartAuth\Api\AnnotationsHelper;
  */
 class AnnotationsHelperIntegrationTest extends DolibarrRealTestCase
 {
+    protected function tearDown(): void
+    {
+        // The hookmanager is shared for the whole run: a probe left behind
+        // would grant access in the tests that follow.
+        global $hookmanager;
+        if (is_object($hookmanager)) {
+            unset($hookmanager->hooks['smartmaker']['50:annotationsprobe']);
+        }
+        parent::tearDown();
+    }
+
     /**
      * Create an ECM file row owned by $owner. fk_user_c drives the owner
      * check inside AnnotationsHelper.
@@ -181,6 +192,134 @@ class AnnotationsHelperIntegrationTest extends DolibarrRealTestCase
         $this->assertFalse(AnnotationsHelper::set($ecm->id, $annotations, $this->testUser->id));
         // Nothing was persisted.
         $this->assertSame([], AnnotationsHelper::get($ecm->id, $this->testUser->id));
+    }
+
+    /**
+     * A file attached to a business object, read by someone else than the
+     * uploader, with no module answering the hook: still denied. Modules
+     * that implement nothing keep the historical owner-only behaviour.
+     */
+    public function testForeignUserDeniedWhenNoModuleGrantsAccess(): void
+    {
+        $ecm = $this->makeEcmFileOnSource($this->testUser, 'fichinter', 4242);
+        $other = $this->createTestUser(['login' => 'foreign_' . uniqid()]);
+
+        $annotations = [['id' => 'x', 'type' => 'note', 'x' => 1, 'y' => 1]];
+        AnnotationsHelper::set($ecm->id, $annotations, $this->testUser->id);
+
+        $this->assertFalse(AnnotationsHelper::set($ecm->id, $annotations, $other->id));
+        $this->assertSame([], AnnotationsHelper::get($ecm->id, $other->id));
+    }
+
+    /**
+     * Same setup, but the module owning the source object grants access
+     * through smartmaker_canAccessAnnotations: the second user reads AND
+     * writes the markers. This is what makes team-shared photos usable.
+     */
+    public function testForeignUserAllowedWhenModuleGrantsAccess(): void
+    {
+        $ecm = $this->makeEcmFileOnSource($this->testUser, 'fichinter', 4243);
+        $other = $this->createTestUser(['login' => 'teammate_' . uniqid()]);
+
+        $seed = [['id' => 'seeded', 'type' => 'note', 'x' => 1, 'y' => 1]];
+        AnnotationsHelper::set($ecm->id, $seed, $this->testUser->id);
+
+        $probe = $this->registerGrantingHook();
+
+        $this->assertCount(1, AnnotationsHelper::get($ecm->id, $other->id));
+
+        $added = [
+            ['id' => 'seeded', 'type' => 'note', 'x' => 1, 'y' => 1],
+            ['id' => 'byteammate', 'type' => 'note', 'x' => 2, 'y' => 2],
+        ];
+        $this->assertTrue(AnnotationsHelper::set($ecm->id, $added, $other->id));
+        $this->assertCount(2, AnnotationsHelper::get($ecm->id, $other->id));
+
+        // The module gets what it needs to apply its own rule.
+        $this->assertNotEmpty($probe->seen);
+        $last = end($probe->seen);
+        $this->assertSame('fichinter', $last['src_object_type']);
+        $this->assertSame(4243, $last['src_object_id']);
+        $this->assertSame((int) $other->id, $last['userid']);
+        $this->assertContains($last['operation'], ['get', 'set']);
+    }
+
+    /**
+     * The uploader never depends on the hook: a module answering "no"
+     * cannot lock someone out of their own file.
+     */
+    public function testUploaderKeepsAccessWhenHookDenies(): void
+    {
+        $ecm = $this->makeEcmFileOnSource($this->testUser, 'fichinter', 4244);
+        $this->registerDenyingHook();
+
+        $annotations = [['id' => 'mine', 'type' => 'note', 'x' => 3, 'y' => 3]];
+        $this->assertTrue(AnnotationsHelper::set($ecm->id, $annotations, $this->testUser->id));
+        $this->assertCount(1, AnnotationsHelper::get($ecm->id, $this->testUser->id));
+    }
+
+    /**
+     * Variant of makeEcmFile() carrying a source object, which is what
+     * enables the hook delegation branch.
+     */
+    private function makeEcmFileOnSource(\User $owner, string $srcType, int $srcId): EcmFiles
+    {
+        $ecm = $this->makeEcmFile($owner);
+        $ecm->src_object_type = $srcType;
+        $ecm->src_object_id = $srcId;
+        if ($ecm->update($owner) <= 0) {
+            throw new \Exception('Failed to attach source object to ECM fixture: ' . $ecm->error);
+        }
+        return $ecm;
+    }
+
+    /**
+     * Inject a companion module into the live hookmanager. initHooks() skips
+     * a context slot that already holds an object, so seeding the instance
+     * directly is enough -- no fake module has to be deployed on disk.
+     */
+    private function registerGrantingHook(): object
+    {
+        global $hookmanager;
+
+        $probe = new class {
+            public $priority = 50;
+            public $results = [];
+            public $resprints = '';
+            public $errors = [];
+            public $error = "";
+            public $seen = [];
+
+            public function smartmaker_canAccessAnnotations($parameters, &$object, &$action, $hookmanager)
+            {
+                $this->seen[] = $parameters;
+                $object['granted'] = true;
+                return 0;
+            }
+        };
+        $hookmanager->hooks['smartmaker']['50:annotationsprobe'] = $probe;
+        return $probe;
+    }
+
+    private function registerDenyingHook(): object
+    {
+        global $hookmanager;
+
+        $probe = new class {
+            public $priority = 50;
+            public $results = [];
+            public $resprints = '';
+            public $errors = [];
+            public $error = "";
+
+            public function smartmaker_canAccessAnnotations($parameters, &$object, &$action, $hookmanager)
+            {
+                $object['granted'] = false;
+                return 0;
+            }
+        };
+        $hookmanager->hooks['smartmaker']['50:annotationsprobe'] = $probe;
+        return $probe;
     }
 
     public function testExtrafieldColumnExistsAfterModuleInit(): void

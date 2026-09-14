@@ -103,8 +103,7 @@ class AnnotationsHelper
             return false;
         }
 
-        if ((int) $ecm->fk_user_c !== $userId) {
-            dol_syslog("[SmartAuth] AnnotationsHelper::set - owner mismatch on ecmfile $ecmFileId (fk_user_c={$ecm->fk_user_c}, userId=$userId)", LOG_WARNING);
+        if (!self::mayAccess($ecm, $userId, 'set')) {
             return false;
         }
 
@@ -175,8 +174,7 @@ class AnnotationsHelper
             return [];
         }
 
-        if ((int) $ecm->fk_user_c !== $userId) {
-            dol_syslog("[SmartAuth] AnnotationsHelper::get - owner mismatch on ecmfile $ecmFileId (fk_user_c={$ecm->fk_user_c}, userId=$userId)", LOG_WARNING);
+        if (!self::mayAccess($ecm, $userId, 'get')) {
             return [];
         }
 
@@ -330,6 +328,99 @@ class AnnotationsHelper
             }
         }
         return $depth;
+    }
+
+    /**
+     * Access rule shared by get() and set().
+     *
+     * Two ways in:
+     *
+     *  1. The caller uploaded the file (fk_user_c). Always allowed -- this
+     *     is the historical rule and covers the "one technician, his own
+     *     photos" case without any module cooperation.
+     *
+     *  2. The module owning the source object grants access. A photo
+     *     attached to a shared business object (an intervention, a piece of
+     *     equipment, a customer) is read by the whole team, not only by
+     *     whoever pressed the shutter -- but only that module knows its own
+     *     permission rules, so smartauth asks instead of guessing. The
+     *     owning module answers the `smartmaker_canAccessAnnotations` hook
+     *     (context `smartmaker`) by setting $object['granted'] = true.
+     *
+     * Default is DENY: a module that implements nothing keeps the previous
+     * owner-only behaviour, so no existing consumer loosens up silently.
+     *
+     * @param \EcmFiles $ecm     Loaded ecmfile row (source of fk_user_c / src_object_*)
+     * @param int       $userId  User performing the read/write
+     * @param string    $ctx     Calling method, for the syslog
+     * @return bool
+     */
+    private static function mayAccess($ecm, int $userId, string $ctx): bool
+    {
+        if ((int) $ecm->fk_user_c === $userId) {
+            return true;
+        }
+
+        $ecmFileId = (int) $ecm->id;
+        $srcType = (string) ($ecm->src_object_type ?? '');
+        $srcId = (int) ($ecm->src_object_id ?? 0);
+        if ($srcType === '' || $srcId <= 0) {
+            dol_syslog("[SmartAuth] AnnotationsHelper::$ctx - owner mismatch on ecmfile $ecmFileId (fk_user_c={$ecm->fk_user_c}, userId=$userId) and no source object to delegate to", LOG_WARNING);
+            return false;
+        }
+
+        $hookmanager = self::hookManager();
+        if ($hookmanager === null) {
+            dol_syslog("[SmartAuth] AnnotationsHelper::$ctx - owner mismatch on ecmfile $ecmFileId and no hookmanager available to ask $srcType#$srcId, denying", LOG_WARNING);
+            return false;
+        }
+
+        $hookmanager->initHooks(['smartmaker']);
+        $parameters = [
+            'ecmfile_id' => $ecmFileId,
+            'src_object_type' => $srcType,
+            'src_object_id' => $srcId,
+            'userid' => $userId,
+            'operation' => $ctx,
+        ];
+        $verdict = ['granted' => false];
+        $action = '';
+        $hookmanager->executeHooks('smartmaker_canAccessAnnotations', $parameters, $verdict, $action);
+
+        if (!empty($verdict['granted'])) {
+            return true;
+        }
+
+        dol_syslog("[SmartAuth] AnnotationsHelper::$ctx - access denied on ecmfile $ecmFileId for user $userId: not the uploader (fk_user_c={$ecm->fk_user_c}) and no module granted access on $srcType#$srcId", LOG_WARNING);
+        return false;
+    }
+
+    /**
+     * Resolve a usable HookManager. Prefers the global one (already
+     * initialised by the API front controller); builds a local instance
+     * otherwise, because a denied access caused by a missing global would
+     * look exactly like a real permission failure.
+     *
+     * @return \HookManager|null
+     */
+    private static function hookManager()
+    {
+        global $hookmanager, $db;
+
+        if (is_object($hookmanager)) {
+            return $hookmanager;
+        }
+        if (!class_exists('HookManager')) {
+            $path = defined('DOL_DOCUMENT_ROOT') ? DOL_DOCUMENT_ROOT . '/core/class/hookmanager.class.php' : '';
+            if ($path !== '' && is_file($path)) {
+                require_once $path;
+            }
+        }
+        if (!class_exists('HookManager') || !is_object($db)) {
+            dol_syslog("[SmartAuth] AnnotationsHelper - HookManager unavailable", LOG_ERR);
+            return null;
+        }
+        return new \HookManager($db);
     }
 
     /**
