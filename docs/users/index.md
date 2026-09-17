@@ -47,8 +47,8 @@ Pour les communications entre serveurs, SmartAuth prend en charge le grant type 
 
 ## Prérequis
 
-- Dolibarr 17.0 ou supérieur
-- PHP 7.0 ou supérieur
+- Dolibarr 18.0 ou supérieur
+- PHP 7.4 ou supérieur
 
 ## Éditeur
 

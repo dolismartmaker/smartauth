@@ -18,7 +18,7 @@ Non. SmartAuth fonctionne en complément de l'authentification native. L'accès 
 
 ### Quelles versions de Dolibarr sont compatibles ?
 
-SmartAuth nécessite Dolibarr 17.0 ou supérieur et PHP 7.0 ou supérieur.
+SmartAuth nécessite Dolibarr 18.0 ou supérieur et PHP 7.4 ou supérieur.
 
 ## Jetons et appareils
 
