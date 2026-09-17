@@ -35,7 +35,6 @@ $listOfModuleContent = [
 	'admin',
 	'api',
 	'ajax',
-	'backport',
 	'class',
 	'css',
 	'COPYING',

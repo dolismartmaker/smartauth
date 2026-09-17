@@ -110,7 +110,6 @@ parameters:
 	paths:
 		- admin
 		- api
-		- backport
 		- build
 		- class
 		- core

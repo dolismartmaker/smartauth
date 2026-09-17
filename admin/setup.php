@@ -86,12 +86,8 @@ $setupnotempty = 0;
 $useFormSetup = 1;
 
 if (!class_exists('FormSetup')) {
-	// For retrocompatibility Dolibarr < 16.0
-	if (floatval(DOL_VERSION) < 18.0 && !class_exists('FormSetup')) {
-		dol_include_once('/smartauth/backport/v16/core/class/html.formsetup.class.php');
-	} else {
-		require_once DOL_DOCUMENT_ROOT.'/core/class/html.formsetup.class.php';
-	}
+	// FormSetup ships with the core since Dolibarr 15, well below the 18.0 baseline.
+	require_once DOL_DOCUMENT_ROOT.'/core/class/html.formsetup.class.php';
 }
 
 $formSetup = new FormSetup($db);
