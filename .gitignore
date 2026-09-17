@@ -36,3 +36,4 @@ SPEC*.md
 spec*.md
 *.log
 .env
+.phpstan.local.neon
