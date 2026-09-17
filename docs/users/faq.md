@@ -103,7 +103,7 @@ Ajoutez l'exception dans le vhost de votre portail SSO :
 </LocationMatch>
 ```
 
-Puis `sudo systemctl reload apache2`. Voir la section [Portail SSO public](oauth.md#portail-sso-public) du chapitre OAuth pour la configuration vhost complète.
+Puis `sudo systemctl reload apache2`. Voir la section [Portail SSO public](/smartauth/oauth#portail-sso-public) du chapitre OAuth pour la configuration vhost complète.
 
 ### Le lien dans le mail de réinitialisation du mot de passe pointe au mauvais endroit
 

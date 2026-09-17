@@ -445,17 +445,6 @@ class modSmartauth extends DolibarrModules
 
 		$sql = array();
 
-		// Flush Memcached cache on module activation/upgrade
-		if (isModEnabled('memcached') && class_exists('Memcached')) {
-			$m = new Memcached();
-			$tmparray = explode(':', $conf->global->MEMCACHED_SERVER);
-			$result = $m->addServer($tmparray[0], $tmparray[1] ? $tmparray[1] : 11211);
-			if ($result) {
-				/* Invalidate all items in 1 second */
-				$m->flush(1);
-			}
-		}
-
 		// Replayable migrations by activation-version bounds. The bound is
 		// the version that introduced the fix; the block stays inert once
 		// SMARTAUTH_MODULE_VERSION has reached it.
@@ -489,6 +478,18 @@ class modSmartauth extends DolibarrModules
 		// through the admin button (VapidKeyHelper::regenerateKeys).
 		dol_include_once('/smartauth/api/VapidKeyHelper.php');
 		\SmartAuth\Api\VapidKeyHelper::ensureKeys($this->db);
+
+		// Flush Memcached last, so everything this method wrote (constants,
+		// schema, VAPID keys) is already in place when the cached copies go.
+		if (isModEnabled('memcached') && class_exists('Memcached')) {
+			$m = new Memcached();
+			$tmparray = explode(':', $conf->global->MEMCACHED_SERVER);
+			$result = $m->addServer($tmparray[0], $tmparray[1] ? $tmparray[1] : 11211);
+			if ($result) {
+				/* Invalidate all items in 1 second */
+				$m->flush(1);
+			}
+		}
 
 		return $this->_init($sql, $options);
 	}

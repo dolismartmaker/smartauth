@@ -59,4 +59,4 @@ Le module définit une permission de lecture. Attribuez-la aux utilisateurs qui 
 
 Si vous activez le serveur OAuth2/OIDC, il est fortement recommandé d'exposer le portail SSO public (`htdocs/custom/smartauth/public/`) sur un sous-domaine dédié (exemple : `https://auth.exemple.fr`). Ce portail sert la page de connexion, l'inscription, la réinitialisation de mot de passe et les endpoints OIDC (`/.well-known/openid-configuration`, `/.well-known/jwks.json`, `/oauth/*`).
 
-Voir la section [Portail SSO public](oauth.md#portail-sso-public) du chapitre OAuth2/OIDC pour la configuration complète du vhost Apache, l'exception `/.well-known/` à ajouter, et les constantes Dolibarr à définir (`SMARTAUTH_APP_URL`, `SMARTAUTH_REGISTRATION_ENABLED`, `SMARTAUTH_ACCOUNT_ENABLED`).
+Voir la section [Portail SSO public](/smartauth/oauth#portail-sso-public) du chapitre OAuth2/OIDC pour la configuration complète du vhost Apache, l'exception `/.well-known/` à ajouter, et les constantes Dolibarr à définir (`SMARTAUTH_APP_URL`, `SMARTAUTH_REGISTRATION_ENABLED`, `SMARTAUTH_ACCOUNT_ENABLED`).
