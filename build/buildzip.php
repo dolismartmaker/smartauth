@@ -64,7 +64,10 @@ $listOfModuleContent = [
 $exclude_list = [
 	'/^.git$/',
 	'/.*js.map/',
-	'/DEV.md/'
+	'/DEV.md/',
+	// Any whitelisted directory may host its own npm tree (a Tailwind CLI under
+	// public/, for instance), which has nothing to do in a release.
+	'/(^|\/)node_modules$/',
 ];
 
 // ============================================= end of configuration
@@ -211,6 +214,14 @@ function is_excluded($filename)
  */
 function rcopy($src, $dst)
 {
+	// is_dir() follows a directory symlink, and the Playwright harness leaves
+	// vendor/cap-rel/dolibarr-integration-sqlite/htdocs/custom/<module> pointing
+	// back at the repository root. Following it walks into vendor/ again and
+	// never terminates, so links are skipped: none of them is shippable anyway.
+	if (is_link($src)) {
+		echo " - skip symlink $src\n";
+		return true;
+	}
 	if (is_dir($src)) {
 		// Make the destination directory if not exist
 		mkdirAndCheck($dst);
@@ -312,13 +323,35 @@ foreach ($listOfModuleContent as $moduleContent) {
 }
 
 $z = new ZipArchive();
-$z->open($outzip, ZIPARCHIVE::CREATE);
+if ($z->open($outzip, ZIPARCHIVE::CREATE) !== true) {
+	echo "[fail] cannot open $outzip for writing\n";
+	exit(-9);
+}
 zipDir($tmpdir, $z, $tmpdir . '/');
-$z->close();
+// close() is where the archive is actually written. On a shared machine the
+// path may already belong to another account, and the rename then fails while
+// file_exists() still answers yes -- on somebody else's archive. Set TMPDIR to
+// a directory of your own to package alongside a colleague.
+if (!$z->close()) {
+	echo "[fail] cannot write $outzip";
+	$owner = file_exists($outzip) ? fileowner($outzip) : false;
+	if ($owner !== false && function_exists('posix_getpwuid')) {
+		$pw = posix_getpwuid($owner);
+		echo " (owned by " . (isset($pw['name']) ? $pw['name'] : $owner) . ")";
+	}
+	echo "\n";
+	exit(-10);
+}
 delTree($tmpdir);
 if (file_exists($outzip)) {
-	echo "[success] module archive is ready : $outzip ...\n";
+	$entries = 0;
+	$check = new ZipArchive();
+	if ($check->open($outzip) === true) {
+		$entries = $check->numFiles;
+		$check->close();
+	}
+	printf("[success] module archive is ready : %s (%d entries, %s MB)\n", $outzip, $entries, round(filesize($outzip) / 1024 / 1024, 1));
 } else {
 	echo "[fail] build zip error\n";
-	exit(-9);
+	exit(-11);
 }

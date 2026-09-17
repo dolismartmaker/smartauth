@@ -9,22 +9,50 @@ DOC_PATH     ?= /home/webs/doc.cap-rel.fr/marginaliamd/data/documents/$(MODULE)
 MARGINALIAMD ?= $(HOME)/dev/marginaliamd
 
 .DEFAULT_GOAL := help
-.PHONY: help zip deploy-doc screenshots phpstan
+.PHONY: help zip check-zip deploy-doc screenshots phpstan
+
+# Passed explicitly to the recursive call below, so that "make -f Makefile.dist zip"
+# keeps using this file instead of falling back to the Makefile wrapper.
+THIS_MAKEFILE := $(firstword $(MAKEFILE_LIST))
+
+# The zip and the ChangeLog copy both land here. Overriding TMPDIR is how two
+# accounts package on the same machine without fighting over /tmp/module_*.zip,
+# which is owned by whoever built first.
+RELEASE_DIR ?= $(if $(TMPDIR),$(TMPDIR),/tmp)
 
 help:
 	@echo ''
 	@echo 'Usage: make <target>'
 	@echo ''
-	@echo '  zip            —  create distributable zip archive'
-	@echo '  deploy-doc     —  publish user documentation to doc.cap-rel.fr'
-	@echo '  screenshots    —  collect missing screenshots interactively'
-	@echo '  phpstan        —  run static analysis with PHPStan'
+	@echo '  zip            -  create distributable zip archive'
+	@echo '  check-zip      -  fail if the built zip carries a development dependency'
+	@echo '  deploy-doc     -  publish user documentation to doc.cap-rel.fr'
+	@echo '  screenshots    -  collect missing screenshots interactively'
+	@echo '  phpstan        -  run static analysis with PHPStan'
 	@echo ''
 
+# vendor/ is wiped then reinstalled --no-dev, because composer only removes what
+# it believes it installed: against a stale installed.json it reports "0 removals"
+# and ships the whole test harness. check_nodev.php verifies the outcome instead
+# of trusting the command, on the tree before the build and on the archive after.
+# The build runs inside a single shell recipe so that the development
+# dependencies are reinstalled even when it fails: leaving vendor/ amputated
+# silently breaks phpunit and the Dolibarr harness until the next manual install.
 zip: clean
-	composer i --no-dev
-	(php ./build/buildzip.php)
-	cp -f ChangeLog.md /tmp
+	@echo '==> installing production dependencies'
+	composer install --no-dev --optimize-autoloader --no-interaction
+	@set +e; \
+		php build/check_nodev.php vendor && php ./build/buildzip.php; \
+		status=$$?; \
+		echo '==> restoring development dependencies'; \
+		composer install --no-interaction \
+			|| echo 'ERROR: development dependencies were NOT restored, run "composer install" by hand'; \
+		exit $$status
+	$(MAKE) --no-print-directory -f $(THIS_MAKEFILE) check-zip
+	cp -f ChangeLog.md $(RELEASE_DIR)/
+
+check-zip:
+	php build/check_nodev.php zip
 
 deploy-doc:
 	rsync -avLP docs/users/ $(DOC_HOST):$(DOC_PATH)/
