@@ -311,7 +311,7 @@ class PushSender
             require_once $autoload;
         }
         if (!class_exists('SmartAuth\\Api\\WebPushCrypto')) {
-            require_once __DIR__.'/WebPushCrypto.php';
+            dol_include_once('/smartauth/api/WebPushCrypto.php');
         }
     }
 

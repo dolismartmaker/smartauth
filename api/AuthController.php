@@ -2792,7 +2792,7 @@ class AuthController
 			return;
 		}
 		try {
-			require_once __DIR__ . '/Account/NewLoginNotifier.php';
+			dol_include_once('/smartauth/api/Account/NewLoginNotifier.php');
 			$ip = self::get_client_ip();
 			$notifier = new \SmartAuth\Api\Account\NewLoginNotifier($db);
 			$notifier->notifyIfNewLogin($user, (string) $ip, (int) $deviceId);

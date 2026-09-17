@@ -18,6 +18,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+// __DIR__ and not dol_include_once() on purpose, here and in the spl_autoload
+// closure below: an autoloader must resolve against its OWN directory. Going
+// through dol_buildpath() would pick the first module root declared in the
+// configuration, which is a different install when smartauth is deployed twice.
 require_once __DIR__.'/api/tools.php';
 
 // vendor/ may be absent on a deployment where 'composer install' was not run.
