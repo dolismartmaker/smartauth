@@ -245,7 +245,7 @@ $detectedIssuer = $protocol.'://'.$host;
 print '<span class="opacitymedium">'.$langs->trans("SmartAuthOAuthSetupDesc").'</span><br><br>';
 
 // Configuration form
-print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'">';
+print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" data-submit-once>';
 print '<input type="hidden" name="token" value="'.newToken().'">';
 print '<input type="hidden" name="action" value="update">';
 
@@ -409,7 +409,7 @@ if ($oauthEnabled) {
 		print '<tr class="oddeven">';
 		print '<td>'.$langs->trans("SmartAuthDolibarrCreateClient").'</td>';
 		print '<td>';
-		print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" style="display: inline;">';
+		print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" style="display: inline;" data-submit-once>';
 		print '<input type="hidden" name="token" value="'.newToken().'">';
 		print '<input type="hidden" name="action" value="create_dolibarr_client">';
 		print '<input type="text" class="flat minwidth300" name="redirect_uri" placeholder="https://erp.example.com/index.php" value="">';
@@ -424,7 +424,7 @@ if ($oauthEnabled) {
 	print '<tr class="oddeven">';
 	print '<td>'.$langs->trans("SmartAuthDolibarrTestConnection").'</td>';
 	print '<td>';
-	print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" style="display: inline;">';
+	print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" style="display: inline;" data-submit-once>';
 	print '<input type="hidden" name="token" value="'.newToken().'">';
 	print '<input type="hidden" name="action" value="test_connection">';
 	print '<input type="submit" class="button" value="'.$langs->trans("Test").'">';
@@ -532,6 +532,26 @@ if ($oauthEnabled) {
 	print '<br>';
 	print '<div class="info">'.$langs->trans("SmartAuthOAuthNotEnabled").'</div>';
 }
+
+// Double-submit guard. Saving the setup, creating the Dolibarr OAuth client
+// and testing the connection all hit the network or write rows, so a second
+// click must not start a second run. Listening on submit (and not on click)
+// leaves HTML5 validation free to cancel the submission: an invalid form never
+// fires submit, so the button stays usable.
+// The buttons here are <input type="submit">, whose label is its value, not its
+// text content. transnoentities() and not trans(): the label goes through
+// JavaScript, where HTML entities would show up literally.
+print '<script>';
+print 'var smartauthWaitLabel = '.json_encode($langs->transnoentities('SmartAuthPleaseWait')).';';
+print 'document.querySelectorAll(\'form[data-submit-once]\').forEach(function(form) {';
+print '    form.addEventListener(\'submit\', function() {';
+print '        var btn = form.querySelector(\'[type="submit"]\');';
+print '        if (!btn) { return; }';
+print '        btn.disabled = true;';
+print '        if (btn.tagName === \'INPUT\') { btn.value = smartauthWaitLabel; } else { btn.textContent = smartauthWaitLabel; }';
+print '    });';
+print '});';
+print '</script>';
 
 // Page end
 print dol_get_fiche_end();
