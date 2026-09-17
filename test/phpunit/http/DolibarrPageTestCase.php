@@ -79,6 +79,17 @@ abstract class DolibarrPageTestCase extends TestCase
     /** @var bool Did we create documents/install.lock ourselves? */
     protected static bool $createdInstallLock = false;
 
+    /**
+     * Offset added to SMARTAUTH_TEST_BACKEND_PORT. One subclass, one offset:
+     * two suites sharing a port would also share the cookie jar and the RAM
+     * database, and a server left behind by the previous class would answer in
+     * place of the new one.
+     */
+    protected static function portOffset(): int
+    {
+        return 2;
+    }
+
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
@@ -92,10 +103,10 @@ abstract class DolibarrPageTestCase extends TestCase
 
         // Port: reserved window of the project (cf ~/docs/TESTING_PWA.md).
         // 8885 serves the REST router and 8886 the OAuth smoke suite, so this
-        // harness takes the next one. Never hardcoded: it is derived from the
+        // harness takes the next ones. Never hardcoded: it is derived from the
         // env var defined in the project settings.
         $basePort = (int) (getenv('SMARTAUTH_TEST_BACKEND_PORT') ?: 8885);
-        self::$serverPort = $basePort + 2;
+        self::$serverPort = $basePort + static::portOffset();
         self::$baseUrl = 'http://127.0.0.1:' . self::$serverPort;
         self::$cookieJar = sys_get_temp_dir() . '/smartauth_page_test_cookies_' . self::$serverPort . '.txt';
         @unlink(self::$cookieJar);
