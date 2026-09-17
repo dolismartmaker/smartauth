@@ -1,5 +1,11 @@
 # CHANGELOG SMARTAUTH FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 2.0.44 -- 20260917
+
+ - photo annotations: access follows the owning module, not only the uploader
+ - AnnotationsHelper::get/set delegate to the smartmaker_canAccessAnnotations hook
+ - default stays deny, so modules implementing nothing keep the previous behaviour
+
 ## 2.0.42 -- 20260907
 
  - user tab: scope both lists to the displayed user
