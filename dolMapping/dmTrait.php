@@ -351,6 +351,19 @@ trait dmTrait
 			return $doliObject->fields[$fieldName];
 		}
 
+		// 'rowid' is the SQL column name; CommonObject publishes the value as
+		// $id. Classes written by hand -- no $fields array, no $rowid property
+		// -- declare neither, so the mapper convention 'rowid' => 'id' lost its
+		// identifier here while exportMappedData() kept emitting it (it already
+		// aliases 'rowid' to $obj->id). The published schema and the exported
+		// payload disagreed. Same alias on both paths.
+		if ($fieldName === 'rowid' && !property_exists($doliObject, 'rowid') && property_exists($doliObject, 'id')) {
+			$fieldName = 'id';
+			if (isset($doliObject->fields['id'])) {
+				return $doliObject->fields['id'];
+			}
+		}
+
 		// Fallback: check if property exists on the object
 		if (!property_exists($doliObject, $fieldName)) {
 			return null;

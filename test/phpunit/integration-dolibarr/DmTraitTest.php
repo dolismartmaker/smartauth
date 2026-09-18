@@ -215,6 +215,20 @@ class TestDmConsumerOverrideMapper extends dmBase
 }
 
 /**
+ * Hand-written Dolibarr-shaped object: no $fields array, no $rowid property,
+ * identifier exposed through $id only. Plenty of module classes are written
+ * this way (CommonObject subclasses that never went through the module
+ * builder), and mappers still publish them with the 'rowid' => 'id'
+ * convention.
+ */
+class TestDmBareDoliObject
+{
+    public $id;
+
+    public $label;
+}
+
+/**
  * @covers \SmartAuth\DolibarrMapping\dmTrait
  * @covers \SmartAuth\DolibarrMapping\dmBase
  */
@@ -1572,6 +1586,44 @@ class DmTraitTest extends DolibarrRealTestCase
         $this->assertIsArray($result);
         $this->assertArrayHasKey('type', $result);
         $this->assertArrayHasKey('label', $result);
+    }
+
+    /**
+     * Test _getFieldDefinition resolves 'rowid' through $id on a class that
+     * declares neither $fields nor a $rowid property.
+     *
+     * exportMappedData() already aliases 'rowid' to $obj->id, so the value was
+     * emitted while _objectDesc() dropped the field from the published schema
+     * and logged "field 'rowid' not found". Both paths must agree.
+     */
+    public function testGetFieldDefinitionAliasesRowidToIdWithoutFieldsArray(): void
+    {
+        $bare = new TestDmBareDoliObject();
+
+        $reflection = new ReflectionClass($this->mapper);
+        $method = $reflection->getMethod('_getFieldDefinition');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($this->mapper, $bare, 'rowid');
+
+        $this->assertIsArray($result, "'rowid' must resolve through the \$id property");
+        $this->assertSame('integer', $result['type']);
+    }
+
+    /**
+     * The alias must not invent an identifier: a class exposing neither
+     * $rowid nor $id still yields null.
+     */
+    public function testGetFieldDefinitionRowidStaysNullWithoutIdProperty(): void
+    {
+        $noId = new stdClass();
+        $noId->label = 'x';
+
+        $reflection = new ReflectionClass($this->mapper);
+        $method = $reflection->getMethod('_getFieldDefinition');
+        $method->setAccessible(true);
+
+        $this->assertNull($method->invoke($this->mapper, $noId, 'rowid'));
     }
 
     /**
