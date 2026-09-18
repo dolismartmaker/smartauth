@@ -505,7 +505,19 @@ class RouteCache
             if (is_array($cached) && isset($cached['routes'])) {
                 return $cached;
             }
-        } catch (\Exception $e) {
+            // Unusable cache file. Returning null silently made the caller
+            // rebuild on EVERY request -- a full scandir of the module roots
+            // plus a rewrite of routes.php per API call -- with nothing in the
+            // log to explain why the cache never took. Say what was read.
+            dol_syslog(
+                "[SmartAuth] RouteCache: cache file " . $cacheFile . " did not return a usable route array (got "
+                . gettype($cached) . "), rebuilding. Check file permissions and open_basedir.",
+                LOG_WARNING
+            );
+        } catch (\Throwable $e) {
+            // \Throwable, not \Exception: a truncated or corrupted cache file
+            // raises a ParseError, which is an \Error -- it escaped the old
+            // catch and killed the request with a fatal instead of rebuilding.
             dol_syslog("[SmartAuth] RouteCache: Error loading cache: " . $e->getMessage(), LOG_WARNING);
         }
 
@@ -611,8 +623,29 @@ class RouteCache
      */
     private static function warnUndeclaredRouteModules(): void
     {
+        foreach (self::undeclaredRouteModules() as $mod) {
+            dol_syslog(
+                "[SmartAuth] RouteCache: module '" . $mod . "' is ENABLED and exposes api/LocalRoutes.php"
+                . " but does NOT declare module_parts['smartauth'] => array('routes' => 1) in its descriptor."
+                . " Its API routes are NOT loaded. Add the declaration and re-enable the module"
+                . " (see ~/docs/MODULE.md section 7a).",
+                LOG_WARNING
+            );
+        }
+    }
+
+    /**
+     * Enabled modules that expose api/LocalRoutes.php without declaring
+     * module_parts['smartauth'] -- i.e. the ones whose routes really do
+     * disappear once the declarative registry is active.
+     *
+     * @return string[] Lowercase module names
+     */
+    private static function undeclaredRouteModules(): array
+    {
         global $conf;
 
+        $undeclared = [];
         $declared = array_flip(ModulePathHelper::activeRouteModules());
 
         foreach (ModulePathHelper::moduleRootDirs() as $customDir) {
@@ -631,19 +664,23 @@ class RouteCache
                 if (isset($declared[$mod])) {
                     continue; // properly declared
                 }
+                // SmartAuth is the IdP, not a consumer plugin: it deliberately
+                // does not declare module_parts['smartauth'] for itself, and
+                // discoverLocalRoutesFiles() re-injects its LocalRoutes.php
+                // unconditionally. Reporting its routes as "NOT loaded" was
+                // false, and printed on every cache rebuild.
+                if ($mod === 'smartauth') {
+                    continue;
+                }
                 // Disabled module -> intentionally off, not a misconfiguration.
                 if (empty($conf->global->{'MAIN_MODULE_' . strtoupper($module)})) {
                     continue;
                 }
-                dol_syslog(
-                    "[SmartAuth] RouteCache: module '" . $mod . "' is ENABLED and exposes api/LocalRoutes.php"
-                    . " but does NOT declare module_parts['smartauth'] => array('routes' => 1) in its descriptor."
-                    . " Its API routes are NOT loaded. Add the declaration and re-enable the module"
-                    . " (see ~/docs/MODULE.md section 7a).",
-                    LOG_WARNING
-                );
+                $undeclared[] = $mod;
             }
         }
+
+        return $undeclared;
     }
 
     /**
@@ -657,7 +694,7 @@ class RouteCache
         $cacheFile = self::getCacheFilePath();
         $cacheDir = dirname($cacheFile);
 
-        dol_syslog("[SmartAuth] RouteCache: save to dir=$cacheDir filename=$cacheFile", LOG_ERR);
+        SmartAuthLogger::debug("RouteCache: save to dir=$cacheDir filename=$cacheFile");
 
         // Create cache directory if needed
         if (!is_dir($cacheDir)) {

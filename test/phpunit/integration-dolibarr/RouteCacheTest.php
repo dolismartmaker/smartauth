@@ -204,6 +204,46 @@ class RouteCacheTest extends DolibarrRealTestCase
         ModulePathHelper::resetCache();
     }
 
+    public function testSmartauthIsNeverReportedAsUndeclaredRouteModule(): void
+    {
+        global $conf;
+
+        // SmartAuth is the IdP: it does not declare module_parts['smartauth']
+        // for itself, yet discoverLocalRoutesFiles() always re-injects its
+        // LocalRoutes.php (see the test above). Reporting it as undeclared
+        // told admins its routes were dropped when they were not -- a warning
+        // repeated on every cache rebuild, on an install where nothing was
+        // wrong.
+        if (!isset($conf->modules_parts) || !is_array($conf->modules_parts)) {
+            $conf->modules_parts = [];
+        }
+        unset($conf->modules_parts['smartauth']);
+        ModulePathHelper::resetCache();
+
+        $this->assertNotSame('', ModulePathHelper::localRoutesFile('smartauth'),
+            'SmartAuth api/LocalRoutes.php must be resolvable for this test to be meaningful');
+
+        // Enabled, otherwise the "disabled module" branch would mask the check.
+        $savedEnabled = $conf->global->MAIN_MODULE_SMARTAUTH ?? null;
+        $conf->global->MAIN_MODULE_SMARTAUTH = 1;
+
+        try {
+            $ref = new \ReflectionMethod(RouteCache::class, 'undeclaredRouteModules');
+            $ref->setAccessible(true);
+            $undeclared = $ref->invoke(null);
+
+            $this->assertNotContains('smartauth', $undeclared,
+                'SmartAuth must never be reported as an undeclared route module');
+        } finally {
+            if ($savedEnabled === null) {
+                unset($conf->global->MAIN_MODULE_SMARTAUTH);
+            } else {
+                $conf->global->MAIN_MODULE_SMARTAUTH = $savedEnabled;
+            }
+            ModulePathHelper::resetCache();
+        }
+    }
+
     // ==================== registration mode tests ====================
 
     public function testStartRegistrationEntersRegistrationMode(): void
